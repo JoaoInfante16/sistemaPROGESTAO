@@ -122,29 +122,57 @@ class NewsDetailSheet extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 ...news.sources.map(
-                  (source) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: InkWell(
-                      onTap: () => _openUrl(source.url),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.open_in_new,
-                              size: 14, color: Colors.blue),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              source.sourceName ?? source.url,
-                              style: const TextStyle(
-                                color: Colors.blue,
-                                decoration: TextDecoration.underline,
-                              ),
-                              overflow: TextOverflow.ellipsis,
+                  (source) {
+                    final isOfficial = RegExp(
+                      r'\.gov\.br|\.ssp\.|\.seguranca\.|\.sesp\.|\.sspds\.|\.sejusp\.|\.segup\.',
+                      caseSensitive: false,
+                    ).hasMatch(source.url);
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: InkWell(
+                        onTap: () => _openUrl(source.url),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isOfficial ? Icons.shield : Icons.open_in_new,
+                              size: 14,
+                              color: isOfficial ? Colors.green[700] : Colors.blue,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                source.sourceName ?? source.url,
+                                style: TextStyle(
+                                  color: isOfficial ? Colors.green[700] : Colors.blue,
+                                  decoration: TextDecoration.underline,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (isOfficial) ...[
+                              const SizedBox(width: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  'GOV',
+                                  style: TextStyle(
+                                    color: Colors.green[700],
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ),
+                    );
+                  },
                 ),
               ],
 

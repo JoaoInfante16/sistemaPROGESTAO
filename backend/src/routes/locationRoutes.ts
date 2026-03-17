@@ -98,4 +98,63 @@ router.post(
   }
 );
 
+/**
+ * POST /locations/bulk-import
+ * Importar cidades do IBGE em lote para monitoramento.
+ */
+router.post(
+  '/locations/bulk-import',
+  requireAuth,
+  requireAdmin,
+  validateBody(schemas.bulkImportLocations),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { state_name, cities, mode, scan_frequency_minutes } = req.body as {
+        state_name: string;
+        cities: string[];
+        mode: 'keywords' | 'any';
+        scan_frequency_minutes: number;
+      };
+
+      // Find or create state
+      let stateId: string;
+      const hierarchy = await db.getLocationsHierarchy();
+      const existingState = hierarchy.find(
+        (s) => s.name.toLowerCase() === state_name.toLowerCase()
+      );
+
+      if (existingState) {
+        stateId = existingState.id;
+      } else {
+        const newState = await db.insertLocation({ type: 'state', name: state_name });
+        stateId = newState.id;
+      }
+
+      // Find existing cities for this state to skip duplicates
+      const existingCities = new Set(
+        (existingState?.cities || []).map((c) => c.name.toLowerCase())
+      );
+
+      const newCities = cities.filter(
+        (c) => !existingCities.has(c.toLowerCase())
+      );
+
+      // Bulk insert new cities
+      if (newCities.length > 0) {
+        await db.bulkInsertLocations(stateId, newCities, mode, scan_frequency_minutes);
+      }
+
+      logger.info(`[Locations] Bulk import: ${newCities.length} imported, ${cities.length - newCities.length} skipped for ${state_name}`);
+      res.status(201).json({
+        imported: newCities.length,
+        skipped: cities.length - newCities.length,
+        total: cities.length,
+      });
+    } catch (error) {
+      logger.error('[Locations] Bulk import error:', error);
+      res.status(500).json({ error: 'Failed to bulk import locations' });
+    }
+  }
+);
+
 export default router;

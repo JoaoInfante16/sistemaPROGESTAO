@@ -24,6 +24,8 @@ class NewsItem {
   final double? confianca;
   final DateTime createdAt;
   final List<NewsSource> sources;
+  final bool hasOfficialSource;
+  final String? estadoUf;
   bool isUnread;
   bool isFavorite;
 
@@ -39,6 +41,8 @@ class NewsItem {
     this.confianca,
     required this.createdAt,
     this.sources = const [],
+    this.hasOfficialSource = false,
+    this.estadoUf,
     this.isUnread = true,
     this.isFavorite = false,
   });
@@ -59,6 +63,8 @@ class NewsItem {
               ?.map((s) => NewsSource.fromJson(s as Map<String, dynamic>))
               .toList() ??
           [],
+      hasOfficialSource: json['has_official_source'] as bool? ?? false,
+      estadoUf: json['estado_uf'] as String?,
       isUnread: json['is_unread'] as bool? ?? true,
       isFavorite: json['is_favorite'] as bool? ?? false,
     );

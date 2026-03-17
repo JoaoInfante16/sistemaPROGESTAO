@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   Newspaper,
+  BarChart3,
   MapPin,
   Users,
   Settings,
@@ -18,6 +19,7 @@ import { Separator } from '@/components/ui/separator';
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/dashboard/news', label: 'Notícias', icon: Newspaper },
+  { href: '/dashboard/analytics', label: 'Analise de Risco', icon: BarChart3 },
   { href: '/dashboard/locations', label: 'Monitoramentos', icon: MapPin },
   { href: '/dashboard/users', label: 'Usuários', icon: Users },
   { href: '/dashboard/settings', label: 'Configurações', icon: Settings },

@@ -73,7 +73,7 @@ router.post(
       }
 
       // Criar perfil no user_profiles
-      await db.createUserProfile(data.user.id, email, req.user!.id, is_admin ?? false);
+      await db.createUserProfile(data.user.id, email, req.user?.id ?? '', is_admin ?? false);
 
       res.status(201).json({
         success: true,
@@ -120,7 +120,7 @@ router.delete(
   async (req: Request, res: Response): Promise<void> => {
     try {
       // Não permitir deletar a si mesmo
-      if (req.params.id === req.user!.id) {
+      if (req.params.id === req.user?.id) {
         res.status(400).json({ error: 'Voce nao pode deletar sua propria conta' });
         return;
       }

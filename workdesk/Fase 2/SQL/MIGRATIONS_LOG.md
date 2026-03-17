@@ -18,3 +18,4 @@
 |---|---------|-----------|-----------|
 | 001 | 001_baseline.sql | Schema completo Fase 1 (referencia) | Sim (Fase 1) |
 | 003 | 003_fix_db_inconsistencies.sql | Remove scan_frequency_hours duplicada, IVFFlat->HNSW, add search_permission config | Sim (2026-03-17) |
+| 004 | 004_reports_table.sql | Tabela reports (dashboard compartilhavel) + indices analytics | Pendente |

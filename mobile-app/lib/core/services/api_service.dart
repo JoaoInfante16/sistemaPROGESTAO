@@ -148,13 +148,13 @@ class ApiService {
 
   Future<String> triggerManualSearch({
     required String estado,
-    required String cidade,
+    required List<String> cidades,
     int periodoDias = 30,
     String? tipoCrime,
   }) async {
     final bodyMap = <String, dynamic>{
       'estado': estado,
-      'cidade': cidade,
+      'cidades': cidades,
       'periodo_dias': periodoDias,
     };
     if (tipoCrime != null) bodyMap['tipo_crime'] = tipoCrime;
@@ -187,6 +187,41 @@ class ApiService {
     _checkResponse(res);
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     return (body['results'] as List<dynamic>).cast<Map<String, dynamic>>();
+  }
+
+  // ── Analytics / Reports ──
+
+  Future<Map<String, dynamic>> generateReport({
+    required String cidade,
+    required String estado,
+    required String dateFrom,
+    required String dateTo,
+    String? searchId,
+  }) async {
+    final bodyMap = <String, dynamic>{
+      'cidade': cidade,
+      'estado': estado,
+      'dateFrom': dateFrom,
+      'dateTo': dateTo,
+    };
+    if (searchId != null) bodyMap['searchId'] = searchId;
+
+    final res = await _client.post(
+      Uri.parse('$_baseUrl/analytics/report'),
+      headers: _headers,
+      body: jsonEncode(bodyMap),
+    ).timeout(_timeout);
+    _checkResponse(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getSearchAnalytics(String searchId) async {
+    final res = await _client.get(
+      Uri.parse('$_baseUrl/analytics/search-report/$searchId'),
+      headers: _headers,
+    ).timeout(_timeout);
+    _checkResponse(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   // ── Devices (push token) ──

@@ -125,6 +125,69 @@ export interface OperationLog {
 }
 
 // ============================================
+// Analytics Types
+// ============================================
+
+export interface CrimeSummary {
+  totalCrimes: number;
+  byCrimeType: Array<{ tipo_crime: string; count: number; percentage: number }>;
+  topBairros: Array<{ bairro: string; count: number }>;
+  avgConfianca: number;
+}
+
+export interface CrimeTrend {
+  dataPoints: Array<{
+    period: string;
+    label: string;
+    total: number;
+    breakdown: Record<string, number>;
+  }>;
+}
+
+export interface CrimeComparison {
+  period1: { label: string; total: number; byCrimeType: Record<string, number> };
+  period2: { label: string; total: number; byCrimeType: Record<string, number> };
+  changes: Array<{
+    tipo_crime: string;
+    period1Count: number;
+    period2Count: number;
+    changePercent: string;
+  }>;
+  overallDelta: string;
+}
+
+export interface ReportData {
+  id: string;
+  cidade: string;
+  estado: string;
+  date_from: string;
+  date_to: string;
+  report_data: {
+    cidade: string;
+    estado: string;
+    dateFrom: string;
+    dateTo: string;
+    generatedAt: string;
+    summary: {
+      totalCrimes: number;
+      avgConfianca: number;
+      topCrimeType: string;
+      comparisonDelta: string;
+    };
+    byCrimeType: Array<{ tipo_crime: string; count: number; percentage: number }>;
+    trend: Array<{ period: string; label: string; total: number; breakdown: Record<string, number> }>;
+    topBairros: Array<{ bairro: string; count: number }>;
+    comparison: CrimeComparison | null;
+    sources: Array<{ name: string; count: number; urls?: string[]; type?: 'oficial' | 'midia' }>;
+    sourcesOficial?: Array<{ name: string; count: number; urls?: string[] }>;
+    sourcesMedia?: Array<{ name: string; count: number; urls?: string[] }>;
+  };
+  sources: Array<{ name: string; count: number; urls?: string[]; type?: 'oficial' | 'midia' }>;
+  created_at: string;
+  expires_at: string;
+}
+
+// ============================================
 // API Client - paths match backend routes exactly
 // ============================================
 
@@ -189,6 +252,18 @@ export const api = {
   triggerScan: (token: string, locationId: string) =>
     apiFetch<{ success: boolean; jobId: string }>(`/locations/${locationId}/scan`, {
       method: 'POST',
+      token,
+    }),
+
+  bulkImportLocations: (token: string, data: {
+    state_name: string;
+    cities: string[];
+    mode?: 'keywords' | 'any';
+    scan_frequency_minutes?: number;
+  }) =>
+    apiFetch<{ imported: number; skipped: number; total: number }>('/locations/bulk-import', {
+      method: 'POST',
+      body: JSON.stringify(data),
       token,
     }),
 
@@ -264,7 +339,34 @@ export const api = {
   getLogs: (token: string) =>
     apiFetch<OperationLog[]>('/logs/recent', { token }),
 
-  // Dev Tools (TEMPORARIO - remover antes do deploy)
+  // Analytics
+  getCrimeSummary: (token: string, params: { cidade: string; dateFrom: string; dateTo: string }) => {
+    const qs = new URLSearchParams(params);
+    return apiFetch<CrimeSummary>(`/analytics/crime-summary?${qs}`, { token });
+  },
+
+  getCrimeTrend: (token: string, params: { cidade: string; dateFrom: string; dateTo: string; groupBy?: string }) => {
+    const qs = new URLSearchParams({ cidade: params.cidade, dateFrom: params.dateFrom, dateTo: params.dateTo });
+    if (params.groupBy) qs.set('groupBy', params.groupBy);
+    return apiFetch<CrimeTrend>(`/analytics/crime-trend?${qs}`, { token });
+  },
+
+  getCrimeComparison: (token: string, params: { cidade: string; period1Start: string; period1End: string; period2Start: string; period2End: string }) => {
+    const qs = new URLSearchParams(params);
+    return apiFetch<CrimeComparison>(`/analytics/crime-comparison?${qs}`, { token });
+  },
+
+  generateReport: (token: string, data: { cidade: string; estado: string; dateFrom: string; dateTo: string; searchId?: string }) =>
+    apiFetch<{ reportId: string }>('/analytics/report', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      token,
+    }),
+
+  getPublicReport: (reportId: string) =>
+    apiFetch<ReportData>(`/public/report/${reportId}`),
+
+  // Dev Tools (so funcionam quando backend roda com NODE_ENV !== 'production')
   seedNews: (token: string) =>
     apiFetch<{ success: boolean; inserted: number; total: number }>('/dev/seed-news', {
       method: 'POST',

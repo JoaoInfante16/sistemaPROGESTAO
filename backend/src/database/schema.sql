@@ -276,3 +276,28 @@ CREATE TRIGGER news_inserted_trigger
 AFTER INSERT ON news
 FOR EACH ROW
 EXECUTE FUNCTION notify_new_news();
+
+-- ============================================
+-- 13. RELATÓRIOS EXPORTÁVEIS (FASE 2 - Feature Dashboard)
+-- ============================================
+-- Relatórios pré-computados com link público compartilhável.
+-- Expira em 30 dias por padrão.
+
+CREATE TABLE IF NOT EXISTS reports (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  search_id UUID REFERENCES search_cache(search_id) ON DELETE SET NULL,
+  cidade TEXT NOT NULL,
+  estado TEXT NOT NULL,
+  date_from DATE NOT NULL,
+  date_to DATE NOT NULL,
+  report_data JSONB NOT NULL,
+  sources JSONB NOT NULL DEFAULT '[]',
+  created_at TIMESTAMP DEFAULT NOW(),
+  expires_at TIMESTAMP DEFAULT NOW() + INTERVAL '30 days'
+);
+
+CREATE INDEX IF NOT EXISTS idx_reports_expires ON reports(expires_at);
+
+-- Índices compostos para queries de analytics
+CREATE INDEX IF NOT EXISTS idx_news_cidade_tipo ON news(cidade, tipo_crime) WHERE active = true;
+CREATE INDEX IF NOT EXISTS idx_news_cidade_data_tipo ON news(cidade, data_ocorrencia, tipo_crime) WHERE active = true;

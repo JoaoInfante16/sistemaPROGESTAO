@@ -30,7 +30,7 @@ router.post(
     try {
       const { token, platform } = req.body as { token: string; platform: 'ios' | 'android' };
 
-      await db.upsertDevice(req.user!.id, token, platform);
+      await db.upsertDevice(req.user?.id ?? '', token, platform);
       res.json({ success: true });
     } catch (error) {
       logger.error('[Devices] Register error:', error);

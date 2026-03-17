@@ -1,0 +1,505 @@
+// ============================================
+// Analytics Queries - FASE 2 (Dashboard de Risco)
+// ============================================
+// Queries de agregação para relatórios de criminalidade.
+// Separado de queries.ts para manter organização.
+
+import { supabase } from '../config/database';
+import { logger } from '../middleware/logger';
+
+// ============================================
+// Crime Summary
+// ============================================
+
+interface CrimeSummaryResult {
+  totalCrimes: number;
+  byCrimeType: Array<{ tipo_crime: string; count: number; percentage: number }>;
+  topBairros: Array<{ bairro: string; count: number }>;
+  avgConfianca: number;
+}
+
+export async function getCrimeSummary(
+  cidade: string,
+  dateFrom: string,
+  dateTo: string
+): Promise<CrimeSummaryResult> {
+  const { data, error } = await supabase
+    .from('news')
+    .select('tipo_crime, bairro, confianca')
+    .eq('cidade', cidade)
+    .eq('active', true)
+    .gte('data_ocorrencia', dateFrom)
+    .lte('data_ocorrencia', dateTo);
+
+  if (error) throw new Error(`Crime summary query failed: ${error.message}`);
+
+  const rows = data || [];
+  const totalCrimes = rows.length;
+
+  // Group by tipo_crime
+  const typeMap = new Map<string, number>();
+  const bairroMap = new Map<string, number>();
+  let sumConfianca = 0;
+  let countConfianca = 0;
+
+  for (const row of rows) {
+    const tipo = row.tipo_crime as string;
+    typeMap.set(tipo, (typeMap.get(tipo) || 0) + 1);
+
+    const bairro = row.bairro as string | null;
+    if (bairro) {
+      bairroMap.set(bairro, (bairroMap.get(bairro) || 0) + 1);
+    }
+
+    const conf = row.confianca as number | null;
+    if (conf != null) {
+      sumConfianca += conf;
+      countConfianca++;
+    }
+  }
+
+  const byCrimeType = Array.from(typeMap.entries())
+    .map(([tipo_crime, count]) => ({
+      tipo_crime,
+      count,
+      percentage: totalCrimes > 0 ? Math.round((count / totalCrimes) * 1000) / 10 : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  const topBairros = Array.from(bairroMap.entries())
+    .map(([bairro, count]) => ({ bairro, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  return {
+    totalCrimes,
+    byCrimeType,
+    topBairros,
+    avgConfianca: countConfianca > 0
+      ? Math.round((sumConfianca / countConfianca) * 100) / 100
+      : 0,
+  };
+}
+
+// ============================================
+// Crime Trend (time series)
+// ============================================
+
+interface TrendDataPoint {
+  period: string;
+  label: string;
+  total: number;
+  breakdown: Record<string, number>;
+}
+
+export async function getCrimeTrend(
+  cidade: string,
+  dateFrom: string,
+  dateTo: string,
+  groupBy: 'day' | 'week' | 'month' = 'week'
+): Promise<{ dataPoints: TrendDataPoint[] }> {
+  const { data, error } = await supabase
+    .from('news')
+    .select('tipo_crime, data_ocorrencia')
+    .eq('cidade', cidade)
+    .eq('active', true)
+    .gte('data_ocorrencia', dateFrom)
+    .lte('data_ocorrencia', dateTo)
+    .order('data_ocorrencia', { ascending: true });
+
+  if (error) throw new Error(`Crime trend query failed: ${error.message}`);
+
+  const rows = data || [];
+  const periodMap = new Map<string, { total: number; breakdown: Record<string, number>; label: string }>();
+
+  for (const row of rows) {
+    const date = new Date(row.data_ocorrencia as string);
+    const { key, label } = getPeriodKey(date, groupBy);
+    const tipo = row.tipo_crime as string;
+
+    if (!periodMap.has(key)) {
+      periodMap.set(key, { total: 0, breakdown: {}, label });
+    }
+
+    const period = periodMap.get(key)!;
+    period.total++;
+    period.breakdown[tipo] = (period.breakdown[tipo] || 0) + 1;
+  }
+
+  const dataPoints = Array.from(periodMap.entries())
+    .map(([period, data]) => ({
+      period,
+      label: data.label,
+      total: data.total,
+      breakdown: data.breakdown,
+    }))
+    .sort((a, b) => a.period.localeCompare(b.period));
+
+  return { dataPoints };
+}
+
+function getPeriodKey(date: Date, groupBy: 'day' | 'week' | 'month'): { key: string; label: string } {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+
+  switch (groupBy) {
+    case 'day':
+      return { key: `${yyyy}-${mm}-${dd}`, label: `${dd}/${mm}` };
+    case 'week': {
+      // ISO week calculation
+      const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+      const dayNum = d.getUTCDay() || 7;
+      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+      return {
+        key: `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`,
+        label: `Sem ${weekNo}`,
+      };
+    }
+    case 'month':
+      return { key: `${yyyy}-${mm}`, label: `${mm}/${yyyy}` };
+  }
+}
+
+// ============================================
+// Crime Comparison (two periods)
+// ============================================
+
+interface CrimeComparison {
+  period1: { label: string; total: number; byCrimeType: Record<string, number> };
+  period2: { label: string; total: number; byCrimeType: Record<string, number> };
+  changes: Array<{
+    tipo_crime: string;
+    period1Count: number;
+    period2Count: number;
+    changePercent: string;
+  }>;
+  overallDelta: string;
+}
+
+export async function getCrimeComparison(
+  cidade: string,
+  period1Start: string,
+  period1End: string,
+  period2Start: string,
+  period2End: string
+): Promise<CrimeComparison> {
+  // Fetch both periods in parallel
+  const [res1, res2] = await Promise.all([
+    supabase
+      .from('news')
+      .select('tipo_crime')
+      .eq('cidade', cidade)
+      .eq('active', true)
+      .gte('data_ocorrencia', period1Start)
+      .lte('data_ocorrencia', period1End),
+    supabase
+      .from('news')
+      .select('tipo_crime')
+      .eq('cidade', cidade)
+      .eq('active', true)
+      .gte('data_ocorrencia', period2Start)
+      .lte('data_ocorrencia', period2End),
+  ]);
+
+  if (res1.error) throw new Error(`Comparison P1 failed: ${res1.error.message}`);
+  if (res2.error) throw new Error(`Comparison P2 failed: ${res2.error.message}`);
+
+  const p1Data = res1.data || [];
+  const p2Data = res2.data || [];
+
+  const p1Map = countByType(p1Data);
+  const p2Map = countByType(p2Data);
+
+  const allTypes = new Set([...p1Map.keys(), ...p2Map.keys()]);
+  const changes = Array.from(allTypes)
+    .map(tipo_crime => {
+      const p1 = p1Map.get(tipo_crime) || 0;
+      const p2 = p2Map.get(tipo_crime) || 0;
+      return {
+        tipo_crime,
+        period1Count: p1,
+        period2Count: p2,
+        changePercent: p1 > 0
+          ? `${p2 >= p1 ? '+' : ''}${Math.round(((p2 - p1) / p1) * 100)}%`
+          : p2 > 0 ? '+100%' : '0%',
+      };
+    })
+    .sort((a, b) => b.period2Count - a.period2Count);
+
+  const p1Total = p1Data.length;
+  const p2Total = p2Data.length;
+  const overallDelta = p1Total > 0
+    ? `${p2Total >= p1Total ? '+' : ''}${Math.round(((p2Total - p1Total) / p1Total) * 100)}%`
+    : p2Total > 0 ? '+100%' : '0%';
+
+  return {
+    period1: {
+      label: `${formatDate(period1Start)} - ${formatDate(period1End)}`,
+      total: p1Total,
+      byCrimeType: Object.fromEntries(p1Map),
+    },
+    period2: {
+      label: `${formatDate(period2Start)} - ${formatDate(period2End)}`,
+      total: p2Total,
+      byCrimeType: Object.fromEntries(p2Map),
+    },
+    changes,
+    overallDelta,
+  };
+}
+
+function countByType(rows: Array<{ tipo_crime: unknown }>): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const row of rows) {
+    const t = row.tipo_crime as string;
+    map.set(t, (map.get(t) || 0) + 1);
+  }
+  return map;
+}
+
+function formatDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+// ============================================
+// Search Results Analytics (from manual search)
+// ============================================
+
+interface SearchReportData {
+  searchParams: Record<string, unknown>;
+  totalResults: number;
+  byCrimeType: Array<{ tipo_crime: string; count: number; percentage: number }>;
+  topBairros: Array<{ bairro: string; count: number }>;
+  byDate: Array<{ date: string; count: number }>;
+  sources: Array<{ url: string; name: string; type: 'oficial' | 'midia' }>;
+  results: Array<Record<string, unknown>>;
+}
+
+export async function getSearchResultsAnalytics(searchId: string): Promise<SearchReportData> {
+  // Get search cache for params
+  const { data: cache, error: cacheErr } = await supabase
+    .from('search_cache')
+    .select('params, total_results')
+    .eq('search_id', searchId)
+    .single();
+
+  if (cacheErr || !cache) throw new Error(`Search cache not found: ${searchId}`);
+
+  // Get results
+  const { data: resultRows, error: resErr } = await supabase
+    .from('search_results')
+    .select('results')
+    .eq('search_id', searchId)
+    .order('offset_num');
+
+  if (resErr) throw new Error(`Search results query failed: ${resErr.message}`);
+
+  // Flatten all results from all offsets
+  const allResults: Array<Record<string, unknown>> = [];
+  for (const row of resultRows || []) {
+    const items = row.results as Array<Record<string, unknown>> | null;
+    if (items) allResults.push(...items);
+  }
+
+  // Aggregate
+  const typeMap = new Map<string, number>();
+  const bairroMap = new Map<string, number>();
+  const dateMap = new Map<string, number>();
+  const sources: Array<{ url: string; name: string; type: 'oficial' | 'midia' }> = [];
+
+  for (const r of allResults) {
+    const tipo = r.tipo_crime as string;
+    if (tipo) typeMap.set(tipo, (typeMap.get(tipo) || 0) + 1);
+
+    const bairro = r.bairro as string | null;
+    if (bairro) bairroMap.set(bairro, (bairroMap.get(bairro) || 0) + 1);
+
+    const date = r.data_ocorrencia as string | null;
+    if (date) dateMap.set(date, (dateMap.get(date) || 0) + 1);
+
+    const url = r.source_url as string | null;
+    if (url) {
+      const hostname = extractDomain(url);
+      const sourceType = (r.source_type as string) === 'ssp' || isOfficialSource(url) ? 'oficial' as const : 'midia' as const;
+      sources.push({ url, name: hostname, type: sourceType });
+    }
+  }
+
+  const total = allResults.length;
+
+  return {
+    searchParams: cache.params as Record<string, unknown>,
+    totalResults: total,
+    byCrimeType: Array.from(typeMap.entries())
+      .map(([tipo_crime, count]) => ({
+        tipo_crime,
+        count,
+        percentage: total > 0 ? Math.round((count / total) * 1000) / 10 : 0,
+      }))
+      .sort((a, b) => b.count - a.count),
+    topBairros: Array.from(bairroMap.entries())
+      .map(([bairro, count]) => ({ bairro, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10),
+    byDate: Array.from(dateMap.entries())
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => a.date.localeCompare(b.date)),
+    sources: deduplicateSources(sources),
+    results: allResults,
+  };
+}
+
+/**
+ * Classifica uma fonte como oficial (SSP/gov) ou midia jornalistica.
+ */
+export function isOfficialSource(url: string): boolean {
+  return /\.gov\.br|\.ssp\.|\.seguranca\.|\.sesp\.|\.sspds\.|\.sejusp\.|\.segup\./i.test(url);
+}
+
+function extractDomain(url: string): string {
+  try {
+    return new URL(url).hostname.replace('www.', '');
+  } catch {
+    return url;
+  }
+}
+
+function deduplicateSources<T extends { url: string }>(sources: T[]): T[] {
+  const seen = new Set<string>();
+  return sources.filter(s => {
+    if (seen.has(s.url)) return false;
+    seen.add(s.url);
+    return true;
+  });
+}
+
+// ============================================
+// News Sources Aggregation
+// ============================================
+
+export async function getNewsSources(
+  cidade: string,
+  dateFrom: string,
+  dateTo: string
+): Promise<Array<{ name: string; count: number; urls: string[]; type: 'oficial' | 'midia' }>> {
+  // Get news IDs for this city/period
+  const { data: newsRows, error: newsErr } = await supabase
+    .from('news')
+    .select('id')
+    .eq('cidade', cidade)
+    .eq('active', true)
+    .gte('data_ocorrencia', dateFrom)
+    .lte('data_ocorrencia', dateTo);
+
+  if (newsErr) throw new Error(`News sources query failed: ${newsErr.message}`);
+  if (!newsRows || newsRows.length === 0) return [];
+
+  const newsIds = newsRows.map(r => r.id);
+
+  // Get sources for these news
+  const { data: sourceRows, error: srcErr } = await supabase
+    .from('news_sources')
+    .select('source_name, url')
+    .in('news_id', newsIds);
+
+  if (srcErr) throw new Error(`Sources query failed: ${srcErr.message}`);
+
+  // Aggregate by source_name
+  const sourceMap = new Map<string, { count: number; urls: string[] }>();
+  for (const row of sourceRows || []) {
+    const name = (row.source_name as string) || extractDomain(row.url as string);
+    if (!sourceMap.has(name)) {
+      sourceMap.set(name, { count: 0, urls: [] });
+    }
+    const entry = sourceMap.get(name)!;
+    entry.count++;
+    if (entry.urls.length < 5) {
+      entry.urls.push(row.url as string);
+    }
+  }
+
+  return Array.from(sourceMap.entries())
+    .map(([name, data]) => ({
+      name,
+      count: data.count,
+      urls: data.urls,
+      type: data.urls.some(u => isOfficialSource(u)) ? 'oficial' as const : 'midia' as const,
+    }))
+    .sort((a, b) => b.count - a.count);
+}
+
+// ============================================
+// Reports CRUD
+// ============================================
+
+interface CreateReportParams {
+  search_id?: string;
+  cidade: string;
+  estado: string;
+  date_from: string;
+  date_to: string;
+  report_data: Record<string, unknown>;
+  sources: Array<Record<string, unknown>>;
+}
+
+export async function createReport(params: CreateReportParams): Promise<string> {
+  const { data, error } = await supabase
+    .from('reports')
+    .insert({
+      search_id: params.search_id || null,
+      cidade: params.cidade,
+      estado: params.estado,
+      date_from: params.date_from,
+      date_to: params.date_to,
+      report_data: params.report_data,
+      sources: params.sources,
+    })
+    .select('id')
+    .single();
+
+  if (error || !data) {
+    logger.error('[Analytics] Create report failed:', error);
+    throw new Error(`Failed to create report: ${error?.message}`);
+  }
+
+  return data.id;
+}
+
+export async function getReport(reportId: string): Promise<{
+  id: string;
+  cidade: string;
+  estado: string;
+  date_from: string;
+  date_to: string;
+  report_data: Record<string, unknown>;
+  sources: Array<Record<string, unknown>>;
+  created_at: string;
+  expires_at: string;
+} | null> {
+  const { data, error } = await supabase
+    .from('reports')
+    .select('*')
+    .eq('id', reportId)
+    .single();
+
+  if (error || !data) return null;
+
+  // Check expiration
+  if (new Date(data.expires_at) < new Date()) return null;
+
+  return data as {
+    id: string;
+    cidade: string;
+    estado: string;
+    date_from: string;
+    date_to: string;
+    report_data: Record<string, unknown>;
+    sources: Array<Record<string, unknown>>;
+    created_at: string;
+    expires_at: string;
+  };
+}

@@ -9,6 +9,7 @@ import { Worker, Job, Queue } from 'bullmq';
 import { redis } from '../../config/redis';
 import { createSearchProvider } from '../../services/search';
 import { createContentFetcher } from '../../services/content';
+import { scrapeSSP } from '../../services/search/SSPScraper';
 // Embedding not needed for manual search (results aren't saved to news table)
 import { filter0Regex } from '../../services/filters/filter0Regex';
 import { filter1GPTBatch } from '../../services/filters/filter1GPTBatch';
@@ -29,13 +30,13 @@ export interface ManualSearchJobData {
   searchId: string;
   userId: string;
   estado: string;
-  cidade: string;
+  cidades: string[];
   periodoDias: number;
   tipoCrime?: string;
 }
 
 async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void> {
-  const { searchId, estado, cidade, periodoDias, tipoCrime } = job.data;
+  const { searchId, estado, cidades, periodoDias, tipoCrime } = job.data;
   const startTime = Date.now();
 
   try {
@@ -46,23 +47,60 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       filter2MaxContentChars: await configManager.getNumber('filter2_max_content_chars'),
     };
 
-    // Build query
+    // 1. Google Search — loop por cidade, coleta URLs combinadas
     const crimeKeywords = tipoCrime || 'crime polícia assalto roubo';
-    const query = `${crimeKeywords} ${cidade} ${estado} site:.br`;
-    logger.info(`[ManualSearch] ${searchId} query: ${query}`);
+    const sourceTypeMap = new Map<string, 'google' | 'ssp'>();
+    const searchResults: Array<{ url: string; snippet: string }> = [];
+    const seenUrls = new Set<string>();
 
-    // 1. Google Search
-    const searchResults = await rateLimiter.schedule('google', () =>
-      searchProvider.search(query, { maxResults: pipelineConfig.searchMaxResults })
-    );
-    logger.info(`[ManualSearch] ${searchId} found ${searchResults.length} URLs`);
+    for (const cidade of cidades) {
+      const query = `${crimeKeywords} ${cidade} ${estado} site:.br`;
+      logger.info(`[ManualSearch] ${searchId} query: ${query}`);
+
+      const results = await rateLimiter.schedule('google', () =>
+        searchProvider.search(query, { maxResults: pipelineConfig.searchMaxResults })
+      );
+
+      for (const r of results) {
+        if (!seenUrls.has(r.url)) {
+          seenUrls.add(r.url);
+          sourceTypeMap.set(r.url, 'google');
+          searchResults.push(r);
+        }
+      }
+    }
+
+    logger.info(`[ManualSearch] ${searchId} found ${searchResults.length} unique Google URLs from ${cidades.length} cidades`);
 
     await db.trackCost({
       source: 'manual_search',
       provider: 'google',
-      cost_usd: searchResults.length > 0 ? 0.005 : 0,
-      details: { searchId, query, resultsCount: searchResults.length },
+      cost_usd: cidades.length * 0.005,
+      details: { searchId, cidadesCount: cidades.length, resultsCount: searchResults.length },
     });
+
+    // 1b. SSP Scraping — uma vez por estado
+    const sspEnabled = await configManager.getBoolean('ssp_scraping_enabled');
+    if (sspEnabled) {
+      try {
+        const jinaApiKey = process.env.JINA_API_KEY || '';
+        if (jinaApiKey) {
+          const sspResults = await scrapeSSP(estado, { jinaApiKey });
+          if (sspResults.length > 0) {
+            for (const r of sspResults) {
+              if (!seenUrls.has(r.url)) {
+                seenUrls.add(r.url);
+                sourceTypeMap.set(r.url, 'ssp');
+                searchResults.push(r);
+              }
+            }
+            logger.info(`[ManualSearch] ${searchId} found ${sspResults.length} SSP URLs`);
+          }
+        }
+      } catch (error) {
+        logger.warn(`[ManualSearch] SSP scraping failed for ${estado}: ${(error as Error).message}`);
+      }
+    }
 
     // 2. Filter 0 - Regex
     const afterFilter0 = searchResults.filter((r) => filter0Regex(r.url, r.snippet));
@@ -119,6 +157,7 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       resumo: string;
       confianca: number;
       source_url: string;
+      source_type: 'google' | 'ssp';
     }> = [];
 
     for (const fetched of validContents) {
@@ -145,6 +184,7 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
         resumo: extracted.resumo,
         confianca: extracted.confianca,
         source_url: fetched.url,
+        source_type: sourceTypeMap.get(fetched.url) || 'google',
       });
     }
 

@@ -270,6 +270,51 @@ export async function searchNews(params: SearchNewsParams): Promise<{ news: News
 }
 
 // ============================================
+// City → UF mapping (para badges no feed)
+// ============================================
+
+const STATE_NAME_TO_UF: Record<string, string> = {
+  'Acre': 'AC', 'Alagoas': 'AL', 'Amapa': 'AP', 'Amazonas': 'AM',
+  'Bahia': 'BA', 'Ceara': 'CE', 'Distrito Federal': 'DF', 'Espirito Santo': 'ES',
+  'Goias': 'GO', 'Maranhao': 'MA', 'Mato Grosso': 'MT', 'Mato Grosso do Sul': 'MS',
+  'Minas Gerais': 'MG', 'Para': 'PA', 'Paraiba': 'PB', 'Parana': 'PR',
+  'Pernambuco': 'PE', 'Piaui': 'PI', 'Rio de Janeiro': 'RJ', 'Rio Grande do Norte': 'RN',
+  'Rio Grande do Sul': 'RS', 'Rondonia': 'RO', 'Roraima': 'RR', 'Santa Catarina': 'SC',
+  'Sao Paulo': 'SP', 'Sergipe': 'SE', 'Tocantins': 'TO',
+};
+
+function stateNameToUF(name: string): string | null {
+  const normalized = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return STATE_NAME_TO_UF[normalized] || null;
+}
+
+export async function getCityToUFMap(): Promise<Map<string, string>> {
+  const { data: states } = await supabase
+    .from('monitored_locations')
+    .select('id, name')
+    .eq('type', 'state');
+
+  const { data: cities } = await supabase
+    .from('monitored_locations')
+    .select('name, parent_id')
+    .eq('type', 'city');
+
+  const stateIdToUF = new Map<string, string>();
+  for (const s of (states || []) as Array<{ id: string; name: string }>) {
+    const uf = stateNameToUF(s.name);
+    if (uf) stateIdToUF.set(s.id, uf);
+  }
+
+  const cityToUF = new Map<string, string>();
+  for (const c of (cities || []) as Array<{ name: string; parent_id: string }>) {
+    const uf = stateIdToUF.get(c.parent_id);
+    if (uf) cityToUF.set(c.name, uf);
+  }
+
+  return cityToUF;
+}
+
+// ============================================
 // Locations (public - para dropdown do Flutter)
 // ============================================
 
@@ -334,6 +379,31 @@ export async function getLocationsHierarchy(): Promise<Array<MonitoredLocation &
     ...state,
     cities: ((cities || []) as MonitoredLocation[]).filter((c) => c.parent_id === state.id),
   }));
+}
+
+export async function bulkInsertLocations(
+  stateId: string,
+  cities: string[],
+  mode: 'keywords' | 'any',
+  scanFrequencyMinutes: number,
+): Promise<void> {
+  if (cities.length === 0) return;
+
+  const rows = cities.map((name) => ({
+    type: 'city' as const,
+    name,
+    parent_id: stateId,
+    mode,
+    scan_frequency_minutes: scanFrequencyMinutes,
+    active: true,
+  }));
+
+  // Batch em chunks de 200
+  for (let i = 0; i < rows.length; i += 200) {
+    const chunk = rows.slice(i, i + 200);
+    const { error } = await supabase.from('monitored_locations').insert(chunk);
+    if (error) throw new Error(`Bulk insert failed: ${error.message}`);
+  }
 }
 
 interface InsertLocationParams {
@@ -591,13 +661,14 @@ export async function getUserNewsFeed(userId: string, params: { offset: number; 
 
   const favSet = new Set((favItems || []).map((f: { news_id: string }) => f.news_id));
 
-  const enriched = (news || []).map((n: { id: string }) => ({
+  const items = (news || []) as unknown as NewsFeedItem[];
+  const enriched = items.map((n) => ({
     ...n,
     is_unread: !readSet.has(n.id),
     is_favorite: favSet.has(n.id),
   }));
 
-  return { news: enriched, hasMore: (news || []).length === params.limit };
+  return { news: enriched, hasMore: items.length === params.limit };
 }
 
 export async function markAsRead(userId: string, newsId: string) {
@@ -814,4 +885,6 @@ export const db = {
   getSearchStatus,
   getSearchResults,
   getUserSearchHistory,
+  getCityToUFMap,
+  bulkInsertLocations,
 };

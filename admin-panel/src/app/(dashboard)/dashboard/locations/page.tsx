@@ -32,6 +32,7 @@ import {
   MapPin,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { IBGEImportDialog } from './ibge-import-dialog';
 
 export default function LocationsPage() {
   const { getToken } = useAuth();
@@ -164,6 +165,9 @@ export default function LocationsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Monitoramentos</h1>
         <div className="flex gap-2">
+          {/* Import IBGE */}
+          <IBGEImportDialog existingLocations={states} onImportComplete={loadLocations} />
+
           {/* Add State */}
           <Dialog open={addStateOpen} onOpenChange={setAddStateOpen}>
             <DialogTrigger asChild>

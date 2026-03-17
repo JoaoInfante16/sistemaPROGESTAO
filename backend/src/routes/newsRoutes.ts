@@ -8,7 +8,20 @@ import { Router, Request, Response } from 'express';
 import { requireAuth, conditionalAuth } from '../middleware/auth';
 import { validateQuery, validateBody, schemas } from '../middleware/validation';
 import { db } from '../database/queries';
+import { isOfficialSource } from '../database/analyticsQueries';
 import { logger } from '../middleware/logger';
+
+// Enrich feed items with has_official_source + estado_uf
+function enrichFeedItems<T extends { cidade: string; news_sources: Array<{ url: string; source_name: string | null }> }>(
+  news: T[],
+  cityToUF: Map<string, string>,
+) {
+  return news.map((item) => ({
+    ...item,
+    has_official_source: item.news_sources.some((s) => isOfficialSource(s.url)),
+    estado_uf: cityToUF.get(item.cidade) || null,
+  }));
+}
 
 const router = Router();
 
@@ -26,7 +39,8 @@ router.get(
       const cidade = req.query.cidade as string | undefined;
 
       const result = await db.getNewsFeed({ cidade, offset, limit });
-      res.json(result);
+      const cityToUF = await db.getCityToUFMap();
+      res.json({ ...result, news: enrichFeedItems(result.news, cityToUF) });
     } catch (error) {
       logger.error('[News] Feed error:', error);
       res.status(500).json({ error: 'Failed to fetch news feed' });
@@ -79,15 +93,17 @@ router.get(
       const limit = parseInt(req.query.limit as string) || 20;
       const cidade = req.query.cidade as string | undefined;
 
+      const cityToUF = await db.getCityToUFMap();
+
       // Usuario anonimo → feed basico (sem read/favorite status)
       if (!userId) {
         const result = await db.getNewsFeed({ cidade, offset, limit });
-        res.json(result);
+        res.json({ ...result, news: enrichFeedItems(result.news, cityToUF) });
         return;
       }
 
       const result = await db.getUserNewsFeed(userId, { offset, limit, cidade });
-      res.json(result);
+      res.json({ ...result, news: enrichFeedItems(result.news, cityToUF) });
     } catch (error) {
       logger.error('[News] User feed error:', error);
       res.status(500).json({ error: 'Failed to fetch user feed' });

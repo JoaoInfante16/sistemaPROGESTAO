@@ -7,6 +7,7 @@ import userRouter from './userRoutes';
 import settingsRouter from './settingsRoutes';
 import deviceRouter from './deviceRoutes';
 import manualSearchRouter from './manualSearchRoutes';
+import analyticsRouter from './analyticsRoutes';
 
 const router = Router();
 
@@ -19,10 +20,11 @@ router.use(newsRouter);
 router.use(deviceRouter);
 router.use(manualSearchRouter);
 
-// Rotas admin
+// Rotas admin + analytics
 router.use(locationRouter);
 router.use(userRouter);
 router.use(settingsRouter);
+router.use(analyticsRouter);
 
 // Dev tools (TEMPORARIO - remover antes do deploy)
 if (process.env.NODE_ENV !== 'production') {

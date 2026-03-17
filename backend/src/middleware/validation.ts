@@ -99,11 +99,70 @@ export const schemas = {
     dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   }),
 
-  // Busca manual individual (dispara pipeline)
+  // Busca manual multi-cidade (dispara pipeline)
   triggerManualSearch: z.object({
     estado: z.string().min(2).max(100),
-    cidade: z.string().min(2).max(100),
+    cidades: z.array(z.string().min(2).max(100)).min(1).max(10),
     periodo_dias: z.number().int().min(1).max(365).default(30),
     tipo_crime: z.string().min(2).max(50).optional(),
   }),
+
+  // Bulk import de cidades do IBGE para monitoramento
+  bulkImportLocations: z.object({
+    state_name: z.string().min(2).max(100),
+    cities: z.array(z.string().min(2).max(100)).min(1).max(1000),
+    mode: z.enum(['keywords', 'any']).default('any'),
+    scan_frequency_minutes: z.number().int().min(5).max(1440).default(60),
+  }),
+
+  // Analytics (com validacao: dateFrom <= dateTo, max 365 dias)
+  analyticsQuery: z.object({
+    cidade: z.string().min(2).max(100),
+    dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  }).refine(
+    (d) => new Date(d.dateFrom) <= new Date(d.dateTo),
+    { message: 'dateFrom must be before or equal to dateTo', path: ['dateFrom'] }
+  ).refine(
+    (d) => (new Date(d.dateTo).getTime() - new Date(d.dateFrom).getTime()) / (1000 * 60 * 60 * 24) <= 365,
+    { message: 'Date range cannot exceed 365 days', path: ['dateTo'] }
+  ),
+
+  analyticsTrend: z.object({
+    cidade: z.string().min(2).max(100),
+    dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    groupBy: z.enum(['day', 'week', 'month']).default('week'),
+  }).refine(
+    (d) => new Date(d.dateFrom) <= new Date(d.dateTo),
+    { message: 'dateFrom must be before or equal to dateTo', path: ['dateFrom'] }
+  ).refine(
+    (d) => (new Date(d.dateTo).getTime() - new Date(d.dateFrom).getTime()) / (1000 * 60 * 60 * 24) <= 365,
+    { message: 'Date range cannot exceed 365 days', path: ['dateTo'] }
+  ),
+
+  analyticsComparison: z.object({
+    cidade: z.string().min(2).max(100),
+    period1Start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    period1End: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    period2Start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    period2End: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  }).refine(
+    (d) => new Date(d.period1Start) <= new Date(d.period1End),
+    { message: 'period1Start must be before or equal to period1End', path: ['period1Start'] }
+  ).refine(
+    (d) => new Date(d.period2Start) <= new Date(d.period2End),
+    { message: 'period2Start must be before or equal to period2End', path: ['period2Start'] }
+  ),
+
+  generateReport: z.object({
+    cidade: z.string().min(2).max(100),
+    estado: z.string().min(2).max(100),
+    dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    searchId: z.string().uuid().optional(),
+  }).refine(
+    (d) => new Date(d.dateFrom) <= new Date(d.dateTo),
+    { message: 'dateFrom must be before or equal to dateTo', path: ['dateFrom'] }
+  ),
 };

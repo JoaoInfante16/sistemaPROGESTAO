@@ -83,7 +83,7 @@ router.patch(
         .update({
           ...req.body,
           updated_at: new Date().toISOString(),
-          updated_by: req.user!.id,
+          updated_by: req.user?.id ?? '',
         })
         .eq('id', req.params.id)
         .select()
@@ -299,7 +299,7 @@ router.patch(
       const { key } = req.params;
       const { value } = req.body as { value: string };
 
-      await configManager.set(key, value, req.user!.id);
+      await configManager.set(key, value, req.user?.id ?? '');
 
       // Configs que requerem restart
       const restartRequired = [

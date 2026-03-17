@@ -771,10 +771,30 @@ export default function SettingsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Provider</TableHead>
-                      <TableHead>Max Concurrent</TableHead>
-                      <TableHead>Min Time (ms)</TableHead>
-                      <TableHead>Quota Diaria</TableHead>
-                      <TableHead>Quota Mensal</TableHead>
+                      <TableHead>
+                        Max Concurrent
+                        <p className="text-xs font-normal text-muted-foreground mt-0.5">
+                          Requests simultaneos. Mais alto = mais rapido, risco de ban.
+                        </p>
+                      </TableHead>
+                      <TableHead>
+                        Min Time (ms)
+                        <p className="text-xs font-normal text-muted-foreground mt-0.5">
+                          Intervalo entre requests. Mais alto = seguro, mais lento.
+                        </p>
+                      </TableHead>
+                      <TableHead>
+                        Quota Diaria
+                        <p className="text-xs font-normal text-muted-foreground mt-0.5">
+                          Limite/dia. Vazio = sem limite. Google: 100/dia gratis.
+                        </p>
+                      </TableHead>
+                      <TableHead>
+                        Quota Mensal
+                        <p className="text-xs font-normal text-muted-foreground mt-0.5">
+                          Limite/mes. Vazio = sem limite. Controla custo maximo.
+                        </p>
+                      </TableHead>
                       <TableHead className="w-[80px]"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1116,7 +1136,7 @@ export default function SettingsPage() {
         </TabsContent>
 
         {/* ============================================ */}
-        {/* Dev Tools Tab (TEMPORARIO) */}
+        {/* Dev Tools Tab (so aparece em localhost) */}
         {/* ============================================ */}
         {isDev && (
           <TabsContent value="dev-tools" className="space-y-4">
@@ -1251,6 +1271,7 @@ export default function SettingsPage() {
             </Card>
           </TabsContent>
         )}
+
       </Tabs>
     </div>
   );

@@ -86,6 +86,51 @@ class NewsCard extends StatelessWidget {
                       const SizedBox(width: 4),
                       const Icon(Icons.favorite, color: Colors.amber, size: 14),
                     ],
+                    if (news.hasOfficialSource) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.shield, size: 10, color: Colors.green[700]),
+                            const SizedBox(width: 3),
+                            Text(
+                              'OFICIAL',
+                              style: TextStyle(
+                                color: Colors.green[700],
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (news.estadoUf != null) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          news.estadoUf!,
+                          style: TextStyle(
+                            color: Colors.grey[700],
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                     const Spacer(),
                     Text(
                       DateFormat('dd/MM/yyyy').format(news.dataOcorrencia),

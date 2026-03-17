@@ -25,9 +25,9 @@ router.post(
   validateBody(schemas.triggerManualSearch),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { estado, cidade, periodo_dias, tipo_crime } = req.body as {
+      const { estado, cidades, periodo_dias, tipo_crime } = req.body as {
         estado: string;
-        cidade: string;
+        cidades: string[];
         periodo_dias: number;
         tipo_crime?: string;
       };
@@ -37,7 +37,7 @@ router.post(
       // Criar registro na search_cache
       const searchId = await db.createSearchCache({
         user_id: userId,
-        params: { estado, cidade, periodo_dias, tipo_crime },
+        params: { estado, cidades, periodo_dias, tipo_crime },
       });
 
       // Enfileirar job
@@ -47,7 +47,7 @@ router.post(
           searchId,
           userId,
           estado,
-          cidade,
+          cidades,
           periodoDias: periodo_dias,
           tipoCrime: tipo_crime,
         },
@@ -57,7 +57,7 @@ router.post(
         }
       );
 
-      logger.info(`[ManualSearch] Created search ${searchId} for ${cidade}, ${estado}`);
+      logger.info(`[ManualSearch] Created search ${searchId} for ${cidades.length} cidades in ${estado}`);
       res.status(201).json({ searchId, status: 'processing' });
     } catch (error) {
       logger.error('[ManualSearch] Create error:', error);

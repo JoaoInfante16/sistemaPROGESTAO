@@ -2,7 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../../../core/data/brazilian_locations.dart';
 import '../../../core/services/api_service.dart';
+import '../widgets/multi_city_search_field.dart';
+import 'report_screen.dart';
 
 class ManualSearchScreen extends StatefulWidget {
   const ManualSearchScreen({super.key});
@@ -13,9 +16,8 @@ class ManualSearchScreen extends StatefulWidget {
 
 class _ManualSearchScreenState extends State<ManualSearchScreen> {
   // Form
-  List<Map<String, dynamic>> _locations = [];
   String? _selectedEstado;
-  String? _selectedCidade;
+  Set<String> _selectedCidades = {};
   int _periodoDias = 30;
   String? _tipoCrime;
   bool _loadingLocations = true;
@@ -57,36 +59,19 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
   Future<void> _loadLocations() async {
     try {
-      final api = context.read<ApiService>();
-      final locations = await api.getLocations();
-      if (mounted) {
-        setState(() {
-          _locations = locations;
-          _loadingLocations = false;
-        });
-      }
+      await BrazilianLocations.instance.load();
     } catch (_) {
-      if (mounted) setState(() => _loadingLocations = false);
+      // Asset load failed - unlikely but handle gracefully
+    }
+    if (mounted) {
+      setState(() => _loadingLocations = false);
     }
   }
 
-  List<String> get _estados =>
-      _locations.map((s) => s['name'] as String).toList();
-
-  List<String> get _cidades {
-    if (_selectedEstado == null) return [];
-    final state = _locations.firstWhere(
-      (s) => s['name'] == _selectedEstado,
-      orElse: () => <String, dynamic>{},
-    );
-    final cities = state['cities'] as List<dynamic>? ?? [];
-    return cities
-        .map((c) => (c as Map<String, dynamic>)['name'] as String)
-        .toList();
-  }
+  List<String> get _estados => BrazilianLocations.instance.getEstados();
 
   Future<void> _startSearch() async {
-    if (_selectedEstado == null || _selectedCidade == null) return;
+    if (_selectedEstado == null || _selectedCidades.isEmpty) return;
 
     final api = context.read<ApiService>();
     setState(() => _searchStatus = 'processing');
@@ -94,7 +79,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     try {
       final searchId = await api.triggerManualSearch(
         estado: _selectedEstado!,
-        cidade: _selectedCidade!,
+        cidades: _selectedCidades.toList(),
         periodoDias: _periodoDias,
         tipoCrime: (_tipoCrime != null && _tipoCrime != 'Todos')
             ? _tipoCrime
@@ -183,7 +168,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Esta busca dispara uma pesquisa no Google e analisa os resultados com IA. Tem um custo estimado de ~\$0.01 por busca.',
+                    'Busque qualquer cidade do Brasil! A pesquisa usa Google e IA para encontrar noticias criminais. Custo estimado: ~\$0.01 por busca.',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onPrimaryContainer,
                       fontSize: 12,
@@ -200,25 +185,23 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         DropdownMenu<String>(
           label: const Text('Estado'),
           expandedInsets: EdgeInsets.zero,
+          enableFilter: true,
           dropdownMenuEntries: _estados
               .map((e) => DropdownMenuEntry(value: e, label: e))
               .toList(),
           onSelected: (v) => setState(() {
             _selectedEstado = v;
-            _selectedCidade = null;
+            _selectedCidades = {};
           }),
         ),
         const SizedBox(height: 12),
 
-        // Cidade
-        DropdownMenu<String>(
-          key: ValueKey('cidade-$_selectedEstado'),
-          label: const Text('Cidade'),
-          expandedInsets: EdgeInsets.zero,
-          dropdownMenuEntries: _cidades
-              .map((c) => DropdownMenuEntry(value: c, label: c))
-              .toList(),
-          onSelected: (v) => setState(() => _selectedCidade = v),
+        // Cidades - multi-select search field
+        MultiCitySearchField(
+          estadoNome: _selectedEstado,
+          onChanged: (cidades) {
+            setState(() => _selectedCidades = cidades);
+          },
         ),
         const SizedBox(height: 12),
 
@@ -249,7 +232,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         // Start button
         FilledButton.icon(
           onPressed:
-              (_selectedEstado != null && _selectedCidade != null)
+              (_selectedEstado != null && _selectedCidades.isNotEmpty)
                   ? _startSearch
                   : null,
           icon: const Icon(Icons.search),
@@ -310,19 +293,46 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         // Header
         Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(
+          child: Column(
             children: [
-              Expanded(
-                child: Text(
-                  '${_results.length} resultado${_results.length != 1 ? 's' : ''} encontrado${_results.length != 1 ? 's' : ''}',
-                  style: Theme.of(context).textTheme.titleMedium,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${_results.length} resultado${_results.length != 1 ? 's' : ''} encontrado${_results.length != 1 ? 's' : ''}',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _resetSearch,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Nova busca'),
+                  ),
+                ],
+              ),
+              if (_results.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.tonalIcon(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ReportScreen(
+                            searchId: _searchId,
+                            cidades: _selectedCidades.toList(),
+                            estado: _selectedEstado!,
+                            periodoDias: _periodoDias,
+                            results: _results,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.bar_chart),
+                    label: const Text('Gerar Relatorio de Risco'),
+                  ),
                 ),
-              ),
-              TextButton.icon(
-                onPressed: _resetSearch,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Nova busca'),
-              ),
+              ],
             ],
           ),
         ),
