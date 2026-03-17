@@ -1,0 +1,817 @@
+import { supabase } from '../config/database';
+import { MonitoredLocation } from '../utils/types';
+import { logger } from '../middleware/logger';
+
+// ============================================
+// Locations
+// ============================================
+
+export async function getLocation(locationId: string): Promise<MonitoredLocation> {
+  const { data, error } = await supabase
+    .from('monitored_locations')
+    .select('*')
+    .eq('id', locationId)
+    .single();
+
+  if (error || !data) {
+    throw new Error(`Location not found: ${locationId}`);
+  }
+  return data as MonitoredLocation;
+}
+
+export async function getActiveLocations(): Promise<MonitoredLocation[]> {
+  const { data, error } = await supabase
+    .from('monitored_locations')
+    .select('*')
+    .eq('active', true);
+
+  if (error) {
+    throw new Error(`Failed to fetch active locations: ${error.message}`);
+  }
+  return (data || []) as MonitoredLocation[];
+}
+
+export async function updateLocationLastCheck(locationId: string, timestamp: Date): Promise<void> {
+  const { error } = await supabase
+    .from('monitored_locations')
+    .update({ last_check: timestamp.toISOString() })
+    .eq('id', locationId);
+
+  if (error) {
+    throw new Error(`Failed to update last_check: ${error.message}`);
+  }
+}
+
+// ============================================
+// News
+// ============================================
+
+interface InsertNewsParams {
+  tipo_crime: string;
+  cidade: string;
+  bairro?: string;
+  rua?: string;
+  data_ocorrencia: string;
+  resumo: string;
+  embedding: number[];
+  confianca: number;
+}
+
+export async function insertNews(params: InsertNewsParams): Promise<string> {
+  const { data, error } = await supabase
+    .from('news')
+    .insert({
+      tipo_crime: params.tipo_crime,
+      cidade: params.cidade,
+      bairro: params.bairro || null,
+      rua: params.rua || null,
+      data_ocorrencia: params.data_ocorrencia,
+      resumo: params.resumo,
+      // pgvector aceita array diretamente via Supabase client
+      embedding: params.embedding,
+      confianca: params.confianca,
+    })
+    .select('id')
+    .single();
+
+  if (error || !data) {
+    throw new Error(`Failed to insert news: ${error?.message}`);
+  }
+  return data.id as string;
+}
+
+export async function insertNewsSource(newsId: string, url: string, sourceName?: string): Promise<void> {
+  const { error } = await supabase
+    .from('news_sources')
+    .insert({
+      news_id: newsId,
+      url,
+      source_name: sourceName || new URL(url).hostname,
+    });
+
+  if (error) {
+    // URL duplicada é esperada (mesmo artigo encontrado de novo)
+    if (error.code === '23505') return;
+    throw new Error(`Failed to insert news source: ${error.message}`);
+  }
+}
+
+// ============================================
+// Deduplication - Geo-Temporal Candidates
+// ============================================
+
+export interface DedupCandidate {
+  id: string;
+  resumo: string;
+  embedding: number[];
+}
+
+export async function findGeoTemporalCandidates(
+  cidade: string,
+  tipoCrime: string,
+  dataOcorrencia: string
+): Promise<DedupCandidate[]> {
+  // Buscar candidatos: mesma cidade + mesmo tipo de crime + ±1 dia
+  const date = new Date(dataOcorrencia);
+  const dateFrom = new Date(date.getTime() - 86400000).toISOString().split('T')[0];
+  const dateTo = new Date(date.getTime() + 86400000).toISOString().split('T')[0];
+
+  const { data, error } = await supabase
+    .from('news')
+    .select('id, resumo, embedding')
+    .eq('cidade', cidade)
+    .eq('tipo_crime', tipoCrime)
+    .gte('data_ocorrencia', dateFrom)
+    .lte('data_ocorrencia', dateTo)
+    .eq('active', true)
+    .limit(10);
+
+  if (error) {
+    throw new Error(`Failed to find dedup candidates: ${error.message}`);
+  }
+
+  return (data || []) as DedupCandidate[];
+}
+
+// ============================================
+// Operation Logs
+// ============================================
+
+interface InsertLogParams {
+  location_id: string;
+  stage: string;
+  urls_processed: number;
+  news_found: number;
+  cost_usd: number;
+  duration_ms: number;
+}
+
+export async function insertOperationLog(params: InsertLogParams): Promise<void> {
+  const { error } = await supabase
+    .from('operation_logs')
+    .insert(params);
+
+  if (error) {
+    // Log failure shouldn't break the pipeline
+    logger.error('Failed to insert operation log:', error.message);
+  }
+}
+
+// ============================================
+// Budget Tracking
+// ============================================
+
+interface TrackCostParams {
+  source: 'auto_scan' | 'manual_search';
+  provider: 'google' | 'jina' | 'openai';
+  cost_usd: number;
+  details?: Record<string, unknown>;
+}
+
+export async function trackCost(params: TrackCostParams): Promise<void> {
+  const { error } = await supabase
+    .from('budget_tracking')
+    .insert(params);
+
+  if (error) {
+    logger.error('Failed to track cost:', error.message);
+  }
+}
+
+// ============================================
+// News Feed (mobile app)
+// ============================================
+
+interface NewsFeedParams {
+  cidade?: string;
+  offset: number;
+  limit: number;
+}
+
+interface NewsFeedItem {
+  id: string;
+  tipo_crime: string;
+  cidade: string;
+  bairro: string | null;
+  rua: string | null;
+  data_ocorrencia: string;
+  resumo: string;
+  confianca: number;
+  created_at: string;
+  news_sources: Array<{ url: string; source_name: string | null }>;
+}
+
+export async function getNewsFeed(params: NewsFeedParams): Promise<{ news: NewsFeedItem[]; hasMore: boolean }> {
+  let query = supabase
+    .from('news')
+    .select('id, tipo_crime, cidade, bairro, rua, data_ocorrencia, resumo, confianca, created_at, news_sources(url, source_name)')
+    .eq('active', true)
+    .order('created_at', { ascending: false })
+    .range(params.offset, params.offset + params.limit - 1);
+
+  if (params.cidade) {
+    query = query.eq('cidade', params.cidade);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(`Failed to fetch news feed: ${error.message}`);
+  }
+
+  const news = (data || []) as unknown as NewsFeedItem[];
+  return { news, hasMore: news.length === params.limit };
+}
+
+// ============================================
+// Search News (busca manual)
+// ============================================
+
+interface SearchNewsParams {
+  query: string;
+  cidade?: string;
+  tipoCrime?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  offset: number;
+  limit: number;
+}
+
+export async function searchNews(params: SearchNewsParams): Promise<{ news: NewsFeedItem[]; hasMore: boolean }> {
+  let query = supabase
+    .from('news')
+    .select('id, tipo_crime, cidade, bairro, rua, data_ocorrencia, resumo, confianca, created_at, news_sources(url, source_name)')
+    .eq('active', true)
+    .ilike('resumo', `%${params.query}%`)
+    .order('created_at', { ascending: false })
+    .range(params.offset, params.offset + params.limit - 1);
+
+  if (params.cidade) {
+    query = query.eq('cidade', params.cidade);
+  }
+  if (params.tipoCrime) {
+    query = query.ilike('tipo_crime', params.tipoCrime);
+  }
+  if (params.dateFrom) {
+    query = query.gte('data_ocorrencia', params.dateFrom);
+  }
+  if (params.dateTo) {
+    query = query.lte('data_ocorrencia', params.dateTo);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(`Failed to search news: ${error.message}`);
+  }
+
+  const news = (data || []) as unknown as NewsFeedItem[];
+  return { news, hasMore: news.length === params.limit };
+}
+
+// ============================================
+// Locations (public - para dropdown do Flutter)
+// ============================================
+
+export async function getPublicLocationsHierarchy(): Promise<Array<{ id: string; name: string; cities: Array<{ id: string; name: string }> }>> {
+  const { data: states, error: statesError } = await supabase
+    .from('monitored_locations')
+    .select('id, name')
+    .eq('type', 'state')
+    .eq('active', true)
+    .order('name');
+
+  if (statesError) {
+    throw new Error(`Failed to fetch states: ${statesError.message}`);
+  }
+
+  const { data: cities, error: citiesError } = await supabase
+    .from('monitored_locations')
+    .select('id, name, parent_id')
+    .eq('type', 'city')
+    .eq('active', true)
+    .order('name');
+
+  if (citiesError) {
+    throw new Error(`Failed to fetch cities: ${citiesError.message}`);
+  }
+
+  return ((states || []) as Array<{ id: string; name: string }>).map((state) => ({
+    id: state.id,
+    name: state.name,
+    cities: ((cities || []) as Array<{ id: string; name: string; parent_id: string }>)
+      .filter((c) => c.parent_id === state.id)
+      .map((c) => ({ id: c.id, name: c.name })),
+  }));
+}
+
+// ============================================
+// Locations (admin panel - full data)
+// ============================================
+
+export async function getLocationsHierarchy(): Promise<Array<MonitoredLocation & { cities: MonitoredLocation[] }>> {
+  const { data: states, error: statesError } = await supabase
+    .from('monitored_locations')
+    .select('*')
+    .eq('type', 'state')
+    .order('name');
+
+  if (statesError) {
+    throw new Error(`Failed to fetch states: ${statesError.message}`);
+  }
+
+  const { data: cities, error: citiesError } = await supabase
+    .from('monitored_locations')
+    .select('*')
+    .eq('type', 'city')
+    .order('name');
+
+  if (citiesError) {
+    throw new Error(`Failed to fetch cities: ${citiesError.message}`);
+  }
+
+  return ((states || []) as MonitoredLocation[]).map((state) => ({
+    ...state,
+    cities: ((cities || []) as MonitoredLocation[]).filter((c) => c.parent_id === state.id),
+  }));
+}
+
+interface InsertLocationParams {
+  type: 'state' | 'city';
+  name: string;
+  parent_id?: string | null;
+  mode?: 'keywords' | 'any';
+  keywords?: string[] | null;
+  scan_frequency_minutes?: number;
+}
+
+export async function insertLocation(params: InsertLocationParams): Promise<MonitoredLocation> {
+  const { data, error } = await supabase
+    .from('monitored_locations')
+    .insert({
+      type: params.type,
+      name: params.name,
+      parent_id: params.parent_id || null,
+      mode: params.mode || 'any',
+      keywords: params.keywords || null,
+      scan_frequency_minutes: params.scan_frequency_minutes || 60,
+    })
+    .select('*')
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to insert location: ${error.message}`);
+  }
+
+  return data as MonitoredLocation;
+}
+
+interface UpdateLocationParams {
+  active?: boolean;
+  mode?: 'keywords' | 'any';
+  keywords?: string[] | null;
+  scan_frequency_minutes?: number;
+}
+
+export async function updateLocation(id: string, updates: UpdateLocationParams): Promise<void> {
+  const { error } = await supabase
+    .from('monitored_locations')
+    .update(updates)
+    .eq('id', id);
+
+  if (error) {
+    throw new Error(`Failed to update location: ${error.message}`);
+  }
+}
+
+// ============================================
+// Users (admin panel)
+// ============================================
+
+interface UserWithProfile {
+  id: string;
+  email: string;
+  is_admin: boolean;
+  active: boolean;
+  created_at: string;
+}
+
+export async function getAllUsers(): Promise<UserWithProfile[]> {
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw new Error(`Failed to fetch users: ${error.message}`);
+  }
+
+  return (data || []) as UserWithProfile[];
+}
+
+export async function createUserProfile(
+  userId: string,
+  email: string,
+  createdBy: string,
+  isAdmin = false
+): Promise<void> {
+  const { error } = await supabase
+    .from('user_profiles')
+    .insert({
+      id: userId,
+      email,
+      is_admin: isAdmin,
+      created_by: createdBy,
+    });
+
+  if (error) {
+    throw new Error(`Failed to create user profile: ${error.message}`);
+  }
+}
+
+export async function updateUserProfile(
+  id: string,
+  updates: { active?: boolean }
+): Promise<void> {
+  const { error } = await supabase
+    .from('user_profiles')
+    .update(updates)
+    .eq('id', id);
+
+  if (error) {
+    throw new Error(`Failed to update user profile: ${error.message}`);
+  }
+}
+
+export async function deleteUserProfile(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('user_profiles')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    throw new Error(`Failed to delete user profile: ${error.message}`);
+  }
+}
+
+// ============================================
+// Dashboard Stats (admin panel)
+// ============================================
+
+interface DashboardStats {
+  newsThisMonth: number;
+  activeCities: number;
+  costThisMonth: number;
+  pipelineSuccessRate: number;
+}
+
+export async function getDashboardStats(): Promise<DashboardStats> {
+  const currentMonth = new Date().toISOString().slice(0, 7);
+
+  const { count: newsCount } = await supabase
+    .from('news')
+    .select('id', { count: 'exact', head: true })
+    .gte('created_at', `${currentMonth}-01`);
+
+  const { count: cityCount } = await supabase
+    .from('monitored_locations')
+    .select('id', { count: 'exact', head: true })
+    .eq('type', 'city')
+    .eq('active', true);
+
+  const { data: budgetData } = await supabase
+    .from('budget_tracking')
+    .select('cost_usd')
+    .gte('created_at', `${currentMonth}-01`);
+
+  const totalCost = (budgetData || []).reduce(
+    (sum, b) => sum + parseFloat(String(b.cost_usd)),
+    0
+  );
+
+  const { data: logs } = await supabase
+    .from('operation_logs')
+    .select('stage')
+    .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+
+  const totalLogs = (logs || []).length;
+  const completedLogs = (logs || []).filter((l) => l.stage === 'complete').length;
+  const successRate = totalLogs > 0 ? Math.round((completedLogs / totalLogs) * 100) : 100;
+
+  return {
+    newsThisMonth: newsCount || 0,
+    activeCities: cityCount || 0,
+    costThisMonth: parseFloat(totalCost.toFixed(4)),
+    pipelineSuccessRate: successRate,
+  };
+}
+
+// ============================================
+// Operation Logs (admin panel)
+// ============================================
+
+export async function getRecentLogs(limit: number = 50): Promise<Array<Record<string, unknown>>> {
+  const { data, error } = await supabase
+    .from('operation_logs')
+    .select('*, monitored_locations(name)')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`Failed to fetch logs: ${error.message}`);
+  }
+
+  return (data || []) as Array<Record<string, unknown>>;
+}
+
+// ============================================
+// Devices (push notifications)
+// ============================================
+
+export async function upsertDevice(
+  userId: string,
+  token: string,
+  platform: 'ios' | 'android'
+): Promise<void> {
+  const { error } = await supabase
+    .from('user_devices')
+    .upsert(
+      {
+        user_id: userId,
+        device_token: token,
+        platform,
+        last_seen: new Date().toISOString(),
+      },
+      { onConflict: 'device_token' }
+    );
+
+  if (error) {
+    throw new Error(`Failed to upsert device: ${error.message}`);
+  }
+}
+
+// Namespace export para usar como db.getLocation(), db.insertNews(), etc.
+// ============================================
+// User Feed (with read/favorite status)
+// ============================================
+
+export async function getUserNewsFeed(userId: string, params: { offset: number; limit: number; cidade?: string }) {
+  let query = supabase
+    .from('news')
+    .select('id, tipo_crime, cidade, bairro, rua, data_ocorrencia, resumo, resumo_agregado, confianca, created_at, news_sources(url, source_name)')
+    .eq('active', true)
+    .order('created_at', { ascending: false })
+    .range(params.offset, params.offset + params.limit - 1);
+
+  if (params.cidade) {
+    query = query.eq('cidade', params.cidade);
+  }
+
+  const { data: news, error } = await query;
+  if (error) throw new Error(`Failed to fetch user feed: ${error.message}`);
+
+  const newsIds = (news || []).map((n: { id: string }) => n.id);
+  if (newsIds.length === 0) return { news: [], hasMore: false };
+
+  // Get read status
+  const { data: readItems } = await supabase
+    .from('user_news_read')
+    .select('news_id')
+    .eq('user_id', userId)
+    .in('news_id', newsIds);
+
+  const readSet = new Set((readItems || []).map((r: { news_id: string }) => r.news_id));
+
+  // Get favorite status
+  const { data: favItems } = await supabase
+    .from('user_favorites')
+    .select('news_id')
+    .eq('user_id', userId)
+    .in('news_id', newsIds);
+
+  const favSet = new Set((favItems || []).map((f: { news_id: string }) => f.news_id));
+
+  const enriched = (news || []).map((n: { id: string }) => ({
+    ...n,
+    is_unread: !readSet.has(n.id),
+    is_favorite: favSet.has(n.id),
+  }));
+
+  return { news: enriched, hasMore: (news || []).length === params.limit };
+}
+
+export async function markAsRead(userId: string, newsId: string) {
+  await supabase
+    .from('user_news_read')
+    .upsert({ user_id: userId, news_id: newsId }, { onConflict: 'user_id,news_id' });
+}
+
+export async function addFavorite(userId: string, newsId: string) {
+  await supabase
+    .from('user_favorites')
+    .upsert({ user_id: userId, news_id: newsId }, { onConflict: 'user_id,news_id' });
+}
+
+export async function removeFavorite(userId: string, newsId: string) {
+  await supabase
+    .from('user_favorites')
+    .delete()
+    .eq('user_id', userId)
+    .eq('news_id', newsId);
+}
+
+export async function getUnreadCount(userId: string): Promise<number> {
+  // Step 1: Get IDs of news the user has already read
+  const { data: readItems } = await supabase
+    .from('user_news_read')
+    .select('news_id')
+    .eq('user_id', userId);
+
+  const readIds = (readItems || []).map((r: { news_id: string }) => r.news_id);
+
+  // Step 2: Count active news excluding read ones
+  let query = supabase
+    .from('news')
+    .select('id', { count: 'exact', head: true })
+    .eq('active', true);
+
+  if (readIds.length > 0) {
+    query = query.not('id', 'in', `(${readIds.join(',')})`);
+  }
+
+  const { count, error } = await query;
+  if (error) return 0;
+  return count || 0;
+}
+
+export async function getUserFavorites(userId: string, params: { offset: number; limit: number }) {
+  const { data: favIds, error: favError } = await supabase
+    .from('user_favorites')
+    .select('news_id')
+    .eq('user_id', userId)
+    .order('favorited_at', { ascending: false })
+    .range(params.offset, params.offset + params.limit - 1);
+
+  if (favError || !favIds || favIds.length === 0) return { news: [], hasMore: false };
+
+  const ids = favIds.map((f: { news_id: string }) => f.news_id);
+
+  const { data: news, error } = await supabase
+    .from('news')
+    .select('id, tipo_crime, cidade, bairro, rua, data_ocorrencia, resumo, resumo_agregado, confianca, created_at, news_sources(url, source_name)')
+    .in('id', ids);
+
+  if (error) throw new Error(`Failed to fetch favorites: ${error.message}`);
+
+  const enriched = (news || []).map((n: { id: string }) => ({
+    ...n,
+    is_unread: false,
+    is_favorite: true,
+  }));
+
+  return { news: enriched, hasMore: favIds.length === params.limit };
+}
+
+// ============================================
+// Manual Search (search_cache + search_results)
+// ============================================
+
+interface CreateSearchCacheParams {
+  user_id: string;
+  params: Record<string, unknown>;
+}
+
+export async function createSearchCache(p: CreateSearchCacheParams): Promise<string> {
+  const paramsHash = JSON.stringify(p.params);
+  const { data, error } = await supabase
+    .from('search_cache')
+    .insert({
+      user_id: p.user_id,
+      params: p.params,
+      params_hash: paramsHash,
+      status: 'processing',
+    })
+    .select('search_id')
+    .single();
+
+  if (error) throw new Error(`Failed to create search cache: ${error.message}`);
+  return (data as { search_id: string }).search_id;
+}
+
+export async function updateSearchStatus(
+  searchId: string,
+  status: 'completed' | 'failed',
+  totalResults?: number
+): Promise<void> {
+  const update: Record<string, unknown> = { status };
+  if (totalResults !== undefined) update.total_results = totalResults;
+  const { error } = await supabase
+    .from('search_cache')
+    .update(update)
+    .eq('search_id', searchId);
+
+  if (error) throw new Error(`Failed to update search status: ${error.message}`);
+}
+
+export async function insertSearchResults(
+  searchId: string,
+  results: unknown[],
+  offsetNum: number
+): Promise<void> {
+  const { error } = await supabase
+    .from('search_results')
+    .insert({
+      search_id: searchId,
+      offset_num: offsetNum,
+      results,
+    });
+
+  if (error) throw new Error(`Failed to insert search results: ${error.message}`);
+}
+
+export async function getSearchStatus(searchId: string): Promise<{ status: string; total_results: number | null }> {
+  const { data, error } = await supabase
+    .from('search_cache')
+    .select('status, total_results')
+    .eq('search_id', searchId)
+    .single();
+
+  if (error || !data) throw new Error(`Search not found: ${searchId}`);
+  return data as { status: string; total_results: number | null };
+}
+
+export async function getSearchResults(searchId: string): Promise<unknown[]> {
+  const { data, error } = await supabase
+    .from('search_results')
+    .select('results')
+    .eq('search_id', searchId)
+    .order('offset_num');
+
+  if (error) throw new Error(`Failed to get search results: ${error.message}`);
+  const allResults: unknown[] = [];
+  for (const row of data || []) {
+    const results = (row as { results: unknown[] }).results;
+    if (Array.isArray(results)) allResults.push(...results);
+  }
+  return allResults;
+}
+
+export async function getUserSearchHistory(userId: string): Promise<Array<{
+  search_id: string;
+  params: Record<string, unknown>;
+  status: string;
+  total_results: number | null;
+  created_at: string;
+}>> {
+  const { data, error } = await supabase
+    .from('search_cache')
+    .select('search_id, params, status, total_results, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if (error) throw new Error(`Failed to get search history: ${error.message}`);
+  return (data || []) as Array<{
+    search_id: string;
+    params: Record<string, unknown>;
+    status: string;
+    total_results: number | null;
+    created_at: string;
+  }>;
+}
+
+export const db = {
+  getLocation,
+  getActiveLocations,
+  updateLocationLastCheck,
+  insertNews,
+  insertNewsSource,
+  findGeoTemporalCandidates,
+  insertOperationLog,
+  trackCost,
+  getNewsFeed,
+  searchNews,
+  getPublicLocationsHierarchy,
+  getLocationsHierarchy,
+  insertLocation,
+  updateLocation,
+  getAllUsers,
+  createUserProfile,
+  updateUserProfile,
+  deleteUserProfile,
+  getDashboardStats,
+  getRecentLogs,
+  upsertDevice,
+  getUserNewsFeed,
+  markAsRead,
+  addFavorite,
+  removeFavorite,
+  getUnreadCount,
+  getUserFavorites,
+  createSearchCache,
+  updateSearchStatus,
+  insertSearchResults,
+  getSearchStatus,
+  getSearchResults,
+  getUserSearchHistory,
+};

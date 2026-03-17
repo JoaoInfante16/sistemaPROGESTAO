@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  # Redis para desenvolvimento local (BullMQ)
+  redis:
+    image: redis:7-alpine
+    container_name: netrios-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Backend (opcional - para testar build Docker)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: netrios-backend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - ./backend/.env
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/logs:/app/logs
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+    driver: local
+
+networks:
+  default:
+    name: netrios-network

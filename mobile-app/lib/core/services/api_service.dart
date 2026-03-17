@@ -1,0 +1,230 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../config/env.dart';
+import '../models/news_item.dart';
+
+class ApiService {
+  final String _baseUrl = Env.apiUrl;
+  final http.Client _client = http.Client();
+  static const _timeout = Duration(seconds: 8);
+  String _token = '';
+
+  void setToken(String token) {
+    _token = token;
+  }
+
+  Map<String, String> get _headers => {
+        'Content-Type': 'application/json',
+        if (_token.isNotEmpty) 'Authorization': 'Bearer $_token',
+      };
+
+  // ── News ──
+
+  Future<List<NewsItem>> getNews({
+    int offset = 0,
+    int limit = 20,
+    String? cidade,
+  }) async {
+    final params = <String, String>{
+      'offset': '$offset',
+      'limit': '$limit',
+    };
+    if (cidade != null) params['cidade'] = cidade;
+
+    final uri =
+        Uri.parse('$_baseUrl/news/feed').replace(queryParameters: params);
+    final res = await _client.get(uri, headers: _headers).timeout(_timeout);
+    _checkResponse(res);
+
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final list = body['news'] as List<dynamic>;
+    return list
+        .map((e) => NewsItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<NewsItem>> searchNews(
+    String query, {
+    String? cidade,
+    String? tipoCrime,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final bodyMap = <String, dynamic>{'query': query};
+    if (cidade != null) bodyMap['cidade'] = cidade;
+    if (tipoCrime != null) bodyMap['tipoCrime'] = tipoCrime;
+    if (dateFrom != null) bodyMap['dateFrom'] = dateFrom;
+    if (dateTo != null) bodyMap['dateTo'] = dateTo;
+
+    final res = await _client.post(
+      Uri.parse('$_baseUrl/search'),
+      headers: _headers,
+      body: jsonEncode(bodyMap),
+    ).timeout(_timeout);
+    _checkResponse(res);
+
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final list = body['news'] as List<dynamic>;
+    return list
+        .map((e) => NewsItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  // ── Locations (para dropdown de cidades - endpoint publico) ──
+
+  Future<List<Map<String, dynamic>>> getLocations() async {
+    final res = await _client.get(
+      Uri.parse('$_baseUrl/public/locations'),
+      headers: _headers,
+    ).timeout(_timeout);
+    _checkResponse(res);
+    return (jsonDecode(res.body) as List<dynamic>)
+        .cast<Map<String, dynamic>>();
+  }
+
+  Future<List<NewsItem>> getFavorites({int offset = 0, int limit = 20}) async {
+    final params = <String, String>{
+      'offset': '$offset',
+      'limit': '$limit',
+    };
+    final uri = Uri.parse('$_baseUrl/news/favorites')
+        .replace(queryParameters: params);
+    final res = await _client.get(uri, headers: _headers).timeout(_timeout);
+    _checkResponse(res);
+
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final list = body['news'] as List<dynamic>;
+    return list
+        .map((e) => NewsItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> markAsRead(String newsId) async {
+    final res = await _client.post(
+      Uri.parse('$_baseUrl/news/$newsId/read'),
+      headers: _headers,
+    ).timeout(_timeout);
+    _checkResponse(res);
+  }
+
+  Future<void> addFavorite(String newsId) async {
+    final res = await _client.post(
+      Uri.parse('$_baseUrl/news/$newsId/favorite'),
+      headers: _headers,
+    ).timeout(_timeout);
+    _checkResponse(res);
+  }
+
+  Future<void> removeFavorite(String newsId) async {
+    final res = await _client.delete(
+      Uri.parse('$_baseUrl/news/$newsId/favorite'),
+      headers: _headers,
+    ).timeout(_timeout);
+    _checkResponse(res);
+  }
+
+  Future<int> getUnreadCount() async {
+    final res = await _client.get(
+      Uri.parse('$_baseUrl/news/unread-count'),
+      headers: _headers,
+    ).timeout(_timeout);
+    _checkResponse(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return body['count'] as int? ?? 0;
+  }
+
+  // ── Auth Config (público) ──
+
+  Future<Map<String, dynamic>> getAuthConfig() async {
+    final res = await _client.get(
+      Uri.parse('$_baseUrl/settings/auth-config'),
+    ).timeout(const Duration(seconds: 3));
+    _checkResponse(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  // ── Manual Search (pipeline individual) ──
+
+  Future<String> triggerManualSearch({
+    required String estado,
+    required String cidade,
+    int periodoDias = 30,
+    String? tipoCrime,
+  }) async {
+    final bodyMap = <String, dynamic>{
+      'estado': estado,
+      'cidade': cidade,
+      'periodo_dias': periodoDias,
+    };
+    if (tipoCrime != null) bodyMap['tipo_crime'] = tipoCrime;
+
+    final res = await _client.post(
+      Uri.parse('$_baseUrl/manual-search'),
+      headers: _headers,
+      body: jsonEncode(bodyMap),
+    ).timeout(_timeout);
+    _checkResponse(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return body['searchId'] as String;
+  }
+
+  Future<Map<String, dynamic>> getManualSearchStatus(String searchId) async {
+    final res = await _client.get(
+      Uri.parse('$_baseUrl/manual-search/$searchId/status'),
+      headers: _headers,
+    ).timeout(_timeout);
+    _checkResponse(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<List<Map<String, dynamic>>> getManualSearchResults(
+      String searchId) async {
+    final res = await _client.get(
+      Uri.parse('$_baseUrl/manual-search/$searchId/results'),
+      headers: _headers,
+    ).timeout(_timeout);
+    _checkResponse(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return (body['results'] as List<dynamic>).cast<Map<String, dynamic>>();
+  }
+
+  // ── Devices (push token) ──
+
+  Future<void> registerDevice(String deviceToken, String platform) async {
+    final res = await _client.post(
+      Uri.parse('$_baseUrl/devices'),
+      headers: _headers,
+      body: jsonEncode({
+        'token': deviceToken,
+        'platform': platform,
+      }),
+    ).timeout(_timeout);
+    _checkResponse(res);
+  }
+
+  // ── Helpers ──
+
+  void _checkResponse(http.Response res) {
+    if (res.statusCode >= 400) {
+      String message = 'Erro desconhecido';
+      try {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        message = body['error'] as String? ?? message;
+      } catch (_) {
+        message = res.reasonPhrase ?? 'HTTP ${res.statusCode}';
+      }
+      throw ApiException(statusCode: res.statusCode, message: message);
+    }
+  }
+}
+
+class ApiException implements Exception {
+  final int statusCode;
+  final String message;
+
+  ApiException({required this.statusCode, required this.message});
+
+  @override
+  String toString() => 'ApiException($statusCode): $message';
+}

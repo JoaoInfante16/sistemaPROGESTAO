@@ -1,0 +1,112 @@
+// ============================================
+// Filtro 2 - GPT Full Analysis (~$0.0005 por chamada)
+// ============================================
+// Análise completa do artigo: extrai dados estruturados.
+// Recebe conteúdo completo da Jina, retorna NewsExtraction ou null.
+
+import OpenAI from 'openai';
+import { config } from '../../config';
+import { logger } from '../../middleware/logger';
+import { NewsExtraction } from '../../utils/types';
+
+const openai = new OpenAI({ apiKey: config.openaiApiKey });
+
+const VALID_CRIME_TYPES = [
+  'roubo', 'furto', 'homicídio', 'latrocínio', 'tráfico', 'assalto', 'outro',
+] as const;
+
+/**
+ * FIX #4: Valida TODOS os campos obrigatórios antes de retornar.
+ * Sem mais `as unknown as NewsExtraction` inseguro.
+ */
+function validateExtraction(data: Record<string, unknown>, minConfidence: number = 0.7): NewsExtraction | null {
+  // Campo obrigatório: e_crime deve ser true
+  if (data.e_crime !== true) return null;
+
+  // Confiança: número entre 0.0 e 1.0, mínimo configurável via admin panel
+  if (typeof data.confianca !== 'number' || data.confianca < minConfidence || data.confianca > 1.0) {
+    return null;
+  }
+
+  // tipo_crime: deve ser um dos valores válidos
+  if (typeof data.tipo_crime !== 'string' || !VALID_CRIME_TYPES.includes(data.tipo_crime as typeof VALID_CRIME_TYPES[number])) {
+    return null;
+  }
+
+  // cidade e resumo: strings obrigatórias
+  if (typeof data.cidade !== 'string' || data.cidade.trim().length === 0) return null;
+  if (typeof data.resumo !== 'string' || data.resumo.trim().length === 0) return null;
+
+  // data_ocorrencia: string no formato YYYY-MM-DD
+  if (typeof data.data_ocorrencia !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(data.data_ocorrencia)) {
+    return null;
+  }
+
+  // Campos opcionais: bairro e rua (string ou null)
+  const bairro = typeof data.bairro === 'string' ? data.bairro : undefined;
+  const rua = typeof data.rua === 'string' ? data.rua : undefined;
+
+  return {
+    e_crime: true,
+    tipo_crime: data.tipo_crime as NewsExtraction['tipo_crime'],
+    cidade: data.cidade as string,
+    bairro,
+    rua,
+    data_ocorrencia: data.data_ocorrencia as string,
+    resumo: data.resumo as string,
+    confianca: data.confianca as number,
+  };
+}
+
+interface Filter2Options {
+  maxContentChars?: number;
+  minConfidence?: number;
+}
+
+export async function filter2GPT(content: string, options: Filter2Options = {}): Promise<NewsExtraction | null> {
+  const { maxContentChars = 4000, minConfidence = 0.7 } = options;
+  const truncated = content.substring(0, maxContentChars);
+
+  const prompt = `Analise a seguinte notícia e extraia dados estruturados em JSON.
+
+NOTÍCIA:
+${truncated}
+
+Retorne APENAS um JSON no formato:
+{
+  "e_crime": true/false,
+  "tipo_crime": "roubo" | "furto" | "homicídio" | "latrocínio" | "tráfico" | "assalto" | "outro",
+  "cidade": "Nome da Cidade",
+  "bairro": "Nome do Bairro" ou null,
+  "rua": "Nome da Rua" ou null,
+  "data_ocorrencia": "YYYY-MM-DD",
+  "resumo": "Resumo em 1-2 frases do que aconteceu",
+  "confianca": 0.0 a 1.0 (quão certo você está que é crime)
+}
+
+Se não for notícia de crime, retorne: {"e_crime": false}`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: config.openaiModel,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0,
+      response_format: { type: 'json_object' },
+    });
+
+    const raw = response.choices[0].message.content || '{}';
+
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      logger.error(`Filter2 GPT: invalid JSON response: ${raw.substring(0, 200)}`);
+      return null;
+    }
+
+    return validateExtraction(data, minConfidence);
+  } catch (error) {
+    logger.error('Filter2 GPT error:', error);
+    return null;
+  }
+}

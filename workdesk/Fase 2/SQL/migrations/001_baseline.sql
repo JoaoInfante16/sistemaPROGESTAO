@@ -1,0 +1,16 @@
+-- Migration 001: Baseline - Schema completo da Fase 1
+-- Date: 2026-03-17
+-- Status: JA APLICADO (este arquivo e apenas referencia)
+-- Fonte: backend/src/database/schema.sql
+--
+-- Este arquivo NAO deve ser executado novamente.
+-- Representa o estado do banco ao final da Fase 1.
+-- Todas as 13 tabelas + view + trigger estao aqui como baseline.
+--
+-- Tabelas: news, news_sources, monitored_locations, user_profiles,
+--          user_devices, search_cache, search_results, operation_logs,
+--          api_rate_limits, budget_tracking, system_config,
+--          user_news_read, user_favorites
+-- View: budget_summary
+-- Trigger: news_inserted_trigger (LISTEN/NOTIFY - nao usado, hotfix sincrono)
+-- Extension: pgvector

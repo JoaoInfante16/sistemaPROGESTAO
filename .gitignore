@@ -1,0 +1,69 @@
+# Node modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+
+# Logs
+logs/
+*.log
+
+# Testing
+coverage/
+.nyc_output/
+
+# Flutter
+mobile-app/.dart_tool/
+mobile-app/.flutter-plugins
+mobile-app/.flutter-plugins-dependencies
+mobile-app/.packages
+mobile-app/build/
+mobile-app/ios/Pods/
+mobile-app/ios/.symlinks/
+mobile-app/android/.gradle/
+mobile-app/android/app/debug/
+mobile-app/android/app/profile/
+mobile-app/android/app/release/
+
+# TypeScript
+*.tsbuildinfo
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Secrets (never commit!)
+**/secrets/
+**/credentials/
+firebase-service-account.json
+google-credentials.json
