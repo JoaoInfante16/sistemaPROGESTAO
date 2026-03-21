@@ -58,7 +58,7 @@ export interface OperationLog {
 
 export interface RateLimit {
   id: string;
-  provider: 'google' | 'jina' | 'openai';
+  provider: 'google' | 'perplexity' | 'jina' | 'openai';
   max_concurrent: number;
   min_time_ms: number;
   daily_quota: number | null;
@@ -70,7 +70,7 @@ export interface RateLimit {
 export interface BudgetEntry {
   id: string;
   source: 'auto_scan' | 'manual_search';
-  provider: 'google' | 'jina' | 'openai';
+  provider: 'google' | 'perplexity' | 'jina' | 'openai';
   cost_usd: number;
   details: Record<string, unknown>;
   created_at: Date;

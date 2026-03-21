@@ -20,6 +20,7 @@ interface RateLimitConfig {
 // Defaults caso o DB não tenha configs
 const DEFAULT_CONFIGS: Record<string, RateLimitConfig> = {
   google: { provider: 'google', max_concurrent: 1, min_time_ms: 100, daily_quota: 100, monthly_quota: null },
+  perplexity: { provider: 'perplexity', max_concurrent: 2, min_time_ms: 200, daily_quota: 1000, monthly_quota: null },
   jina: { provider: 'jina', max_concurrent: 10, min_time_ms: 50, daily_quota: null, monthly_quota: null },
   openai: { provider: 'openai', max_concurrent: 5, min_time_ms: 200, daily_quota: null, monthly_quota: null },
   google_news_rss: { provider: 'google_news_rss', max_concurrent: 2, min_time_ms: 1000, daily_quota: null, monthly_quota: null },

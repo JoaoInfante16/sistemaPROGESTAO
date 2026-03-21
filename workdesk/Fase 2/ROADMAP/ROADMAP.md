@@ -90,30 +90,75 @@
 
 ---
 
-## Sessao 5: Busca Multi-Cidade + Import IBGE no Admin
+## Concluido na Sessao 5
 
 ### Feature: Busca Manual Multi-Cidade (Flutter, Cliente 2)
-- [ ] validation.ts: cidade→cidades (array, max 10)
-- [ ] manualSearchRoutes.ts: cidades array no job data
-- [ ] manualSearchWorker.ts: loop Google Search por cidade + SSP uma vez + dedup URLs
-- [ ] multi_city_search_field.dart: widget multi-select com chips
-- [ ] manual_search_screen.dart: usar MultiCitySearchField
-- [ ] api_service.dart: cidades array
-- [ ] report_screen.dart: cidade→cidades
+- [x] validation.ts: cidade→cidades (array, max 10)
+- [x] manualSearchRoutes.ts: cidades array no job data
+- [x] manualSearchWorker.ts: loop Google Search por cidade + SSP uma vez + dedup URLs
+- [x] multi_city_search_field.dart: widget multi-select com chips
+- [x] manual_search_screen.dart: usar MultiCitySearchField
+- [x] api_service.dart: cidades array
+- [x] report_screen.dart: cidade→cidades
 
 ### Feature: Import IBGE no Admin Panel (Cliente 1)
-- [ ] Copiar municipios_br.json para admin-panel/public/data/
-- [ ] validation.ts: bulkImportLocations schema
-- [ ] locationRoutes.ts: POST /locations/bulk-import
-- [ ] queries.ts: bulkInsertLocations() (batch em chunks de 200)
-- [ ] ibge-import-dialog.tsx: dialog com estado dropdown + checkboxes cidades
-- [ ] locations/page.tsx: botao Importar IBGE
-- [ ] api.ts: bulkImportLocations method
+- [x] Copiar municipios_br.json para admin-panel/public/data/
+- [x] validation.ts: bulkImportLocations schema
+- [x] locationRoutes.ts: POST /locations/bulk-import
+- [x] queries.ts: bulkInsertLocations() (batch em chunks de 200)
+- [x] ibge-import-dialog.tsx: dialog com estado dropdown + checkboxes cidades
+- [x] locations/page.tsx: botao Importar IBGE
+- [x] api.ts: bulkImportLocations method
 
 ### Verificacao
-- [ ] Backend: tsc --noEmit -> 0 erros
-- [ ] Admin Panel: tsc --noEmit -> 0 erros
-- [ ] DEVLOG sessao_005.md atualizado
+- [x] Backend: tsc --noEmit -> 0 erros
+- [x] Admin Panel: tsc --noEmit -> 0 erros
+- [x] DEVLOG sessao_005.md atualizado
+
+---
+
+## Concluido na Sessao 6
+
+### Feature: Indicador de Progresso por Etapa
+- [x] Migration 005: coluna progress JSONB no search_cache
+- [x] queries.ts: updateSearchProgress() + getSearchStatus() com progress
+- [x] manualSearchWorker.ts: 6 progress updates na pipeline
+- [x] manual_search_screen.dart: stepper visual (6 etapas com icones)
+
+### Feature: Push Notification ao Concluir Busca
+- [x] pushService.ts: sendPushToUser() (push por user_id, nao broadcast)
+- [x] manualSearchWorker.ts: push ao completar/falhar (non-fatal)
+
+### Feature: Historico de Buscas (Flutter)
+- [x] api_service.dart: getSearchHistory()
+- [x] search_history_screen.dart (NOVO): lista de buscas com status/params
+- [x] manual_search_screen.dart: botao historico na AppBar + resumeSearchId
+- [x] queries.ts: retencao estendida de 24h para 7 dias
+
+### Verificacao
+- [x] Backend: tsc --noEmit -> 0 erros
+- [x] Admin Panel: tsc --noEmit -> 0 erros
+- [x] DEVLOG sessao_006.md atualizado
+
+---
+
+## Sessao 7: Trocar Google CSE por Perplexity Search API
+
+### Feature: Perplexity Search Provider
+- [x] config/index.ts: perplexityApiKey
+- [x] .env: PERPLEXITY_API_KEY + SEARCH_BACKEND=perplexity
+- [x] PerplexitySearchProvider.ts (NOVO): implementa SearchProvider
+- [x] index.ts: case 'perplexity' no factory
+- [x] types.ts + queries.ts: 'perplexity' no union type provider
+- [x] DynamicRateLimiter.ts: defaults para perplexity
+- [x] manualSearchWorker.ts: cost tracking + rate limiter dinamicos
+- [x] scanPipeline.ts: cost tracking + rate limiter dinamicos
+- [x] manual_search_screen.dart: label "Pesquisando na web"
+
+### Verificacao
+- [x] Backend: tsc --noEmit -> 0 erros
+- [x] Admin Panel: tsc --noEmit -> 0 erros
+- [x] DEVLOG sessao_007.md atualizado
 
 ---
 
@@ -122,7 +167,7 @@
 ### Etapa 1: Contas e API Keys
 - [ ] Supabase: habilitar pgvector, executar schema.sql
 - [ ] Upstash: criar database Redis
-- [ ] Google Cloud: ativar Custom Search API, criar engine
+- [ ] Perplexity: criar conta API, obter API key (substituiu Google CSE)
 - [ ] Jina AI: criar conta, obter API key
 - [ ] OpenAI: criar conta, adicionar creditos, gerar key
 - [ ] Firebase: criar projeto, gerar service account JSON
@@ -203,5 +248,5 @@
 - [ ] Dead Letter Queue
 - [ ] Database Migrations (db-migrate)
 - [ ] Performance Testing (10+ cidades)
-- [ ] Search history no Flutter
+- [x] Search history no Flutter (movido para Sessao 6)
 - [ ] User profile management no Flutter

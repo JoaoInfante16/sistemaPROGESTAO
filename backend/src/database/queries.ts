@@ -163,7 +163,7 @@ export async function insertOperationLog(params: InsertLogParams): Promise<void>
 
 interface TrackCostParams {
   source: 'auto_scan' | 'manual_search';
-  provider: 'google' | 'jina' | 'openai';
+  provider: 'google' | 'perplexity' | 'jina' | 'openai';
   cost_usd: number;
   details?: Record<string, unknown>;
 }
@@ -800,15 +800,32 @@ export async function insertSearchResults(
   if (error) throw new Error(`Failed to insert search results: ${error.message}`);
 }
 
-export async function getSearchStatus(searchId: string): Promise<{ status: string; total_results: number | null }> {
+export async function updateSearchProgress(
+  searchId: string,
+  progress: { stage: string; stage_num: number; total_stages: number; details?: string }
+): Promise<void> {
+  const { error } = await supabase
+    .from('search_cache')
+    .update({ progress })
+    .eq('search_id', searchId);
+
+  // Non-fatal: progress update failure should never abort the pipeline
+  if (error) logger.warn(`[SearchProgress] Failed to update: ${error.message}`);
+}
+
+export async function getSearchStatus(searchId: string): Promise<{
+  status: string;
+  total_results: number | null;
+  progress: Record<string, unknown> | null;
+}> {
   const { data, error } = await supabase
     .from('search_cache')
-    .select('status, total_results')
+    .select('status, total_results, progress')
     .eq('search_id', searchId)
     .single();
 
   if (error || !data) throw new Error(`Search not found: ${searchId}`);
-  return data as { status: string; total_results: number | null };
+  return data as { status: string; total_results: number | null; progress: Record<string, unknown> | null };
 }
 
 export async function getSearchResults(searchId: string): Promise<unknown[]> {
@@ -881,6 +898,7 @@ export const db = {
   getUserFavorites,
   createSearchCache,
   updateSearchStatus,
+  updateSearchProgress,
   insertSearchResults,
   getSearchStatus,
   getSearchResults,

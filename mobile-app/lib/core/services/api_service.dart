@@ -189,6 +189,16 @@ class ApiService {
     return (body['results'] as List<dynamic>).cast<Map<String, dynamic>>();
   }
 
+  Future<List<Map<String, dynamic>>> getSearchHistory() async {
+    final res = await _client.get(
+      Uri.parse('$_baseUrl/manual-search/history'),
+      headers: _headers,
+    ).timeout(_timeout);
+    _checkResponse(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return (body['history'] as List<dynamic>).cast<Map<String, dynamic>>();
+  }
+
   // ── Analytics / Reports ──
 
   Future<Map<String, dynamic>> generateReport({

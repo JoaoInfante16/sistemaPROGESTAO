@@ -111,6 +111,56 @@ export async function sendPushNotification(
     : newsData.resumo;
 
   const tokens = devices.map((d) => d.device_token as string);
+  return sendToTokens(tokens, title, body, {
+    news_id: newsData.id,
+    cidade: newsData.cidade,
+    tipo_crime: newsData.tipo_crime,
+  });
+}
+
+/**
+ * Envia push notification para um usuário específico (por user_id).
+ * Usado para notificar conclusão de busca manual.
+ */
+export async function sendPushToUser(
+  userId: string,
+  title: string,
+  body: string,
+  data?: Record<string, string>
+): Promise<PushResult> {
+  if (!ensureFirebase()) {
+    return { sent: false, reason: 'Firebase nao configurado', deviceCount: 0, successCount: 0 };
+  }
+
+  const { data: devices, error } = await supabase
+    .from('user_devices')
+    .select('device_token')
+    .eq('user_id', userId)
+    .gte('last_seen', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+
+  if (error) {
+    logger.error(`[Push] Failed to fetch user devices: ${error.message}`);
+    return { sent: false, reason: `Erro: ${error.message}`, deviceCount: 0, successCount: 0 };
+  }
+
+  if (!devices || devices.length === 0) {
+    logger.debug(`[Push] No active devices for user ${userId}`);
+    return { sent: false, reason: 'Nenhum dispositivo registrado', deviceCount: 0, successCount: 0 };
+  }
+
+  const tokens = devices.map((d) => d.device_token as string);
+  return sendToTokens(tokens, title, body, data);
+}
+
+/**
+ * Lógica compartilhada de envio por batch de tokens FCM.
+ */
+async function sendToTokens(
+  tokens: string[],
+  title: string,
+  body: string,
+  data?: Record<string, string>
+): Promise<PushResult> {
   const batches = chunkArray(tokens, 500); // Firebase: max 500 por batch
 
   let totalSuccess = 0;
@@ -119,11 +169,7 @@ export async function sendPushNotification(
       const response = await admin.messaging().sendEachForMulticast({
         tokens: batch,
         notification: { title, body },
-        data: {
-          news_id: newsData.id,
-          cidade: newsData.cidade,
-          tipo_crime: newsData.tipo_crime,
-        },
+        data: data || {},
       });
 
       totalSuccess += response.successCount;
@@ -148,7 +194,7 @@ export async function sendPushNotification(
     }
   }
 
-  return { sent: totalSuccess > 0, deviceCount: devices.length, successCount: totalSuccess };
+  return { sent: totalSuccess > 0, deviceCount: tokens.length, successCount: totalSuccess };
 }
 
 async function removeInvalidTokens(tokens: string[]): Promise<void> {

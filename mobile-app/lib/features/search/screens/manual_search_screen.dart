@@ -6,9 +6,13 @@ import '../../../core/data/brazilian_locations.dart';
 import '../../../core/services/api_service.dart';
 import '../widgets/multi_city_search_field.dart';
 import 'report_screen.dart';
+import 'search_history_screen.dart';
 
 class ManualSearchScreen extends StatefulWidget {
-  const ManualSearchScreen({super.key});
+  /// Se fornecido, retoma uma busca existente (do historico).
+  final String? resumeSearchId;
+
+  const ManualSearchScreen({super.key, this.resumeSearchId});
 
   @override
   State<ManualSearchScreen> createState() => _ManualSearchScreenState();
@@ -26,6 +30,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   String? _searchId;
   String _searchStatus = 'idle'; // idle, processing, completed, failed
   List<Map<String, dynamic>> _results = [];
+  Map<String, dynamic>? _progress;
   Timer? _pollTimer;
 
   static const _tiposCrime = [
@@ -49,6 +54,45 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   void initState() {
     super.initState();
     _loadLocations();
+    if (widget.resumeSearchId != null) {
+      _resumeSearch(widget.resumeSearchId!);
+    }
+  }
+
+  Future<void> _resumeSearch(String searchId) async {
+    setState(() {
+      _searchId = searchId;
+      _searchStatus = 'processing';
+    });
+
+    // Verificar status atual antes de polling
+    try {
+      final api = context.read<ApiService>();
+      final status = await api.getManualSearchStatus(searchId);
+      final s = status['status'] as String;
+
+      if (s == 'completed') {
+        final results = await api.getManualSearchResults(searchId);
+        if (mounted) {
+          setState(() {
+            _searchStatus = 'completed';
+            _results = results;
+          });
+        }
+      } else if (s == 'failed') {
+        if (mounted) setState(() => _searchStatus = 'failed');
+      } else {
+        // Ainda processando — iniciar polling
+        _startPolling();
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _searchStatus = 'failed');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Resultados expirados ou indisponiveis')),
+        );
+      }
+    }
   }
 
   @override
@@ -108,6 +152,12 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         final status = await api.getManualSearchStatus(_searchId!);
         final s = status['status'] as String;
 
+        // Atualizar progresso da pipeline
+        final progress = status['progress'] as Map<String, dynamic>?;
+        if (mounted && progress != null) {
+          setState(() => _progress = progress);
+        }
+
         if (s == 'completed' || s == 'failed') {
           _pollTimer?.cancel();
 
@@ -135,6 +185,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       _searchId = null;
       _searchStatus = 'idle';
       _results = [];
+      _progress = null;
     });
   }
 
@@ -143,6 +194,16 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Nova Busca'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'Historico',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                  builder: (_) => const SearchHistoryScreen()),
+            ),
+          ),
+        ],
       ),
       body: _searchStatus == 'idle' ? _buildForm() : _buildResults(),
     );
@@ -242,23 +303,98 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     );
   }
 
-  Widget _buildResults() {
-    if (_searchStatus == 'processing') {
-      return Center(
+  static const _pipelineStages = [
+    ('google_search', 'Pesquisando na web', Icons.search),
+    ('ssp_scraping', 'Consultando SSP', Icons.shield),
+    ('filtering', 'Filtrando com IA', Icons.filter_alt),
+    ('fetching', 'Baixando conteudo', Icons.download),
+    ('analyzing', 'Analisando noticias', Icons.psychology),
+    ('saving', 'Salvando resultados', Icons.save),
+  ];
+
+  Widget _buildProgressStepper() {
+    final currentStageNum = (_progress?['stage_num'] as int?) ?? 0;
+    final details = _progress?['details'] as String?;
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
             Text(
-              'Buscando noticias...',
+              'Processando busca...',
               style: Theme.of(context).textTheme.titleMedium,
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Pesquisando no Google, analisando com IA...',
-              style: TextStyle(color: Colors.grey[500], fontSize: 12),
-            ),
+            const SizedBox(height: 24),
+            ...List.generate(_pipelineStages.length, (index) {
+              final (_, label, icon) = _pipelineStages[index];
+              final stageNum = index + 1;
+              final isCompleted = stageNum < currentStageNum;
+              final isCurrent = stageNum == currentStageNum;
+              final isPending = stageNum > currentStageNum;
+
+              final color = isCompleted
+                  ? Colors.green
+                  : isCurrent
+                      ? Theme.of(context).colorScheme.primary
+                      : Colors.grey[400]!;
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    if (isCompleted)
+                      Icon(Icons.check_circle, color: color, size: 28)
+                    else if (isCurrent)
+                      SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: color,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Icon(Icons.circle_outlined, color: color, size: 28),
+                    const SizedBox(width: 12),
+                    Icon(icon, color: color, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            label,
+                            style: TextStyle(
+                              color: isPending ? Colors.grey[500] : null,
+                              fontWeight: isCurrent ? FontWeight.bold : null,
+                            ),
+                          ),
+                          if (isCurrent && details != null)
+                            Text(
+                              details,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[500],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
             const SizedBox(height: 24),
             OutlinedButton(
               onPressed: _resetSearch,
@@ -266,7 +402,13 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
             ),
           ],
         ),
-      );
+      ),
+    );
+  }
+
+  Widget _buildResults() {
+    if (_searchStatus == 'processing') {
+      return _buildProgressStepper();
     }
 
     if (_searchStatus == 'failed') {

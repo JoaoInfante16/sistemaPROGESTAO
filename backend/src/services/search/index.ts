@@ -1,5 +1,6 @@
 import { SearchProvider } from './SearchProvider';
 import { GoogleSearchProvider } from './GoogleSearchProvider';
+import { PerplexitySearchProvider } from './PerplexitySearchProvider';
 import { config } from '../../config';
 
 export function createSearchProvider(): SearchProvider {
@@ -8,7 +9,8 @@ export function createSearchProvider(): SearchProvider {
   switch (backend) {
     case 'google':
       return new GoogleSearchProvider();
-    // Futuro: case 'serpapi': return new SerpAPIProvider();
+    case 'perplexity':
+      return new PerplexitySearchProvider();
     default:
       throw new Error(`Unknown search backend: ${backend}`);
   }
@@ -16,3 +18,4 @@ export function createSearchProvider(): SearchProvider {
 
 export * from './SearchProvider';
 export { GoogleSearchProvider } from './GoogleSearchProvider';
+export { PerplexitySearchProvider } from './PerplexitySearchProvider';

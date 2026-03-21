@@ -3,6 +3,7 @@
 // ============================================
 // Fluxo: Multi-Source Collect → Filter0 → Filter1 → Fetch → Filter2 → Embed → Dedup → Save
 
+import { config } from '../../config';
 import { createSearchProvider } from '../../services/search';
 import { createContentFetcher } from '../../services/content';
 import { createEmbeddingProvider } from '../../services/embedding';
@@ -17,7 +18,6 @@ import { asyncPool } from '../../utils/helpers';
 import { FetchedContent } from '../../services/content/ContentFetcher';
 import { rateLimiter } from '../../services/rateLimiter';
 import { configManager } from '../../services/configManager';
-import { config } from '../../config';
 import { SearchResult } from '../../services/search/SearchProvider';
 import { buildQueries } from '../../services/search/queryTemplates';
 import { deduplicateResults } from '../../services/search/urlDeduplicator';
@@ -95,7 +95,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   if (googleQueryCount > 0) {
     await db.trackCost({
       source: 'auto_scan',
-      provider: 'google',
+      provider: config.searchBackend as 'google' | 'perplexity',
       cost_usd: estimateGoogleCost(googleQueryCount),
       details: { queryCount: googleQueryCount, resultsCount: searchResults.length, sources },
     });
@@ -350,7 +350,7 @@ async function collectUrls(
 
   for (const query of queries) {
     try {
-      const results = await rateLimiter.schedule('google', () =>
+      const results = await rateLimiter.schedule(config.searchBackend, () =>
         searchProvider.search(query, { maxResults: cfg.searchMaxResults })
       );
       allResults.push(...results);

@@ -7,6 +7,7 @@
 
 import { Worker, Job, Queue } from 'bullmq';
 import { redis } from '../../config/redis';
+import { config } from '../../config';
 import { createSearchProvider } from '../../services/search';
 import { createContentFetcher } from '../../services/content';
 import { scrapeSSP } from '../../services/search/SSPScraper';
@@ -20,6 +21,7 @@ import { asyncPool } from '../../utils/helpers';
 import { FetchedContent } from '../../services/content/ContentFetcher';
 import { rateLimiter } from '../../services/rateLimiter';
 import { configManager } from '../../services/configManager';
+import { sendPushToUser } from '../../services/notifications/pushService';
 
 const searchProvider = createSearchProvider();
 const contentFetcher = createContentFetcher();
@@ -48,6 +50,8 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     };
 
     // 1. Google Search — loop por cidade, coleta URLs combinadas
+    await db.updateSearchProgress(searchId, { stage: 'google_search', stage_num: 1, total_stages: 6, details: `Pesquisando ${cidades.length} cidades` });
+
     const crimeKeywords = tipoCrime || 'crime polícia assalto roubo';
     const sourceTypeMap = new Map<string, 'google' | 'ssp'>();
     const searchResults: Array<{ url: string; snippet: string }> = [];
@@ -57,7 +61,7 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       const query = `${crimeKeywords} ${cidade} ${estado} site:.br`;
       logger.info(`[ManualSearch] ${searchId} query: ${query}`);
 
-      const results = await rateLimiter.schedule('google', () =>
+      const results = await rateLimiter.schedule(config.searchBackend, () =>
         searchProvider.search(query, { maxResults: pipelineConfig.searchMaxResults })
       );
 
@@ -74,12 +78,14 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
 
     await db.trackCost({
       source: 'manual_search',
-      provider: 'google',
+      provider: config.searchBackend as 'google' | 'perplexity',
       cost_usd: cidades.length * 0.005,
       details: { searchId, cidadesCount: cidades.length, resultsCount: searchResults.length },
     });
 
     // 1b. SSP Scraping — uma vez por estado
+    await db.updateSearchProgress(searchId, { stage: 'ssp_scraping', stage_num: 2, total_stages: 6, details: 'Consultando portal SSP' });
+
     const sspEnabled = await configManager.getBoolean('ssp_scraping_enabled');
     if (sspEnabled) {
       try {
@@ -102,7 +108,9 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       }
     }
 
-    // 2. Filter 0 - Regex
+    // 2. Filter 0 - Regex + 3. Filter 1 - GPT Batch
+    await db.updateSearchProgress(searchId, { stage: 'filtering', stage_num: 3, total_stages: 6, details: `${searchResults.length} URLs para filtrar` });
+
     const afterFilter0 = searchResults.filter((r) => filter0Regex(r.url, r.snippet));
 
     // 3. Filter 1 - GPT Batch
@@ -120,12 +128,15 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     });
 
     if (afterFilter1.length === 0) {
+      await db.updateSearchProgress(searchId, { stage: 'saving', stage_num: 6, total_stages: 6 });
       await db.updateSearchStatus(searchId, 'completed', 0);
       logger.info(`[ManualSearch] ${searchId} completed with 0 results`);
       return;
     }
 
     // 4. Content Fetch via Jina
+    await db.updateSearchProgress(searchId, { stage: 'fetching', stage_num: 4, total_stages: 6, details: `${afterFilter1.length} artigos` });
+
     const contentResults = await asyncPool<typeof afterFilter1[0], FetchedContent | null>(
       afterFilter1,
       pipelineConfig.contentFetchConcurrency,
@@ -147,7 +158,9 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       details: { searchId, stage: 'fetch', count: validContents.length },
     });
 
-    // 5. Filter 2 - GPT Full Analysis + Embedding
+    // 5. Filter 2 - GPT Full Analysis
+    await db.updateSearchProgress(searchId, { stage: 'analyzing', stage_num: 5, total_stages: 6, details: `${validContents.length} conteudos` });
+
     const results: Array<{
       tipo_crime: string;
       cidade: string;
@@ -196,6 +209,8 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     });
 
     // 6. Save results to search_results
+    await db.updateSearchProgress(searchId, { stage: 'saving', stage_num: 6, total_stages: 6 });
+
     if (results.length > 0) {
       await db.insertSearchResults(searchId, results, 0);
     }
@@ -204,9 +219,33 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
 
     const duration = Date.now() - startTime;
     logger.info(`[ManualSearch] ${searchId} completed: ${results.length} results in ${duration}ms`);
+
+    // Push notification ao usuário
+    try {
+      const tipoCrimeLabel = tipoCrime || 'crimes';
+      await sendPushToUser(
+        job.data.userId,
+        'Busca concluida',
+        `Encontramos ${results.length} resultado${results.length !== 1 ? 's' : ''} para ${tipoCrimeLabel} em ${estado}`,
+        { search_id: searchId, type: 'manual_search_completed' }
+      );
+    } catch (pushErr) {
+      logger.warn(`[ManualSearch] Push failed: ${(pushErr as Error).message}`);
+    }
   } catch (error) {
     logger.error(`[ManualSearch] ${searchId} failed: ${(error as Error).message}`);
     await db.updateSearchStatus(searchId, 'failed');
+
+    // Push notification de falha
+    try {
+      await sendPushToUser(
+        job.data.userId,
+        'Busca falhou',
+        'Sua busca nao pode ser concluida. Tente novamente.',
+        { search_id: searchId, type: 'manual_search_failed' }
+      );
+    } catch (_) { /* non-fatal */ }
+
     throw error;
   }
 }

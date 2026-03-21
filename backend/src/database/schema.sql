@@ -103,8 +103,9 @@ CREATE TABLE search_cache (
   params_hash TEXT UNIQUE,
   status TEXT CHECK (status IN ('processing', 'completed', 'failed')) DEFAULT 'processing',
   total_results INTEGER,
+  progress JSONB DEFAULT NULL, -- Pipeline stage: {stage, stage_num, total_stages, details?}
   created_at TIMESTAMP DEFAULT NOW(),
-  expires_at TIMESTAMP DEFAULT NOW() + INTERVAL '24 hours'
+  expires_at TIMESTAMP DEFAULT NOW() + INTERVAL '7 days'
 );
 
 CREATE TABLE search_results (
