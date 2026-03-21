@@ -49,17 +49,29 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       filter2MaxContentChars: await configManager.getNumber('filter2_max_content_chars'),
     };
 
-    // 1. Google Search — loop por cidade, coleta URLs combinadas
+    // 1. Perplexity Search — loop por cidade, coleta URLs combinadas
     await db.updateSearchProgress(searchId, { stage: 'google_search', stage_num: 1, total_stages: 6, details: `Pesquisando ${cidades.length} cidades` });
 
-    const crimeKeywords = tipoCrime || 'crime polícia assalto roubo';
+    const periodoLabel = periodoDias <= 1 ? 'nas últimas 24 horas'
+      : periodoDias <= 2 ? 'nas últimas 48 horas'
+      : periodoDias <= 7 ? `nos últimos ${periodoDias} dias`
+      : `nas últimas ${Math.ceil(periodoDias / 7)} semanas`;
+
     const sourceTypeMap = new Map<string, 'google' | 'ssp'>();
     const searchResults: Array<{ url: string; snippet: string }> = [];
     const seenUrls = new Set<string>();
 
     for (const cidade of cidades) {
-      const query = `${crimeKeywords} ${cidade} ${estado} site:.br`;
-      logger.info(`[ManualSearch] ${searchId} query: ${query}`);
+      const localidade = `${cidade}, ${estado}`;
+      let query: string;
+
+      if (tipoCrime) {
+        query = `Resumo completo de ocorrências policiais relacionadas a ${tipoCrime} em ${localidade} ${periodoLabel}: liste por tipo, com data/hora, bairro, vítimas/suspeitos e fontes oficiais; exclua ficção/novelas; priorize notícias recentes`;
+      } else {
+        query = `Resumo completo de TODAS ocorrências policiais em ${localidade} ${periodoLabel}: liste por tipo (homicídio, prisão, roubo, tráfico, violência doméstica, apreensões), com data/hora, bairro, vítimas/suspeitos e fontes oficiais (PM/PC/SSP); exclua ficção/novelas; priorize notícias recentes de sites como G1, PM oficial`;
+      }
+
+      logger.info(`[ManualSearch] ${searchId} query: ${query.substring(0, 80)}...`);
 
       const results = await rateLimiter.schedule(config.searchBackend, () =>
         searchProvider.search(query, { maxResults: pipelineConfig.searchMaxResults })
@@ -74,7 +86,7 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       }
     }
 
-    logger.info(`[ManualSearch] ${searchId} found ${searchResults.length} unique Google URLs from ${cidades.length} cidades`);
+    logger.info(`[ManualSearch] ${searchId} found ${searchResults.length} unique URLs from ${cidades.length} cidades`);
 
     await db.trackCost({
       source: 'manual_search',
@@ -257,6 +269,7 @@ export function createManualSearchWorker(): Worker {
     {
       connection: redis,
       concurrency: 2,
+      drainDelay: 30000, // 30s entre polls quando fila vazia (reduz uso Redis idle)
       limiter: {
         max: 5,
         duration: 60000,

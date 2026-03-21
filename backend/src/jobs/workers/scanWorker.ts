@@ -27,6 +27,7 @@ export function createScanWorker(): Worker {
     {
       connection: redis,
       concurrency: 3, // Max 3 scans em paralelo
+      drainDelay: 30000, // 30s entre polls quando fila vazia (reduz uso Redis idle)
       limiter: {
         max: 10,
         duration: 60000, // Max 10 jobs por minuto

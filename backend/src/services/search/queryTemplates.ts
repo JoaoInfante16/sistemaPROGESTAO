@@ -1,9 +1,10 @@
 // ============================================
-// Query Templates - Variações de busca por crime
+// Query Templates - Perplexity Search API
 // ============================================
-// 5 templates rotacionados: cada scan usa N templates
-// (configurável via search_queries_per_scan).
-// Round-robin baseado em scanIndex para distribuir uniformemente.
+// Otimizados para busca semantica (Perplexity).
+// Template 0 = mega query que cobre tudo (default).
+// Templates 1-4 = queries focadas para cobertura profunda (multi-query).
+// Rotacionados via round-robin a cada scan.
 
 import { MonitoredLocation } from '../../utils/types';
 
@@ -15,40 +16,48 @@ export interface QueryTemplate {
 }
 
 /**
- * Templates de busca - cobrem diferentes ângulos de crime.
- * Se a location tem keywords customizadas, elas são usadas no template 1 (genérico).
+ * Templates otimizados para Perplexity Search API.
+ *
+ * Template 0 (mega query) é completo e cobre todos os tipos de crime.
+ * Templates 1-4 aprofundam categorias especificas.
+ *
+ * Se a location tem keywords customizadas, o template 0 as incorpora.
  */
 export const QUERY_TEMPLATES: QueryTemplate[] = [
   {
     id: 0,
-    name: 'generico',
+    name: 'completo',
     build: (loc) => {
       const hasKeywords = loc.mode === 'keywords' && loc.keywords && loc.keywords.length > 0;
-      const terms = hasKeywords
-        ? loc.keywords!.join(' OR ')
-        : 'crime polícia ocorrência';
-      return `${terms} ${loc.name} site:.br`;
+      if (hasKeywords) {
+        return `Resumo completo de ocorrências policiais relacionadas a ${loc.keywords!.join(', ')} em ${loc.name} nas últimas 24-48h: liste por tipo, com data/hora, bairro, vítimas/suspeitos e fontes oficiais; exclua ficção/novelas; priorize notícias recentes`;
+      }
+      return `Resumo completo de TODAS ocorrências policiais em ${loc.name} nas últimas 24-48h: liste por tipo (homicídio, prisão, roubo, tráfico, violência doméstica, apreensões), com data/hora, bairro, vítimas/suspeitos e fontes oficiais (PM/PC/SSP); exclua ficção/novelas; priorize notícias recentes de sites como G1, PM oficial`;
     },
   },
   {
     id: 1,
-    name: 'crimes_graves',
-    build: (loc) => `homicídio OR latrocínio OR tráfico ${loc.name} site:.br`,
+    name: 'prisoes_flagrante',
+    build: (loc) =>
+      `prisões em flagrante ou preventivas em ${loc.name} nas últimas 48 horas, citando fontes oficiais como Polícia Civil ou PM, com datas, bairros e detalhes dos crimes`,
   },
   {
     id: 2,
-    name: 'crimes_patrimoniais',
-    build: (loc) => `roubo OR furto OR assalto ${loc.name} site:.br`,
+    name: 'homicidios_mortes',
+    build: (loc) =>
+      `homicídios, tentativas de homicídio ou mortes por confronto policial em ${loc.name} nos últimos 3 dias, incluindo vítimas, suspeitos e locais exatos de portais locais confiáveis`,
   },
   {
     id: 3,
-    name: 'acoes_policiais',
-    build: (loc) => `operação policial OR apreensão OR prisão ${loc.name} site:.br`,
+    name: 'crimes_patrimoniais',
+    build: (loc) =>
+      `roubos, furtos, tráfico de drogas e apreensões de armas ou veículos em ${loc.name} hoje e ontem, incluindo bairros e valores, de fontes como SSP ou boletins policiais recentes`,
   },
   {
     id: 4,
-    name: 'registros_oficiais',
-    build: (loc) => `boletim ocorrência OR delegacia ${loc.name} site:.br`,
+    name: 'violencia_domestica',
+    build: (loc) =>
+      `ocorrências de violência doméstica, lesão corporal, descumprimento de medidas protetivas em ${loc.name} nos últimos 2 dias, focando em prisões e detalhes de sites oficiais`,
   },
 ];
 
@@ -72,14 +81,13 @@ export function selectTemplates(scanIndex: number, queriesPerScan: number): Quer
 
 /**
  * Gera queries a partir de templates selecionados para uma location.
- * Se multi_query desabilitado, retorna apenas o template genérico (como antes).
+ * Se multi_query desabilitado, retorna apenas o mega query (template 0).
  */
 export function buildQueries(
   location: MonitoredLocation,
   options: { multiQueryEnabled: boolean; queriesPerScan: number; scanIndex: number }
 ): string[] {
   if (!options.multiQueryEnabled) {
-    // Fallback: query única (comportamento original)
     return [QUERY_TEMPLATES[0].build(location)];
   }
 

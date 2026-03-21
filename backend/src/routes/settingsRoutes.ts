@@ -214,12 +214,14 @@ router.get(
       );
 
       // Aggregate by provider
-      const byProvider: Record<string, number> = { google: 0, jina: 0, openai: 0 };
+      const byProvider: Record<string, number> = { perplexity: 0, jina: 0, openai: 0 };
       for (const row of rows) {
         const r = row as { provider: string; cost_usd: unknown };
         const provider = r.provider;
-        if (provider in byProvider) {
-          byProvider[provider] += parseFloat(String(r.cost_usd));
+        // Map legacy 'google' entries to 'perplexity'
+        const mappedProvider = provider === 'google' ? 'perplexity' : provider;
+        if (mappedProvider in byProvider) {
+          byProvider[mappedProvider] += parseFloat(String(r.cost_usd));
         }
       }
 
@@ -247,7 +249,7 @@ router.get(
         totalScansThisMonth: totalScans,
         totalCostThisMonth: parseFloat(totalCost.toFixed(4)),
         avgCostByProvider: {
-          google: parseFloat(byProvider.google.toFixed(4)),
+          perplexity: parseFloat(byProvider.perplexity.toFixed(4)),
           jina: parseFloat(byProvider.jina.toFixed(4)),
           openai: parseFloat(byProvider.openai.toFixed(4)),
         },
@@ -352,6 +354,25 @@ router.get(
     } catch (error) {
       logger.error('[Logs] Error:', error);
       res.status(500).json({ error: 'Failed to fetch logs' });
+    }
+  }
+);
+
+// ============================================
+// Rejected URLs (dashboard)
+// ============================================
+
+router.get(
+  '/dashboard/rejected-urls',
+  requireAuth,
+  requireAdmin,
+  async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const urls = await db.getRecentRejectedUrls(24);
+      res.json(urls);
+    } catch (error) {
+      logger.error('[Dashboard] Rejected URLs error:', error);
+      res.status(500).json({ error: 'Failed to fetch rejected URLs' });
     }
   }
 );

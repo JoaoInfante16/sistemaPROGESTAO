@@ -202,7 +202,7 @@ INSERT INTO system_config (key, value, description, category, value_type) VALUES
   ('dedup_similarity_threshold', '0.85', 'Threshold de similaridade coseno para deduplicação (camada 2)', 'pipeline', 'number'),
   ('filter2_confidence_min', '0.7', 'Confiança mínima da extração GPT para aceitar notícia', 'pipeline', 'number'),
   ('content_fetch_concurrency', '5', 'Máximo de fetches simultâneos por pipeline run', 'pipeline', 'number'),
-  ('search_max_results', '10', 'Máximo de resultados do Google Search por query', 'pipeline', 'number'),
+  ('search_max_results', '10', 'Máximo de resultados por query de busca (Perplexity)', 'pipeline', 'number'),
   ('filter2_max_content_chars', '4000', 'Máximo de caracteres enviados ao GPT no filter2', 'pipeline', 'number'),
   ('monthly_budget_usd', '100', 'Limite mensal de gastos em USD', 'budget', 'number'),
   ('budget_warning_threshold', '0.9', 'Threshold de alerta de orçamento (0.0 a 1.0)', 'budget', 'number'),
@@ -214,7 +214,7 @@ INSERT INTO system_config (key, value, description, category, value_type) VALUES
   ('auth_required', 'true', 'Se o app exige login para acessar', 'auth', 'boolean'),
   ('search_permission', 'authorized', 'Quem pode fazer buscas manuais: all ou authorized', 'auth', 'string'),
   -- Ingestão robusta - fontes configuráveis
-  ('multi_query_enabled', 'true', 'Usar múltiplas variações de query no Google Search', 'ingestion', 'boolean'),
+  ('multi_query_enabled', 'true', 'Usar múltiplas variações de query na busca (além do mega prompt)', 'ingestion', 'boolean'),
   ('search_queries_per_scan', '2', 'Quantas queries por scan (1-5, rotação automática)', 'ingestion', 'number'),
   ('google_news_rss_enabled', 'true', 'Coleta via Google News RSS (gratuito)', 'ingestion', 'boolean'),
   ('section_crawling_enabled', 'true', 'Crawling de seções de polícia de jornais', 'ingestion', 'boolean'),
@@ -302,3 +302,22 @@ CREATE INDEX IF NOT EXISTS idx_reports_expires ON reports(expires_at);
 -- Índices compostos para queries de analytics
 CREATE INDEX IF NOT EXISTS idx_news_cidade_tipo ON news(cidade, tipo_crime) WHERE active = true;
 CREATE INDEX IF NOT EXISTS idx_news_cidade_data_tipo ON news(cidade, data_ocorrencia, tipo_crime) WHERE active = true;
+
+-- ============================================
+-- 14. URLs REJEITADAS PELO PIPELINE (dashboard)
+-- ============================================
+-- Armazena URLs filtradas em cada etapa do pipeline.
+-- Retencao: 24h (limpeza automatica no inicio de cada scan).
+
+CREATE TABLE IF NOT EXISTS pipeline_rejected_urls (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  url TEXT NOT NULL,
+  title TEXT,
+  stage TEXT NOT NULL,
+  reason TEXT,
+  location_id UUID REFERENCES monitored_locations(id) ON DELETE CASCADE,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_rejected_created ON pipeline_rejected_urls(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_rejected_stage ON pipeline_rejected_urls(stage);

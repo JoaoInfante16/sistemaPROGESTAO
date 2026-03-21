@@ -124,6 +124,16 @@ export interface OperationLog {
   monitored_locations?: { name: string };
 }
 
+export interface RejectedUrlEntry {
+  url: string;
+  title: string | null;
+  stage: string;
+  reason: string | null;
+  location_id: string;
+  created_at: string;
+  monitored_locations?: { name: string };
+}
+
 // ============================================
 // Analytics Types
 // ============================================
@@ -318,7 +328,7 @@ export const api = {
       avgCostPerScan: number;
       totalScansThisMonth: number;
       totalCostThisMonth: number;
-      avgCostByProvider: { google: number; jina: number; openai: number };
+      avgCostByProvider: { perplexity: number; jina: number; openai: number };
       activeCities: number;
     }>('/settings/cost-estimate', { token }),
 
@@ -338,6 +348,10 @@ export const api = {
 
   getLogs: (token: string) =>
     apiFetch<OperationLog[]>('/logs/recent', { token }),
+
+  // Rejected URLs (dashboard)
+  getRejectedUrls: (token: string) =>
+    apiFetch<RejectedUrlEntry[]>('/dashboard/rejected-urls', { token }),
 
   // Analytics
   getCrimeSummary: (token: string, params: { cidade: string; dateFrom: string; dateTo: string }) => {

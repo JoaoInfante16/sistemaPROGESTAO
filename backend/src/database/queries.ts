@@ -595,6 +595,60 @@ export async function getRecentLogs(limit: number = 50): Promise<Array<Record<st
 }
 
 // ============================================
+// Rejected URLs (dashboard)
+// ============================================
+
+export interface RejectedUrl {
+  url: string;
+  title?: string;
+  stage: string;
+  reason?: string;
+  location_id: string;
+}
+
+export async function insertRejectedUrls(urls: RejectedUrl[]): Promise<void> {
+  if (urls.length === 0) return;
+
+  const { error } = await supabase
+    .from('pipeline_rejected_urls')
+    .insert(urls);
+
+  if (error) {
+    logger.error('Failed to insert rejected URLs:', error.message);
+  }
+}
+
+export async function getRecentRejectedUrls(hours: number = 24): Promise<Array<Record<string, unknown>>> {
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from('pipeline_rejected_urls')
+    .select('url, title, stage, reason, location_id, created_at, monitored_locations(name)')
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  if (error) {
+    throw new Error(`Failed to fetch rejected URLs: ${error.message}`);
+  }
+
+  return (data || []) as Array<Record<string, unknown>>;
+}
+
+export async function cleanupOldRejectedUrls(): Promise<void> {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const { error } = await supabase
+    .from('pipeline_rejected_urls')
+    .delete()
+    .lt('created_at', cutoff);
+
+  if (error) {
+    logger.error('Failed to cleanup rejected URLs:', error.message);
+  }
+}
+
+// ============================================
 // Devices (push notifications)
 // ============================================
 
@@ -905,4 +959,7 @@ export const db = {
   getUserSearchHistory,
   getCityToUFMap,
   bulkInsertLocations,
+  insertRejectedUrls,
+  getRecentRejectedUrls,
+  cleanupOldRejectedUrls,
 };

@@ -91,7 +91,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   const searchResults = deduplicateResults(allResults);
   logger.info(`[Pipeline] Collected ${allResults.length} URLs → ${searchResults.length} unique (sources: ${sources.join(', ')})`);
 
-  // Track Google Search cost
+  // Track search cost
   if (googleQueryCount > 0) {
     await db.trackCost({
       source: 'auto_scan',
@@ -112,11 +112,26 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
     });
   }
 
+  // Cleanup rejected URLs older than 24h (best effort)
+  await db.cleanupOldRejectedUrls();
+
   // ============================================
   // STAGE 2: Filter0 - Regex (local, sem custo)
   // ============================================
   const afterFilter0 = searchResults.filter((r) => filter0Regex(r.url, r.snippet));
+  const rejectedByFilter0 = searchResults.filter((r) => !filter0Regex(r.url, r.snippet));
   logger.info(`[Pipeline] After Filter0 (regex): ${afterFilter0.length}/${searchResults.length}`);
+
+  // Save rejected URLs from Filter0
+  if (rejectedByFilter0.length > 0) {
+    await db.insertRejectedUrls(rejectedByFilter0.map((r) => ({
+      url: r.url,
+      title: r.title,
+      stage: 'filter0_regex',
+      reason: 'URL ou snippet nao passou no filtro regex',
+      location_id: locationId,
+    })));
+  }
 
   // ============================================
   // STAGE 3: Filter1 - GPT Batch
@@ -126,7 +141,19 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
     filter1GPTBatch(snippets)
   );
   const afterFilter1 = afterFilter0.filter((_, index) => batchResults[index]);
+  const rejectedByFilter1 = afterFilter0.filter((_, index) => !batchResults[index]);
   logger.info(`[Pipeline] After Filter1 (GPT batch): ${afterFilter1.length}/${afterFilter0.length}`);
+
+  // Save rejected URLs from Filter1
+  if (rejectedByFilter1.length > 0) {
+    await db.insertRejectedUrls(rejectedByFilter1.map((r) => ({
+      url: r.url,
+      title: r.title,
+      stage: 'filter1_gpt',
+      reason: 'GPT classificou snippet como nao-criminal',
+      location_id: locationId,
+    })));
+  }
 
   await db.trackCost({
     source: 'auto_scan',
@@ -182,6 +209,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   // STAGE 5: Filter2 - GPT Full Analysis + Embedding
   // ============================================
   const extractions: Array<NewsExtraction & { embedding: number[]; sourceUrl: string }> = [];
+  const rejectedByFilter2: Array<{ url: string; title: string }> = [];
 
   for (let i = 0; i < validContents.length; i++) {
     const fetched = validContents[i];
@@ -192,7 +220,10 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
         minConfidence: pipelineConfig.filter2ConfidenceMin,
       })
     );
-    if (!extracted) continue;
+    if (!extracted) {
+      rejectedByFilter2.push({ url: fetched.url, title: fetched.title || '' });
+      continue;
+    }
 
     const embeddingResult = await rateLimiter.schedule('openai', () =>
       embeddingProvider.generate(extracted.resumo)
@@ -206,6 +237,17 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   }
 
   logger.info(`[Pipeline] After Filter2 (GPT full): ${extractions.length} valid news`);
+
+  // Save rejected URLs from Filter2
+  if (rejectedByFilter2.length > 0) {
+    await db.insertRejectedUrls(rejectedByFilter2.map((r) => ({
+      url: r.url,
+      title: r.title,
+      stage: 'filter2_gpt',
+      reason: 'Conteudo nao classificado como crime ou confianca abaixo do threshold',
+      location_id: locationId,
+    })));
+  }
 
   await db.trackCost({
     source: 'auto_scan',
@@ -317,7 +359,7 @@ interface CollectResult {
 
 /**
  * Coleta URLs de múltiplas fontes:
- * 1. Google Custom Search (N queries rotacionadas)
+ * 1. Perplexity Search (N queries rotacionadas)
  * 2. Google News RSS (grátis)
  * 3. Section Crawling (seções de jornais)
  * 4. SSP Scraping (secretarias estaduais)
@@ -341,7 +383,7 @@ async function collectUrls(
   // Gerar scan index baseado no timestamp (para rotação de queries)
   const scanIndex = Math.floor(Date.now() / 60000);
 
-  // 1. Google Custom Search (rate limited)
+  // 1. Perplexity Search (rate limited)
   const queries = buildQueries(location, {
     multiQueryEnabled: cfg.multiQueryEnabled,
     queriesPerScan: cfg.queriesPerScan,
@@ -355,9 +397,9 @@ async function collectUrls(
       );
       allResults.push(...results);
       googleQueryCount++;
-      logger.debug(`[Pipeline] Google Search: "${query.substring(0, 50)}..." → ${results.length} results`);
+      logger.debug(`[Pipeline] Search: "${query.substring(0, 50)}..." → ${results.length} results`);
     } catch (error) {
-      logger.warn(`[Pipeline] Google Search failed: ${(error as Error).message}`);
+      logger.warn(`[Pipeline] Search failed: ${(error as Error).message}`);
     }
   }
   if (googleQueryCount > 0) sources.push('google');
