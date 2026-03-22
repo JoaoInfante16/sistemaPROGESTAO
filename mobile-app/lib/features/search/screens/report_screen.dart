@@ -70,20 +70,18 @@ class _ReportScreenState extends State<ReportScreen> {
     _totalCrimes = widget.results.length;
 
     _byCrimeType = _crimeTypeCounts.entries
-        .map((e) => {
-          return {
-            'tipo_crime': e.key,
-            'count': e.value,
-            'percentage': _totalCrimes > 0
-                ? (e.value / _totalCrimes * 100).round()
-                : 0,
-          };
-        })
+        .map((e) => <String, dynamic>{
+              'tipo_crime': e.key,
+              'count': e.value,
+              'percentage': _totalCrimes > 0
+                  ? (e.value / _totalCrimes * 100).round()
+                  : 0,
+            })
         .toList()
       ..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int));
 
     _byDate = _dateCounts.entries
-        .map((e) => {'date': e.key, 'count': e.value})
+        .map((e) => <String, dynamic>{'date': e.key, 'count': e.value})
         .toList()
       ..sort((a, b) =>
           (a['date'] as String).compareTo(b['date'] as String));
@@ -142,10 +140,8 @@ class _ReportScreenState extends State<ReportScreen> {
       setState(() => _reportUrl = url);
 
       if (mounted) {
-        await SharePlus.instance.share(
-          ShareParams(
-            text: 'Relatorio de Analise de Risco Criminal - ${widget.cidades.join(", ")}/${widget.estado}\n\n$url',
-          ),
+        await Share.share(
+          'Relatorio de Analise de Risco Criminal - ${widget.cidades.join(", ")}/${widget.estado}\n\n$url',
         );
       }
     } catch (e) {
@@ -273,14 +269,14 @@ class _ReportScreenState extends State<ReportScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Column(
-                  children: _bairroCounts.entries
-                      .toList()
-                    ..sort((a, b) => b.value.compareTo(a.value))
-                    ..take(8).toList().asMap().entries.map((entry) {
+                  children: () {
+                    final sorted = _bairroCounts.entries.toList()
+                      ..sort((a, b) => b.value.compareTo(a.value));
+                    final top = sorted.take(8).toList();
+                    final maxCount = top.first.value;
+                    return top.asMap().entries.map((entry) {
                       final i = entry.key;
                       final e = entry.value;
-                      final maxCount = _bairroCounts.values
-                          .reduce((a, b) => a > b ? a : b);
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         child: Row(
@@ -327,7 +323,8 @@ class _ReportScreenState extends State<ReportScreen> {
                           ],
                         ),
                       );
-                    }).toList(),
+                    }).toList();
+                  }(),
                 ),
               ),
             ),
@@ -419,7 +416,7 @@ class _ReportScreenState extends State<ReportScreen> {
                     ),
                   if (_sourcesMedia.isEmpty)
                     Text(
-                      'Dados coletados via Google Search, Google News RSS, '
+                      'Dados coletados via Perplexity Search, Google News RSS, '
                       'portais de noticias regionais e SSPs.',
                       style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                     ),

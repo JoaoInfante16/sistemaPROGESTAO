@@ -47,6 +47,7 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       contentFetchConcurrency: await configManager.getNumber('content_fetch_concurrency'),
       filter2ConfidenceMin: await configManager.getNumber('filter2_confidence_min'),
       filter2MaxContentChars: await configManager.getNumber('filter2_max_content_chars'),
+      filter0RegexEnabled: await configManager.getBoolean('filter0_regex_enabled'),
     };
 
     // 1. Perplexity Search — loop por cidade, coleta URLs combinadas
@@ -123,7 +124,9 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     // 2. Filter 0 - Regex + 3. Filter 1 - GPT Batch
     await db.updateSearchProgress(searchId, { stage: 'filtering', stage_num: 3, total_stages: 6, details: `${searchResults.length} URLs para filtrar` });
 
-    const afterFilter0 = searchResults.filter((r) => filter0Regex(r.url, r.snippet));
+    const afterFilter0 = pipelineConfig.filter0RegexEnabled
+      ? searchResults.filter((r) => filter0Regex(r.url, r.snippet))
+      : [...searchResults];
 
     // 3. Filter 1 - GPT Batch
     const snippets = afterFilter0.map((r) => r.snippet);

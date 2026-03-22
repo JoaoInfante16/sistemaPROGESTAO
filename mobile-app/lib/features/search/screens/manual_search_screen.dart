@@ -217,40 +217,18 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // Info card
-        Card(
-          color: Theme.of(context).colorScheme.primaryContainer,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline,
-                    color: Theme.of(context).colorScheme.onPrimaryContainer),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Busque qualquer cidade do Brasil! A pesquisa usa Google e IA para encontrar noticias criminais. Custo estimado: ~\$0.01 por busca.',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onPrimaryContainer,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-
         // Estado
-        DropdownMenu<String>(
-          label: const Text('Estado'),
-          expandedInsets: EdgeInsets.zero,
-          enableFilter: true,
-          dropdownMenuEntries: _estados
-              .map((e) => DropdownMenuEntry(value: e, label: e))
+        DropdownButtonFormField<String>(
+          initialValue: _selectedEstado,
+          decoration: const InputDecoration(
+            labelText: 'Estado',
+            border: OutlineInputBorder(),
+          ),
+          isExpanded: true,
+          items: _estados
+              .map((e) => DropdownMenuItem(value: e, child: Text(e)))
               .toList(),
-          onSelected: (v) => setState(() {
+          onChanged: (v) => setState(() {
             _selectedEstado = v;
             _selectedCidades = {};
           }),
@@ -267,26 +245,32 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         const SizedBox(height: 12),
 
         // Periodo
-        DropdownMenu<int>(
-          label: const Text('Periodo'),
-          initialSelection: _periodoDias,
-          expandedInsets: EdgeInsets.zero,
-          dropdownMenuEntries: _periodos.entries
-              .map((e) => DropdownMenuEntry(value: e.key, label: e.value))
+        DropdownButtonFormField<int>(
+          initialValue: _periodoDias,
+          decoration: const InputDecoration(
+            labelText: 'Periodo',
+            border: OutlineInputBorder(),
+          ),
+          isExpanded: true,
+          items: _periodos.entries
+              .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
               .toList(),
-          onSelected: (v) => setState(() => _periodoDias = v ?? 30),
+          onChanged: (v) => setState(() => _periodoDias = v ?? 30),
         ),
         const SizedBox(height: 12),
 
         // Tipo crime
-        DropdownMenu<String>(
-          label: const Text('Tipo de crime (opcional)'),
-          initialSelection: 'Todos',
-          expandedInsets: EdgeInsets.zero,
-          dropdownMenuEntries: _tiposCrime
-              .map((t) => DropdownMenuEntry(value: t, label: t))
+        DropdownButtonFormField<String>(
+          initialValue: 'Todos',
+          decoration: const InputDecoration(
+            labelText: 'Tipo de crime (opcional)',
+            border: OutlineInputBorder(),
+          ),
+          isExpanded: true,
+          items: _tiposCrime
+              .map((t) => DropdownMenuItem(value: t, child: Text(t)))
               .toList(),
-          onSelected: (v) => setState(() => _tipoCrime = v),
+          onChanged: (v) => setState(() => _tipoCrime = v),
         ),
         const SizedBox(height: 24),
 

@@ -78,6 +78,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
     sectionCrawlingEnabled: await configManager.getBoolean('section_crawling_enabled'),
     sectionCrawlingMaxDomains: await configManager.getNumber('section_crawling_max_domains'),
     sspScrapingEnabled: await configManager.getBoolean('ssp_scraping_enabled'),
+    filter0RegexEnabled: await configManager.getBoolean('filter0_regex_enabled'),
   };
 
   logger.info(`[Pipeline] Starting scan for ${location.name}`);
@@ -116,10 +117,14 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   await db.cleanupOldRejectedUrls();
 
   // ============================================
-  // STAGE 2: Filter0 - Regex (local, sem custo)
+  // STAGE 2: Filter0 - Regex (local, sem custo) — toggle via admin
   // ============================================
-  const afterFilter0 = searchResults.filter((r) => filter0Regex(r.url, r.snippet));
-  const rejectedByFilter0 = searchResults.filter((r) => !filter0Regex(r.url, r.snippet));
+  const afterFilter0 = pipelineConfig.filter0RegexEnabled
+    ? searchResults.filter((r) => filter0Regex(r.url, r.snippet))
+    : [...searchResults];
+  const rejectedByFilter0 = pipelineConfig.filter0RegexEnabled
+    ? searchResults.filter((r) => !filter0Regex(r.url, r.snippet))
+    : [];
   logger.info(`[Pipeline] After Filter0 (regex): ${afterFilter0.length}/${searchResults.length}`);
 
   // Save rejected URLs from Filter0

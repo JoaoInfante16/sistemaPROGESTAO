@@ -36,7 +36,7 @@ import {
 } from '@/lib/api';
 import {
   Loader2, Save, Calculator, Search, Rss, Newspaper, Shield,
-  Lock, LockOpen, Bug, Bell, Trash2, Database, Info, SlidersHorizontal,
+  Lock, LockOpen, Bug, Bell, Trash2, Database, Info, SlidersHorizontal, Filter,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -60,23 +60,6 @@ interface IngestionSource {
 }
 
 const INGESTION_SOURCES: IngestionSource[] = [
-  {
-    configKey: 'multi_query_enabled',
-    label: 'Multi-Query (cobertura extra)',
-    icon: <Search className="h-5 w-5" />,
-    description:
-      'Adiciona queries focadas alem do prompt principal (prisoes, homicidios, patrimoniais, violencia domestica). Aumenta cobertura mas sobe o custo.',
-    costPerScan: 0.005,
-    extraConfigs: [
-      {
-        key: 'search_queries_per_scan',
-        label: 'Queries por scan',
-        type: 'number',
-        min: 1,
-        max: 5,
-      },
-    ],
-  },
   {
     configKey: 'google_news_rss_enabled',
     label: 'Google News RSS',
@@ -285,27 +268,19 @@ export default function SettingsPage() {
     const buscas = parseInt(calcBuscasDia) || 0;
     const scansPorDia = cidades * (1440 / freq);
 
-    const queriesPerScan = parseInt(getConfigValue('search_queries_per_scan') || '2');
-
     const sources = INGESTION_SOURCES.map((src) => {
       const enabled = isConfigEnabled(src.configKey);
-      let costPerScan = src.costPerScan;
-
-      if (src.configKey === 'multi_query_enabled') {
-        costPerScan = 0.005 * (enabled ? queriesPerScan : 1);
-      }
-
-      const monthlyCost = enabled ? costPerScan * scansPorDia * 30 : 0;
+      const monthlyCost = enabled ? src.costPerScan * scansPorDia * 30 : 0;
 
       return {
         label: src.label,
         enabled,
-        costPerScan: enabled ? costPerScan : 0,
+        costPerScan: enabled ? src.costPerScan : 0,
         monthlyCost,
       };
     });
 
-    // Perplexity Search base cost (always on)
+    // Perplexity Search base cost (1 mega query por scan, always on)
     const perplexityBaseCost = 0.005 * scansPorDia * 30;
 
     // Processing cost (AI filters + embeddings)
@@ -508,6 +483,46 @@ export default function SettingsPage() {
                     </div>
                   );
                 })}
+              </CardContent>
+            </Card>
+
+            {/* Filter0 Regex Toggle */}
+            <Card>
+              <CardContent className="flex items-start justify-between pt-6">
+                <div className="flex items-start gap-3">
+                  <div className={`mt-0.5 rounded-md p-2 ${isConfigEnabled('filter0_regex_enabled') ? 'bg-orange-100 text-orange-700' : 'bg-muted text-muted-foreground'}`}>
+                    <Filter className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">Filtro Regex (pre-AI)</p>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-[300px]">
+                          <p className="text-sm">
+                            Bloqueia URLs de redes sociais (YouTube, Instagram, Facebook, TikTok) e snippets com palavras nao-crime (novela, futebol, etc.) ANTES de enviar ao AI.
+                            Desativar permite que o Perplexity traga resultados de redes sociais que podem conter noticias reais.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {isConfigEnabled('filter0_regex_enabled')
+                        ? 'Ativo: bloqueia redes sociais e palavras nao-crime antes do AI. Economiza custos mas pode filtrar noticias relevantes.'
+                        : 'Desativado: todas as URLs passam direto pro filtro AI. Mais noticias, porem maior custo de processamento.'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {savingConfig.has('filter0_regex_enabled') && <Loader2 className="h-4 w-4 animate-spin" />}
+                  <Switch
+                    checked={isConfigEnabled('filter0_regex_enabled')}
+                    onCheckedChange={() => toggleConfig('filter0_regex_enabled', isConfigEnabled('filter0_regex_enabled'))}
+                    disabled={savingConfig.has('filter0_regex_enabled')}
+                  />
+                </div>
               </CardContent>
             </Card>
 
