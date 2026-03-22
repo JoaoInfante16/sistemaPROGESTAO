@@ -808,6 +808,8 @@ interface CreateSearchCacheParams {
 
 export async function createSearchCache(p: CreateSearchCacheParams): Promise<string> {
   const paramsHash = JSON.stringify(p.params);
+
+  // Tentar inserir
   const { data, error } = await supabase
     .from('search_cache')
     .insert({
@@ -818,6 +820,28 @@ export async function createSearchCache(p: CreateSearchCacheParams): Promise<str
     })
     .select('search_id')
     .single();
+
+  if (error && error.message.includes('duplicate key')) {
+    // Busca com mesmos params já existe — deletar antiga e recriar
+    await supabase
+      .from('search_cache')
+      .delete()
+      .eq('params_hash', paramsHash);
+
+    const { data: retryData, error: retryError } = await supabase
+      .from('search_cache')
+      .insert({
+        user_id: p.user_id,
+        params: p.params,
+        params_hash: paramsHash,
+        status: 'processing',
+      })
+      .select('search_id')
+      .single();
+
+    if (retryError) throw new Error(`Failed to create search cache: ${retryError.message}`);
+    return (retryData as { search_id: string }).search_id;
+  }
 
   if (error) throw new Error(`Failed to create search cache: ${error.message}`);
   return (data as { search_id: string }).search_id;

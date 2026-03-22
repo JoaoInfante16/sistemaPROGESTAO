@@ -1,5 +1,6 @@
 import { ContentFetcher, FetchedContent } from './ContentFetcher';
 import { config } from '../../config';
+import { logger } from '../../middleware/logger';
 
 export class JinaContentFetcher implements ContentFetcher {
   private apiKey: string;
@@ -25,13 +26,31 @@ export class JinaContentFetcher implements ContentFetcher {
       throw new Error(`Jina Reader API error (${response.status}): ${errorBody}`);
     }
 
-    const data = (await response.json()) as {
-      data?: { content?: string; title?: string };
+    const rawText = await response.text();
+    logger.info(`[Jina] ${url.substring(0, 60)} raw response: ${rawText.substring(0, 300).replace(/\n/g, ' ')}`);
+
+    let data: {
+      data?: { content?: string; title?: string; text?: string; description?: string };
       content?: string;
       title?: string;
+      text?: string;
     };
 
-    const content = data.data?.content || data.content || '';
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      // Jina retornou texto puro, não JSON
+      logger.info(`[Jina] ${url.substring(0, 60)} returned plain text (${rawText.length} chars)`);
+      return {
+        url,
+        title: '',
+        content: rawText,
+        wordCount: rawText.trim() ? rawText.trim().split(/\s+/).length : 0,
+      };
+    }
+
+    const content = data.data?.content || data.data?.text || data.data?.description || data.content || data.text || '';
+    logger.info(`[Jina] ${url.substring(0, 60)} content=${content.length} chars, title="${(data.data?.title || data.title || '').substring(0, 50)}"`);
 
     return {
       url,

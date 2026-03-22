@@ -12,7 +12,8 @@ import { NewsExtraction } from '../../utils/types';
 const openai = new OpenAI({ apiKey: config.openaiApiKey });
 
 const VALID_CRIME_TYPES = [
-  'roubo', 'furto', 'homicídio', 'latrocínio', 'tráfico', 'assalto', 'outro',
+  'roubo', 'furto', 'homicídio', 'latrocínio', 'tráfico', 'assalto',
+  'prisão', 'apreensão', 'operação policial', 'outro',
 ] as const;
 
 export interface Filter2Result {
@@ -33,8 +34,8 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
     return { extraction: null, rejectionReason: `confianca=${data.confianca} (min=${minConfidence})` };
   }
 
-  // tipo_crime: deve ser um dos valores válidos
-  if (typeof data.tipo_crime !== 'string' || !VALID_CRIME_TYPES.includes(data.tipo_crime as typeof VALID_CRIME_TYPES[number])) {
+  // tipo_crime: qualquer string não-vazia
+  if (typeof data.tipo_crime !== 'string' || data.tipo_crime.trim().length === 0) {
     return { extraction: null, rejectionReason: `tipo_crime_invalido=${data.tipo_crime}` };
   }
 
@@ -81,22 +82,27 @@ export async function filter2GPTWithReason(content: string, options: Filter2Opti
 
   const prompt = `Analise a seguinte notícia e extraia dados estruturados em JSON.
 
+IMPORTANTE: Considere como "e_crime": true QUALQUER notícia que relate uma ocorrência policial REAL e INDIVIDUAL.
+Exemplos: roubo, furto, homicídio, tráfico, assalto, prisão, apreensão, operação policial, flagrante, acidente com vítima, feminicídio, estelionato, sequestro, perseguição, mandado de busca, etc.
+
+Retorne "e_crime": false APENAS para: estatísticas gerais, artigos acadêmicos, editoriais de opinião, páginas de categoria/tag, ou conteúdo que NÃO descreva um fato policial específico.
+
 NOTÍCIA:
 ${truncated}
 
 Retorne APENAS um JSON no formato:
 {
   "e_crime": true/false,
-  "tipo_crime": "roubo" | "furto" | "homicídio" | "latrocínio" | "tráfico" | "assalto" | "outro",
+  "tipo_crime": "tipo do crime ou ocorrência (ex: roubo, prisão, homicídio, operação policial, etc.)",
   "cidade": "Nome da Cidade",
   "bairro": "Nome do Bairro" ou null,
   "rua": "Nome da Rua" ou null,
   "data_ocorrencia": "YYYY-MM-DD",
   "resumo": "Resumo em 1-2 frases do que aconteceu",
-  "confianca": 0.0 a 1.0 (quão certo você está que é crime)
+  "confianca": 0.0 a 1.0 (quão certo você está que é notícia de ocorrência policial)
 }
 
-Se não for notícia de crime, retorne: {"e_crime": false}`;
+Se NÃO for notícia de ocorrência policial individual, retorne: {"e_crime": false}`;
 
   try {
     const response = await openai.chat.completions.create({
@@ -107,6 +113,8 @@ Se não for notícia de crime, retorne: {"e_crime": false}`;
     });
 
     const raw = response.choices[0].message.content || '{}';
+    logger.info(`[Filter2] content preview: ${truncated.substring(0, 150).replace(/\n/g, ' ')}...`);
+    logger.info(`[Filter2] GPT response: ${raw.substring(0, 300)}`);
 
     let data: Record<string, unknown>;
     try {

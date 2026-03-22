@@ -40,13 +40,17 @@ export class CachedContentFetcher implements ContentFetcher {
     logger.debug(`[ContentCache] MISS for ${url}, fetching...`);
     const result = await this.realFetcher.fetch(url);
 
-    // 3. Salvar no cache (TTL configurável, default 24h)
-    try {
-      await redis.setex(cacheKey, config.cacheJinaContentTtl, JSON.stringify(result));
-      await redis.incr('cache:content:misses').catch(() => {});
-      logger.debug(`[ContentCache] Cached ${url} (TTL ${config.cacheJinaContentTtl}s)`);
-    } catch {
-      logger.warn('[ContentCache] Redis write failed, continuing without cache');
+    // 3. Salvar no cache APENAS se tiver conteúdo real (>100 chars)
+    if (result.content.trim().length > 100) {
+      try {
+        await redis.setex(cacheKey, config.cacheJinaContentTtl, JSON.stringify(result));
+        await redis.incr('cache:content:misses').catch(() => {});
+        logger.debug(`[ContentCache] Cached ${url} (TTL ${config.cacheJinaContentTtl}s)`);
+      } catch {
+        logger.warn('[ContentCache] Redis write failed, continuing without cache');
+      }
+    } else {
+      logger.warn(`[ContentCache] NOT caching empty/short content for ${url.substring(0, 60)} (${result.content.length} chars)`);
     }
 
     return result;

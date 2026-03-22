@@ -184,7 +184,16 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
         }
       }
     );
-    const validContents = contentResults.filter((c): c is FetchedContent => c !== null);
+    const fetchedContents = contentResults.filter((c): c is FetchedContent => c !== null);
+    const validContents = fetchedContents.filter((c) => {
+      if (c.content.trim().length < 100) {
+        logger.warn(`[ManualSearch] ${searchId} conteudo vazio/curto para ${c.url.substring(0, 60)} (${c.content.length} chars)`);
+        rejectedUrls.push({ url: c.url, stage: 'fetch', reason: `conteudo_vazio (${c.content.length} chars)` });
+        return false;
+      }
+      return true;
+    });
+    logger.info(`[ManualSearch] ${searchId} fetch: ${afterFilter1.length} URLs → ${fetchedContents.length} fetched → ${validContents.length} com conteudo`);
 
     await db.trackCost({
       source: 'manual_search',
