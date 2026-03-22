@@ -30,7 +30,7 @@ export function Sidebar() {
   return (
     <aside className="flex h-screen w-64 flex-col border-r bg-card">
       <div className="flex h-14 items-center px-4 font-bold text-lg">
-        Netrios News
+        SIMEops
       </div>
       <Separator />
       <nav className="flex-1 space-y-1 p-2">

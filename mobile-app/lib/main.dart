@@ -39,7 +39,7 @@ class NetriosApp extends StatelessWidget {
         Provider(create: (_) => LocalDbService()),
       ],
       child: MaterialApp(
-        title: 'Netrios News',
+        title: 'SIMEops',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(

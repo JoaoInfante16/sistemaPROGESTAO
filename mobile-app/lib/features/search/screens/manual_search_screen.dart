@@ -219,7 +219,8 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       children: [
         // Estado
         DropdownButtonFormField<String>(
-          initialValue: _selectedEstado,
+          key: const ValueKey('estado'),
+          value: _selectedEstado,
           decoration: const InputDecoration(
             labelText: 'Estado',
             border: OutlineInputBorder(),
@@ -237,6 +238,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
         // Cidades - multi-select search field
         MultiCitySearchField(
+          key: ValueKey(_selectedEstado),
           estadoNome: _selectedEstado,
           onChanged: (cidades) {
             setState(() => _selectedCidades = cidades);
@@ -246,7 +248,8 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
         // Periodo
         DropdownButtonFormField<int>(
-          initialValue: _periodoDias,
+          key: const ValueKey('periodo'),
+          value: _periodoDias,
           decoration: const InputDecoration(
             labelText: 'Periodo',
             border: OutlineInputBorder(),
@@ -261,7 +264,8 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
         // Tipo crime
         DropdownButtonFormField<String>(
-          initialValue: 'Todos',
+          key: const ValueKey('tipocrime'),
+          value: _tipoCrime ?? 'Todos',
           decoration: const InputDecoration(
             labelText: 'Tipo de crime (opcional)',
             border: OutlineInputBorder(),

@@ -92,7 +92,7 @@ export default function PublicReportPage() {
       <div className="flex items-center justify-between mb-8 print:hidden">
         <div className="flex items-center gap-3">
           <Shield className="h-8 w-8 text-blue-600" />
-          <span className="text-lg font-bold text-blue-600">Netrios News</span>
+          <span className="text-lg font-bold text-blue-600">SIMEops</span>
         </div>
         <button
           onClick={handleExportPDF}
@@ -225,7 +225,7 @@ export default function PublicReportPage() {
               hour: '2-digit',
               minute: '2-digit',
             })}
-            {' '}por Netrios News - Monitoramento Criminal Inteligente
+            {' '}por SIMEops - Sistema de Monitoramento de Ocorrencias Policiais
           </p>
         </div>
       </div>

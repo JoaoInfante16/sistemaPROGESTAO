@@ -103,7 +103,7 @@ export async function exportDashboardPDF(
   pdf.setFontSize(8);
   pdf.setTextColor(150);
   pdf.text(
-    'Gerado por Netrios News - Monitoramento Criminal Inteligente',
+    'Gerado por SIMEops - Sistema de Monitoramento de Ocorrencias Policiais',
     pageWidth / 2,
     pageHeight - 8,
     { align: 'center' }

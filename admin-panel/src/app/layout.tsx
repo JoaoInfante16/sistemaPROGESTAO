@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Netrios News - Admin',
-  description: 'Painel administrativo do Netrios News',
+  title: 'SIMEops - Admin',
+  description: 'Painel administrativo do SIMEops',
 };
 
 export default function RootLayout({

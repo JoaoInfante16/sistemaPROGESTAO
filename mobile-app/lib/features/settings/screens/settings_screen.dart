@@ -62,8 +62,8 @@ class SettingsScreen extends StatelessWidget {
               const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.shield_outlined),
-                title: const Text('Netrios News'),
-                subtitle: const Text('Monitoramento de Ocorrencias'),
+                title: const Text('SIMEops'),
+                subtitle: const Text('PROGESTÃO'),
               ),
             ],
           ),

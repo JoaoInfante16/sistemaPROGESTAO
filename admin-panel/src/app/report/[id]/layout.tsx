@@ -1,6 +1,6 @@
 export const metadata = {
-  title: 'Relatorio de Analise de Risco - Netrios News',
-  description: 'Relatorio de criminalidade gerado por Netrios News',
+  title: 'Relatorio de Analise de Risco - SIMEops',
+  description: 'Relatorio de criminalidade gerado por SIMEops',
 };
 
 export default function ReportLayout({ children }: { children: React.ReactNode }) {
