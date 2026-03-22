@@ -4,7 +4,6 @@ import '../../../core/services/api_service.dart';
 import 'feed_screen.dart';
 import 'favorites_screen.dart';
 import '../../search/screens/search_screen.dart';
-import '../../search/screens/manual_search_screen.dart';
 import '../../settings/screens/settings_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -50,17 +49,6 @@ class _MainScreenState extends State<MainScreen> {
         index: _currentIndex,
         children: _tabs,
       ),
-      floatingActionButton: _currentIndex == 2
-          ? FloatingActionButton.extended(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => const ManualSearchScreen()),
-              ),
-              icon: const Icon(Icons.travel_explore),
-              label: const Text('Nova busca'),
-            )
-          : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) {

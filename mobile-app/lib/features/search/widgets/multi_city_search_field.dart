@@ -57,10 +57,25 @@ class _MultiCitySearchFieldState extends State<MultiCitySearchField> {
   }
 
   void _onFocusChange() {
-    if (!_focusNode.hasFocus) {
+    if (_focusNode.hasFocus && _controller.text.isEmpty && widget.estadoNome != null) {
+      // Show all cities when field gains focus with empty text
+      _showAllCities();
+    } else if (!_focusNode.hasFocus) {
       Future.delayed(const Duration(milliseconds: 200), () {
         if (mounted) _hideSuggestions();
       });
+    }
+  }
+
+  void _showAllCities() {
+    final locations = BrazilianLocations.instance;
+    final allCities = locations.getCidades(widget.estadoNome!);
+    final results = allCities
+        .where((c) => !_selectedCities.contains(c))
+        .toList();
+    if (results.isNotEmpty) {
+      setState(() => _suggestions = results);
+      _showOverlay();
     }
   }
 
@@ -118,7 +133,7 @@ class _MultiCitySearchFieldState extends State<MultiCitySearchField> {
             elevation: 4,
             borderRadius: BorderRadius.circular(8),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 200),
+              constraints: const BoxConstraints(maxHeight: 250),
               child: ListView.builder(
                 padding: EdgeInsets.zero,
                 shrinkWrap: true,
@@ -176,7 +191,7 @@ class _MultiCitySearchFieldState extends State<MultiCitySearchField> {
                   ? 'Selecione o estado primeiro'
                   : _atLimit
                       ? 'Limite de ${widget.maxCities} cidades atingido'
-                      : 'Digite para buscar e marcar cidades...',
+                      : 'Toque para ver cidades ou digite...',
               prefixIcon: const Icon(Icons.search),
               border: const OutlineInputBorder(),
               suffixIcon: _controller.text.isNotEmpty
@@ -187,7 +202,9 @@ class _MultiCitySearchFieldState extends State<MultiCitySearchField> {
                         _hideSuggestions();
                       },
                     )
-                  : null,
+                  : widget.estadoNome != null && !_atLimit
+                      ? const Icon(Icons.arrow_drop_down)
+                      : null,
             ),
           ),
           if (_selectedCities.isNotEmpty) ...[

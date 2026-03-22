@@ -109,14 +109,16 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'SIMEops',
+                    'SIMEops - PROGESTÃO',
+                    textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'PROGESTÃO',
+                    'Sistema de Monitoramento de Ocorrencias Policiais',
+                    textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Colors.grey[600],
                         ),

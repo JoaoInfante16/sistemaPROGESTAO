@@ -6,7 +6,6 @@ import '../../../core/data/brazilian_locations.dart';
 import '../../../core/services/api_service.dart';
 import '../widgets/multi_city_search_field.dart';
 import 'report_screen.dart';
-import 'search_history_screen.dart';
 
 class ManualSearchScreen extends StatefulWidget {
   /// Se fornecido, retoma uma busca existente (do historico).
@@ -23,7 +22,8 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   String? _selectedEstado;
   Set<String> _selectedCidades = {};
   int _periodoDias = 30;
-  String? _tipoCrime;
+  bool _useKeyword = false;
+  final _keywordCtrl = TextEditingController();
   bool _loadingLocations = true;
 
   // Search state
@@ -32,16 +32,6 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   List<Map<String, dynamic>> _results = [];
   Map<String, dynamic>? _progress;
   Timer? _pollTimer;
-
-  static const _tiposCrime = [
-    'Todos',
-    'Roubo',
-    'Furto',
-    'Assalto',
-    'Homicidio',
-    'Latrocinio',
-    'Trafico',
-  ];
 
   static const _periodos = {
     7: 'Ultimos 7 dias',
@@ -98,6 +88,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _keywordCtrl.dispose();
     super.dispose();
   }
 
@@ -125,8 +116,8 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         estado: _selectedEstado!,
         cidades: _selectedCidades.toList(),
         periodoDias: _periodoDias,
-        tipoCrime: (_tipoCrime != null && _tipoCrime != 'Todos')
-            ? _tipoCrime
+        tipoCrime: (_useKeyword && _keywordCtrl.text.trim().length >= 2)
+            ? _keywordCtrl.text.trim()
             : null,
       );
 
@@ -194,16 +185,6 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Nova Busca'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.history),
-            tooltip: 'Historico',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                  builder: (_) => const SearchHistoryScreen()),
-            ),
-          ),
-        ],
       ),
       body: _searchStatus == 'idle' ? _buildForm() : _buildResults(),
     );
@@ -262,19 +243,35 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         ),
         const SizedBox(height: 12),
 
-        // Tipo crime
-        DropdownButtonFormField<String>(
-          key: const ValueKey('tipocrime'),
-          value: _tipoCrime ?? 'Todos',
-          decoration: const InputDecoration(
-            labelText: 'Tipo de crime (opcional)',
-            border: OutlineInputBorder(),
+        // Palavra-chave (tipo crime)
+        Row(
+          children: [
+            Checkbox(
+              value: _useKeyword,
+              onChanged: (v) => setState(() => _useKeyword = v ?? false),
+            ),
+            Expanded(
+              child: Text(
+                'Filtrar por palavra-chave (opcional)',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _keywordCtrl,
+          enabled: _useKeyword,
+          maxLength: 50,
+          decoration: InputDecoration(
+            hintText: _useKeyword ? 'Ex: roubo, furto, homicidio...' : 'Todos',
+            border: const OutlineInputBorder(),
+            filled: !_useKeyword,
+            fillColor: !_useKeyword
+                ? Theme.of(context).colorScheme.surfaceContainerHighest
+                : null,
+            counterText: '',
           ),
-          isExpanded: true,
-          items: _tiposCrime
-              .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-              .toList(),
-          onChanged: (v) => setState(() => _tipoCrime = v),
         ),
         const SizedBox(height: 24),
 

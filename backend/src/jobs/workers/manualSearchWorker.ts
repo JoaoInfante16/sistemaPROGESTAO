@@ -14,7 +14,7 @@ import { scrapeSSP } from '../../services/search/SSPScraper';
 // Embedding not needed for manual search (results aren't saved to news table)
 import { filter0Regex } from '../../services/filters/filter0Regex';
 import { filter1GPTBatch } from '../../services/filters/filter1GPTBatch';
-import { filter2GPT } from '../../services/filters/filter2GPT';
+import { filter2GPTWithReason } from '../../services/filters/filter2GPT';
 import { db } from '../../database/queries';
 import { logger } from '../../middleware/logger';
 import { asyncPool } from '../../utils/helpers';
@@ -124,16 +124,30 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     // 2. Filter 0 - Regex + 3. Filter 1 - GPT Batch
     await db.updateSearchProgress(searchId, { stage: 'filtering', stage_num: 3, total_stages: 6, details: `${searchResults.length} URLs para filtrar` });
 
+    const rejectedUrls: Array<{ url: string; stage: string; reason: string }> = [];
+
     const afterFilter0 = pipelineConfig.filter0RegexEnabled
-      ? searchResults.filter((r) => filter0Regex(r.url, r.snippet))
+      ? searchResults.filter((r) => {
+          const pass = filter0Regex(r.url, r.snippet);
+          if (!pass) rejectedUrls.push({ url: r.url, stage: 'filter0', reason: 'regex_block' });
+          return pass;
+        })
       : [...searchResults];
+
+    logger.info(`[ManualSearch] ${searchId} filter0: ${searchResults.length} → ${afterFilter0.length} (${searchResults.length - afterFilter0.length} rejeitadas)`);
 
     // 3. Filter 1 - GPT Batch
     const snippets = afterFilter0.map((r) => r.snippet);
     const batchResults = await rateLimiter.schedule('openai', () =>
       filter1GPTBatch(snippets)
     );
-    const afterFilter1 = afterFilter0.filter((_, index) => batchResults[index]);
+    const afterFilter1 = afterFilter0.filter((_, index) => {
+      const pass = batchResults[index];
+      if (!pass) rejectedUrls.push({ url: afterFilter0[index].url, stage: 'filter1', reason: 'gpt_nao_crime' });
+      return pass;
+    });
+
+    logger.info(`[ManualSearch] ${searchId} filter1: ${afterFilter0.length} → ${afterFilter1.length} (${afterFilter0.length - afterFilter1.length} rejeitadas)`);
 
     await db.trackCost({
       source: 'manual_search',
@@ -189,19 +203,29 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     }> = [];
 
     for (const fetched of validContents) {
-      const extracted = await rateLimiter.schedule('openai', () =>
-        filter2GPT(fetched.content, {
+      const { extraction: extracted, rejectionReason } = await rateLimiter.schedule('openai', () =>
+        filter2GPTWithReason(fetched.content, {
           maxContentChars: pipelineConfig.filter2MaxContentChars,
           minConfidence: pipelineConfig.filter2ConfidenceMin,
         })
       );
-      if (!extracted) continue;
+
+      if (!extracted) {
+        const reason = rejectionReason || 'unknown';
+        rejectedUrls.push({ url: fetched.url, stage: 'filter2', reason });
+        logger.info(`[ManualSearch] ${searchId} filter2 REJEITOU ${fetched.url.substring(0, 60)}... motivo: ${reason}`);
+        continue;
+      }
 
       // Filter by date range
       const newsDate = new Date(extracted.data_ocorrencia);
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - periodoDias);
-      if (newsDate < cutoff) continue;
+      if (newsDate < cutoff) {
+        rejectedUrls.push({ url: fetched.url, stage: 'filter2_date', reason: `data=${extracted.data_ocorrencia} fora do periodo (${periodoDias}d)` });
+        logger.info(`[ManualSearch] ${searchId} filter2 data fora: ${extracted.data_ocorrencia} (cutoff: ${cutoff.toISOString().split('T')[0]})`);
+        continue;
+      }
 
       results.push({
         tipo_crime: extracted.tipo_crime,
@@ -215,6 +239,10 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
         source_type: sourceTypeMap.get(fetched.url) || 'google',
       });
     }
+
+    logger.info(`[ManualSearch] ${searchId} filter2: ${validContents.length} → ${results.length} (${validContents.length - results.length} rejeitadas)`);
+    logger.info(`[ManualSearch] ${searchId} total rejeitadas: ${rejectedUrls.length} | motivos: ${JSON.stringify(rejectedUrls.map(r => `${r.stage}:${r.reason}`))}`);
+
 
     await db.trackCost({
       source: 'manual_search',
