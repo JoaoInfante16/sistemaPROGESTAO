@@ -15,6 +15,6 @@ abstract class Env {
   // Device fisico na LAN: http://192.168.x.x:3000
   static const apiUrl = String.fromEnvironment(
     'API_URL',
-    defaultValue: 'http://10.0.2.2:3000',
+    defaultValue: 'http://192.168.1.3:3000',
   );
 }

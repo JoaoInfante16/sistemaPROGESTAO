@@ -39,11 +39,11 @@ export async function deduplicateNews(
   );
 
   if (candidates.length === 0) {
-    logger.debug('[Dedup] No geo-temporal candidates, clearly new');
-    return { isDuplicate: false };
+    logger.debug('[Dedup] Layer 1: no candidates → new');
+    return { isDuplicate: false, layer: 1 };
   }
 
-  logger.debug(`[Dedup] Found ${candidates.length} geo-temporal candidates`);
+  logger.debug(`[Dedup] Layer 1: ${candidates.length} candidates found`);
 
   // CAMADA 2: Embedding Similarity (cosine distance, <200ms)
   const similarities = candidates.map((c) => ({
@@ -58,8 +58,8 @@ export async function deduplicateNews(
   logger.debug(`[Dedup] Top similarity score: ${topMatch.score.toFixed(3)}`);
 
   if (topMatch.score < similarityThreshold) {
-    logger.debug('[Dedup] Low similarity, clearly different');
-    return { isDuplicate: false };
+    logger.debug(`[Dedup] Layer 2: score ${topMatch.score.toFixed(3)} < ${similarityThreshold} → new`);
+    return { isDuplicate: false, layer: 2 };
   }
 
   // CAMADA 3: Confirmação GPT (caro, mas só ~5% dos casos chegam aqui)
@@ -73,8 +73,8 @@ export async function deduplicateNews(
     return { isDuplicate: true, existingId: topMatch.id, layer: 3 };
   }
 
-  logger.debug('[Dedup] GPT says different, creating new entry');
-  return { isDuplicate: false };
+  logger.debug('[Dedup] Layer 3: GPT says different → new');
+  return { isDuplicate: false, layer: 3 };
 }
 
 /**

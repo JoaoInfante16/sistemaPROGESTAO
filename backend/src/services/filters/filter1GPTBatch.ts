@@ -17,6 +17,8 @@ const openai = new OpenAI({ apiKey: config.openaiApiKey });
  * Fallback: se o GPT retornar resposta inválida, assume todos como true
  * (safe default - permite que Filter2 faça análise mais profunda).
  */
+const BATCH_CHUNK_SIZE = 30; // Max snippets por chamada GPT (evita estourar context window)
+
 export async function filter1GPTBatch(snippets: string[]): Promise<boolean[]> {
   if (snippets.length === 0) return [];
 
@@ -25,6 +27,22 @@ export async function filter1GPTBatch(snippets: string[]): Promise<boolean[]> {
     return [await filter1Single(snippets[0])];
   }
 
+  // Dividir em chunks pra não estourar context window do GPT
+  if (snippets.length > BATCH_CHUNK_SIZE) {
+    logger.info(`[Filter1Batch] Splitting ${snippets.length} snippets into chunks of ${BATCH_CHUNK_SIZE}`);
+    const results: boolean[] = [];
+    for (let i = 0; i < snippets.length; i += BATCH_CHUNK_SIZE) {
+      const chunk = snippets.slice(i, i + BATCH_CHUNK_SIZE);
+      const chunkResults = await filter1GPTBatchSingle(chunk);
+      results.push(...chunkResults);
+    }
+    return results;
+  }
+
+  return filter1GPTBatchSingle(snippets);
+}
+
+async function filter1GPTBatchSingle(snippets: string[]): Promise<boolean[]> {
   const prompt = `Analise os seguintes ${snippets.length} snippets de notícias.
 Para cada um, determine se é uma notícia de CRIME POLICIAL REAL.
 
@@ -41,8 +59,10 @@ IMPORTANTE:
 - true = crime policial real (roubo, furto, homicídio, latrocínio, tráfico, assalto)
 - false = não é crime (novela, futebol, receita, etc)`;
 
-  try {
-    const response = await openai.chat.completions.create({
+  // Retry 1x antes de fallback "all true"
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const response = await openai.chat.completions.create({
       model: config.openaiModel,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0,
@@ -55,22 +75,43 @@ IMPORTANTE:
     try {
       data = JSON.parse(raw) as Record<string, unknown>;
     } catch {
-      logger.error(`[Filter1Batch] Invalid JSON response: ${raw.substring(0, 200)}`);
-      return snippets.map(() => true); // Fallback: deixa Filter2 decidir
+      logger.error(`[Filter1Batch] Attempt ${attempt}: Invalid JSON response: ${raw.substring(0, 200)}`);
+      if (attempt < 2) continue;
+      return snippets.map(() => true);
     }
 
     // Validar resposta
-    if (!Array.isArray(data.results) || data.results.length !== snippets.length) {
-      logger.error(`[Filter1Batch] Invalid results length: expected ${snippets.length}, got ${Array.isArray(data.results) ? data.results.length : 'non-array'}`);
-      return snippets.map(() => true); // Fallback
+    if (!Array.isArray(data.results)) {
+      logger.error(`[Filter1Batch] Attempt ${attempt}: results is not array: ${raw.substring(0, 200)}`);
+      if (attempt < 2) continue;
+      return snippets.map(() => true);
+    }
+
+    // GPT às vezes retorna ±1-2 itens. Ajustar em vez de descartar tudo.
+    if (data.results.length !== snippets.length) {
+      logger.warn(`[Filter1Batch] Length mismatch: expected ${snippets.length}, got ${data.results.length}. Adjusting.`);
+
+      if (data.results.length > snippets.length) {
+        // Truncar extras
+        data.results = data.results.slice(0, snippets.length);
+      } else {
+        // Paddar faltantes com true (safe: deixa Filter2 decidir)
+        while (data.results.length < snippets.length) {
+          data.results.push(true);
+        }
+      }
     }
 
     // Garantir que todos são boolean
     return data.results.map((val) => val === true);
   } catch (error) {
-    logger.error('[Filter1Batch] GPT error:', error);
-    return snippets.map(() => true); // Fallback
+    logger.error(`[Filter1Batch] Attempt ${attempt} GPT error:`, error);
+    if (attempt < 2) continue;
+    return snippets.map(() => true); // Fallback após 2 tentativas
   }
+  } // end for
+
+  return snippets.map(() => true); // Fallback (nunca deve chegar aqui)
 }
 
 /**

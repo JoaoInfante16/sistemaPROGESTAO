@@ -102,8 +102,8 @@ async function crawlDomainSections(domain: string, jinaApiKey: string): Promise<
     }
   }
 
-  // Nenhuma seção funcionou — cachear como 'none' para não tentar de novo
-  await cacheSection(domain, 'none');
+  // Nenhuma seção funcionou — cachear como 'none' com TTL menor (3 dias) para permitir retry
+  await cacheSectionNone(domain);
   return [];
 }
 
@@ -213,6 +213,15 @@ async function getCachedSection(domain: string): Promise<string | null> {
 async function cacheSection(domain: string, section: string): Promise<void> {
   try {
     await redis.set(`${SECTION_CACHE_PREFIX}${domain}`, section, 'EX', SECTION_CACHE_TTL);
+  } catch {
+    // Cache failure is non-critical
+  }
+}
+
+async function cacheSectionNone(domain: string): Promise<void> {
+  try {
+    const NONE_TTL = 3 * 24 * 60 * 60; // 3 dias (retry mais rápido que seções encontradas)
+    await redis.set(`${SECTION_CACHE_PREFIX}${domain}`, 'none', 'EX', NONE_TTL);
   } catch {
     // Cache failure is non-critical
   }

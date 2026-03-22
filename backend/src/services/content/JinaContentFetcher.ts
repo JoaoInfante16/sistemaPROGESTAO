@@ -27,7 +27,7 @@ export class JinaContentFetcher implements ContentFetcher {
     }
 
     const rawText = await response.text();
-    logger.info(`[Jina] ${url.substring(0, 60)} raw response: ${rawText.substring(0, 300).replace(/\n/g, ' ')}`);
+    logger.debug(`[Jina] ${url.substring(0, 60)} raw response: ${rawText.substring(0, 300).replace(/\n/g, ' ')}`);
 
     let data: {
       data?: { content?: string; title?: string; text?: string; description?: string };
@@ -40,7 +40,7 @@ export class JinaContentFetcher implements ContentFetcher {
       data = JSON.parse(rawText);
     } catch {
       // Jina retornou texto puro, não JSON
-      logger.info(`[Jina] ${url.substring(0, 60)} returned plain text (${rawText.length} chars)`);
+      logger.debug(`[Jina] ${url.substring(0, 60)} returned plain text (${rawText.length} chars)`);
       return {
         url,
         title: '',

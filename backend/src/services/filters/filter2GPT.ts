@@ -113,8 +113,8 @@ Se NÃO for notícia de ocorrência policial individual, retorne: {"e_crime": fa
     });
 
     const raw = response.choices[0].message.content || '{}';
-    logger.info(`[Filter2] content preview: ${truncated.substring(0, 150).replace(/\n/g, ' ')}...`);
-    logger.info(`[Filter2] GPT response: ${raw.substring(0, 300)}`);
+    logger.debug(`[Filter2] content preview: ${truncated.substring(0, 150).replace(/\n/g, ' ')}...`);
+    logger.debug(`[Filter2] GPT response: ${raw.substring(0, 300)}`);
 
     let data: Record<string, unknown>;
     try {

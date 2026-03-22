@@ -56,7 +56,7 @@ export class PerplexitySearchProvider implements SearchProvider {
       const days = parseInt(dateRestrict.slice(1), 10);
       if (days <= 1) return 'day';
       if (days <= 7) return 'week';
-      if (days <= 30) return 'month';
+      if (days <= 90) return 'month'; // Perplexity não tem "trimestre", month é o mais próximo
       return 'year';
     }
     if (dateRestrict.startsWith('w')) return 'week';

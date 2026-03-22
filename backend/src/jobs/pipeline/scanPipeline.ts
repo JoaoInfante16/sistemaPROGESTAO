@@ -83,6 +83,21 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
 
   logger.info(`[Pipeline] Starting scan for ${location.name}`);
 
+  // Budget check — skip scan if monthly budget exceeded
+  const monthlyBudget = await configManager.getNumber('monthly_budget_usd');
+  const currentCost = await db.getCurrentMonthCost();
+  if (currentCost >= monthlyBudget) {
+    logger.warn(`[Pipeline] Budget exceeded: $${currentCost.toFixed(2)} >= $${monthlyBudget}. Skipping scan.`);
+    return {
+      locationId, locationName: location.name,
+      urlsFound: 0, afterFilter0: 0, afterFilter1: 0, afterFilter2: 0,
+      newsSaved: 0, duplicatesFound: 0, totalCostUsd: 0, durationMs: Date.now() - startTime,
+    };
+  }
+  if (currentCost >= monthlyBudget * 0.9) {
+    logger.warn(`[Pipeline] Budget warning: $${currentCost.toFixed(2)} / $${monthlyBudget} (${(currentCost / monthlyBudget * 100).toFixed(0)}%)`);
+  }
+
   // ============================================
   // STAGE 1: Multi-Source URL Collector
   // ============================================
@@ -266,13 +281,19 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   // ============================================
   let newsSaved = 0;
   let duplicatesFound = 0;
+  const dedupLayerStats = { layer1: 0, layer2: 0, layer3: 0 };
   for (const news of extractions) {
     try {
       const dedupResult = await deduplicateNews(news, news.sourceUrl, pipelineConfig.dedupSimilarityThreshold);
 
+      // Métricas por camada
+      if (dedupResult.layer === 1) dedupLayerStats.layer1++;
+      else if (dedupResult.layer === 2) dedupLayerStats.layer2++;
+      else if (dedupResult.layer === 3) dedupLayerStats.layer3++;
+
       if (dedupResult.isDuplicate) {
         duplicatesFound++;
-        logger.info(`[Pipeline] Duplicate detected, source added to ${dedupResult.existingId}`);
+        logger.info(`[Pipeline] Duplicate detected (layer ${dedupResult.layer}), source added to ${dedupResult.existingId}`);
         continue;
       }
 
@@ -309,12 +330,14 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
     }
   }
 
+  logger.info(`[Pipeline] Dedup stats: ${extractions.length} checked, ${duplicatesFound} dupes, ${newsSaved} new | Layer1(geo): ${dedupLayerStats.layer1}, Layer2(embed): ${dedupLayerStats.layer2}, Layer3(gpt): ${dedupLayerStats.layer3}`);
+
   if (duplicatesFound > 0) {
     await db.trackCost({
       source: 'auto_scan',
       provider: 'openai',
       cost_usd: duplicatesFound * 0.001,
-      details: { stage: 'dedup_gpt', duplicates: duplicatesFound },
+      details: { stage: 'dedup_gpt', duplicates: duplicatesFound, layerStats: dedupLayerStats },
     });
   }
 

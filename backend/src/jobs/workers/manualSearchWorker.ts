@@ -11,6 +11,9 @@ import { config } from '../../config';
 import { createSearchProvider } from '../../services/search';
 import { createContentFetcher } from '../../services/content';
 import { scrapeSSP } from '../../services/search/SSPScraper';
+import { fetchGoogleNewsRSS } from '../../services/search/GoogleNewsRSSProvider';
+import { crawlSections } from '../../services/search/SectionCrawler';
+import { deduplicateResults } from '../../services/search/urlDeduplicator';
 // Embedding not needed for manual search (results aren't saved to news table)
 import { filter0Regex } from '../../services/filters/filter0Regex';
 import { filter1GPTBatch } from '../../services/filters/filter1GPTBatch';
@@ -42,6 +45,15 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
   const startTime = Date.now();
 
   try {
+    // Budget check
+    const monthlyBudget = await configManager.getNumber('monthly_budget_usd');
+    const currentCost = await db.getCurrentMonthCost();
+    if (currentCost >= monthlyBudget) {
+      logger.warn(`[ManualSearch] Budget exceeded: $${currentCost.toFixed(2)} >= $${monthlyBudget}. Rejecting search.`);
+      await db.updateSearchStatus(searchId, 'failed');
+      return;
+    }
+
     const pipelineConfig = {
       searchMaxResults: await configManager.getNumber('search_max_results'),
       contentFetchConcurrency: await configManager.getNumber('content_fetch_concurrency'),
@@ -53,13 +65,17 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     // 1. Perplexity Search — loop por cidade, coleta URLs combinadas
     await db.updateSearchProgress(searchId, { stage: 'google_search', stage_num: 1, total_stages: 6, details: `Pesquisando ${cidades.length} cidades` });
 
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - periodoDias);
+    const cutoffStr = cutoffDate.toISOString().split('T')[0]; // YYYY-MM-DD
+
     const periodoLabel = periodoDias <= 1 ? 'nas últimas 24 horas'
       : periodoDias <= 2 ? 'nas últimas 48 horas'
       : periodoDias <= 7 ? `nos últimos ${periodoDias} dias`
-      : `nas últimas ${Math.ceil(periodoDias / 7)} semanas`;
+      : `desde ${cutoffStr}`;
 
     const sourceTypeMap = new Map<string, 'google' | 'ssp'>();
-    const searchResults: Array<{ url: string; snippet: string }> = [];
+    const searchResults: Array<{ url: string; title: string; snippet: string }> = [];
     const seenUrls = new Set<string>();
 
     for (const cidade of cidades) {
@@ -127,20 +143,73 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       }
     }
 
+    // 1c. Google News RSS (grátis, sem quota)
+    const rssEnabled = await configManager.getBoolean('google_news_rss_enabled');
+    if (rssEnabled) {
+      try {
+        for (const cidade of cidades) {
+          const rssQuery = tipoCrime
+            ? `${tipoCrime} ${cidade} ${estado}`
+            : `crime policial ${cidade} ${estado}`;
+          const rssResults = await rateLimiter.schedule('google_news_rss', () =>
+            fetchGoogleNewsRSS(rssQuery)
+          );
+          for (const r of rssResults) {
+            if (!seenUrls.has(r.url)) {
+              seenUrls.add(r.url);
+              sourceTypeMap.set(r.url, 'google');
+              searchResults.push(r);
+            }
+          }
+        }
+        logger.info(`[ManualSearch] ${searchId} after RSS: ${searchResults.length} total URLs`);
+      } catch (error) {
+        logger.warn(`[ManualSearch] RSS failed: ${(error as Error).message}`);
+      }
+    }
+
+    // 1d. Section Crawling (usa domínios das URLs já encontradas)
+    const sectionCrawlingEnabled = await configManager.getBoolean('section_crawling_enabled');
+    if (sectionCrawlingEnabled && searchResults.length > 0) {
+      try {
+        const maxDomains = await configManager.getNumber('section_crawling_max_domains');
+        const sectionResults = await crawlSections(
+          searchResults.map(r => r.url),
+          { maxDomains, jinaApiKey: process.env.JINA_API_KEY || '' }
+        );
+        for (const r of sectionResults) {
+          if (!seenUrls.has(r.url)) {
+            seenUrls.add(r.url);
+            sourceTypeMap.set(r.url, 'google');
+            searchResults.push(r);
+          }
+        }
+        if (sectionResults.length > 0) {
+          logger.info(`[ManualSearch] ${searchId} section crawling: +${sectionResults.length} URLs`);
+        }
+      } catch (error) {
+        logger.warn(`[ManualSearch] Section crawling failed: ${(error as Error).message}`);
+      }
+    }
+
+    // Dedup URLs de todas as fontes
+    const dedupedResults = deduplicateResults(searchResults);
+    logger.info(`[ManualSearch] ${searchId} total after dedup: ${dedupedResults.length} URLs (Perplexity + SSP + RSS + SectionCrawl)`);
+
     // 2. Filter 0 - Regex + 3. Filter 1 - GPT Batch
-    await db.updateSearchProgress(searchId, { stage: 'filtering', stage_num: 3, total_stages: 6, details: `${searchResults.length} URLs para filtrar` });
+    await db.updateSearchProgress(searchId, { stage: 'filtering', stage_num: 3, total_stages: 6, details: `${dedupedResults.length} URLs para filtrar` });
 
     const rejectedUrls: Array<{ url: string; stage: string; reason: string }> = [];
 
     const afterFilter0 = pipelineConfig.filter0RegexEnabled
-      ? searchResults.filter((r) => {
+      ? dedupedResults.filter((r) => {
           const pass = filter0Regex(r.url, r.snippet);
           if (!pass) rejectedUrls.push({ url: r.url, stage: 'filter0', reason: 'regex_block' });
           return pass;
         })
-      : [...searchResults];
+      : [...dedupedResults];
 
-    logger.info(`[ManualSearch] ${searchId} filter0: ${searchResults.length} → ${afterFilter0.length} (${searchResults.length - afterFilter0.length} rejeitadas)`);
+    logger.info(`[ManualSearch] ${searchId} filter0: ${dedupedResults.length} → ${afterFilter0.length} (${dedupedResults.length - afterFilter0.length} rejeitadas)`);
 
     // 3. Filter 1 - GPT Batch
     const snippets = afterFilter0.map((r) => r.snippet);

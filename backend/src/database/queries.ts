@@ -124,7 +124,7 @@ export async function findGeoTemporalCandidates(
     .gte('data_ocorrencia', dateFrom)
     .lte('data_ocorrencia', dateTo)
     .eq('active', true)
-    .limit(10);
+    .limit(50);
 
   if (error) {
     throw new Error(`Failed to find dedup candidates: ${error.message}`);
@@ -176,6 +176,24 @@ export async function trackCost(params: TrackCostParams): Promise<void> {
   if (error) {
     logger.error('Failed to track cost:', error.message);
   }
+}
+
+export async function getCurrentMonthCost(): Promise<number> {
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const { data, error } = await supabase
+    .from('budget_tracking')
+    .select('cost_usd')
+    .gte('created_at', startOfMonth.toISOString());
+
+  if (error) {
+    logger.error('Failed to get monthly cost:', error.message);
+    return 0; // Safe: assume 0 on error (don't block pipeline)
+  }
+
+  return (data || []).reduce((sum, row) => sum + Number(row.cost_usd), 0);
 }
 
 // ============================================
@@ -955,6 +973,7 @@ export const db = {
   findGeoTemporalCandidates,
   insertOperationLog,
   trackCost,
+  getCurrentMonthCost,
   getNewsFeed,
   searchNews,
   getPublicLocationsHierarchy,
