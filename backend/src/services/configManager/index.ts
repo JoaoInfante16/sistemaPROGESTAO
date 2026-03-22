@@ -22,7 +22,7 @@ const DEFAULTS: Record<string, string> = {
   dedup_similarity_threshold: '0.85',
   filter2_confidence_min: '0.7',
   content_fetch_concurrency: '5',
-  search_max_results: '10',
+  search_max_results: '20',
   monthly_budget_usd: '100',
   budget_warning_threshold: '0.9',
   scan_cron_schedule: '*/5 * * * *',
