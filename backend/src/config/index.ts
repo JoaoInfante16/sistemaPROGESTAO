@@ -33,6 +33,7 @@ export const config = {
   googleApiKey: optionalEnv('GOOGLE_SEARCH_API_KEY', ''),
   googleSearchEngineId: optionalEnv('GOOGLE_SEARCH_ENGINE_ID', ''),
   perplexityApiKey: optionalEnv('PERPLEXITY_API_KEY', ''),
+  braveApiKey: optionalEnv('BRAVE_API_KEY', ''),
 
   // Content Fetcher (optional - pipeline won't run without it)
   contentBackend: optionalEnv('CONTENT_BACKEND', 'jina'),

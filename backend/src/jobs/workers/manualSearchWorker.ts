@@ -152,7 +152,7 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
             ? `${tipoCrime} ${cidade} ${estado}`
             : `crime policial ${cidade} ${estado}`;
           const rssResults = await rateLimiter.schedule('google_news_rss', () =>
-            fetchGoogleNewsRSS(rssQuery)
+            fetchGoogleNewsRSS(rssQuery, { maxAgeDays: periodoDias })
           );
           for (const r of rssResults) {
             if (!seenUrls.has(r.url)) {
@@ -311,6 +311,19 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
         continue;
       }
 
+      // Filter by estado — Brave retorna noticias nacionais, filtrar so o estado pedido
+      const cidadeExtraida = extracted.cidade.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const estadoLower = estado.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const cidadesLower = cidades.map(c => c.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+      const cidadeMatch = cidadesLower.some(c => cidadeExtraida.includes(c) || c.includes(cidadeExtraida));
+      const estadoNoResumo = extracted.resumo.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(estadoLower);
+
+      if (!cidadeMatch && !estadoNoResumo) {
+        rejectedUrls.push({ url: fetched.url, stage: 'filter2_location', reason: `cidade=${extracted.cidade} nao pertence a ${estado}` });
+        logger.info(`[ManualSearch] ${searchId} filter2 cidade fora: ${extracted.cidade} (esperado: ${cidades.join(', ')}, ${estado})`);
+        continue;
+      }
+
       results.push({
         tipo_crime: extracted.tipo_crime,
         cidade: extracted.cidade,
@@ -325,8 +338,24 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     }
 
     logger.info(`[ManualSearch] ${searchId} filter2: ${validContents.length} → ${results.length} (${validContents.length - results.length} rejeitadas)`);
-    logger.info(`[ManualSearch] ${searchId} total rejeitadas: ${rejectedUrls.length} | motivos: ${JSON.stringify(rejectedUrls.map(r => `${r.stage}:${r.reason}`))}`);
 
+    // Dedup leve entre resultados da própria busca (mesma ocorrência, fontes diferentes)
+    const beforeDedup = results.length;
+    const dedupKeys = new Set<string>();
+    const finalResults = results.filter((r) => {
+      const key = `${r.cidade.toLowerCase().trim()}|${r.tipo_crime.toLowerCase().trim()}|${r.data_ocorrencia}`;
+      if (dedupKeys.has(key)) {
+        logger.debug(`[ManualSearch] ${searchId} dedup intra-busca: ${key} (${r.source_url.substring(0, 50)})`);
+        return false;
+      }
+      dedupKeys.add(key);
+      return true;
+    });
+    if (beforeDedup !== finalResults.length) {
+      logger.info(`[ManualSearch] ${searchId} dedup intra-busca: ${beforeDedup} → ${finalResults.length} (${beforeDedup - finalResults.length} duplicatas removidas)`);
+    }
+
+    logger.info(`[ManualSearch] ${searchId} total rejeitadas: ${rejectedUrls.length} | motivos: ${JSON.stringify(rejectedUrls.map(r => `${r.stage}:${r.reason}`))}`);
 
     await db.trackCost({
       source: 'manual_search',
@@ -338,14 +367,14 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     // 6. Save results to search_results
     await db.updateSearchProgress(searchId, { stage: 'saving', stage_num: 6, total_stages: 6 });
 
-    if (results.length > 0) {
-      await db.insertSearchResults(searchId, results, 0);
+    if (finalResults.length > 0) {
+      await db.insertSearchResults(searchId, finalResults, 0);
     }
 
-    await db.updateSearchStatus(searchId, 'completed', results.length);
+    await db.updateSearchStatus(searchId, 'completed', finalResults.length);
 
     const duration = Date.now() - startTime;
-    logger.info(`[ManualSearch] ${searchId} completed: ${results.length} results in ${duration}ms`);
+    logger.info(`[ManualSearch] ${searchId} completed: ${finalResults.length} results in ${duration}ms`);
 
     // Push notification ao usuário
     try {
@@ -353,7 +382,7 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       await sendPushToUser(
         job.data.userId,
         'Busca concluida',
-        `Encontramos ${results.length} resultado${results.length !== 1 ? 's' : ''} para ${tipoCrimeLabel} em ${estado}`,
+        `Encontramos ${finalResults.length} resultado${finalResults.length !== 1 ? 's' : ''} para ${tipoCrimeLabel} em ${estado}`,
         { search_id: searchId, type: 'manual_search_completed' }
       );
     } catch (pushErr) {

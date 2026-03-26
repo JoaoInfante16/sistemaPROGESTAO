@@ -24,6 +24,7 @@ const DEFAULT_CONFIGS: Record<string, RateLimitConfig> = {
   jina: { provider: 'jina', max_concurrent: 10, min_time_ms: 50, daily_quota: null, monthly_quota: null },
   openai: { provider: 'openai', max_concurrent: 5, min_time_ms: 200, daily_quota: null, monthly_quota: null },
   google_news_rss: { provider: 'google_news_rss', max_concurrent: 2, min_time_ms: 1000, daily_quota: null, monthly_quota: null },
+  brave: { provider: 'brave', max_concurrent: 5, min_time_ms: 100, daily_quota: 1000, monthly_quota: null },
 };
 
 class DynamicRateLimiter {

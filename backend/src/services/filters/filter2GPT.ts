@@ -11,11 +11,6 @@ import { NewsExtraction } from '../../utils/types';
 
 const openai = new OpenAI({ apiKey: config.openaiApiKey });
 
-const VALID_CRIME_TYPES = [
-  'roubo', 'furto', 'homicídio', 'latrocínio', 'tráfico', 'assalto',
-  'prisão', 'apreensão', 'operação policial', 'outro',
-] as const;
-
 export interface Filter2Result {
   extraction: NewsExtraction | null;
   rejectionReason?: string;

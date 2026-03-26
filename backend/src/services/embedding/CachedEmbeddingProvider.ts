@@ -26,9 +26,16 @@ export class CachedEmbeddingProvider implements EmbeddingProvider {
       const cached = await redis.get(cacheKey);
 
       if (cached) {
-        logger.debug('[EmbeddingCache] HIT');
-        await redis.incr('cache:embedding:hits').catch(() => {});
-        return JSON.parse(cached) as EmbeddingResult;
+        const parsed = JSON.parse(cached) as EmbeddingResult;
+        // Validar dimensão — cache corrompido retorna dimensões erradas
+        if (Array.isArray(parsed.embedding) && parsed.embedding.length === 1536) {
+          logger.debug('[EmbeddingCache] HIT');
+          await redis.incr('cache:embedding:hits').catch(() => {});
+          return parsed;
+        }
+        // Cache corrompido — deletar e regenerar
+        logger.warn(`[EmbeddingCache] Corrupted cache (dim=${parsed.embedding?.length}), regenerating`);
+        await redis.del(cacheKey).catch(() => {});
       }
     } catch {
       logger.warn('[EmbeddingCache] Redis read failed, generating without cache');

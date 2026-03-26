@@ -163,7 +163,7 @@ export async function insertOperationLog(params: InsertLogParams): Promise<void>
 
 interface TrackCostParams {
   source: 'auto_scan' | 'manual_search';
-  provider: 'google' | 'perplexity' | 'jina' | 'openai';
+  provider: 'google' | 'perplexity' | 'brave' | 'jina' | 'openai';
   cost_usd: number;
   details?: Record<string, unknown>;
 }

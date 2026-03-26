@@ -438,7 +438,7 @@ async function collectUrls(
       // Usa a primeira query (genérica) para o RSS
       const rssQuery = queries[0] || `crime ${location.name}`;
       const rssResults = await rateLimiter.schedule('google_news_rss', () =>
-        fetchGoogleNewsRSS(rssQuery)
+        fetchGoogleNewsRSS(rssQuery, { maxAgeDays: 7 })
       );
       if (rssResults.length > 0) {
         allResults.push(...rssResults);

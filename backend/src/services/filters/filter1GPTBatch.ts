@@ -44,7 +44,7 @@ export async function filter1GPTBatch(snippets: string[]): Promise<boolean[]> {
 
 async function filter1GPTBatchSingle(snippets: string[]): Promise<boolean[]> {
   const prompt = `Analise os seguintes ${snippets.length} snippets de notícias.
-Para cada um, determine se é uma notícia de CRIME POLICIAL REAL.
+Para cada um, determine se é uma notícia de OCORRÊNCIA POLICIAL REAL.
 
 SNIPPETS:
 ${snippets.map((snippet, index) => `${index}. "${snippet}"`).join('\n')}
@@ -56,8 +56,8 @@ Retorne um JSON com array de true/false:
 
 IMPORTANTE:
 - Retorne EXATAMENTE ${snippets.length} valores booleanos
-- true = crime policial real (roubo, furto, homicídio, latrocínio, tráfico, assalto)
-- false = não é crime (novela, futebol, receita, etc)`;
+- true = QUALQUER ocorrência policial real: roubo, furto, homicídio, feminicídio, latrocínio, tráfico, assalto, prisão, apreensão, operação policial, confronto, flagrante, mandado, cárcere privado, estelionato, sequestro, crime organizado, etc.
+- false = NÃO é ocorrência policial: novela, futebol, receita, horóscopo, estatísticas gerais, editoriais de opinião, artigos acadêmicos`;
 
   // Retry 1x antes de fallback "all true"
   for (let attempt = 1; attempt <= 2; attempt++) {
@@ -103,7 +103,7 @@ IMPORTANTE:
     }
 
     // Garantir que todos são boolean
-    return data.results.map((val) => val === true);
+    return (data.results as unknown[]).map((val: unknown) => val === true);
   } catch (error) {
     logger.error(`[Filter1Batch] Attempt ${attempt} GPT error:`, error);
     if (attempt < 2) continue;
@@ -122,7 +122,7 @@ async function filter1Single(snippet: string): Promise<boolean> {
 
 Snippet: "${snippet}"
 
-Pergunta: Isso é uma notícia de crime policial real (roubo, furto, homicídio, tráfico, etc)?
+Pergunta: Isso é uma notícia de ocorrência policial real (roubo, furto, homicídio, feminicídio, tráfico, prisão, apreensão, operação policial, confronto, crime organizado, etc)?
 
 Resposta:`;
 

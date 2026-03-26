@@ -18,19 +18,32 @@
 - [x] Filter1 chunking (batches de 30 pra nao crashar com 100+ snippets)
 - [x] Section Crawler cache 'none' TTL reduzido pra 3 dias
 #### Prioridade ALTA — proximo a implementar
-- [ ] **Brave News Search API** — endpoint especifico de NOTICIAS (nao web search generico). $0.005/query (mesmo preco Perplexity), $5/mes gratis (1000 queries). Max 50 resultados/query + paginacao (10 pags). Filtro de data customizado (range exato ex: "2025-12-22to2026-03-22"). Docs: https://api-dashboard.search.brave.com/documentation/services/news-search. TESTAR se realmente retorna 50 resultados. Se sim, substitui Perplexity como fonte principal
-- [ ] **RSS date pre-filter** — extrair `<pubDate>` no parser RSS e descartar artigos fora do periodoDias ANTES do Jina. Economiza ~$0.07 por busca (35 URLs velhas × Jina+GPT). Arquivo: GoogleNewsRSSProvider.ts
-- [ ] **Dedup na busca manual** — resultados da mesma ocorrencia vindos de fontes diferentes aparecem duplicados, corrompe relatorios. Solucao: dedup leve (cidade+tipo_crime+data) entre resultados da propria busca antes de salvar. Sem embedding, gratis
+- [x] **Brave News Search API** — implementado como provider. 50 resultados/query, $0.005/query, date range customizado. SEARCH_BACKEND=brave. Migration 008. TESTAR se realmente retorna 50 resultados
+- [x] **RSS date pre-filter** — extrai `<pubDate>` no parser RSS e descarta artigos fora do periodoDias ANTES do Jina. Economiza ~$0.07/busca. scanPipeline usa maxAgeDays=7
+- [x] **Dedup na busca manual** — dedup leve (cidade+tipo_crime+data) entre resultados da propria busca antes de salvar. Sem embedding, gratis
 - [ ] **Subir concorrencia Jina 5→10** — busca levou ~5min, metade foi Jina. config content_fetch_concurrency
 
 #### Prioridade MEDIA
-- [ ] **Multiplas queries** — se Brave nao resolver, fazer 3 queries por cidade (generica + prisoes + homicidios). queryTemplates ja existem no scanPipeline
+- [ ] **Multiplas queries + dedup consolidado** — Brave e Perplexity retornam max ~15 URLs (limite do indice, nao da API). Solucao: 3 queries por cidade (generica + prisoes + homicidios) → ~40 URLs. Requer dedup com agregacao de fontes: titulo fuzzy Jaccard >=0.7, agrupar mesma ocorrencia de fontes diferentes no mesmo card. Frontend precisa mostrar "N fontes" com links. Bloco grande: dedup + multi-query + frontend
 - [ ] **Fallback content fetcher** — Jina vazio em alguns sites. Pesquisar: Firecrawl (API), Puppeteer (self-hosted), newspaper3k
 - [ ] **Testar busca em 5+ estados** — mapear taxa de conversao por regiao (SP, RJ, MG, BA, RS, AM)
 
 #### Prioridade BAIXA
-- [ ] **Validar SSP por estado** — RJ retornou 0, PR retornou 0. Jina nao extrai links de paginas gov.br dinamicas
 - [ ] **Expandir Section Crawler** — mais secoes conhecidas, mais dominios regionais
+
+### Bloco C2 — Consolidacao de ocorrencias (VISAO FUTURA)
+Objetivo: mesma ocorrencia de fontes diferentes consolidada em 1 card no app.
+```
+┌──────────────────────────────────────┐
+│ 🔴 Operacao em Paraisopolis          │
+│ 🏛 SSP-SP (oficial)                  │
+│ 📰 G1  📰 Record  📰 Metropoles     │
+└──────────────────────────────────────┘
+```
+- [ ] **SSP como fonte direta** — parsear titulo+resumo+data do markdown Jina (SSP nao tem URLs individuais, site é SPA). Badge "oficial" no app
+- [ ] **Dedup por embeddings na busca manual** — agrupar mesma ocorrencia, manter todas as fontes
+- [ ] **Frontend Flutter** — card com badge oficial/noticia, lista de fontes clicaveis
+- [ ] **Multiplas queries + dual provider** — so faz sentido apos dedup consolidada
 
 ### Bloco D — Hardening pre-deploy
 - [x] Logs verbosos rebaixados pra debug (filter2 content preview, Jina raw response)
@@ -52,6 +65,30 @@
 - [x] Atualizar ARQUITETURA.md para refletir estado atual do codigo
 
 ## Sessoes
+
+### Sessao 011 (2026-03-22)
+- **C1: RSS date pre-filter** — GoogleNewsRSSProvider agora extrai `<pubDate>` de cada `<item>`. Novo param `maxAgeDays` descarta artigos velhos ANTES do Jina. manualSearchWorker passa `periodoDias`, scanPipeline passa 7 dias. Economia estimada: ~$0.07/busca (evita Jina+GPT em ~35 URLs velhas)
+- **C2: Dedup intra-busca manual** — Dedup leve por chave `cidade|tipo_crime|data_ocorrencia` nos resultados finais antes de salvar. Remove ocorrencias duplicadas vindas de fontes diferentes (ex: Perplexity + RSS retornam mesma noticia). Gratis (sem embedding/GPT)
+- **Fix TS**: Removido `VALID_CRIME_TYPES` nao-utilizado (filter2GPT). Fix tipo `data.results` em filter1GPTBatch
+- **Fix bug**: manualSearchWorker linha 358 salvava `dedupedResults` (URLs brutas) em vez de `finalResults` (resultados filtrados)
+- **PIPELINE_BUSCA_MANUAL.md**: Documento de arquitetura detalhado com 7 stages, custos, protecoes, gargalos, comparacao manual vs auto-scan
+- **C3: Brave News Search API** — Novo provider implementado:
+  - `BraveNewsProvider.ts`: 50 resultados/query, $0.005/query, date range customizado (YYYY-MM-DDtoYYYY-MM-DD)
+  - Config: `SEARCH_BACKEND=brave`, `BRAVE_API_KEY`
+  - Rate limiter: 5 concurrent, 100ms spacing, 1000 daily quota
+  - Migration 008: adiciona 'brave' nos CHECK constraints de budget_tracking e api_rate_limits
+  - Types atualizados (queries.ts, types.ts, schema.sql)
+  - .env.example atualizado com Brave como recomendado
+  - Comparativo: pesquisou NewsData.io ($200/mes), GNews (~€50/mes), NewsAPI.org ($449/mes) — Brave venceu por preco/volume
+  - TESTADO: Brave retorna ~15 URLs por query (limite do indice BR, nao da API). Mesmo volume que Perplexity. Vantagem: date range customizado
+- **Fix: BraveNewsProvider search_lang** — API retornava 422, removido param `search_lang` (Brave News so aceita `country`)
+- **Fix: Filtro de cidade/estado** — apos Filter2, valida se cidade extraida bate com cidades/estado pedidos (fuzzy, sem acentos). Rejeita noticias de outras cidades (ex: Itagimirim rejeitada em busca de Salvador)
+- **Fix: Embedding cache corruption** — CachedEmbeddingProvider valida dim=1536 no cache hit. Cache corrompido (dim=19213) deletado e regenerado. Limpou 47 embeddings corrompidos do Redis
+- **Teste Salvador/BA 60d**: Brave 15 + RSS 93→9 (date filter!) = 24 URLs → 10 resultados. Filtro cidade rejeitou Itagimirim e Candeias corretamente
+- **Filter1 prompt expandido** — lista de crimes era restritiva (so 6 tipos). Dashboard mostrava noticias de crime rejeitadas como "nao-crime". Expandido pra "qualquer ocorrencia policial" (alinhado com Filter2)
+- **Investigacao SSP**: Jina retorna conteudo da SSP-SP (52.884 noticias!) mas links apontam todos pra raiz (site e SPA). Solucao futura: parsear titulo+resumo+data direto do markdown
+- **Investigacao fontes**: Brave ~15 URLs, RSS ~93 (84 velhas), SSP 0 (SPA), Section Crawler 0 (dominios sem secao). Google CSE legado/morto
+- **Sessao encerrada** com foco em fechar pontas soltas antes de novas features
 
 ### Sessao 010 (2026-03-22)
 - Auditoria completa do codebase (3 agentes exploraram SSP, dedup/DB, filters/content)
@@ -103,6 +140,33 @@ RESULTADO:       8 noticias em 310s (~5min)
 - Inicio da Fase 3
 - Reorganizacao workdesk: SQL/ movido pra raiz, ARQUITETURA.md na raiz, PROGRESSO.md unificado
 - Arquitetura atualizada com 10 divergencias corrigidas (Perplexity, filter0 category patterns, filter2 tipo_crime livre, Jina limitacoes, busca manual pipeline, etc.)
+
+---
+
+## PONTAS SOLTAS — fechar antes de novas features
+
+### Codigo (feito mas nao validado em producao)
+- [ ] **Filter1 prompt corrigido** — expandiu pra "qualquer ocorrencia policial". TESTAR: rodar busca e checar dashboard admin, nao deve rejeitar crimes reais
+- [ ] **Filtro de cidade/estado** — testou 1x (Salvador). TESTAR: buscar SP e ver se vem so SP
+- [ ] **Embedding cache validation** — fix aplicado (dim=1536 check). Bug raiz: POR QUE corrompeu? Investigar se Jina ou OpenAI retornou embedding errado, ou se Redis truncou
+- [ ] **Migration 008** — brave provider constraint. Confirmar que rodou no Supabase
+- [ ] **Brave como SEARCH_BACKEND** — funciona mas retorna ~15 URLs (igual Perplexity). Decidir: manter Brave ou voltar Perplexity?
+
+### Auto-scan (CRON)
+- [ ] **Vector length mismatch** — 2 scans SP perderam ~13 noticias cada (19213 vs 1536). Cache limpo mas precisa monitorar se volta a acontecer
+- [ ] **Filter1 batch length mismatch** — "expected 23, got 24" ainda aparece. Nao e critico (ajusta automaticamente) mas indica que GPT retorna 1 item a mais
+
+### Painel Admin
+- [ ] **Dashboard URLs rejeitadas** — verificar se mostra dados corretos apos todas as mudancas
+- [ ] **Configuracoes** — verificar se toggles de fontes (RSS, SSP, Section Crawler) funcionam
+- [ ] **Budget tracking** — verificar se mostra provider='brave' corretamente
+- [ ] **Monitoramentos** — verificar se scans automaticos aparecem com metricas corretas
+
+### Decisoes pendentes
+- [ ] Brave vs Perplexity vs dual — qual provider principal?
+- [ ] Dedup: embeddings vs titulo fuzzy — qual implementar?
+- [ ] SSP: parsear direto vs abandonar — quando fazer?
+- [ ] Concorrencia Jina 5→10 — subir agora?
 
 ---
 
