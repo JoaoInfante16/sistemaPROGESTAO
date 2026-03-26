@@ -217,9 +217,6 @@ INSERT INTO system_config (key, value, description, category, value_type) VALUES
   ('multi_query_enabled', 'true', 'Usar múltiplas variações de query na busca (além do mega prompt)', 'ingestion', 'boolean'),
   ('search_queries_per_scan', '2', 'Quantas queries por scan (1-5, rotação automática)', 'ingestion', 'number'),
   ('google_news_rss_enabled', 'true', 'Coleta via Google News RSS (gratuito)', 'ingestion', 'boolean'),
-  ('section_crawling_enabled', 'false', 'Crawling de seções de polícia de jornais', 'ingestion', 'boolean'),
-  ('section_crawling_max_domains', '5', 'Máximo de domínios crawleados por scan (1-10)', 'ingestion', 'number'),
-  ('ssp_scraping_enabled', 'true', 'Scraping de SSPs estaduais (SP, RJ, MG, BA, RS)', 'ingestion', 'boolean'),
   ('filter0_regex_enabled', 'true', 'Filtro regex que bloqueia redes sociais e palavras nao-crime antes do GPT', 'ingestion', 'boolean');
 
 -- ============================================

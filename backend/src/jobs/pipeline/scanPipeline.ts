@@ -14,8 +14,6 @@ import { configManager } from '../../services/configManager';
 import { SearchResult } from '../../services/search/SearchProvider';
 import { buildQueries } from '../../services/search/queryTemplates';
 import { fetchGoogleNewsRSS } from '../../services/search/GoogleNewsRSSProvider';
-import { crawlSections } from '../../services/search/SectionCrawler';
-import { scrapeSSP } from '../../services/search/SSPScraper';
 import { sendPushNotification } from '../../services/notifications/pushService';
 import {
   runFilter0,
@@ -67,9 +65,6 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
     multiQueryEnabled: await configManager.getBoolean('multi_query_enabled'),
     queriesPerScan: await configManager.getNumber('search_queries_per_scan'),
     googleNewsRSSEnabled: await configManager.getBoolean('google_news_rss_enabled'),
-    sectionCrawlingEnabled: await configManager.getBoolean('section_crawling_enabled'),
-    sectionCrawlingMaxDomains: await configManager.getNumber('section_crawling_max_domains'),
-    sspScrapingEnabled: await configManager.getBoolean('ssp_scraping_enabled'),
     filter0RegexEnabled: await configManager.getBoolean('filter0_regex_enabled'),
   };
 
@@ -270,9 +265,6 @@ async function collectUrls(
     multiQueryEnabled: boolean;
     queriesPerScan: number;
     googleNewsRSSEnabled: boolean;
-    sectionCrawlingEnabled: boolean;
-    sectionCrawlingMaxDomains: number;
-    sspScrapingEnabled: boolean;
   }
 ): Promise<CollectResult> {
   const allResults: SearchResult[] = [];
@@ -317,50 +309,7 @@ async function collectUrls(
     }
   }
 
-  // 3. Section Crawling
-  if (cfg.sectionCrawlingEnabled && allResults.length > 0) {
-    try {
-      const sectionResults = await crawlSections(
-        allResults.map(r => r.url),
-        { maxDomains: cfg.sectionCrawlingMaxDomains, jinaApiKey: config.jinaApiKey }
-      );
-      if (sectionResults.length > 0) {
-        allResults.push(...sectionResults);
-        sources.push('section_crawling');
-      }
-    } catch (error) {
-      logger.warn(`${LOG_PREFIX} Section crawling failed: ${(error as Error).message}`);
-    }
-  }
-
-  // 4. SSP Scraping
-  if (cfg.sspScrapingEnabled) {
-    try {
-      const stateName = await getStateName(location);
-      if (stateName) {
-        const sspResults = await scrapeSSP(stateName, { jinaApiKey: config.jinaApiKey });
-        if (sspResults.length > 0) {
-          allResults.push(...sspResults);
-          sources.push('ssp');
-        }
-      }
-    } catch (error) {
-      logger.warn(`${LOG_PREFIX} SSP scraping failed: ${(error as Error).message}`);
-    }
-  }
-
   return { allResults, queryCount, sources };
-}
-
-async function getStateName(location: MonitoredLocation): Promise<string | null> {
-  if (location.type === 'state') return location.name;
-  if (location.parent_id) {
-    try {
-      const parent = await db.getLocation(location.parent_id);
-      return parent.name;
-    } catch { return null; }
-  }
-  return null;
 }
 
 // ============================================

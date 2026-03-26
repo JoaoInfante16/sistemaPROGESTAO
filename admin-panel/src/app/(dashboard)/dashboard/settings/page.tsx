@@ -35,7 +35,7 @@ import {
   type SystemConfig,
 } from '@/lib/api';
 import {
-  Loader2, Save, Calculator, Search, Rss, Newspaper, Shield,
+  Loader2, Save, Calculator, Search, Rss,
   Lock, LockOpen, Bug, Bell, Trash2, Database, Info, SlidersHorizontal, Filter,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -67,31 +67,6 @@ const INGESTION_SOURCES: IngestionSource[] = [
     description:
       'Coleta noticias via feed RSS do Google News. Gratuito — sem custo de API.',
     costPerScan: 0,
-  },
-  {
-    configKey: 'section_crawling_enabled',
-    label: 'Crawling de Secoes',
-    icon: <Newspaper className="h-5 w-5" />,
-    description:
-      'Acessa a secao "policia" de jornais encontrados (G1, UOL, R7, etc.) e extrai artigos adicionais. Custo: Jina por secao.',
-    costPerScan: 0.01,
-    extraConfigs: [
-      {
-        key: 'section_crawling_max_domains',
-        label: 'Max dominios por scan',
-        type: 'number',
-        min: 1,
-        max: 10,
-      },
-    ],
-  },
-  {
-    configKey: 'ssp_scraping_enabled',
-    label: 'SSP Estaduais',
-    icon: <Shield className="h-5 w-5" />,
-    description:
-      'Coleta noticias das Secretarias de Seguranca Publica (23 estados). Custo: Jina por pagina.',
-    costPerScan: 0.004,
   },
 ];
 

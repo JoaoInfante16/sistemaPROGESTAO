@@ -40,9 +40,6 @@ const DEFAULTS: Record<string, string> = {
   multi_query_enabled: 'true',
   search_queries_per_scan: '2',
   google_news_rss_enabled: 'true',
-  section_crawling_enabled: 'true',
-  section_crawling_max_domains: '5',
-  ssp_scraping_enabled: 'true',
   filter0_regex_enabled: 'true',
 };
 

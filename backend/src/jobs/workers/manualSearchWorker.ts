@@ -7,9 +7,7 @@
 import { Worker, Job, Queue } from 'bullmq';
 import { redis } from '../../config/redis';
 import { config } from '../../config';
-import { scrapeSSP } from '../../services/search/SSPScraper';
 import { fetchGoogleNewsRSS } from '../../services/search/GoogleNewsRSSProvider';
-import { crawlSections } from '../../services/search/SectionCrawler';
 import { db } from '../../database/queries';
 import { logger } from '../../middleware/logger';
 import { rateLimiter } from '../../services/rateLimiter';
@@ -234,28 +232,7 @@ async function collectManualSearchUrls(
 
   logger.info(`${logPrefix} found ${allResults.length} unique URLs from ${cidades.length} cidades`);
 
-  // 2. SSP Scraping
-  const sspEnabled = await configManager.getBoolean('ssp_scraping_enabled');
-  if (sspEnabled) {
-    try {
-      const jinaApiKey = process.env.JINA_API_KEY || '';
-      if (jinaApiKey) {
-        const sspResults = await scrapeSSP(estado, { jinaApiKey });
-        for (const r of sspResults) {
-          if (!seenUrls.has(r.url)) {
-            seenUrls.add(r.url);
-            sourceTypeMap.set(r.url, 'ssp');
-            allResults.push(r);
-          }
-        }
-        if (sspResults.length > 0) logger.info(`${logPrefix} SSP: +${sspResults.length} URLs`);
-      }
-    } catch (error) {
-      logger.warn(`${logPrefix} SSP failed: ${(error as Error).message}`);
-    }
-  }
-
-  // 3. Google News RSS
+  // 2. Google News RSS
   const rssEnabled = await configManager.getBoolean('google_news_rss_enabled');
   if (rssEnabled) {
     try {
@@ -275,28 +252,6 @@ async function collectManualSearchUrls(
       logger.info(`${logPrefix} after RSS: ${allResults.length} total URLs`);
     } catch (error) {
       logger.warn(`${logPrefix} RSS failed: ${(error as Error).message}`);
-    }
-  }
-
-  // 4. Section Crawling
-  const sectionCrawlingEnabled = await configManager.getBoolean('section_crawling_enabled');
-  if (sectionCrawlingEnabled && allResults.length > 0) {
-    try {
-      const maxDomains = await configManager.getNumber('section_crawling_max_domains');
-      const sectionResults = await crawlSections(
-        allResults.map(r => r.url),
-        { maxDomains, jinaApiKey: process.env.JINA_API_KEY || '' }
-      );
-      for (const r of sectionResults) {
-        if (!seenUrls.has(r.url)) {
-          seenUrls.add(r.url);
-          sourceTypeMap.set(r.url, 'google');
-          allResults.push(r);
-        }
-      }
-      if (sectionResults.length > 0) logger.info(`${logPrefix} section crawling: +${sectionResults.length} URLs`);
-    } catch (error) {
-      logger.warn(`${logPrefix} Section crawling failed: ${(error as Error).message}`);
     }
   }
 
