@@ -67,8 +67,8 @@ export async function insertNews(params: InsertNewsParams): Promise<string> {
       rua: params.rua || null,
       data_ocorrencia: params.data_ocorrencia,
       resumo: params.resumo,
-      // pgvector aceita array diretamente via Supabase client
-      embedding: params.embedding,
+      // pgvector espera string no formato "[0.1,0.2,...]"
+      embedding: `[${params.embedding.join(',')}]`,
       confianca: params.confianca,
     })
     .select('id')
@@ -130,7 +130,11 @@ export async function findGeoTemporalCandidates(
     throw new Error(`Failed to find dedup candidates: ${error.message}`);
   }
 
-  return (data || []) as DedupCandidate[];
+  // pgvector retorna embedding como string "[0.1,0.2,...]" — parsear para number[]
+  return (data || []).map((row: any) => ({
+    ...row,
+    embedding: typeof row.embedding === 'string' ? JSON.parse(row.embedding) : row.embedding,
+  })) as DedupCandidate[];
 }
 
 // ============================================

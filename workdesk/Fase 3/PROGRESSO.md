@@ -21,6 +21,7 @@
 - [x] **Brave News Search API** — implementado como provider. 50 resultados/query, $0.005/query, date range customizado. SEARCH_BACKEND=brave. Migration 008. TESTAR se realmente retorna 50 resultados
 - [x] **RSS date pre-filter** — extrai `<pubDate>` no parser RSS e descarta artigos fora do periodoDias ANTES do Jina. Economiza ~$0.07/busca. scanPipeline usa maxAgeDays=7
 - [x] **Dedup na busca manual** — dedup leve (cidade+tipo_crime+data) entre resultados da propria busca antes de salvar. Sem embedding, gratis
+- [x] **Prompt Brave otimizado** — query antiga trazia 23% de ocorrências reais (lixo: estatísticas). Nova query traz 86% (43/50 reais). Adicionado `safesearch=off` (violência era filtrada!), `ui_lang=pt-BR`, count 20→50. Testado via curl com 50 URLs SP 60d
 - [ ] **Subir concorrencia Jina 5→10** — busca levou ~5min, metade foi Jina. config content_fetch_concurrency
 
 #### Prioridade MEDIA
@@ -31,25 +32,29 @@
 #### Prioridade BAIXA
 - [ ] **Expandir Section Crawler** — mais secoes conhecidas, mais dominios regionais
 
-### Bloco C2 — Consolidacao de ocorrencias (VISAO FUTURA)
+### Bloco C2 — Consolidacao de ocorrencias (EM ANDAMENTO)
 Objetivo: mesma ocorrencia de fontes diferentes consolidada em 1 card no app.
 ```
 ┌──────────────────────────────────────┐
-│ 🔴 Operacao em Paraisopolis          │
-│ 🏛 SSP-SP (oficial)                  │
-│ 📰 G1  📰 Record  📰 Metropoles     │
+│ Operacao em Paraisopolis             │
+│ SSP-SP (oficial)                     │
+│ G1  Record  Metropoles               │
 └──────────────────────────────────────┘
 ```
-- [ ] **SSP como fonte direta** — parsear titulo+resumo+data do markdown Jina (SSP nao tem URLs individuais, site é SPA). Badge "oficial" no app
-- [ ] **Dedup por embeddings na busca manual** — agrupar mesma ocorrencia, manter todas as fontes
-- [ ] **Frontend Flutter** — card com badge oficial/noticia, lista de fontes clicaveis
-- [ ] **Multiplas queries + dual provider** — so faz sentido apos dedup consolidada
+- [x] **Dedup embedding intra-batch** — implementado nas 2 pipelines (busca manual + auto-scan). Gera embedding por resultado, clusteriza por cosine >= 0.85, consolida: melhor resumo + todas as fontes. Busca manual SP: 34→28 (6 consolidadas)
+- [ ] **Multi-query na busca manual** — 3 queries por cidade (generica + prisoes + homicidios). Dedup embedding já suporta
+- [ ] **search_results suporte multi-source** — schema: sources[] array ou tabela search_result_sources
+- [ ] **Frontend Flutter** — card com lista de fontes clicaveis, badge por tipo (oficial/noticia)
+- [ ] **SSP como fonte direta** — parsear titulo+resumo+data do markdown Jina. Badge "oficial"
+- [ ] **Busca manual dedup contra DB** — se usuario busca SP 30d e depois 90d, reaproveitar resultados ja processados. Comparar URLs novas contra search_results existentes antes de processar
+- [ ] **Auto-scan race condition** — 2 scans paralelos podem inserir mesma noticia antes do dedup. Lock ou upsert
 
 ### Bloco D — Hardening pre-deploy
 - [x] Logs verbosos rebaixados pra debug (filter2 content preview, Jina raw response)
 - [x] devRoutes — ja protegidas (NODE_ENV check duplo: index.ts + middleware interno)
 - [x] Filter1 retry 1x antes de fallback "all true"
 - [x] Metricas de dedup por camada (layer stats logadas + salvas no cost tracking)
+- [x] **Refactor: pipelineCore.ts** — stages compartilhados extraidos (filter0, filter1, contentFetch, filter2+embedding, intraBatchDedup). scanPipeline e manualSearchWorker agora usam funções do core. Eliminou ~80% da duplicação de codigo
 
 ### Bloco E — Deploy
 - [ ] Configurar env vars producao
@@ -153,7 +158,7 @@ RESULTADO:       8 noticias em 310s (~5min)
 - [ ] **Brave como SEARCH_BACKEND** — funciona mas retorna ~15 URLs (igual Perplexity). Decidir: manter Brave ou voltar Perplexity?
 
 ### Auto-scan (CRON)
-- [ ] **Vector length mismatch** — 2 scans SP perderam ~13 noticias cada (19213 vs 1536). Cache limpo mas precisa monitorar se volta a acontecer
+- [x] **Vector length mismatch** — root cause: Supabase JS client nao converte number[] pra pgvector string. Fix: `queries.ts` agora faz `[${embedding.join(',')}]` no insert + JSON.parse no read. TESTAR: rodar auto-scan e confirmar 0 erros de vector
 - [ ] **Filter1 batch length mismatch** — "expected 23, got 24" ainda aparece. Nao e critico (ajusta automaticamente) mas indica que GPT retorna 1 item a mais
 
 ### Painel Admin

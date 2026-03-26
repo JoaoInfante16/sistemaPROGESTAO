@@ -30,9 +30,9 @@ export const QUERY_TEMPLATES: QueryTemplate[] = [
     build: (loc) => {
       const hasKeywords = loc.mode === 'keywords' && loc.keywords && loc.keywords.length > 0;
       if (hasKeywords) {
-        return `Resumo completo de ocorrências policiais relacionadas a ${loc.keywords!.join(', ')} em ${loc.name} nas últimas 24-48h: liste por tipo, com data/hora, bairro, vítimas/suspeitos e fontes oficiais; exclua ficção/novelas; priorize notícias recentes`;
+        return `${loc.keywords!.join(' ')} ${loc.name}`;
       }
-      return `Resumo completo de TODAS ocorrências policiais em ${loc.name} nas últimas 24-48h: liste por tipo (homicídio, prisão, roubo, tráfico, violência doméstica, apreensões), com data/hora, bairro, vítimas/suspeitos e fontes oficiais (PM/PC/SSP); exclua ficção/novelas; priorize notícias recentes de sites como G1, PM oficial`;
+      return `notícias policiais ocorrências crimes assalto roubo homicídio prisão tráfico operação policial flagrante ${loc.name}`;
     },
   },
   {

@@ -22,43 +22,57 @@ export class BraveNewsProvider implements SearchProvider {
   }
 
   async search(query: string, options: SearchOptions = {}): Promise<SearchResult[]> {
-    const params = new URLSearchParams({
-      q: query,
-      count: String(Math.min(options.maxResults || 20, 50)),
-      country: 'BR',
-      text_decorations: 'false',
-    });
-
+    const totalWanted = options.maxResults || 50;
     const freshness = this.mapDateRestrict(options.dateRestrict);
-    if (freshness) {
-      params.set('freshness', freshness);
+    const allResults: SearchResult[] = [];
+
+    // Brave max 50 por request — paginar se precisa de mais
+    const pages = Math.ceil(totalWanted / 50);
+
+    for (let page = 0; page < pages; page++) {
+      const count = Math.min(50, totalWanted - allResults.length);
+      const params = new URLSearchParams({
+        q: query,
+        count: String(count),
+        country: 'BR',
+        safesearch: 'off',
+        ui_lang: 'pt-BR',
+        text_decorations: 'false',
+      });
+
+      if (page > 0) params.set('offset', String(page));
+      if (freshness) params.set('freshness', freshness);
+
+      const url = `${BRAVE_NEWS_URL}?${params.toString()}`;
+
+      const response = await fetch(url, {
+        headers: {
+          'Accept': 'application/json',
+          'Accept-Encoding': 'gzip',
+          'X-Subscription-Token': this.apiKey,
+        },
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Brave News API error (${response.status}): ${errorBody.substring(0, 200)}`);
+      }
+
+      const data = (await response.json()) as BraveNewsResponse;
+      const pageResults = (data.results || []).map((r) => ({
+        url: r.url,
+        title: r.title || '',
+        snippet: r.description || r.title || '',
+      }));
+
+      allResults.push(...pageResults);
+
+      // Se retornou menos que pedido, não tem mais páginas
+      if (pageResults.length < count) break;
     }
 
-    const url = `${BRAVE_NEWS_URL}?${params.toString()}`;
-
-    const response = await fetch(url, {
-      headers: {
-        'Accept': 'application/json',
-        'Accept-Encoding': 'gzip',
-        'X-Subscription-Token': this.apiKey,
-      },
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Brave News API error (${response.status}): ${errorBody.substring(0, 200)}`);
-    }
-
-    const data = (await response.json()) as BraveNewsResponse;
-
-    const results: SearchResult[] = (data.results || []).map((r) => ({
-      url: r.url,
-      title: r.title || '',
-      snippet: r.description || r.title || '',
-    }));
-
-    logger.info(`[BraveNews] "${query.substring(0, 50)}..." → ${results.length} results`);
-    return results;
+    logger.info(`[BraveNews] "${query.substring(0, 50)}..." → ${allResults.length} results`);
+    return allResults;
   }
 
   /**

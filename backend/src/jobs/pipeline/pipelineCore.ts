@@ -1,0 +1,294 @@
+// ============================================
+// Pipeline Core — Stages compartilhados
+// ============================================
+// Extraído de scanPipeline + manualSearchWorker.
+// Cada pipeline chama esses stages e customiza via callbacks.
+
+import { createSearchProvider } from '../../services/search';
+import { createContentFetcher } from '../../services/content';
+import { createEmbeddingProvider } from '../../services/embedding';
+import { filter0Regex } from '../../services/filters/filter0Regex';
+import { filter1GPTBatch } from '../../services/filters/filter1GPTBatch';
+import { filter2GPTWithReason } from '../../services/filters/filter2GPT';
+import { logger } from '../../middleware/logger';
+import { NewsExtraction } from '../../utils/types';
+import { asyncPool, cosineSimilarity } from '../../utils/helpers';
+import { FetchedContent } from '../../services/content/ContentFetcher';
+import { rateLimiter } from '../../services/rateLimiter';
+import { deduplicateResults } from '../../services/search/urlDeduplicator';
+import { SearchResult } from '../../services/search/SearchProvider';
+
+const searchProvider = createSearchProvider();
+const contentFetcher = createContentFetcher();
+const embeddingProvider = createEmbeddingProvider();
+
+// ============================================
+// Types
+// ============================================
+
+export interface PipelineConfig {
+  searchMaxResults: number;
+  contentFetchConcurrency: number;
+  filter2ConfidenceMin: number;
+  filter2MaxContentChars: number;
+  filter0RegexEnabled: boolean;
+}
+
+export interface RejectedUrl {
+  url: string;
+  stage: string;
+  reason: string;
+}
+
+export interface ExtractedNews extends NewsExtraction {
+  embedding: number[];
+  sourceUrl: string;
+  sourceType: string;
+}
+
+export interface ConsolidatedNews extends ExtractedNews {
+  extraSourceUrls: string[];
+  sources: Array<{ url: string; type: string }>;
+}
+
+export interface PostFilter2Options {
+  periodoDias?: number;
+  estado?: string;
+  cidades?: string[];
+}
+
+export interface PipelineStageResult {
+  searchResults: SearchResult[];
+  afterFilter0: SearchResult[];
+  afterFilter1: SearchResult[];
+  validContents: FetchedContent[];
+  extractions: ExtractedNews[];
+  consolidated: ConsolidatedNews[];
+  rejectedUrls: RejectedUrl[];
+  intraMerged: number;
+}
+
+// ============================================
+// Stage 1: Filter0 — Regex (local, sem custo)
+// ============================================
+
+export function runFilter0(
+  urls: SearchResult[],
+  enabled: boolean,
+  rejectedUrls: RejectedUrl[],
+  logPrefix: string,
+): SearchResult[] {
+  if (!enabled) return [...urls];
+
+  const passed: SearchResult[] = [];
+  for (const r of urls) {
+    if (filter0Regex(r.url, r.snippet)) {
+      passed.push(r);
+    } else {
+      rejectedUrls.push({ url: r.url, stage: 'filter0', reason: 'regex_block' });
+    }
+  }
+
+  logger.info(`${logPrefix} filter0: ${urls.length} → ${passed.length} (${urls.length - passed.length} rejeitadas)`);
+  return passed;
+}
+
+// ============================================
+// Stage 2: Filter1 — GPT Batch
+// ============================================
+
+export async function runFilter1(
+  urls: SearchResult[],
+  rejectedUrls: RejectedUrl[],
+  logPrefix: string,
+): Promise<SearchResult[]> {
+  if (urls.length === 0) return [];
+
+  const snippets = urls.map((r) => r.snippet);
+  const batchResults = await rateLimiter.schedule('openai', () =>
+    filter1GPTBatch(snippets)
+  );
+
+  const passed: SearchResult[] = [];
+  for (let i = 0; i < urls.length; i++) {
+    if (batchResults[i]) {
+      passed.push(urls[i]);
+    } else {
+      rejectedUrls.push({ url: urls[i].url, stage: 'filter1', reason: 'gpt_nao_crime' });
+    }
+  }
+
+  logger.info(`${logPrefix} filter1: ${urls.length} → ${passed.length} (${urls.length - passed.length} rejeitadas)`);
+  return passed;
+}
+
+// ============================================
+// Stage 3: Content Fetch via Jina
+// ============================================
+
+export async function runContentFetch(
+  urls: SearchResult[],
+  concurrency: number,
+  rejectedUrls: RejectedUrl[],
+  logPrefix: string,
+): Promise<FetchedContent[]> {
+  const contentResults = await asyncPool<SearchResult, FetchedContent | null>(
+    urls,
+    concurrency,
+    async (r) => {
+      try {
+        return await rateLimiter.schedule('jina', () => contentFetcher.fetch(r.url));
+      } catch (err) {
+        logger.error(`${logPrefix} fetch failed ${r.url}: ${(err as Error).message}`);
+        return null;
+      }
+    }
+  );
+
+  const fetched = contentResults.filter((c): c is FetchedContent => c !== null);
+  const valid = fetched.filter((c) => {
+    if (c.content.trim().length < 100) {
+      logger.warn(`${logPrefix} conteudo vazio/curto ${c.url.substring(0, 60)} (${c.content.length} chars)`);
+      rejectedUrls.push({ url: c.url, stage: 'fetch', reason: `conteudo_vazio (${c.content.length} chars)` });
+      return false;
+    }
+    return true;
+  });
+
+  logger.info(`${logPrefix} fetch: ${urls.length} → ${fetched.length} fetched → ${valid.length} com conteudo`);
+  return valid;
+}
+
+// ============================================
+// Stage 4: Filter2 — GPT Full Analysis + Embedding
+// ============================================
+
+export async function runFilter2WithEmbedding(
+  contents: FetchedContent[],
+  cfg: { maxContentChars: number; minConfidence: number },
+  rejectedUrls: RejectedUrl[],
+  logPrefix: string,
+  postFilter?: PostFilter2Options,
+  sourceTypeMap?: Map<string, string>,
+): Promise<ExtractedNews[]> {
+  const extractions: ExtractedNews[] = [];
+
+  for (const fetched of contents) {
+    const { extraction: extracted, rejectionReason } = await rateLimiter.schedule('openai', () =>
+      filter2GPTWithReason(fetched.content, {
+        maxContentChars: cfg.maxContentChars,
+        minConfidence: cfg.minConfidence,
+      })
+    );
+
+    if (!extracted) {
+      const reason = rejectionReason || 'unknown';
+      rejectedUrls.push({ url: fetched.url, stage: 'filter2', reason });
+      logger.info(`${logPrefix} filter2 REJEITOU ${fetched.url.substring(0, 60)}... motivo: ${reason}`);
+      continue;
+    }
+
+    // Post-filter: date range
+    if (postFilter?.periodoDias) {
+      const newsDate = new Date(extracted.data_ocorrencia);
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - postFilter.periodoDias);
+      if (newsDate < cutoff) {
+        rejectedUrls.push({ url: fetched.url, stage: 'filter2_date', reason: `data=${extracted.data_ocorrencia} fora do periodo (${postFilter.periodoDias}d)` });
+        logger.info(`${logPrefix} filter2 data fora: ${extracted.data_ocorrencia} (cutoff: ${cutoff.toISOString().split('T')[0]})`);
+        continue;
+      }
+    }
+
+    // Post-filter: cidade/estado
+    if (postFilter?.cidades && postFilter?.estado) {
+      const cidadeExtraida = extracted.cidade.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const estadoLower = postFilter.estado.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const cidadesLower = postFilter.cidades.map(c => c.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+      const cidadeMatch = cidadesLower.some(c => cidadeExtraida.includes(c) || c.includes(cidadeExtraida));
+      const estadoNoResumo = extracted.resumo.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(estadoLower);
+
+      if (!cidadeMatch && !estadoNoResumo) {
+        rejectedUrls.push({ url: fetched.url, stage: 'filter2_location', reason: `cidade=${extracted.cidade} nao pertence a ${postFilter.estado}` });
+        logger.info(`${logPrefix} filter2 cidade fora: ${extracted.cidade} (esperado: ${postFilter.cidades.join(', ')}, ${postFilter.estado})`);
+        continue;
+      }
+    }
+
+    // Gerar embedding
+    const embeddingResult = await rateLimiter.schedule('openai', () =>
+      embeddingProvider.generate(extracted.resumo)
+    );
+
+    extractions.push({
+      ...extracted,
+      embedding: embeddingResult.embedding,
+      sourceUrl: fetched.url,
+      sourceType: sourceTypeMap?.get(fetched.url) || 'google',
+    });
+  }
+
+  logger.info(`${logPrefix} filter2: ${contents.length} → ${extractions.length} (${contents.length - extractions.length} rejeitadas)`);
+  return extractions;
+}
+
+// ============================================
+// Stage 5: Dedup intra-batch (embedding clustering)
+// ============================================
+
+const INTRA_SIMILARITY_THRESHOLD = 0.85;
+
+export function runIntraBatchDedup(
+  extractions: ExtractedNews[],
+  logPrefix: string,
+): { consolidated: ConsolidatedNews[]; intraMerged: number } {
+  if (extractions.length === 0) return { consolidated: [], intraMerged: 0 };
+
+  const assigned = new Set<number>();
+  const clusters: Array<{ lead: number; members: number[] }> = [];
+
+  for (let i = 0; i < extractions.length; i++) {
+    if (assigned.has(i)) continue;
+    const cluster = { lead: i, members: [i] };
+    assigned.add(i);
+
+    for (let j = i + 1; j < extractions.length; j++) {
+      if (assigned.has(j)) continue;
+      const score = cosineSimilarity(extractions[i].embedding, extractions[j].embedding);
+      if (score >= INTRA_SIMILARITY_THRESHOLD) {
+        cluster.members.push(j);
+        assigned.add(j);
+        logger.debug(`${logPrefix} intra-batch merge: #${j} into #${i} (score=${score.toFixed(3)})`);
+      }
+    }
+    clusters.push(cluster);
+  }
+
+  const consolidated: ConsolidatedNews[] = clusters.map(cluster => {
+    const members = cluster.members.map(idx => extractions[idx]);
+    members.sort((a, b) => b.confianca - a.confianca);
+    const lead = members[0];
+    const extraSourceUrls = members.slice(1).map(m => m.sourceUrl);
+    const sources = members.map(m => ({ url: m.sourceUrl, type: m.sourceType }));
+    return { ...lead, extraSourceUrls, sources };
+  });
+
+  const intraMerged = extractions.length - consolidated.length;
+  if (intraMerged > 0) {
+    logger.info(`${logPrefix} intra-batch dedup: ${extractions.length} → ${consolidated.length} (${intraMerged} consolidadas)`);
+  }
+
+  return { consolidated, intraMerged };
+}
+
+// ============================================
+// URL dedup helper (re-export)
+// ============================================
+
+export { deduplicateResults };
+
+// ============================================
+// Search provider + content fetcher (shared instances)
+// ============================================
+
+export { searchProvider, contentFetcher, embeddingProvider };

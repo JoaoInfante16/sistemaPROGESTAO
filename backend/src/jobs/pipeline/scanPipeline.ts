@@ -1,38 +1,37 @@
 // ============================================
-// Scan Pipeline - Orquestração principal
+// Scan Pipeline - Auto-scan (CRON)
 // ============================================
-// Fluxo: Multi-Source Collect → Filter0 → Filter1 → Fetch → Filter2 → Embed → Dedup → Save
+// Usa pipelineCore para stages compartilhados.
+// Peculiaridades: dedup contra DB, push por notícia, operation logs.
 
 import { config } from '../../config';
-import { createSearchProvider } from '../../services/search';
-import { createContentFetcher } from '../../services/content';
-import { createEmbeddingProvider } from '../../services/embedding';
-import { filter0Regex } from '../../services/filters/filter0Regex';
-import { filter1GPTBatch } from '../../services/filters/filter1GPTBatch';
-import { filter2GPT } from '../../services/filters/filter2GPT';
 import { deduplicateNews } from '../../services/deduplication';
 import { db } from '../../database/queries';
 import { logger } from '../../middleware/logger';
-import { MonitoredLocation, NewsExtraction, PipelineResult } from '../../utils/types';
-import { asyncPool } from '../../utils/helpers';
-import { FetchedContent } from '../../services/content/ContentFetcher';
+import { MonitoredLocation, PipelineResult } from '../../utils/types';
 import { rateLimiter } from '../../services/rateLimiter';
 import { configManager } from '../../services/configManager';
 import { SearchResult } from '../../services/search/SearchProvider';
 import { buildQueries } from '../../services/search/queryTemplates';
-import { deduplicateResults } from '../../services/search/urlDeduplicator';
 import { fetchGoogleNewsRSS } from '../../services/search/GoogleNewsRSSProvider';
 import { crawlSections } from '../../services/search/SectionCrawler';
 import { scrapeSSP } from '../../services/search/SSPScraper';
 import { sendPushNotification } from '../../services/notifications/pushService';
+import {
+  runFilter0,
+  runFilter1,
+  runContentFetch,
+  runFilter2WithEmbedding,
+  runIntraBatchDedup,
+  deduplicateResults,
+  searchProvider,
+  RejectedUrl,
+} from './pipelineCore';
 
-const searchProvider = createSearchProvider();
-const contentFetcher = createContentFetcher();
-const embeddingProvider = createEmbeddingProvider();
+const LOG_PREFIX = '[Pipeline]';
 
 /**
  * Executa pipeline completo para uma localização.
- * FIX #3: try-catch global para não crashar o worker.
  */
 export async function executePipeline(locationId: string): Promise<PipelineResult> {
   const startTime = Date.now();
@@ -41,20 +40,15 @@ export async function executePipeline(locationId: string): Promise<PipelineResul
     return await runPipeline(locationId, startTime);
   } catch (error) {
     const duration = Date.now() - startTime;
-    logger.error(`[Pipeline] FATAL error for location ${locationId}: ${(error as Error).message}`);
+    logger.error(`${LOG_PREFIX} FATAL error for location ${locationId}: ${(error as Error).message}`);
 
-    // Tenta logar o erro no banco (best effort)
     try {
       await db.insertOperationLog({
-        location_id: locationId,
-        stage: 'error',
-        urls_processed: 0,
-        news_found: 0,
-        cost_usd: 0,
-        duration_ms: duration,
+        location_id: locationId, stage: 'error',
+        urls_processed: 0, news_found: 0, cost_usd: 0, duration_ms: duration,
       });
     } catch {
-      logger.error('[Pipeline] Failed to log error to database');
+      logger.error(`${LOG_PREFIX} Failed to log error to database`);
     }
 
     throw error;
@@ -64,14 +58,12 @@ export async function executePipeline(locationId: string): Promise<PipelineResul
 async function runPipeline(locationId: string, startTime: number): Promise<PipelineResult> {
   const location = await db.getLocation(locationId);
 
-  // Ler configs centralizadas do admin panel (cache 5min)
   const pipelineConfig = {
     searchMaxResults: await configManager.getNumber('search_max_results'),
     contentFetchConcurrency: await configManager.getNumber('content_fetch_concurrency'),
     filter2ConfidenceMin: await configManager.getNumber('filter2_confidence_min'),
     filter2MaxContentChars: await configManager.getNumber('filter2_max_content_chars'),
     dedupSimilarityThreshold: await configManager.getNumber('dedup_similarity_threshold'),
-    // Novas configs de ingestão
     multiQueryEnabled: await configManager.getBoolean('multi_query_enabled'),
     queriesPerScan: await configManager.getNumber('search_queries_per_scan'),
     googleNewsRSSEnabled: await configManager.getBoolean('google_news_rss_enabled'),
@@ -81,247 +73,151 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
     filter0RegexEnabled: await configManager.getBoolean('filter0_regex_enabled'),
   };
 
-  logger.info(`[Pipeline] Starting scan for ${location.name}`);
+  logger.info(`${LOG_PREFIX} Starting scan for ${location.name}`);
 
-  // Budget check — skip scan if monthly budget exceeded
+  // Budget check
   const monthlyBudget = await configManager.getNumber('monthly_budget_usd');
   const currentCost = await db.getCurrentMonthCost();
   if (currentCost >= monthlyBudget) {
-    logger.warn(`[Pipeline] Budget exceeded: $${currentCost.toFixed(2)} >= $${monthlyBudget}. Skipping scan.`);
-    return {
-      locationId, locationName: location.name,
-      urlsFound: 0, afterFilter0: 0, afterFilter1: 0, afterFilter2: 0,
-      newsSaved: 0, duplicatesFound: 0, totalCostUsd: 0, durationMs: Date.now() - startTime,
-    };
+    logger.warn(`${LOG_PREFIX} Budget exceeded: $${currentCost.toFixed(2)} >= $${monthlyBudget}. Skipping scan.`);
+    return buildResult(location, 0, 0, 0, 0, 0, 0, 0, Date.now() - startTime);
   }
   if (currentCost >= monthlyBudget * 0.9) {
-    logger.warn(`[Pipeline] Budget warning: $${currentCost.toFixed(2)} / $${monthlyBudget} (${(currentCost / monthlyBudget * 100).toFixed(0)}%)`);
+    logger.warn(`${LOG_PREFIX} Budget warning: $${currentCost.toFixed(2)} / $${monthlyBudget} (${(currentCost / monthlyBudget * 100).toFixed(0)}%)`);
   }
 
-  // ============================================
   // STAGE 1: Multi-Source URL Collector
-  // ============================================
-  const { allResults, googleQueryCount, sources } = await collectUrls(location, pipelineConfig);
-
-  // Deduplicar URLs de todas as fontes
+  const { allResults, queryCount, sources } = await collectUrls(location, pipelineConfig);
   const searchResults = deduplicateResults(allResults);
-  logger.info(`[Pipeline] Collected ${allResults.length} URLs → ${searchResults.length} unique (sources: ${sources.join(', ')})`);
+  logger.info(`${LOG_PREFIX} Collected ${allResults.length} URLs → ${searchResults.length} unique (sources: ${sources.join(', ')})`);
 
-  // Track search cost
-  if (googleQueryCount > 0) {
+  if (queryCount > 0) {
     await db.trackCost({
       source: 'auto_scan',
       provider: config.searchBackend as 'google' | 'perplexity',
-      cost_usd: estimateGoogleCost(googleQueryCount),
-      details: { queryCount: googleQueryCount, resultsCount: searchResults.length, sources },
+      cost_usd: queryCount * 0.005,
+      details: { queryCount, resultsCount: searchResults.length, sources },
     });
   }
 
-  // Track Jina cost for section crawling + SSP
-  const jinaScanCost = sources.filter(s => s === 'section_crawling' || s === 'ssp').length;
-  if (jinaScanCost > 0) {
-    await db.trackCost({
-      source: 'auto_scan',
-      provider: 'jina',
-      cost_usd: jinaScanCost * 0.002,
-      details: { stage: 'source_crawling', sources: sources.filter(s => s !== 'google' && s !== 'google_news_rss') },
-    });
-  }
-
-  // Cleanup rejected URLs older than 24h (best effort)
   await db.cleanupOldRejectedUrls();
 
-  // ============================================
-  // STAGE 2: Filter0 - Regex (local, sem custo) — toggle via admin
-  // ============================================
-  const afterFilter0 = pipelineConfig.filter0RegexEnabled
-    ? searchResults.filter((r) => filter0Regex(r.url, r.snippet))
-    : [...searchResults];
-  const rejectedByFilter0 = pipelineConfig.filter0RegexEnabled
-    ? searchResults.filter((r) => !filter0Regex(r.url, r.snippet))
-    : [];
-  logger.info(`[Pipeline] After Filter0 (regex): ${afterFilter0.length}/${searchResults.length}`);
+  const rejectedUrls: RejectedUrl[] = [];
 
-  // Save rejected URLs from Filter0
-  if (rejectedByFilter0.length > 0) {
-    await db.insertRejectedUrls(rejectedByFilter0.map((r) => ({
-      url: r.url,
-      title: r.title,
-      stage: 'filter0_regex',
-      reason: 'URL ou snippet nao passou no filtro regex',
-      location_id: locationId,
+  // STAGE 2: Filter0
+  const afterFilter0 = runFilter0(searchResults, pipelineConfig.filter0RegexEnabled, rejectedUrls, LOG_PREFIX);
+
+  // Save rejected from filter0
+  const filter0Rejected = rejectedUrls.filter(r => r.stage === 'filter0');
+  if (filter0Rejected.length > 0) {
+    await db.insertRejectedUrls(filter0Rejected.map(r => ({
+      url: r.url, title: '', stage: 'filter0_regex',
+      reason: 'URL ou snippet nao passou no filtro regex', location_id: locationId,
     })));
   }
 
-  // ============================================
-  // STAGE 3: Filter1 - GPT Batch
-  // ============================================
-  const snippets = afterFilter0.map((r) => r.snippet);
-  const batchResults = await rateLimiter.schedule('openai', () =>
-    filter1GPTBatch(snippets)
-  );
-  const afterFilter1 = afterFilter0.filter((_, index) => batchResults[index]);
-  const rejectedByFilter1 = afterFilter0.filter((_, index) => !batchResults[index]);
-  logger.info(`[Pipeline] After Filter1 (GPT batch): ${afterFilter1.length}/${afterFilter0.length}`);
+  // STAGE 3: Filter1
+  const afterFilter1 = await runFilter1(afterFilter0, rejectedUrls, LOG_PREFIX);
 
-  // Save rejected URLs from Filter1
-  if (rejectedByFilter1.length > 0) {
-    await db.insertRejectedUrls(rejectedByFilter1.map((r) => ({
-      url: r.url,
-      title: r.title,
-      stage: 'filter1_gpt',
-      reason: 'GPT classificou snippet como nao-criminal',
-      location_id: locationId,
+  // Save rejected from filter1
+  const filter1Rejected = rejectedUrls.filter(r => r.stage === 'filter1');
+  if (filter1Rejected.length > 0) {
+    await db.insertRejectedUrls(filter1Rejected.map(r => ({
+      url: r.url, title: '', stage: 'filter1_gpt',
+      reason: 'GPT classificou snippet como nao-criminal', location_id: locationId,
     })));
   }
 
   await db.trackCost({
-    source: 'auto_scan',
-    provider: 'openai',
+    source: 'auto_scan', provider: 'openai',
     cost_usd: afterFilter0.length > 0 ? 0.0002 : 0,
     details: { stage: 'filter1_batch', snippetCount: afterFilter0.length },
   });
 
   if (afterFilter1.length === 0) {
-    logger.info(`[Pipeline] No URLs passed filters, stopping`);
+    logger.info(`${LOG_PREFIX} No URLs passed filters, stopping`);
     const duration = Date.now() - startTime;
     await db.insertOperationLog({
-      location_id: locationId,
-      stage: 'complete',
-      urls_processed: searchResults.length,
-      news_found: 0,
-      cost_usd: calculateCost(googleQueryCount, afterFilter0.length, 0, 0),
-      duration_ms: duration,
+      location_id: locationId, stage: 'complete',
+      urls_processed: searchResults.length, news_found: 0,
+      cost_usd: calculateCost(queryCount, afterFilter0.length, 0, 0), duration_ms: duration,
     });
     return buildResult(location, searchResults.length, afterFilter0.length, 0, 0, 0, 0, 0, duration);
   }
 
-  // ============================================
-  // STAGE 4: Content Fetch via Jina
-  // ============================================
-  const contentResults = await asyncPool<typeof afterFilter1[0], FetchedContent | null>(
-    afterFilter1,
-    pipelineConfig.contentFetchConcurrency,
-    async (r) => {
-      try {
-        return await rateLimiter.schedule('jina', () =>
-          contentFetcher.fetch(r.url)
-        );
-      } catch (err) {
-        logger.error(`Failed to fetch ${r.url}: ${(err as Error).message}`);
-        return null;
-      }
-    }
-  );
-  const validContents = contentResults.filter(
-    (c): c is FetchedContent => c !== null
-  );
-  logger.info(`[Pipeline] Fetched ${validContents.length} articles via Jina`);
+  // STAGE 4: Content Fetch
+  const validContents = await runContentFetch(afterFilter1, pipelineConfig.contentFetchConcurrency, rejectedUrls, LOG_PREFIX);
 
   await db.trackCost({
-    source: 'auto_scan',
-    provider: 'jina',
+    source: 'auto_scan', provider: 'jina',
     cost_usd: validContents.length * 0.002,
     details: { stage: 'fetch', count: validContents.length },
   });
 
-  // ============================================
-  // STAGE 5: Filter2 - GPT Full Analysis + Embedding
-  // ============================================
-  const extractions: Array<NewsExtraction & { embedding: number[]; sourceUrl: string }> = [];
-  const rejectedByFilter2: Array<{ url: string; title: string }> = [];
+  // STAGE 5: Filter2 + Embedding
+  const extractions = await runFilter2WithEmbedding(
+    validContents,
+    { maxContentChars: pipelineConfig.filter2MaxContentChars, minConfidence: pipelineConfig.filter2ConfidenceMin },
+    rejectedUrls, LOG_PREFIX,
+  );
 
-  for (let i = 0; i < validContents.length; i++) {
-    const fetched = validContents[i];
-
-    const extracted = await rateLimiter.schedule('openai', () =>
-      filter2GPT(fetched.content, {
-        maxContentChars: pipelineConfig.filter2MaxContentChars,
-        minConfidence: pipelineConfig.filter2ConfidenceMin,
-      })
-    );
-    if (!extracted) {
-      rejectedByFilter2.push({ url: fetched.url, title: fetched.title || '' });
-      continue;
-    }
-
-    const embeddingResult = await rateLimiter.schedule('openai', () =>
-      embeddingProvider.generate(extracted.resumo)
-    );
-
-    extractions.push({
-      ...extracted,
-      embedding: embeddingResult.embedding,
-      sourceUrl: fetched.url,
-    });
-  }
-
-  logger.info(`[Pipeline] After Filter2 (GPT full): ${extractions.length} valid news`);
-
-  // Save rejected URLs from Filter2
-  if (rejectedByFilter2.length > 0) {
-    await db.insertRejectedUrls(rejectedByFilter2.map((r) => ({
-      url: r.url,
-      title: r.title,
-      stage: 'filter2_gpt',
-      reason: 'Conteudo nao classificado como crime ou confianca abaixo do threshold',
-      location_id: locationId,
+  // Save rejected from filter2
+  const filter2Rejected = rejectedUrls.filter(r => r.stage === 'filter2');
+  if (filter2Rejected.length > 0) {
+    await db.insertRejectedUrls(filter2Rejected.map(r => ({
+      url: r.url, title: '', stage: 'filter2_gpt',
+      reason: 'Conteudo nao classificado como crime ou confianca abaixo do threshold', location_id: locationId,
     })));
   }
 
   await db.trackCost({
-    source: 'auto_scan',
-    provider: 'openai',
+    source: 'auto_scan', provider: 'openai',
     cost_usd: validContents.length * 0.0005 + extractions.length * 0.00002,
     details: { stage: 'filter2+embedding', analyzed: validContents.length, extracted: extractions.length },
   });
 
-  // ============================================
-  // STAGE 6: Dedup + Save
-  // ============================================
+  // STAGE 5.5: Intra-batch dedup
+  const { consolidated, intraMerged } = runIntraBatchDedup(extractions, LOG_PREFIX);
+
+  // STAGE 6: Dedup contra DB + Save
   let newsSaved = 0;
   let duplicatesFound = 0;
   const dedupLayerStats = { layer1: 0, layer2: 0, layer3: 0 };
-  for (const news of extractions) {
+
+  for (const news of consolidated) {
     try {
       const dedupResult = await deduplicateNews(news, news.sourceUrl, pipelineConfig.dedupSimilarityThreshold);
 
-      // Métricas por camada
       if (dedupResult.layer === 1) dedupLayerStats.layer1++;
       else if (dedupResult.layer === 2) dedupLayerStats.layer2++;
       else if (dedupResult.layer === 3) dedupLayerStats.layer3++;
 
       if (dedupResult.isDuplicate) {
         duplicatesFound++;
-        logger.info(`[Pipeline] Duplicate detected (layer ${dedupResult.layer}), source added to ${dedupResult.existingId}`);
+        logger.info(`${LOG_PREFIX} Duplicate detected (layer ${dedupResult.layer}), source added to ${dedupResult.existingId}`);
         continue;
       }
 
       const newsId = await db.insertNews({
-        tipo_crime: news.tipo_crime,
-        cidade: news.cidade,
-        bairro: news.bairro,
-        rua: news.rua,
-        data_ocorrencia: news.data_ocorrencia,
-        resumo: news.resumo,
-        embedding: news.embedding,
-        confianca: news.confianca,
+        tipo_crime: news.tipo_crime, cidade: news.cidade,
+        bairro: news.bairro, rua: news.rua,
+        data_ocorrencia: news.data_ocorrencia, resumo: news.resumo,
+        embedding: news.embedding, confianca: news.confianca,
       });
 
       await db.insertNewsSource(newsId, news.sourceUrl);
+      for (const extraUrl of news.extraSourceUrls) {
+        await db.insertNewsSource(newsId, extraUrl);
+      }
 
-      // HOTFIX: Push direto até LISTEN/NOTIFY funcionar (Supabase Realtime no roadmap Post-MVP)
+      // Push notification
       try {
         await sendPushNotification({
-          id: newsId,
-          tipo_crime: news.tipo_crime,
-          cidade: news.cidade,
-          bairro: news.bairro || null,
-          resumo: news.resumo,
+          id: newsId, tipo_crime: news.tipo_crime,
+          cidade: news.cidade, bairro: news.bairro || null, resumo: news.resumo,
         });
-        logger.debug(`[Pipeline] Push sent for news ${newsId}`);
       } catch (pushErr) {
-        logger.error(`[Pipeline] Push failed for news ${newsId}: ${(pushErr as Error).message}`);
+        logger.error(`${LOG_PREFIX} Push failed for news ${newsId}: ${(pushErr as Error).message}`);
       }
 
       newsSaved++;
@@ -330,68 +226,43 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
     }
   }
 
-  logger.info(`[Pipeline] Dedup stats: ${extractions.length} checked, ${duplicatesFound} dupes, ${newsSaved} new | Layer1(geo): ${dedupLayerStats.layer1}, Layer2(embed): ${dedupLayerStats.layer2}, Layer3(gpt): ${dedupLayerStats.layer3}`);
+  logger.info(`${LOG_PREFIX} Dedup stats: ${extractions.length} extracted, ${intraMerged} intra-merged, ${consolidated.length} checked vs DB, ${duplicatesFound} dupes, ${newsSaved} new | Layer1(geo): ${dedupLayerStats.layer1}, Layer2(embed): ${dedupLayerStats.layer2}, Layer3(gpt): ${dedupLayerStats.layer3}`);
 
   if (duplicatesFound > 0) {
     await db.trackCost({
-      source: 'auto_scan',
-      provider: 'openai',
+      source: 'auto_scan', provider: 'openai',
       cost_usd: duplicatesFound * 0.001,
       details: { stage: 'dedup_gpt', duplicates: duplicatesFound, layerStats: dedupLayerStats },
     });
   }
 
-  // ============================================
   // STAGE 7: Finalize
-  // ============================================
   await db.updateLocationLastCheck(locationId, new Date());
 
   const duration = Date.now() - startTime;
-  const totalCost = calculateCost(googleQueryCount, afterFilter0.length, validContents.length, extractions.length);
+  const totalCost = calculateCost(queryCount, afterFilter0.length, validContents.length, extractions.length);
 
   await db.insertOperationLog({
-    location_id: locationId,
-    stage: 'complete',
-    urls_processed: searchResults.length,
-    news_found: newsSaved,
-    cost_usd: totalCost,
-    duration_ms: duration,
+    location_id: locationId, stage: 'complete',
+    urls_processed: searchResults.length, news_found: newsSaved,
+    cost_usd: totalCost, duration_ms: duration,
   });
 
-  logger.info(
-    `[Pipeline] Completed: ${newsSaved} new, ${duplicatesFound} dupes, cost $${totalCost.toFixed(4)}, ${duration}ms`
-  );
+  logger.info(`${LOG_PREFIX} Completed: ${newsSaved} new, ${duplicatesFound} dupes, cost $${totalCost.toFixed(4)}, ${duration}ms`);
 
-  return buildResult(
-    location,
-    searchResults.length,
-    afterFilter0.length,
-    afterFilter1.length,
-    extractions.length,
-    newsSaved,
-    duplicatesFound,
-    totalCost,
-    duration
-  );
+  return buildResult(location, searchResults.length, afterFilter0.length, afterFilter1.length, extractions.length, newsSaved, duplicatesFound, totalCost, duration);
 }
 
 // ============================================
-// Multi-Source URL Collector
+// Multi-Source URL Collector (auto-scan specific)
 // ============================================
 
 interface CollectResult {
   allResults: SearchResult[];
-  googleQueryCount: number;
+  queryCount: number;
   sources: string[];
 }
 
-/**
- * Coleta URLs de múltiplas fontes:
- * 1. Perplexity Search (N queries rotacionadas)
- * 2. Google News RSS (grátis)
- * 3. Section Crawling (seções de jornais)
- * 4. SSP Scraping (secretarias estaduais)
- */
 async function collectUrls(
   location: MonitoredLocation,
   cfg: {
@@ -406,12 +277,11 @@ async function collectUrls(
 ): Promise<CollectResult> {
   const allResults: SearchResult[] = [];
   const sources: string[] = [];
-  let googleQueryCount = 0;
+  let queryCount = 0;
 
-  // Gerar scan index baseado no timestamp (para rotação de queries)
   const scanIndex = Math.floor(Date.now() / 60000);
 
-  // 1. Perplexity Search (rate limited)
+  // 1. Search provider (Brave/Perplexity)
   const queries = buildQueries(location, {
     multiQueryEnabled: cfg.multiQueryEnabled,
     queriesPerScan: cfg.queriesPerScan,
@@ -424,18 +294,16 @@ async function collectUrls(
         searchProvider.search(query, { maxResults: cfg.searchMaxResults })
       );
       allResults.push(...results);
-      googleQueryCount++;
-      logger.debug(`[Pipeline] Search: "${query.substring(0, 50)}..." → ${results.length} results`);
+      queryCount++;
     } catch (error) {
-      logger.warn(`[Pipeline] Search failed: ${(error as Error).message}`);
+      logger.warn(`${LOG_PREFIX} Search failed: ${(error as Error).message}`);
     }
   }
-  if (googleQueryCount > 0) sources.push('google');
+  if (queryCount > 0) sources.push('google');
 
-  // 2. Google News RSS (grátis, sem rate limit pesado)
+  // 2. Google News RSS
   if (cfg.googleNewsRSSEnabled) {
     try {
-      // Usa a primeira query (genérica) para o RSS
       const rssQuery = queries[0] || `crime ${location.name}`;
       const rssResults = await rateLimiter.schedule('google_news_rss', () =>
         fetchGoogleNewsRSS(rssQuery, { maxAgeDays: 7 })
@@ -443,14 +311,13 @@ async function collectUrls(
       if (rssResults.length > 0) {
         allResults.push(...rssResults);
         sources.push('google_news_rss');
-        logger.debug(`[Pipeline] Google News RSS: ${rssResults.length} results`);
       }
     } catch (error) {
-      logger.warn(`[Pipeline] Google News RSS failed: ${(error as Error).message}`);
+      logger.warn(`${LOG_PREFIX} RSS failed: ${(error as Error).message}`);
     }
   }
 
-  // 3. Section Crawling (usa domínios das URLs já encontradas)
+  // 3. Section Crawling
   if (cfg.sectionCrawlingEnabled && allResults.length > 0) {
     try {
       const sectionResults = await crawlSections(
@@ -462,14 +329,13 @@ async function collectUrls(
         sources.push('section_crawling');
       }
     } catch (error) {
-      logger.warn(`[Pipeline] Section crawling failed: ${(error as Error).message}`);
+      logger.warn(`${LOG_PREFIX} Section crawling failed: ${(error as Error).message}`);
     }
   }
 
-  // 4. SSP Scraping (se estado coberto)
+  // 4. SSP Scraping
   if (cfg.sspScrapingEnabled) {
     try {
-      // Buscar nome do estado pai da location
       const stateName = await getStateName(location);
       if (stateName) {
         const sspResults = await scrapeSSP(stateName, { jinaApiKey: config.jinaApiKey });
@@ -479,76 +345,39 @@ async function collectUrls(
         }
       }
     } catch (error) {
-      logger.warn(`[Pipeline] SSP scraping failed: ${(error as Error).message}`);
+      logger.warn(`${LOG_PREFIX} SSP scraping failed: ${(error as Error).message}`);
     }
   }
 
-  return { allResults, googleQueryCount, sources };
+  return { allResults, queryCount, sources };
 }
 
-/**
- * Resolve o nome do estado para uma location.
- * Se a location é uma cidade, busca o parent (estado).
- */
 async function getStateName(location: MonitoredLocation): Promise<string | null> {
-  if (location.type === 'state') {
-    return location.name;
-  }
+  if (location.type === 'state') return location.name;
   if (location.parent_id) {
     try {
       const parent = await db.getLocation(location.parent_id);
       return parent.name;
-    } catch {
-      return null;
-    }
+    } catch { return null; }
   }
   return null;
 }
 
 // ============================================
-// Cost helpers
+// Helpers
 // ============================================
 
-function estimateGoogleCost(queryCount: number): number {
-  return queryCount * 0.005;
-}
-
-function calculateCost(
-  googleQueries: number,
-  gptFilter1SnippetCount: number,
-  jinaFetches: number,
-  gptFilter2Calls: number
-): number {
-  const googleCost = estimateGoogleCost(googleQueries);
-  const gptFilter1Cost = gptFilter1SnippetCount > 0 ? 0.0002 : 0;
-  const jinaCost = jinaFetches * 0.002;
-  const gptFilter2Cost = gptFilter2Calls * 0.0005;
-  const embeddingCost = gptFilter2Calls * 0.00002;
-
-  return googleCost + gptFilter1Cost + jinaCost + gptFilter2Cost + embeddingCost;
+function calculateCost(queries: number, filter1Count: number, jinaFetches: number, filter2Count: number): number {
+  return queries * 0.005 + (filter1Count > 0 ? 0.0002 : 0) + jinaFetches * 0.002 + filter2Count * 0.0005 + filter2Count * 0.00002;
 }
 
 function buildResult(
-  location: MonitoredLocation,
-  urlsFound: number,
-  afterFilter0: number,
-  afterFilter1: number,
-  afterFilter2: number,
-  newsSaved: number,
-  duplicatesFound: number,
-  totalCostUsd: number,
-  durationMs: number
+  location: MonitoredLocation, urlsFound: number, afterFilter0: number, afterFilter1: number,
+  afterFilter2: number, newsSaved: number, duplicatesFound: number, totalCostUsd: number, durationMs: number,
 ): PipelineResult {
   return {
-    locationId: location.id,
-    locationName: location.name,
-    urlsFound,
-    afterFilter0,
-    afterFilter1,
-    afterFilter2,
-    newsSaved,
-    duplicatesFound,
-    totalCostUsd,
-    durationMs,
+    locationId: location.id, locationName: location.name,
+    urlsFound, afterFilter0, afterFilter1, afterFilter2,
+    newsSaved, duplicatesFound, totalCostUsd, durationMs,
   };
 }
