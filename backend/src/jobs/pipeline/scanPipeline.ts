@@ -80,6 +80,16 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
 
   logger.info(`${LOG_PREFIX} Starting scan for ${location.name}`);
 
+  // Buscar estado pai para filtro de cidade
+  let parentState: { name: string } | null = null;
+  if (location.parent_id) {
+    try {
+      parentState = await db.getLocation(location.parent_id);
+    } catch {
+      logger.warn(`${LOG_PREFIX} Could not fetch parent state for ${location.name}`);
+    }
+  }
+
   // Budget check
   const monthlyBudget = await configManager.getNumber('monthly_budget_usd');
   const currentCost = await db.getCurrentMonthCost();
@@ -159,11 +169,18 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
     details: { stage: 'fetch', count: validContents.length },
   });
 
-  // STAGE 5: Filter2 + Embedding
+  // STAGE 5: Filter2 + Embedding (com filtro de cidade/estado)
+  const locationPostFilter = parentState ? {
+    estado: parentState.name,
+    cidades: [location.name],
+    periodoDias: 7,
+  } : undefined;
+
   const extractions = await runFilter2WithEmbedding(
     validContents,
     { maxContentChars: pipelineConfig.filter2MaxContentChars, minConfidence: pipelineConfig.filter2ConfidenceMin },
     rejectedUrls, LOG_PREFIX,
+    locationPostFilter,
   );
 
   // Save rejected from filter2
