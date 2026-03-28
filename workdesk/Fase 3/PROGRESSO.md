@@ -71,6 +71,17 @@ Objetivo: mesma ocorrencia de fontes diferentes consolidada em 1 card no app.
 
 ## Sessoes
 
+### Sessao 013 (2026-03-28)
+- **Fix: auto-scan filtro cidade/estado** — Brave retornava noticias nacionais e auto-scan salvava tudo. Agora passa `postFilter` com cidade+estado da localizacao monitorada no `runFilter2WithEmbedding`. Igual a busca manual
+- **Fix: Pipeline skip disabled location** — `runPipeline()` agora verifica `location.active` antes de rodar. Jobs na fila do BullMQ nao rodam pra cidades desligadas
+- **Fix: Push notifications Firebase** — SHA-1 debug adicionado no Firebase Console, `google-services.json` atualizado, `Firebase.initializeApp` com try-catch pra duplicate-app, `FIREBASE_SERVICE_ACCOUNT` em uma linha no .env. Push funcionando!
+- **Fix: upsertDevice token antigo** — quando FCM token muda (novo Firebase project), deleta tokens antigos do mesmo user antes de inserir novo
+- **Delete de localizacao** — rota DELETE + botao lixeira no admin panel com confirmacao
+- **Auto-scan testado OK** — SP: 30 URLs → 22 filter1 → 22 filter2 → 19 intra-dedup → 14 novas ($0.065, 165s). Zero vector errors
+- **Dedup contra DB** — 3 camadas ativas: Layer1(geo), Layer2(embed), Layer3(gpt). Scores 0.86-1.00
+- **Migration 010** — reset data pra Fase 4 (TRUNCATE noticias, buscas, logs. Mantém configs/users/locations)
+- **Removidos debug prints** do Flutter push_service.dart
+
 ### Sessao 012 (2026-03-26)
 - **Refactor: pipelineCore.ts** — extraiu stages compartilhados (filter0, filter1, contentFetch, filter2+embedding, intraBatchDedup). scanPipeline e manualSearchWorker agora usam funcoes do core. Eliminou ~80% da duplicacao de codigo
 - **Dedup embedding intra-batch** — implementado nas 2 pipelines. Gera embedding por resultado, clusteriza por cosine >= 0.85, consolida melhor resumo + todas as fontes. Teste SP: 34->28 (6 consolidadas)
