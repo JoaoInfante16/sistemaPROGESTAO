@@ -71,6 +71,23 @@ Objetivo: mesma ocorrencia de fontes diferentes consolidada em 1 card no app.
 
 ## Sessoes
 
+### Sessao 012 (2026-03-26)
+- **Refactor: pipelineCore.ts** — extraiu stages compartilhados (filter0, filter1, contentFetch, filter2+embedding, intraBatchDedup). scanPipeline e manualSearchWorker agora usam funcoes do core. Eliminou ~80% da duplicacao de codigo
+- **Dedup embedding intra-batch** — implementado nas 2 pipelines. Gera embedding por resultado, clusteriza por cosine >= 0.85, consolida melhor resumo + todas as fontes. Teste SP: 34->28 (6 consolidadas)
+- **Fix vector length mismatch** — root cause: Supabase JS nao converte number[] pra pgvector string. Fix: `[${embedding.join(',')}]` no insert + JSON.parse no read
+- **Fix filtro cidade/estado** — pos-Filter2, valida cidade extraida vs cidades pedidas (fuzzy, sem acentos). Rejeita noticias de outras cidades
+- **Brave News Provider otimizado**:
+  - `safesearch=off` (noticias de violencia eram filtradas!)
+  - `ui_lang=pt-BR`
+  - Paginacao automatica via offset (>50 URLs)
+  - Sem cap artificial — admin panel controla
+- **Prompt Brave otimizado** — query antiga trazia 23% de ocorrencias reais. Nova query: "noticias policiais ocorrencias crimes assalto roubo homicidio prisao trafico operacao policial flagrante {cidade}, {estado}". Traz 86% de ocorrencias reais (43/50 testado via curl)
+- **Max results por periodo** — configs separadas no admin panel: auto-scan (15), manual 30d (50), 60d (50), 90d (80). Sem limite artificial (max 100). Migration 009
+- **Removidos SSP Scraper e Section Crawler** — ambos retornavam 0 resultados. SSP quebrado (sites .gov.br sao SPA), Section Crawler sem secoes mapeadas. Deletados: SSPScraper.ts, SectionCrawler.ts, sspSources.ts, sectionCrawler.test.ts. Removidos do admin panel, configManager, schema.sql
+- **Fontes ativas agora**: Brave News (principal, 50 URLs) + Google News RSS (complementar, gratis, ~1-5 URLs extras)
+- **Teste SP 30d**: Brave 50 URLs + RSS 1 = 51 total -> filter1 52 -> filter2 17 -> dedup 15 resultados. Muito melhor que antes (era 3 com config errada)
+- **ARQUITETURA.md atualizada** — reflete estado real do codigo (pipelineCore, Brave, sem SSP/SC, configs por periodo)
+
 ### Sessao 011 (2026-03-22)
 - **C1: RSS date pre-filter** — GoogleNewsRSSProvider agora extrai `<pubDate>` de cada `<item>`. Novo param `maxAgeDays` descarta artigos velhos ANTES do Jina. manualSearchWorker passa `periodoDias`, scanPipeline passa 7 dias. Economia estimada: ~$0.07/busca (evita Jina+GPT em ~35 URLs velhas)
 - **C2: Dedup intra-busca manual** — Dedup leve por chave `cidade|tipo_crime|data_ocorrencia` nos resultados finais antes de salvar. Remove ocorrencias duplicadas vindas de fontes diferentes (ex: Perplexity + RSS retornam mesma noticia). Gratis (sem embedding/GPT)
@@ -158,12 +175,18 @@ RESULTADO:       8 noticias em 310s (~5min)
 - [ ] **Brave como SEARCH_BACKEND** — funciona mas retorna ~15 URLs (igual Perplexity). Decidir: manter Brave ou voltar Perplexity?
 
 ### Auto-scan (CRON)
-- [x] **Vector length mismatch** — root cause: Supabase JS client nao converte number[] pra pgvector string. Fix: `queries.ts` agora faz `[${embedding.join(',')}]` no insert + JSON.parse no read. TESTAR: rodar auto-scan e confirmar 0 erros de vector
+- [x] **Vector length mismatch** — TESTADO OK. 14 noticias salvas sem erro de vector
+- [x] **Auto-scan com pipelineCore** — TESTADO OK. SP: 30 URLs → 22 filter1 → 22 filter2 → 19 intra-dedup → 14 novas + 5 dupes ($0.065, 165s)
+- [x] **Intra-batch dedup no auto-scan** — TESTADO OK. 22→19 (3 consolidadas)
+- [x] **Dedup contra DB** — TESTADO OK. 5 dupes detectadas (scores 0.895-1.000), fontes adicionadas
+- [x] **Pipeline skip disabled location** — adicionado check `location.active` no inicio do runPipeline
 - [ ] **Filter1 batch length mismatch** — "expected 23, got 24" ainda aparece. Nao e critico (ajusta automaticamente) mas indica que GPT retorna 1 item a mais
 
 ### Painel Admin
+- [x] **Delete de cidade/estado** — rota DELETE + botao lixeira no admin (com confirmacao)
+- [x] **Trigger manual de scan** — TESTADO OK via admin panel (SP, job 10)
 - [ ] **Dashboard URLs rejeitadas** — verificar se mostra dados corretos apos todas as mudancas
-- [ ] **Configuracoes** — verificar se toggles de fontes (RSS, SSP, Section Crawler) funcionam
+- [ ] **Configuracoes** — verificar se toggles de fontes (RSS, SSP, Section Crawler) foram limpos (SSP/SC removidos)
 - [ ] **Budget tracking** — verificar se mostra provider='brave' corretamente
 - [ ] **Monitoramentos** — verificar se scans automaticos aparecem com metricas corretas
 

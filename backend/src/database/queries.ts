@@ -476,6 +476,17 @@ export async function updateLocation(id: string, updates: UpdateLocationParams):
   }
 }
 
+export async function deleteLocation(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('monitored_locations')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    throw new Error(`Failed to delete location: ${error.message}`);
+  }
+}
+
 // ============================================
 // Users (admin panel)
 // ============================================
@@ -679,6 +690,13 @@ export async function upsertDevice(
   token: string,
   platform: 'ios' | 'android'
 ): Promise<void> {
+  // Remover tokens antigos deste user (token pode mudar com novo Firebase project)
+  await supabase
+    .from('user_devices')
+    .delete()
+    .eq('user_id', userId)
+    .neq('device_token', token);
+
   const { error } = await supabase
     .from('user_devices')
     .upsert(
@@ -984,6 +1002,7 @@ export const db = {
   getLocationsHierarchy,
   insertLocation,
   updateLocation,
+  deleteLocation,
   getAllUsers,
   createUserProfile,
   updateUserProfile,

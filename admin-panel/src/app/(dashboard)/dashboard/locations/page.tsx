@@ -30,6 +30,7 @@ import {
   Play,
   Loader2,
   MapPin,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { IBGEImportDialog } from './ibge-import-dialog';
@@ -103,6 +104,18 @@ export default function LocationsPage() {
         next.delete(cityId);
         return next;
       });
+    }
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`Deletar "${name}"? Esta ação não pode ser desfeita.`)) return;
+    try {
+      const token = await getToken();
+      await api.deleteLocation(token, id);
+      await loadLocations();
+      toast.success(`"${name}" removido`);
+    } catch {
+      toast.error('Erro ao deletar');
     }
   };
 
@@ -343,19 +356,29 @@ export default function LocationsPage() {
                               </div>
                             </div>
                           </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => triggerScan(city.id, city.name)}
-                            disabled={scanning.has(city.id) || !city.active}
-                          >
-                            {scanning.has(city.id) ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Play className="h-4 w-4" />
-                            )}
-                            <span className="ml-1">Scan</span>
-                          </Button>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => triggerScan(city.id, city.name)}
+                              disabled={scanning.has(city.id) || !city.active}
+                            >
+                              {scanning.has(city.id) ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Play className="h-4 w-4" />
+                              )}
+                              <span className="ml-1">Scan</span>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete(city.id, city.name)}
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                       ))
                     )}

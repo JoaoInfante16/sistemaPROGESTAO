@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "650688594803",
-    "project_id": "netrios-news",
-    "storage_bucket": "netrios-news.firebasestorage.app"
+    "project_number": "890579135223",
+    "project_id": "simeops-e8cdc",
+    "storage_bucket": "simeops-e8cdc.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:650688594803:android:9b700d42ec70ea84e7bb06",
+        "mobilesdk_app_id": "1:890579135223:android:6b4bd0e6033421479001f2",
         "android_client_info": {
           "package_name": "com.netriosnews.netrios_news"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyAXmjycDXrNx0g3B4J6pC7UAZy68RQM-1g"
+          "current_key": "AIzaSyDk7VLP8mzfSszFHX2hniTMl2nxk3sHRhE"
         }
       ],
       "services": {

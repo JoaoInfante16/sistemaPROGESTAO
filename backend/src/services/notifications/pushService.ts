@@ -100,8 +100,9 @@ export async function sendPushNotification(
     return { sent: false, reason: `Erro ao buscar dispositivos: ${error.message}`, deviceCount: 0, successCount: 0 };
   }
 
+  logger.info(`[Push] Devices query result: ${devices?.length ?? 0} devices found, error: ${error?.message ?? 'none'}`);
+
   if (!devices || devices.length === 0) {
-    logger.debug('[Push] No active devices');
     return { sent: false, reason: 'Nenhum dispositivo registrado. Abra o app no celular e faca login para registrar.', deviceCount: 0, successCount: 0 };
   }
 

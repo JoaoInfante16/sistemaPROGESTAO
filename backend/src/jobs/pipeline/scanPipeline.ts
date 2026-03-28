@@ -56,6 +56,16 @@ export async function executePipeline(locationId: string): Promise<PipelineResul
 async function runPipeline(locationId: string, startTime: number): Promise<PipelineResult> {
   const location = await db.getLocation(locationId);
 
+  // Verificar se localização ainda está ativa (pode ter sido desligada enquanto job estava na fila)
+  if (!location.active) {
+    logger.info(`${LOG_PREFIX} Skipping disabled location: ${location.name}`);
+    return {
+      locationId, locationName: location.name,
+      urlsFound: 0, afterFilter0: 0, afterFilter1: 0, afterFilter2: 0,
+      newsSaved: 0, duplicatesFound: 0, totalCostUsd: 0, durationMs: Date.now() - startTime,
+    };
+  }
+
   const pipelineConfig = {
     searchMaxResults: await configManager.getNumber('search_max_results'),
     contentFetchConcurrency: await configManager.getNumber('content_fetch_concurrency'),
@@ -207,10 +217,15 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
 
       // Push notification
       try {
-        await sendPushNotification({
+        const pushResult = await sendPushNotification({
           id: newsId, tipo_crime: news.tipo_crime,
           cidade: news.cidade, bairro: news.bairro || null, resumo: news.resumo,
         });
+        if (pushResult.sent) {
+          logger.info(`${LOG_PREFIX} Push sent for ${newsId}: ${pushResult.successCount}/${pushResult.deviceCount} devices`);
+        } else {
+          logger.warn(`${LOG_PREFIX} Push not sent for ${newsId}: ${pushResult.reason}`);
+        }
       } catch (pushErr) {
         logger.error(`${LOG_PREFIX} Push failed for news ${newsId}: ${(pushErr as Error).message}`);
       }

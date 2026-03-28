@@ -45,13 +45,17 @@ class PushService {
 
     // Register device token with backend
     final token = await _fcm.getToken();
+    print('[Push] FCM token: ${token != null ? "${token.substring(0, 20)}..." : "NULL"}');
     if (token != null) {
       final platform = Platform.isIOS ? 'ios' : 'android';
       try {
         await _api.registerDevice(token, platform);
-      } catch (_) {
-        // Silently fail — will retry on next app open
+        print('[Push] Device registered successfully');
+      } catch (e) {
+        print('[Push] Device registration FAILED: $e');
       }
+    } else {
+      print('[Push] FCM token is null - Firebase not configured?');
     }
 
     // Token refresh

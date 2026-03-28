@@ -259,6 +259,12 @@ export const api = {
       token,
     }),
 
+  deleteLocation: (token: string, id: string) =>
+    apiFetch<{ success: boolean }>(`/locations/${id}`, {
+      method: 'DELETE',
+      token,
+    }),
+
   triggerScan: (token: string, locationId: string) =>
     apiFetch<{ success: boolean; jobId: string }>(`/locations/${locationId}/scan`, {
       method: 'POST',

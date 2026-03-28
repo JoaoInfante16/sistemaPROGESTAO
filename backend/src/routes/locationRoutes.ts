@@ -80,6 +80,25 @@ router.patch(
 );
 
 /**
+ * DELETE /locations/:id
+ * Deletar localização (cidade ou estado).
+ */
+router.delete(
+  '/locations/:id',
+  requireAuth,
+  requireAdmin,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      await db.deleteLocation(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('[Locations] Delete error:', error);
+      res.status(500).json({ error: 'Failed to delete location' });
+    }
+  }
+);
+
+/**
  * POST /locations/:id/scan
  * Disparar scan manual para uma localização.
  */

@@ -15,9 +15,13 @@ import 'features/feed/screens/main_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    // Already initialized (hot restart or auto-init via google-services.json)
+  }
 
   await Supabase.initialize(
     url: Env.supabaseUrl,
