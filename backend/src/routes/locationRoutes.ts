@@ -7,9 +7,11 @@
 // POST   /locations/:id/scan - Disparar scan manual (admin)
 
 import { Router, Request, Response } from 'express';
+import { z } from 'zod';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { validateBody, schemas } from '../middleware/validation';
 import { db } from '../database/queries';
+import { supabase } from '../config/database';
 import { enqueueScan } from '../jobs/scheduler/cronScheduler';
 import { logger } from '../middleware/logger';
 
@@ -55,6 +57,74 @@ router.post(
       }
       logger.error('[Locations] Create error:', error);
       res.status(500).json({ error: 'Failed to create location' });
+    }
+  }
+);
+
+// ============================================
+// Scan Frequency (global) — MUST be before /:id routes
+// ============================================
+
+const updateFrequencySchema = z.object({
+  scan_frequency_minutes: z.number().int().min(5).max(1440),
+});
+
+/**
+ * GET /locations/scan-frequency
+ * Retorna a frequencia de scan mais comum entre as cidades ativas.
+ */
+router.get(
+  '/locations/scan-frequency',
+  requireAuth,
+  requireAdmin,
+  async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const { data } = await supabase
+        .from('monitored_locations')
+        .select('scan_frequency_minutes')
+        .eq('type', 'city')
+        .eq('active', true)
+        .limit(1);
+
+      const freq = data?.[0]?.scan_frequency_minutes ?? 60;
+      res.json({ scan_frequency_minutes: freq });
+    } catch (error) {
+      logger.error('[Locations] Get scan frequency error:', error);
+      res.status(500).json({ error: 'Failed to get scan frequency' });
+    }
+  }
+);
+
+/**
+ * PATCH /locations/scan-frequency
+ * Atualiza a frequencia de scan de TODAS as cidades.
+ */
+router.patch(
+  '/locations/scan-frequency',
+  requireAuth,
+  requireAdmin,
+  validateBody(updateFrequencySchema),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { scan_frequency_minutes } = req.body as { scan_frequency_minutes: number };
+
+      const { data, error } = await supabase
+        .from('monitored_locations')
+        .update({ scan_frequency_minutes })
+        .eq('type', 'city')
+        .select('id');
+
+      if (error) {
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
+      const updated = data?.length || 0;
+      logger.info(`[Locations] Scan frequency updated to ${scan_frequency_minutes}min for ${updated} cities`);
+      res.json({ success: true, updated, scan_frequency_minutes });
+    } catch (error) {
+      logger.error('[Locations] Update scan frequency error:', error);
+      res.status(500).json({ error: 'Failed to update scan frequency' });
     }
   }
 );

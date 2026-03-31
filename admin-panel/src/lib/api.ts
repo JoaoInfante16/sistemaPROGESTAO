@@ -110,6 +110,7 @@ export interface DashboardStats {
   activeCities: number;
   costThisMonth: number;
   pipelineSuccessRate: number;
+  scansToday: number;
 }
 
 export interface OperationLog {
@@ -283,11 +284,21 @@ export const api = {
       token,
     }),
 
+  getScanFrequency: (token: string) =>
+    apiFetch<{ scan_frequency_minutes: number }>('/locations/scan-frequency', { token }),
+
+  updateScanFrequency: (token: string, scan_frequency_minutes: number) =>
+    apiFetch<{ success: boolean; updated: number; scan_frequency_minutes: number }>('/locations/scan-frequency', {
+      method: 'PATCH',
+      body: JSON.stringify({ scan_frequency_minutes }),
+      token,
+    }),
+
   // Users (GET/POST /users, PATCH /users/:id)
   getUsers: (token: string) =>
     apiFetch<UserProfile[]>('/users', { token }),
 
-  createUser: (token: string, data: { email: string; is_admin?: boolean }) =>
+  createUser: (token: string, data: { email: string; is_admin?: boolean; password?: string }) =>
     apiFetch<{ success: boolean; userId: string; tempPassword: string; message: string }>('/users', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -304,6 +315,12 @@ export const api = {
   deleteUser: (token: string, id: string) =>
     apiFetch<{ success: boolean }>(`/users/${id}`, {
       method: 'DELETE',
+      token,
+    }),
+
+  resetPassword: (token: string, id: string) =>
+    apiFetch<{ success: boolean; tempPassword: string }>(`/users/${id}/reset-password`, {
+      method: 'POST',
       token,
     }),
 
@@ -334,8 +351,9 @@ export const api = {
       avgCostPerScan: number;
       totalScansThisMonth: number;
       totalCostThisMonth: number;
-      avgCostByProvider: { perplexity: number; jina: number; openai: number };
+      avgCostByProvider: { brave: number; jina: number; openai: number };
       activeCities: number;
+      estimatedScansPerDay: number;
     }>('/settings/cost-estimate', { token }),
 
   getConfig: (token: string) =>
@@ -358,6 +376,9 @@ export const api = {
   // Rejected URLs (dashboard)
   getRejectedUrls: (token: string) =>
     apiFetch<RejectedUrlEntry[]>('/dashboard/rejected-urls', { token }),
+
+  clearRejectedUrls: (token: string) =>
+    apiFetch<{ success: boolean }>('/dashboard/rejected-urls', { method: 'DELETE', token }),
 
   // Analytics
   getCrimeSummary: (token: string, params: { cidade: string; dateFrom: string; dateTo: string }) => {
@@ -386,22 +407,4 @@ export const api = {
   getPublicReport: (reportId: string) =>
     apiFetch<ReportData>(`/public/report/${reportId}`),
 
-  // Dev Tools (so funcionam quando backend roda com NODE_ENV !== 'production')
-  seedNews: (token: string) =>
-    apiFetch<{ success: boolean; inserted: number; total: number }>('/dev/seed-news', {
-      method: 'POST',
-      token,
-    }),
-
-  triggerNotification: (token: string) =>
-    apiFetch<{ success: boolean; devices: number; successCount: number; reason?: string; notification: { title: string; body: string } }>('/dev/trigger-notification', {
-      method: 'POST',
-      token,
-    }),
-
-  clearMock: (token: string) =>
-    apiFetch<{ success: boolean; deleted: number }>('/dev/clear-mock', {
-      method: 'POST',
-      token,
-    }),
 };

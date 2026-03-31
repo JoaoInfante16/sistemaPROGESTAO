@@ -109,7 +109,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   if (queryCount > 0) {
     await db.trackCost({
       source: 'auto_scan',
-      provider: config.searchBackend as 'google' | 'perplexity',
+      provider: config.searchBackend as 'google' | 'perplexity' | 'brave',
       cost_usd: queryCount * 0.005,
       details: { queryCount, resultsCount: searchResults.length, sources },
     });
@@ -127,7 +127,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   if (filter0Rejected.length > 0) {
     await db.insertRejectedUrls(filter0Rejected.map(r => ({
       url: r.url, title: '', stage: 'filter0_regex',
-      reason: 'URL ou snippet nao passou no filtro regex', location_id: locationId,
+      reason: 'URL bloqueada (regex)', location_id: locationId,
     })));
   }
 
@@ -139,7 +139,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   if (filter1Rejected.length > 0) {
     await db.insertRejectedUrls(filter1Rejected.map(r => ({
       url: r.url, title: '', stage: 'filter1_gpt',
-      reason: 'GPT classificou snippet como nao-criminal', location_id: locationId,
+      reason: 'Não criminal', location_id: locationId,
     })));
   }
 
@@ -187,8 +187,8 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   const filter2Rejected = rejectedUrls.filter(r => r.stage === 'filter2');
   if (filter2Rejected.length > 0) {
     await db.insertRejectedUrls(filter2Rejected.map(r => ({
-      url: r.url, title: '', stage: 'filter2_gpt',
-      reason: 'Conteudo nao classificado como crime ou confianca abaixo do threshold', location_id: locationId,
+      url: r.url, title: '', stage: r.stage.startsWith('filter2') ? r.stage : 'filter2_gpt',
+      reason: r.reason || 'Não criminal (análise)', location_id: locationId,
     })));
   }
 

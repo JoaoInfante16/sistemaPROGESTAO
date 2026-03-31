@@ -12,7 +12,7 @@ import { filter1GPTBatch } from '../../services/filters/filter1GPTBatch';
 import { filter2GPTWithReason } from '../../services/filters/filter2GPT';
 import { logger } from '../../middleware/logger';
 import { NewsExtraction } from '../../utils/types';
-import { asyncPool, cosineSimilarity } from '../../utils/helpers';
+import { asyncPool, cosineSimilarity, normalizeText } from '../../utils/helpers';
 import { FetchedContent } from '../../services/content/ContentFetcher';
 import { rateLimiter } from '../../services/rateLimiter';
 import { deduplicateResults } from '../../services/search/urlDeduplicator';
@@ -194,7 +194,7 @@ export async function runFilter2WithEmbedding(
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - postFilter.periodoDias);
       if (newsDate < cutoff) {
-        rejectedUrls.push({ url: fetched.url, stage: 'filter2_date', reason: `data=${extracted.data_ocorrencia} fora do periodo (${postFilter.periodoDias}d)` });
+        rejectedUrls.push({ url: fetched.url, stage: 'filter2_date', reason: `Data antiga: ${extracted.data_ocorrencia}` });
         logger.info(`${logPrefix} filter2 data fora: ${extracted.data_ocorrencia} (cutoff: ${cutoff.toISOString().split('T')[0]})`);
         continue;
       }
@@ -202,14 +202,14 @@ export async function runFilter2WithEmbedding(
 
     // Post-filter: cidade/estado
     if (postFilter?.cidades && postFilter?.estado) {
-      const cidadeExtraida = extracted.cidade.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const estadoLower = postFilter.estado.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const cidadesLower = postFilter.cidades.map(c => c.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+      const cidadeExtraida = normalizeText(extracted.cidade);
+      const estadoLower = normalizeText(postFilter.estado);
+      const cidadesLower = postFilter.cidades.map(normalizeText);
       const cidadeMatch = cidadesLower.some(c => cidadeExtraida.includes(c) || c.includes(cidadeExtraida));
-      const estadoNoResumo = extracted.resumo.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(estadoLower);
+      const estadoNoResumo = normalizeText(extracted.resumo).includes(estadoLower);
 
       if (!cidadeMatch && !estadoNoResumo) {
-        rejectedUrls.push({ url: fetched.url, stage: 'filter2_location', reason: `cidade=${extracted.cidade} nao pertence a ${postFilter.estado}` });
+        rejectedUrls.push({ url: fetched.url, stage: 'filter2_location', reason: `Local errado: ${extracted.cidade}` });
         logger.info(`${logPrefix} filter2 cidade fora: ${extracted.cidade} (esperado: ${postFilter.cidades.join(', ')}, ${postFilter.estado})`);
         continue;
       }

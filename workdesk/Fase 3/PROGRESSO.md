@@ -71,6 +71,16 @@ Objetivo: mesma ocorrencia de fontes diferentes consolidada em 1 card no app.
 
 ## Sessoes
 
+### Sessao 014 (2026-03-28) — Auditoria + Polimento Backend
+- **Auditoria completa** com 3 agentes paralelos: pipeline, services, routes/DB. 25 issues encontradas
+- **Push batch delete** — `removeInvalidTokens()` agora faz 1 query (`.in()`) em vez de N queries sequenciais
+- **Push log rebaixado** — `Devices query result` de info→debug
+- **Dedup null-check** — filtra candidatos sem embedding valido (dim≠1536) antes do cosineSimilarity
+- **normalizeText()** — helper extraido em helpers.ts, usado no pipelineCore (DRY, era 5x repetido)
+- **Deletado filter1GPT.ts** — versao single-snippet nao usada (produção usa filter1GPTBatch)
+- **Migration 011** — indexes de performance: news(cidade,tipo_crime), operation_logs(location_id), budget_tracking(provider)
+- **Pendente pro admin panel**: fix cost tracking (provider 'brave', embedding cost, dedup cost), sourceTypeMap, centralizar constantes de custo
+
 ### Sessao 013 (2026-03-28)
 - **Fix: auto-scan filtro cidade/estado** — Brave retornava noticias nacionais e auto-scan salvava tudo. Agora passa `postFilter` com cidade+estado da localizacao monitorada no `runFilter2WithEmbedding`. Igual a busca manual
 - **Fix: Pipeline skip disabled location** — `runPipeline()` agora verifica `location.active` antes de rodar. Jobs na fila do BullMQ nao rodam pra cidades desligadas

@@ -56,3 +56,11 @@ export function cosineSimilarity(vecA: number[], vecB: number[]): number {
 
   return dotProduct / magnitude;
 }
+
+/**
+ * Normaliza texto para comparação: lowercase, remove acentos.
+ * Usado para matching de cidade/estado no filtro pós-Filter2.
+ */
+export function normalizeText(text: string): string {
+  return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}

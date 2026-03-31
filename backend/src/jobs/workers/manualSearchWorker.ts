@@ -74,7 +74,7 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
 
     await db.trackCost({
       source: 'manual_search',
-      provider: config.searchBackend as 'google' | 'perplexity',
+      provider: config.searchBackend as 'google' | 'perplexity' | 'brave',
       cost_usd: cidades.length * 0.005,
       details: { searchId, cidadesCount: cidades.length, resultsCount: searchResults.length },
     });
@@ -124,8 +124,8 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
 
     await db.trackCost({
       source: 'manual_search', provider: 'openai',
-      cost_usd: validContents.length * 0.0005,
-      details: { searchId, stage: 'filter2', analyzed: validContents.length, extracted: extractions.length },
+      cost_usd: validContents.length * 0.0005 + extractions.length * 0.00002,
+      details: { searchId, stage: 'filter2+embedding', analyzed: validContents.length, extracted: extractions.length },
     });
 
     // STAGE 6: Dedup intra-batch

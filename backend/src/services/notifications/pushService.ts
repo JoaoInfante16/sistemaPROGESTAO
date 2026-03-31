@@ -100,7 +100,7 @@ export async function sendPushNotification(
     return { sent: false, reason: `Erro ao buscar dispositivos: ${error.message}`, deviceCount: 0, successCount: 0 };
   }
 
-  logger.info(`[Push] Devices query result: ${devices?.length ?? 0} devices found`);
+  logger.debug(`[Push] Devices query: ${devices?.length ?? 0} found`);
 
   if (!devices || devices.length === 0) {
     return { sent: false, reason: 'Nenhum dispositivo registrado. Abra o app no celular e faca login para registrar.', deviceCount: 0, successCount: 0 };
@@ -199,12 +199,11 @@ async function sendToTokens(
 }
 
 async function removeInvalidTokens(tokens: string[]): Promise<void> {
-  for (const token of tokens) {
-    await supabase
-      .from('user_devices')
-      .delete()
-      .eq('device_token', token);
-  }
+  if (tokens.length === 0) return;
+  await supabase
+    .from('user_devices')
+    .delete()
+    .in('device_token', tokens);
 }
 
 function chunkArray<T>(array: T[], size: number): T[][] {

@@ -26,11 +26,4 @@ router.use(userRouter);
 router.use(settingsRouter);
 router.use(analyticsRouter);
 
-// Dev tools (TEMPORARIO - remover antes do deploy)
-if (process.env.NODE_ENV !== 'production') {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const devRouter = require('./devRoutes').default;
-  router.use(devRouter);
-}
-
 export default router;

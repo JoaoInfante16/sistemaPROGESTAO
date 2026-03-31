@@ -13,13 +13,13 @@ import { validateBody } from '../middleware/validation';
 import { db } from '../database/queries';
 import { supabase } from '../config/database';
 import { logger } from '../middleware/logger';
-import crypto from 'crypto';
 
 const router = Router();
 
 const createUserSchema = z.object({
   email: z.string().email(),
   is_admin: z.boolean().optional(),
+  password: z.string().min(6).max(100).optional(),
 });
 
 const updateUserSchema = z.object({
@@ -57,8 +57,8 @@ router.post(
   validateBody(createUserSchema),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { email, is_admin } = req.body as { email: string; is_admin?: boolean };
-      const tempPassword = generateTempPassword();
+      const { email, is_admin, password } = req.body as { email: string; is_admin?: boolean; password?: string };
+      const tempPassword = password || generateTempPassword();
 
       // Criar no Supabase Auth
       const { data, error } = await supabase.auth.admin.createUser({
@@ -143,8 +143,44 @@ router.delete(
   }
 );
 
+/**
+ * POST /users/:id/reset-password
+ * Gera nova senha temporária para o usuário.
+ */
+router.post(
+  '/users/:id/reset-password',
+  requireAuth,
+  requireAdmin,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const newPassword = generateTempPassword();
+
+      const { error } = await supabase.auth.admin.updateUserById(req.params.id, {
+        password: newPassword,
+      });
+
+      if (error) {
+        res.status(400).json({ error: error.message });
+        return;
+      }
+
+      res.json({
+        success: true,
+        tempPassword: newPassword,
+        message: 'Senha redefinida. Compartilhe a nova senha temporária com o usuário.',
+      });
+    } catch (error) {
+      logger.error('[Users] Reset password error:', error);
+      res.status(500).json({ error: 'Failed to reset password' });
+    }
+  }
+);
+
 function generateTempPassword(): string {
-  return crypto.randomBytes(12).toString('base64url');
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let pw = '';
+  for (let i = 0; i < 8; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+  return pw;
 }
 
 export default router;

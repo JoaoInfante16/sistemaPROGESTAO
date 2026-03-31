@@ -566,6 +566,7 @@ interface DashboardStats {
   activeCities: number;
   costThisMonth: number;
   pipelineSuccessRate: number;
+  scansToday: number;
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
@@ -601,11 +602,18 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const completedLogs = (logs || []).filter((l) => l.stage === 'complete').length;
   const successRate = totalLogs > 0 ? Math.round((completedLogs / totalLogs) * 100) : 100;
 
+  const today = new Date().toISOString().slice(0, 10);
+  const { count: scansCount } = await supabase
+    .from('operation_logs')
+    .select('id', { count: 'exact', head: true })
+    .gte('created_at', `${today}T00:00:00`);
+
   return {
     newsThisMonth: newsCount || 0,
     activeCities: cityCount || 0,
     costThisMonth: parseFloat(totalCost.toFixed(4)),
     pipelineSuccessRate: successRate,
+    scansToday: scansCount || 0,
   };
 }
 
@@ -678,6 +686,17 @@ export async function cleanupOldRejectedUrls(): Promise<void> {
 
   if (error) {
     logger.error('Failed to cleanup rejected URLs:', error.message);
+  }
+}
+
+export async function clearRejectedUrls(): Promise<void> {
+  const { error } = await supabase
+    .from('pipeline_rejected_urls')
+    .delete()
+    .gte('created_at', '2000-01-01');
+
+  if (error) {
+    throw new Error(`Failed to clear rejected URLs: ${error.message}`);
   }
 }
 
@@ -1028,4 +1047,5 @@ export const db = {
   insertRejectedUrls,
   getRecentRejectedUrls,
   cleanupOldRejectedUrls,
+  clearRejectedUrls,
 };

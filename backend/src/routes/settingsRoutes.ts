@@ -200,11 +200,10 @@ router.get(
     try {
       const currentMonth = new Date().toISOString().slice(0, 7);
 
-      // Cost breakdown by provider this month
+      // Cost breakdown by provider this month (all sources)
       const { data: costData } = await supabase
         .from('budget_tracking')
-        .select('provider, cost_usd')
-        .eq('source', 'auto_scan')
+        .select('provider, cost_usd, source')
         .gte('created_at', `${currentMonth}-01`);
 
       const rows = costData || [];
@@ -213,13 +212,13 @@ router.get(
         0
       );
 
-      // Aggregate by provider
-      const byProvider: Record<string, number> = { perplexity: 0, jina: 0, openai: 0 };
+      // Aggregate by provider (map legacy names to current)
+      const byProvider: Record<string, number> = { brave: 0, jina: 0, openai: 0 };
       for (const row of rows) {
         const r = row as { provider: string; cost_usd: unknown };
         const provider = r.provider;
-        // Map legacy 'google' entries to 'perplexity'
-        const mappedProvider = provider === 'google' ? 'perplexity' : provider;
+        // Map legacy 'google'/'perplexity' entries to 'brave'
+        const mappedProvider = (provider === 'google' || provider === 'perplexity') ? 'brave' : provider;
         if (mappedProvider in byProvider) {
           byProvider[mappedProvider] += parseFloat(String(r.cost_usd));
         }
@@ -235,25 +234,33 @@ router.get(
       const totalScans = logData?.length || 0;
       const avgCostPerScan = totalScans > 0 ? totalCost / totalScans : 0.01;
 
-      // Active cities count
+      // Active cities with scan frequency
       const { data: locData } = await supabase
         .from('monitored_locations')
-        .select('id')
+        .select('id, scan_frequency_minutes')
         .eq('active', true)
         .eq('type', 'city');
 
       const activeCities = locData?.length || 0;
+
+      // Calcular scans/dia real baseado na frequencia de cada cidade
+      const estimatedScansPerDay = (locData || []).reduce(
+        (sum: number, loc: { scan_frequency_minutes: number }) =>
+          sum + (1440 / (loc.scan_frequency_minutes || 60)),
+        0
+      );
 
       res.json({
         avgCostPerScan: parseFloat(avgCostPerScan.toFixed(6)),
         totalScansThisMonth: totalScans,
         totalCostThisMonth: parseFloat(totalCost.toFixed(4)),
         avgCostByProvider: {
-          perplexity: parseFloat(byProvider.perplexity.toFixed(4)),
+          brave: parseFloat(byProvider.brave.toFixed(4)),
           jina: parseFloat(byProvider.jina.toFixed(4)),
           openai: parseFloat(byProvider.openai.toFixed(4)),
         },
         activeCities,
+        estimatedScansPerDay: parseFloat(estimatedScansPerDay.toFixed(1)),
       });
     } catch (error) {
       logger.error('[Settings] Cost estimate error:', error);
@@ -373,6 +380,21 @@ router.get(
     } catch (error) {
       logger.error('[Dashboard] Rejected URLs error:', error);
       res.status(500).json({ error: 'Failed to fetch rejected URLs' });
+    }
+  }
+);
+
+router.delete(
+  '/dashboard/rejected-urls',
+  requireAuth,
+  requireAdmin,
+  async (_req: Request, res: Response): Promise<void> => {
+    try {
+      await db.clearRejectedUrls();
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('[Dashboard] Clear rejected URLs error:', error);
+      res.status(500).json({ error: 'Failed to clear rejected URLs' });
     }
   }
 );

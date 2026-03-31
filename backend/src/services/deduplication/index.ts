@@ -46,7 +46,13 @@ export async function deduplicateNews(
   logger.debug(`[Dedup] Layer 1: ${candidates.length} candidates found`);
 
   // CAMADA 2: Embedding Similarity (cosine distance, <200ms)
-  const similarities = candidates.map((c) => ({
+  const validCandidates = candidates.filter(c => Array.isArray(c.embedding) && c.embedding.length === 1536);
+  if (validCandidates.length === 0) {
+    logger.debug('[Dedup] Layer 2: no candidates with valid embeddings → new');
+    return { isDuplicate: false, layer: 2 };
+  }
+
+  const similarities = validCandidates.map((c) => ({
     id: c.id,
     resumo: c.resumo,
     score: cosineSimilarity(newsData.embedding, c.embedding),

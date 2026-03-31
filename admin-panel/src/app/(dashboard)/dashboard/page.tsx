@@ -13,36 +13,63 @@ import {
 } from '@/components/ui/table';
 import { useAuth } from '@/lib/hooks/use-auth';
 import { api, type DashboardStats, type RejectedUrlEntry } from '@/lib/api';
-import { Newspaper, MapPin, DollarSign, TrendingUp, XCircle, RefreshCw } from 'lucide-react';
+import { Newspaper, MapPin, DollarSign, TrendingUp, XCircle, RefreshCw, Activity, Trash2, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 
 const STAGE_LABELS: Record<string, { label: string; color: string }> = {
   filter0_regex: { label: 'Regex', color: 'bg-gray-100 text-gray-700' },
   filter1_gpt: { label: 'GPT Snippet', color: 'bg-yellow-100 text-yellow-700' },
   filter2_gpt: { label: 'GPT Analise', color: 'bg-red-100 text-red-700' },
+  filter2: { label: 'GPT Analise', color: 'bg-red-100 text-red-700' },
+  filter2_location: { label: 'Local errado', color: 'bg-orange-100 text-orange-700' },
+  filter2_date: { label: 'Data antiga', color: 'bg-blue-100 text-blue-700' },
+  fetch: { label: 'Fetch falhou', color: 'bg-gray-100 text-gray-700' },
 };
 
 export default function DashboardPage() {
   const { getToken } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [rejectedUrls, setRejectedUrls] = useState<RejectedUrlEntry[]>([]);
+  const [costEstimate, setCostEstimate] = useState<{
+    avgCostPerScan: number;
+    totalScansThisMonth: number;
+    totalCostThisMonth: number;
+    avgCostByProvider: { brave: number; jina: number; openai: number };
+    activeCities: number;
+    estimatedScansPerDay: number;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   async function loadData() {
     try {
       const token = await getToken();
-      const [statsData, rejectedData] = await Promise.all([
+      const [statsData, rejectedData, ceData] = await Promise.all([
         api.getStats(token),
         api.getRejectedUrls(token).catch(() => [] as RejectedUrlEntry[]),
+        api.getCostEstimate(token).catch(() => null),
       ]);
       setStats(statsData);
       setRejectedUrls(rejectedData);
+      setCostEstimate(ceData);
     } catch {
       // stats unavailable
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  }
+
+  async function handleClearRejected() {
+    if (!confirm('Limpar todas as URLs rejeitadas?')) return;
+    try {
+      const token = await getToken();
+      await api.clearRejectedUrls(token);
+      setRejectedUrls([]);
+      toast.success('URLs rejeitadas limpas');
+    } catch {
+      toast.error('Erro ao limpar');
     }
   }
 
@@ -53,7 +80,7 @@ export default function DashboardPage() {
 
   const cards = [
     {
-      title: 'Noticias este mes',
+      title: 'Noticias enviadas',
       value: stats?.newsThisMonth ?? '-',
       icon: Newspaper,
     },
@@ -72,6 +99,11 @@ export default function DashboardPage() {
       value: stats?.pipelineSuccessRate != null ? `${stats.pipelineSuccessRate}%` : '-',
       icon: TrendingUp,
     },
+    {
+      title: 'Scans hoje',
+      value: stats?.scansToday ?? '-',
+      icon: Activity,
+    },
   ];
 
   // Group rejected URLs by stage for summary
@@ -85,7 +117,7 @@ export default function DashboardPage() {
       <h1 className="text-2xl font-bold">Dashboard</h1>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         {cards.map((card) => (
           <Card key={card.title}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -102,6 +134,78 @@ export default function DashboardPage() {
           </Card>
         ))}
       </div>
+
+      {/* Cost Breakdown */}
+      {costEstimate && (
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Custo real por provider */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                Custo real este mes (por provider)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <p className="text-xs text-muted-foreground">Brave</p>
+                  <p className="font-mono text-lg font-bold">${costEstimate.avgCostByProvider.brave.toFixed(4)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Jina</p>
+                  <p className="font-mono text-lg font-bold">${costEstimate.avgCostByProvider.jina.toFixed(4)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">OpenAI</p>
+                  <p className="font-mono text-lg font-bold">${costEstimate.avgCostByProvider.openai.toFixed(4)}</p>
+                </div>
+              </div>
+              <p className="mt-3 text-center text-xs text-muted-foreground">
+                Total real: <span className="font-mono font-bold">${costEstimate.totalCostThisMonth.toFixed(4)}</span> ({costEstimate.totalScansThisMonth} scans)
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Expectativa mensal */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Zap className="h-4 w-4" />
+                Expectativa mensal (config atual)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const cities = costEstimate.activeCities || 0;
+                const scansPerDay = costEstimate.estimatedScansPerDay || 0;
+                const avgCost = costEstimate.avgCostPerScan || 0.01;
+                const expectedMonthly = scansPerDay * 30 * avgCost;
+                return (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Cidades ativas</span>
+                      <span className="font-mono font-bold">{cities}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Scans/dia estimados</span>
+                      <span className="font-mono font-bold">{scansPerDay}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Custo medio/scan</span>
+                      <span className="font-mono font-bold">${avgCost.toFixed(4)}</span>
+                    </div>
+                    <div className="border-t pt-2 flex justify-between">
+                      <span className="font-medium">Expectativa mensal</span>
+                      <span className="font-mono text-lg font-bold">${expectedMonthly.toFixed(2)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Rejected URLs (last 24h) */}
       <Card>
@@ -125,18 +229,31 @@ export default function DashboardPage() {
                 )}
               </CardDescription>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setRefreshing(true);
-                loadData();
-              }}
-              disabled={refreshing}
-            >
-              <RefreshCw className={`h-4 w-4 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
-              Atualizar
-            </Button>
+            <div className="flex gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setRefreshing(true);
+                  loadData();
+                }}
+                disabled={refreshing}
+              >
+                <RefreshCw className={`h-4 w-4 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
+                Atualizar
+              </Button>
+              {rejectedUrls.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearRejected}
+                  className="text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Limpar
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -169,6 +286,7 @@ export default function DashboardPage() {
                             month: '2-digit',
                             hour: '2-digit',
                             minute: '2-digit',
+                            timeZone: 'America/Sao_Paulo',
                           })}
                         </TableCell>
                         <TableCell>

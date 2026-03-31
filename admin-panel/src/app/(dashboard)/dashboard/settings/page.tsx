@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -35,40 +34,14 @@ import {
   type SystemConfig,
 } from '@/lib/api';
 import {
-  Loader2, Save, Calculator, Search, Rss,
-  Lock, LockOpen, Bug, Bell, Trash2, Database, Info, SlidersHorizontal, Filter,
+  Loader2, Save, Calculator, Search, Clock,
+  Lock, LockOpen, Info, SlidersHorizontal,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 // ============================================
 // Ingestion source definitions
 // ============================================
-
-interface IngestionSource {
-  configKey: string;
-  label: string;
-  icon: React.ReactNode;
-  description: string;
-  costPerScan: number;
-  extraConfigs?: {
-    key: string;
-    label: string;
-    type: 'number';
-    min: number;
-    max: number;
-  }[];
-}
-
-const INGESTION_SOURCES: IngestionSource[] = [
-  {
-    configKey: 'google_news_rss_enabled',
-    label: 'Google News RSS',
-    icon: <Rss className="h-5 w-5" />,
-    description:
-      'Coleta noticias via feed RSS do Google News. Gratuito — sem custo de API.',
-    costPerScan: 0,
-  },
-];
 
 // ============================================
 // Threshold definitions with tooltips
@@ -84,60 +57,82 @@ interface ThresholdConfig {
   step: number;
 }
 
-const THRESHOLD_CONFIGS: ThresholdConfig[] = [
-  {
-    key: 'filter2_confidence_min',
-    label: 'Confianca minima (AI)',
-    description: 'Nivel de certeza do AI para aceitar uma noticia como crime real.',
-    tooltip: 'Aumentar quando aparecem noticias falsas ou irrelevantes no feed. Diminuir quando noticias reais nao estao aparecendo.',
-    min: 0.1,
-    max: 1.0,
-    step: 0.05,
-  },
-  {
-    key: 'dedup_similarity_threshold',
-    label: 'Threshold de deduplicacao',
-    description: 'Similaridade minima para considerar duas noticias como duplicatas.',
-    tooltip: 'Aumentar se aparecem noticias duplicadas no feed. Diminuir se noticias parecidas mas diferentes estao sendo removidas.',
-    min: 0.5,
-    max: 1.0,
-    step: 0.05,
-  },
+// ============================================
+// Scan frequency options (special — updates all cities)
+// ============================================
+
+const SCAN_FREQUENCY_OPTIONS = [
+  { value: '15', label: 'A cada 15 minutos' },
+  { value: '30', label: 'A cada 30 minutos' },
+  { value: '60', label: 'A cada 1 hora' },
+  { value: '120', label: 'A cada 2 horas' },
+  { value: '240', label: 'A cada 4 horas' },
+  { value: '360', label: 'A cada 6 horas' },
+  { value: '720', label: 'A cada 12 horas' },
+  { value: '1440', label: 'A cada 24 horas' },
+];
+
+// Grouped thresholds
+const AUTO_SCAN_THRESHOLDS: ThresholdConfig[] = [
   {
     key: 'search_max_results',
-    label: 'Resultados por busca (auto-scan)',
-    description: 'URLs por query no monitoramento automatico (CRON).',
-    tooltip: 'Auto-scan roda a cada hora. Valor baixo economiza. Recomendado: 15.',
+    label: 'URLs por busca',
+    description: 'Quantidade de URLs que o Brave retorna por query.',
+    tooltip: 'Mais URLs = mais cobertura mas mais custo de processamento (Jina+GPT). Recomendado: 10-20.',
     min: 1,
     max: 100,
     step: 5,
   },
+];
+
+const MANUAL_SEARCH_THRESHOLDS: ThresholdConfig[] = [
   {
     key: 'manual_search_max_results_30d',
-    label: 'Busca manual — 30 dias',
-    description: 'URLs por query na busca manual com periodo de 30 dias.',
-    tooltip: 'Mais resultados = mais cobertura mas mais custo de Jina+GPT.',
+    label: 'URLs — periodo 30 dias',
+    description: 'Quantidade de URLs por query na busca manual com periodo de 30 dias.',
+    tooltip: 'Mais resultados = mais cobertura mas mais custo. Recomendado: 30-50.',
     min: 1,
     max: 100,
     step: 5,
   },
   {
     key: 'manual_search_max_results_60d',
-    label: 'Busca manual — 60 dias',
-    description: 'URLs por query na busca manual com periodo de 60 dias.',
-    tooltip: 'Periodos maiores tem mais noticias disponiveis. Recomendado: 50-80.',
+    label: 'URLs — periodo 60 dias',
+    description: 'Quantidade de URLs por query na busca manual com periodo de 60 dias.',
+    tooltip: 'Periodos maiores tem mais noticias. Recomendado: 50-80.',
     min: 1,
     max: 100,
     step: 5,
   },
   {
     key: 'manual_search_max_results_90d',
-    label: 'Busca manual — 90 dias',
-    description: 'URLs por query na busca manual com periodo de 90 dias.',
-    tooltip: 'Periodos maiores tem mais noticias disponiveis. Recomendado: 50-80.',
+    label: 'URLs — periodo 90 dias',
+    description: 'Quantidade de URLs por query na busca manual com periodo de 90 dias.',
+    tooltip: 'Periodos maiores tem mais noticias. Recomendado: 50-80.',
     min: 1,
     max: 100,
     step: 5,
+  },
+];
+
+const AI_FILTER_THRESHOLDS: ThresholdConfig[] = [
+  {
+    key: 'filter2_confidence_min',
+    label: 'Confianca minima',
+    description: 'Nivel de certeza do AI para aceitar uma noticia como crime real.',
+    tooltip: 'Aumentar se aparecem noticias falsas/irrelevantes. Diminuir se noticias reais estao sumindo. Recomendado: 0.6-0.8.',
+    min: 0.1,
+    max: 1.0,
+    step: 0.05,
+  },
+  {
+    key: 'dedup_similarity_threshold',
+    label: 'Similaridade de deduplicacao',
+    description: 'Quao parecidas duas noticias precisam ser para serem consideradas duplicatas.',
+    tooltip: 'Aumentar se aparecem noticias duplicadas. Diminuir se noticias diferentes estao sendo removidas. Recomendado: 0.80-0.90.',
+    min: 0.5,
+    max: 1.0,
+    step: 0.05,
   },
 ];
 
@@ -152,28 +147,26 @@ export default function SettingsPage() {
 
   // Cost Calculator
   const [avgCostPerScan, setAvgCostPerScan] = useState(0.01);
-  const [costByProvider, setCostByProvider] = useState({ perplexity: 0, jina: 0, openai: 0 });
   const [activeCitiesBackend, setActiveCitiesBackend] = useState(0);
   const [calcCidades, setCalcCidades] = useState('3');
   const [calcFrequencia, setCalcFrequencia] = useState('60');
   const [calcBuscasDia, setCalcBuscasDia] = useState('0');
 
-  // Dev tools state
-  const [seeding, setSeeding] = useState(false);
-  const [notifying, setNotifying] = useState(false);
-  const [clearing, setClearing] = useState(false);
-  const isDev = (process.env.NEXT_PUBLIC_API_URL || '').includes('localhost');
+  // Scan frequency
+  const [scanFrequency, setScanFrequency] = useState('60');
+  const [savingFrequency, setSavingFrequency] = useState(false);
 
   const loadAll = useCallback(async () => {
     try {
       const token = await getToken();
-      const [cfg, ce] = await Promise.all([
+      const [cfg, ce, freq] = await Promise.all([
         api.getConfig(token),
         api.getCostEstimate(token),
+        api.getScanFrequency(token).catch(() => ({ scan_frequency_minutes: 60 })),
       ]);
       setConfigs(cfg);
+      setScanFrequency(String(freq.scan_frequency_minutes));
       if (ce.avgCostPerScan > 0) setAvgCostPerScan(ce.avgCostPerScan);
-      if (ce.avgCostByProvider) setCostByProvider(ce.avgCostByProvider);
       if (typeof ce.activeCities === 'number') {
         setActiveCitiesBackend(ce.activeCities);
         setCalcCidades(String(ce.activeCities));
@@ -268,45 +261,39 @@ export default function SettingsPage() {
     const cidades = parseInt(calcCidades) || 0;
     const freq = parseInt(calcFrequencia) || 60;
     const buscas = parseInt(calcBuscasDia) || 0;
+    const urlsPerScan = parseInt(getConfigValue('search_max_results')) || 15;
     const scansPorDia = cidades * (1440 / freq);
 
-    const sources = INGESTION_SOURCES.map((src) => {
-      const enabled = isConfigEnabled(src.configKey);
-      const monthlyCost = enabled ? src.costPerScan * scansPorDia * 30 : 0;
+    // Custos reais por scan (auto-scan)
+    const braveCostPerScan = 0.005;           // 1 query Brave
+    const jinaCostPerScan = urlsPerScan * 0.002;    // Jina fetch per URL
+    const openaiCostPerScan = 0.0002 + urlsPerScan * (0.0005 + 0.00002); // Filter1 batch + Filter2 + Embedding
+    const totalCostPerScan = braveCostPerScan + jinaCostPerScan + openaiCostPerScan;
 
-      return {
-        label: src.label,
-        enabled,
-        costPerScan: enabled ? src.costPerScan : 0,
-        monthlyCost,
-      };
-    });
+    const braveMonthly = braveCostPerScan * scansPorDia * 30;
+    const jinaMonthly = jinaCostPerScan * scansPorDia * 30;
+    const openaiMonthly = openaiCostPerScan * scansPorDia * 30;
+    const autoScanMonthly = totalCostPerScan * scansPorDia * 30;
 
-    // Perplexity Search base cost (1 mega query por scan, always on)
-    const perplexityBaseCost = 0.005 * scansPorDia * 30;
+    // Busca manual (usa URLs do periodo 30d como referencia)
+    const manualUrls = parseInt(getConfigValue('manual_search_max_results_30d')) || 50;
+    const manualCostPerSearch = 0.005 + 0.0002 + manualUrls * (0.002 + 0.0005 + 0.00002);
+    const manualMonthly = buscas * 30 * manualCostPerSearch;
 
-    // Processing cost (AI filters + embeddings)
-    const enabledSources = sources.filter((s) => s.enabled).length;
-    const processingMultiplier = 1 + enabledSources * 0.3;
-    const processingCostPerScan = 0.02 * processingMultiplier;
-    const processingMonthly = processingCostPerScan * scansPorDia * 30;
-
-    // Manual search cost
-    const manualMonthly = buscas * 30 * avgCostPerScan;
-
-    const sourcesTotal = sources.reduce((sum, s) => sum + s.monthlyCost, 0);
-    const grandTotal = perplexityBaseCost + sourcesTotal + processingMonthly + manualMonthly;
+    const grandTotal = autoScanMonthly + manualMonthly;
 
     return {
       scansPorDia,
-      sources,
-      perplexityBaseCost,
-      processingCostPerScan,
-      processingMonthly,
+      totalCostPerScan,
+      braveMonthly,
+      jinaMonthly,
+      openaiMonthly,
+      autoScanMonthly,
+      manualCostPerSearch,
       manualMonthly,
       grandTotal,
     };
-  }, [calcCidades, calcFrequencia, calcBuscasDia, avgCostPerScan, getConfigValue, isConfigEnabled]);
+  }, [calcCidades, calcFrequencia, calcBuscasDia, getConfigValue]);
 
   if (loading) {
     return (
@@ -360,187 +347,85 @@ export default function SettingsPage() {
             </TabsTrigger>
             <TabsTrigger value="costs">
               <Calculator className="mr-2 h-4 w-4" />
-              Custos
+              Configuracao de Custos
             </TabsTrigger>
-            {isDev && <TabsTrigger value="dev-tools">Dev Tools</TabsTrigger>}
           </TabsList>
 
           {/* ============================================ */}
           {/* Config Tab: Ingestion Sources + Thresholds */}
           {/* ============================================ */}
-          <TabsContent value="config" className="space-y-4">
+          <TabsContent value="config" className="space-y-6">
 
-            {/* Fontes de Ingestao */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Fontes de Ingestao</CardTitle>
-                <CardDescription>
-                  Controle quais fontes de noticias estao ativas. Cada fonte pode ser ativada ou desativada
-                  sem necessidade de deploy.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Perplexity Search (always on) */}
-                <div className="flex items-start justify-between rounded-lg border p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 rounded-md bg-blue-100 p-2 text-blue-700">
-                      <Search className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <p className="font-medium">Perplexity Search</p>
-                      <p className="text-sm text-muted-foreground">
-                        Buscas na web inteira via Perplexity API. Sempre ativo. Custo: ~$0.005/query.
-                      </p>
-                    </div>
-                  </div>
-                  <Badge variant="outline" className="mt-1">Sempre ativo</Badge>
-                </div>
-
-                {/* Toggleable sources */}
-                {INGESTION_SOURCES.map((src) => {
-                  const enabled = isConfigEnabled(src.configKey);
-                  const isSaving = savingConfig.has(src.configKey);
-                  return (
-                    <div
-                      key={src.configKey}
-                      className={`rounded-lg border p-4 transition-opacity ${
-                        !enabled ? 'opacity-60' : ''
-                      }`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start gap-3">
-                          <div
-                            className={`mt-0.5 rounded-md p-2 ${
-                              enabled
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-muted text-muted-foreground'
-                            }`}
-                          >
-                            {src.icon}
-                          </div>
-                          <div>
-                            <p className="font-medium">{src.label}</p>
-                            <p className="text-sm text-muted-foreground">{src.description}</p>
-                            {src.costPerScan > 0 ? (
-                              <p className="mt-1 text-xs font-mono text-muted-foreground">
-                                Custo: ~${src.costPerScan.toFixed(3)}/scan
-                              </p>
-                            ) : (
-                              <p className="mt-1 text-xs font-mono text-green-600">
-                                Gratuito
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-                          <Switch
-                            checked={enabled}
-                            onCheckedChange={() => toggleConfig(src.configKey, enabled)}
-                            disabled={isSaving}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Extra numeric configs */}
-                      {enabled && src.extraConfigs && (
-                        <div className="mt-4 ml-12 space-y-3">
-                          {src.extraConfigs.map((extra) => {
-                            const currentVal = editingConfig[extra.key] ?? getConfigValue(extra.key);
-                            const hasChange = editingConfig[extra.key] !== undefined;
-                            const isSavingExtra = savingConfig.has(extra.key);
-                            return (
-                              <div key={extra.key} className="flex items-center gap-3">
-                                <Label className="text-sm min-w-[140px]">{extra.label}</Label>
-                                <Input
-                                  type="number"
-                                  className="w-20"
-                                  min={extra.min}
-                                  max={extra.max}
-                                  value={currentVal}
-                                  onChange={(e) => handleConfigChange(extra.key, e.target.value)}
-                                />
-                                <span className="text-xs text-muted-foreground">
-                                  ({extra.min}-{extra.max})
-                                </span>
-                                {hasChange && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => saveNumericConfig(extra.key, editingConfig[extra.key])}
-                                    disabled={isSavingExtra}
-                                  >
-                                    {isSavingExtra ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <Save className="h-3 w-3" />
-                                    )}
-                                  </Button>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-
-            {/* Filter0 Regex Toggle */}
-            <Card>
-              <CardContent className="flex items-start justify-between pt-6">
-                <div className="flex items-start gap-3">
-                  <div className={`mt-0.5 rounded-md p-2 ${isConfigEnabled('filter0_regex_enabled') ? 'bg-orange-100 text-orange-700' : 'bg-muted text-muted-foreground'}`}>
-                    <Filter className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">Filtro Regex (pre-AI)</p>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent side="right" className="max-w-[300px]">
-                          <p className="text-sm">
-                            Bloqueia URLs de redes sociais (YouTube, Instagram, Facebook, TikTok) e snippets com palavras nao-crime (novela, futebol, etc.) ANTES de enviar ao AI.
-                            Desativar permite que o Perplexity traga resultados de redes sociais que podem conter noticias reais.
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {isConfigEnabled('filter0_regex_enabled')
-                        ? 'Ativo: bloqueia redes sociais e palavras nao-crime antes do AI. Economiza custos mas pode filtrar noticias relevantes.'
-                        : 'Desativado: todas as URLs passam direto pro filtro AI. Mais noticias, porem maior custo de processamento.'}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {savingConfig.has('filter0_regex_enabled') && <Loader2 className="h-4 w-4 animate-spin" />}
-                  <Switch
-                    checked={isConfigEnabled('filter0_regex_enabled')}
-                    onCheckedChange={() => toggleConfig('filter0_regex_enabled', isConfigEnabled('filter0_regex_enabled'))}
-                    disabled={savingConfig.has('filter0_regex_enabled')}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Thresholds */}
+            {/* ============================== */}
+            {/* GRUPO 1: Auto-Scan */}
+            {/* ============================== */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <SlidersHorizontal className="h-5 w-5" />
-                  Thresholds
+                  <Clock className="h-5 w-5" />
+                  Monitoramento Automatico (Auto-Scan)
                 </CardTitle>
                 <CardDescription>
-                  Ajuste a sensibilidade dos filtros de inteligencia artificial e da busca.
+                  O sistema busca noticias automaticamente para cada cidade ativa no intervalo configurado.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {THRESHOLD_CONFIGS.map((threshold) => {
+                {/* Frequencia */}
+                <div className="rounded-lg border p-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Label className="font-medium">Frequencia de scan</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="max-w-[300px]">
+                            <p className="text-sm">
+                              Frequencias menores encontram noticias mais rapido, mas gastam mais.
+                              Aplica para todas as cidades monitoradas.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-sm text-muted-foreground">Intervalo entre buscas automaticas por cidade.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {savingFrequency && <Loader2 className="h-4 w-4 animate-spin" />}
+                      <Select
+                        value={scanFrequency}
+                        onValueChange={async (value) => {
+                          setSavingFrequency(true);
+                          try {
+                            const token = await getToken();
+                            const result = await api.updateScanFrequency(token, parseInt(value));
+                            setScanFrequency(value);
+                            toast.success(`Frequencia: ${SCAN_FREQUENCY_OPTIONS.find(o => o.value === value)?.label}. ${result.updated} cidades atualizadas.`);
+                          } catch {
+                            toast.error('Erro ao atualizar frequencia');
+                          } finally {
+                            setSavingFrequency(false);
+                          }
+                        }}
+                        disabled={savingFrequency}
+                      >
+                        <SelectTrigger className="w-[200px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SCAN_FREQUENCY_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* URLs por busca */}
+                {AUTO_SCAN_THRESHOLDS.map((threshold) => {
                   const currentVal = editingConfig[threshold.key] ?? getConfigValue(threshold.key);
                   const hasChange = editingConfig[threshold.key] !== undefined;
                   const isSaving = savingConfig.has(threshold.key);
@@ -559,30 +444,141 @@ export default function SettingsPage() {
                       </div>
                       <p className="text-sm text-muted-foreground mb-3">{threshold.description}</p>
                       <div className="flex items-center gap-3">
-                        <Input
-                          type="number"
-                          className="w-24"
-                          min={threshold.min}
-                          max={threshold.max}
-                          step={threshold.step}
-                          value={currentVal}
-                          onChange={(e) => handleConfigChange(threshold.key, e.target.value)}
-                        />
-                        <span className="text-xs text-muted-foreground">
-                          ({threshold.min} - {threshold.max})
-                        </span>
+                        <Input type="number" className="w-24" min={threshold.min} max={threshold.max} step={threshold.step} value={currentVal} onChange={(e) => handleConfigChange(threshold.key, e.target.value)} />
+                        <span className="text-xs text-muted-foreground">({threshold.min} - {threshold.max})</span>
                         {hasChange && (
-                          <Button
-                            size="sm"
-                            onClick={() => saveNumericConfig(threshold.key, editingConfig[threshold.key])}
-                            disabled={isSaving}
-                          >
-                            {isSaving ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Save className="h-4 w-4 mr-1" />
-                            )}
-                            Salvar
+                          <Button size="sm" onClick={() => saveNumericConfig(threshold.key, editingConfig[threshold.key])} disabled={isSaving}>
+                            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" />Salvar</>}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Estimativa de custo por cidade */}
+                <div className="rounded-lg border bg-muted/50 p-4">
+                  <p className="text-sm font-medium mb-2">Estimativa de custo por cidade</p>
+                  {(() => {
+                    const freq = parseInt(scanFrequency) || 60;
+                    const urls = parseInt(editingConfig['search_max_results'] ?? getConfigValue('search_max_results')) || 15;
+                    const scansPerDay = 1440 / freq;
+                    // Custo real por scan: Brave query + Filter1 batch + Jina fetch + Filter2 + Embedding
+                    const costPerScan = 0.005 + 0.0002 + (urls * 0.002) + (urls * 0.0005) + (urls * 0.00002);
+                    const costPerMonth = scansPerDay * 30 * costPerScan;
+                    return (
+                      <>
+                        <div className="space-y-1 text-xs text-muted-foreground mb-2">
+                          <div className="flex justify-between"><span>Brave (1 query)</span><span className="font-mono">$0.0050</span></div>
+                          <div className="flex justify-between"><span>Jina ({urls} URLs × $0.002)</span><span className="font-mono">${(urls * 0.002).toFixed(4)}</span></div>
+                          <div className="flex justify-between"><span>OpenAI Filter + Embedding ({urls} URLs)</span><span className="font-mono">${(0.0002 + urls * 0.0005 + urls * 0.00002).toFixed(4)}</span></div>
+                          <div className="flex justify-between border-t pt-1"><span className="font-medium text-foreground">Custo por scan</span><span className="font-mono font-medium text-foreground">${costPerScan.toFixed(4)}</span></div>
+                        </div>
+                        <div className="flex items-center justify-between text-sm border-t pt-2">
+                          <span className="text-muted-foreground">
+                            {scansPerDay.toFixed(0)} scans/dia × 30 dias
+                          </span>
+                          <span className="font-mono font-bold text-lg">
+                            ~${costPerMonth.toFixed(2)}/cidade/mes
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* ============================== */}
+            {/* GRUPO 2: Busca Manual */}
+            {/* ============================== */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Search className="h-5 w-5" />
+                  Busca Manual
+                </CardTitle>
+                <CardDescription>
+                  Quantidade de URLs buscadas quando um usuario faz uma busca manual no app. Periodos maiores retornam mais resultados.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {MANUAL_SEARCH_THRESHOLDS.map((threshold) => {
+                  const currentVal = editingConfig[threshold.key] ?? getConfigValue(threshold.key);
+                  const hasChange = editingConfig[threshold.key] !== undefined;
+                  const isSaving = savingConfig.has(threshold.key);
+                  const urlCount = parseInt(currentVal) || 0;
+                  // Brave query + Filter1 batch + Jina + Filter2 + Embedding
+                  const estimatedCost = 0.005 + 0.0002 + urlCount * (0.002 + 0.0005 + 0.00002);
+                  return (
+                    <div key={threshold.key} className="rounded-lg border p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Label className="font-medium">{threshold.label}</Label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="max-w-[280px]">
+                              <p className="text-sm">{threshold.tooltip}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <span className="text-xs font-mono text-muted-foreground">~${estimatedCost.toFixed(3)}/busca</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Input type="number" className="w-24" min={threshold.min} max={threshold.max} step={threshold.step} value={currentVal} onChange={(e) => handleConfigChange(threshold.key, e.target.value)} />
+                        <span className="text-xs text-muted-foreground">URLs ({threshold.min} - {threshold.max})</span>
+                        {hasChange && (
+                          <Button size="sm" onClick={() => saveNumericConfig(threshold.key, editingConfig[threshold.key])} disabled={isSaving}>
+                            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" />Salvar</>}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+
+            {/* ============================== */}
+            {/* GRUPO 3: Filtros AI */}
+            {/* ============================== */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <SlidersHorizontal className="h-5 w-5" />
+                  Filtros de Inteligencia Artificial
+                </CardTitle>
+                <CardDescription>
+                  Ajuste a sensibilidade dos filtros que decidem se uma noticia e relevante e se ja foi processada antes.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {AI_FILTER_THRESHOLDS.map((threshold) => {
+                  const currentVal = editingConfig[threshold.key] ?? getConfigValue(threshold.key);
+                  const hasChange = editingConfig[threshold.key] !== undefined;
+                  const isSaving = savingConfig.has(threshold.key);
+                  return (
+                    <div key={threshold.key} className="rounded-lg border p-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Label className="font-medium">{threshold.label}</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="max-w-[280px]">
+                            <p className="text-sm">{threshold.tooltip}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-sm text-muted-foreground mb-3">{threshold.description}</p>
+                      <div className="flex items-center gap-3">
+                        <Input type="number" className="w-24" min={threshold.min} max={threshold.max} step={threshold.step} value={currentVal} onChange={(e) => handleConfigChange(threshold.key, e.target.value)} />
+                        <span className="text-xs text-muted-foreground">({threshold.min} - {threshold.max})</span>
+                        {hasChange && (
+                          <Button size="sm" onClick={() => saveNumericConfig(threshold.key, editingConfig[threshold.key])} disabled={isSaving}>
+                            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" />Salvar</>}
                           </Button>
                         )}
                       </div>
@@ -666,73 +662,32 @@ export default function SettingsPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Fonte</TableHead>
+                        <TableHead>Provider</TableHead>
                         <TableHead className="text-right">Custo/scan</TableHead>
                         <TableHead className="text-right">Custo/mes</TableHead>
-                        <TableHead className="text-center w-[60px]">Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {/* Perplexity Search base */}
                       <TableRow>
-                        <TableCell>Perplexity Search</TableCell>
+                        <TableCell>Brave News (busca)</TableCell>
                         <TableCell className="text-right font-mono">$0.0050</TableCell>
-                        <TableCell className="text-right font-mono">
-                          ${costEstimate.perplexityBaseCost.toFixed(2)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline" className="text-xs">ON</Badge>
-                        </TableCell>
+                        <TableCell className="text-right font-mono">${costEstimate.braveMonthly.toFixed(2)}</TableCell>
                       </TableRow>
-
-                      {/* Toggleable sources */}
-                      {costEstimate.sources.map((src) => (
-                        <TableRow key={src.label} className={!src.enabled ? 'opacity-50' : ''}>
-                          <TableCell>{src.label}</TableCell>
-                          <TableCell className="text-right font-mono">
-                            ${src.costPerScan.toFixed(4)}
-                          </TableCell>
-                          <TableCell className="text-right font-mono">
-                            ${src.monthlyCost.toFixed(2)}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge
-                              variant={src.enabled ? 'outline' : 'secondary'}
-                              className="text-xs"
-                            >
-                              {src.enabled ? 'ON' : 'OFF'}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-
-                      {/* Processing */}
                       <TableRow>
-                        <TableCell>Processamento (AI)</TableCell>
-                        <TableCell className="text-right font-mono">
-                          ${costEstimate.processingCostPerScan.toFixed(4)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          ${costEstimate.processingMonthly.toFixed(2)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline" className="text-xs">ON</Badge>
-                        </TableCell>
+                        <TableCell>Jina (fetch conteudo)</TableCell>
+                        <TableCell className="text-right font-mono">$0.0020/URL</TableCell>
+                        <TableCell className="text-right font-mono">${costEstimate.jinaMonthly.toFixed(2)}</TableCell>
                       </TableRow>
-
-                      {/* Manual searches */}
+                      <TableRow>
+                        <TableCell>OpenAI (filtros + embedding)</TableCell>
+                        <TableCell className="text-right font-mono">$0.0005/URL</TableCell>
+                        <TableCell className="text-right font-mono">${costEstimate.openaiMonthly.toFixed(2)}</TableCell>
+                      </TableRow>
                       {costEstimate.manualMonthly > 0 && (
                         <TableRow>
                           <TableCell>Buscas manuais</TableCell>
-                          <TableCell className="text-right font-mono">
-                            ${avgCostPerScan.toFixed(4)}
-                          </TableCell>
-                          <TableCell className="text-right font-mono">
-                            ${costEstimate.manualMonthly.toFixed(2)}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge variant="outline" className="text-xs">ON</Badge>
-                          </TableCell>
+                          <TableCell className="text-right font-mono">${costEstimate.manualCostPerSearch.toFixed(4)}/busca</TableCell>
+                          <TableCell className="text-right font-mono">${costEstimate.manualMonthly.toFixed(2)}</TableCell>
                         </TableRow>
                       )}
                     </TableBody>
@@ -747,7 +702,7 @@ export default function SettingsPage() {
                         Total estimado: ${costEstimate.grandTotal.toFixed(2)} / mes
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {costEstimate.scansPorDia.toFixed(0)} scans/dia
+                        {costEstimate.scansPorDia.toFixed(0)} scans/dia × ${costEstimate.totalCostPerScan.toFixed(4)}/scan
                       </p>
                     </div>
                   </div>
@@ -758,166 +713,10 @@ export default function SettingsPage() {
                   Custo de processamento (AI) inclui filtros GPT, embeddings e deduplicacao.
                 </p>
 
-                {/* Real cost by provider */}
-                {(costByProvider.perplexity > 0 || costByProvider.jina > 0 || costByProvider.openai > 0) && (
-                  <div className="rounded-lg border p-4">
-                    <p className="mb-2 text-sm font-medium">Custo real este mes (por provider)</p>
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div>
-                        <p className="text-xs text-muted-foreground">Perplexity</p>
-                        <p className="font-mono text-sm font-bold">${costByProvider.perplexity.toFixed(4)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Jina</p>
-                        <p className="font-mono text-sm font-bold">${costByProvider.jina.toFixed(4)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">OpenAI</p>
-                        <p className="font-mono text-sm font-bold">${costByProvider.openai.toFixed(4)}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* ============================================ */}
-          {/* Dev Tools Tab (so aparece em localhost) */}
-          {/* ============================================ */}
-          {isDev && (
-            <TabsContent value="dev-tools" className="space-y-4">
-              <Card className="border-yellow-200">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Bug className="h-5 w-5" />
-                    Ferramentas de Desenvolvimento
-                  </CardTitle>
-                  <CardDescription>
-                    Funcoes temporarias para testes. Serao removidas antes do deploy em producao.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Seed News */}
-                  <div className="rounded-lg border p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-3">
-                        <div className="mt-0.5 rounded-md bg-blue-100 p-2 text-blue-700">
-                          <Database className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <p className="font-medium">Inserir Noticias Mock</p>
-                          <p className="text-sm text-muted-foreground">
-                            Insere 15 noticias ficticias de crimes com bairros, fontes e datas variadas.
-                            Todas comecam com [MOCK] para facil identificacao e remocao.
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        onClick={async () => {
-                          setSeeding(true);
-                          try {
-                            const token = await getToken();
-                            const result = await api.seedNews(token);
-                            toast.success(`${result.inserted} noticias mock inseridas!`);
-                          } catch (err) {
-                            toast.error((err as Error).message);
-                          } finally {
-                            setSeeding(false);
-                          }
-                        }}
-                        disabled={seeding}
-                      >
-                        {seeding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Database className="mr-2 h-4 w-4" />}
-                        Seed News
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Trigger Notification */}
-                  <div className="rounded-lg border p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-3">
-                        <div className="mt-0.5 rounded-md bg-orange-100 p-2 text-orange-700">
-                          <Bell className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <p className="font-medium">Enviar Notificacao Push</p>
-                          <p className="text-sm text-muted-foreground">
-                            Envia uma notificacao push REAL para todos os dispositivos registrados,
-                            usando a noticia mais recente do banco.
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        variant="outline"
-                        onClick={async () => {
-                          setNotifying(true);
-                          try {
-                            const token = await getToken();
-                            const result = await api.triggerNotification(token);
-                            if (!result.success && result.reason) {
-                              toast.error(`Push falhou: ${result.reason}`);
-                            } else if (result.success) {
-                              toast.success(`Push enviado! ${result.successCount}/${result.devices} dispositivo(s): "${result.notification.title}"`);
-                            } else {
-                              toast.warning('Push nao enviado. Verifique os logs do servidor.');
-                            }
-                          } catch (err) {
-                            toast.error((err as Error).message);
-                          } finally {
-                            setNotifying(false);
-                          }
-                        }}
-                        disabled={notifying}
-                      >
-                        {notifying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bell className="mr-2 h-4 w-4" />}
-                        Enviar Push
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Clear Mock */}
-                  <div className="rounded-lg border border-red-200 p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-3">
-                        <div className="mt-0.5 rounded-md bg-red-100 p-2 text-red-700">
-                          <Trash2 className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <p className="font-medium">Remover Dados Mock</p>
-                          <p className="text-sm text-muted-foreground">
-                            Remove todas as noticias que comecam com [MOCK] do banco de dados.
-                            Noticias reais nao sao afetadas.
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        variant="destructive"
-                        onClick={async () => {
-                          if (!confirm('Remover TODAS as noticias mock do banco?')) return;
-                          setClearing(true);
-                          try {
-                            const token = await getToken();
-                            const result = await api.clearMock(token);
-                            toast.success(`${result.deleted} noticias mock removidas`);
-                          } catch (err) {
-                            toast.error((err as Error).message);
-                          } finally {
-                            setClearing(false);
-                          }
-                        }}
-                        disabled={clearing}
-                      >
-                        {clearing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                        Limpar Mock
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          )}
 
         </Tabs>
       </div>
