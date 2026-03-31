@@ -125,7 +125,7 @@ CREATE TABLE search_results (
 
 CREATE TABLE operation_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  location_id UUID REFERENCES monitored_locations(id),
+  location_id UUID REFERENCES monitored_locations(id) ON DELETE CASCADE,
   stage TEXT,
   urls_processed INTEGER,
   news_found INTEGER,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -48,8 +49,106 @@ void main() async {
   runApp(const SIMEopsApp());
 }
 
+// Cores do design SIMEops
+class SIMEopsColors {
+  static const navy = Color(0xFF060D18);
+  static const navyMid = Color(0xFF0A1828);
+  static const navyLight = Color(0xFF112233);
+  static const teal = Color(0xFF1A8F9A);
+  static const tealLight = Color(0xFF22B5C4);
+  static const green = Color(0xFF7AB648);
+  static const greenLight = Color(0xFF92D050);
+  static const white = Color(0xFFF0F4F8);
+  static const muted = Color(0xFF8FA9C0);
+}
+
 class SIMEopsApp extends StatelessWidget {
   const SIMEopsApp({super.key});
+
+  static ThemeData _buildTheme(Brightness brightness) {
+    final isDark = brightness == Brightness.dark;
+    final base = isDark
+        ? ThemeData.dark(useMaterial3: true)
+        : ThemeData.light(useMaterial3: true);
+
+    return base.copyWith(
+      scaffoldBackgroundColor: isDark ? SIMEopsColors.navy : null,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: SIMEopsColors.teal,
+        brightness: brightness,
+        primary: SIMEopsColors.teal,
+        secondary: SIMEopsColors.green,
+        surface: isDark ? SIMEopsColors.navyMid : null,
+      ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: isDark ? SIMEopsColors.navyMid : null,
+        centerTitle: true,
+        titleTextStyle: GoogleFonts.rajdhani(
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 2,
+          color: isDark ? SIMEopsColors.white : null,
+        ),
+      ),
+      cardTheme: CardThemeData(
+        color: isDark ? SIMEopsColors.navyLight : null,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+            color: isDark
+                ? SIMEopsColors.teal.withValues(alpha: 0.15)
+                : Colors.grey.withValues(alpha: 0.2),
+          ),
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: isDark ? SIMEopsColors.navyMid : null,
+        indicatorColor: SIMEopsColors.teal.withValues(alpha: 0.2),
+      ),
+      textTheme: GoogleFonts.exo2TextTheme(base.textTheme),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: SIMEopsColors.green,
+          foregroundColor: Colors.white,
+          textStyle: GoogleFonts.rajdhani(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 2,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: isDark
+            ? SIMEopsColors.navyLight.withValues(alpha: 0.7)
+            : null,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: SIMEopsColors.teal.withValues(alpha: 0.2),
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: SIMEopsColors.teal.withValues(alpha: 0.2),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: SIMEopsColors.teal),
+        ),
+        labelStyle: TextStyle(
+          color: isDark ? SIMEopsColors.muted : null,
+          letterSpacing: 1,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,20 +162,9 @@ class SIMEopsApp extends StatelessWidget {
         navigatorKey: navigatorKey,
         title: 'SIMEops',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF1A237E),
-            brightness: Brightness.light,
-          ),
-          useMaterial3: true,
-        ),
-        darkTheme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF1A237E),
-            brightness: Brightness.dark,
-          ),
-          useMaterial3: true,
-        ),
+        themeMode: ThemeMode.dark,
+        theme: _buildTheme(Brightness.light),
+        darkTheme: _buildTheme(Brightness.dark),
         home: const AuthGate(),
       ),
     );

@@ -132,7 +132,8 @@ class _ReportScreenState extends State<ReportScreen> {
         searchId: widget.searchId,
       );
 
-      final url = response['reportUrl'] as String;
+      final url = (response['reportUrl'] as String?) ??
+          'https://simeops-admin.vercel.app/report/${response['reportId']}';
 
       setState(() => _reportUrl = url);
 

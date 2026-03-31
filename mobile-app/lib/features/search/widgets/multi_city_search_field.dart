@@ -109,9 +109,12 @@ class _MultiCitySearchFieldState extends State<MultiCitySearchField> {
     });
     _hideSuggestions();
     widget.onChanged(Set.from(_selectedCities));
-    // Keep focus on input for quick multi-select
-    if (!_atLimit) {
+    // Reabrir dropdown pra seleção rápida de múltiplas cidades
+    if (!_atLimit && widget.estadoNome != null) {
       _focusNode.requestFocus();
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) _showAllCities();
+      });
     }
   }
 
