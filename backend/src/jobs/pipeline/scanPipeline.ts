@@ -221,8 +221,9 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
       }
 
       const newsId = await db.insertNews({
-        tipo_crime: news.tipo_crime, cidade: news.cidade,
-        bairro: news.bairro, rua: news.rua,
+        tipo_crime: news.tipo_crime, natureza: news.natureza,
+        categoria_grupo: news.categoria_grupo,
+        cidade: news.cidade, bairro: news.bairro, rua: news.rua,
         data_ocorrencia: news.data_ocorrencia, resumo: news.resumo,
         embedding: news.embedding, confianca: news.confianca,
       });

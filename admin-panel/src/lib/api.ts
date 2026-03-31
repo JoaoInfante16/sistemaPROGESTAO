@@ -33,9 +33,13 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
 // Types matching backend responses
 // ============================================
 
+export type CategoriaGrupo = 'patrimonial' | 'seguranca' | 'operacional' | 'fraude' | 'institucional';
+
 export interface NewsItem {
   id: string;
   tipo_crime: string;
+  natureza: 'ocorrencia' | 'estatistica';
+  categoria_grupo: CategoriaGrupo | null;
   cidade: string;
   bairro: string | null;
   rua: string | null;

@@ -5,33 +5,19 @@ Polir o sistema inteiro: admin panel, app Flutter, cost tracking. Deixar tudo pr
 
 ## Roadmap
 
-### Bloco A — Cost Tracking & Admin Panel
-- [ ] Fix provider 'brave' no cost tracking (scanPipeline registra como 'google')
-- [ ] Fix embedding cost faltando na busca manual
-- [ ] Fix dedup GPT cost faltando no calculateCost total
-- [ ] Centralizar constantes de custo ($0.005, $0.002 etc.) em config
-- [ ] Fix sourceTypeMap no auto-scan (fontes marcadas como 'google')
-- [ ] Verificar dashboard de custos no admin — mostra provider correto?
-- [ ] Verificar toggles de config — SSP/SectionCrawler removidos do admin?
-- [ ] Verificar monitoramentos — metricas corretas?
+### Bloco A — Cost Tracking & Admin Panel ✅ COMPLETO
+- [x] Fix provider 'brave' no cost tracking
+- [x] Fix embedding cost na busca manual
+- [x] Centralizar custos reais na calculadora ($0.005 Brave, $0.002 Jina, etc)
+- [x] Dashboard de custos mostra provider correto (Brave/Jina/OpenAI)
+- [x] SSP/SectionCrawler removidos do admin e do banco
 
-### Bloco B — Admin Panel UI/UX (por tela)
-- [x] **Dashboard** — 5 cards (noticias enviadas, cidades ativas, custo mensal, taxa sucesso, scans hoje). Badges novos (Local errado, Data antiga). Botao limpar URLs rejeitadas. Motivos curtos e legíveis
-- [ ] **Noticias** — OK por enquanto. Depende do Bloco B2 (tipos padronizados)
-- [ ] **Monitoramentos** — (a avaliar)
-- [x] **Usuarios** — botao redefinir senha, senha temporaria no dialog de criacao (8 chars), dialog de nova senha com copiar
-- [ ] **Configuracoes** — EM ANDAMENTO, ver detalhes abaixo
-
-### Bloco B3 — Tela Configuracoes (detalhado)
-- [ ] Remover aba "Dev Tools" e endpoints de mock (deletar devRoutes.ts se possivel)
-- [ ] Renomear "Custos" → "Configuracao de Custos" ou similar
-- [ ] Calculadora: trocar "Perplexity Search" → "Brave News" (provider ativo)
-- [ ] Calculadora: "Cidades ativas" deve puxar valor real do banco (nao 0)
-- [ ] Custo real por provider: mostrar Brave em vez de Perplexity
-- [ ] Custo real: mostrar real-time (atualizar automaticamente ou botao refresh)
-- [ ] Aba Configuracoes: revisar cada threshold — disclaimer legivel pra leigo (quando aumentar/diminuir)
-- [ ] Limpar toggles de SSP/SectionCrawler que nao existem mais
-- [ ] Verificar se todos os configs do configManager aparecem e funcionam
+### Bloco B — Admin Panel UI/UX (por tela) ✅ COMPLETO
+- [x] **Dashboard** — 5 cards + custo real por provider + expectativa mensal + URLs rejeitadas
+- [x] **Monitoramentos** — IBGE only, delete estado, borda verde
+- [x] **Usuarios** — senha temporaria, redefinir, copiar
+- [x] **Configuracoes** — 3 grupos (auto-scan, busca manual, filtros AI), frequencia global, custos reais
+- [ ] **Noticias** — fixes rapidos pendentes (fragment key, URL parsing). Depende do B2 pra categorias
 
 ### Bloco B2 — Padronizacao de tipos de crime (Filter2 + Frontend)
 Objetivo: tipos de crime padronizados em categorias fixas pro gerenciamento de risco corporativo.
@@ -70,15 +56,16 @@ Institucional:
 Ambos entram no pipeline. Filter2 hoje rejeita estatisticas como e_crime=false — mudar pra aceitar com flag `natureza: 'estatistica'`. No app/admin, cliente ve os dois mas pode filtrar. Estatisticas podem virar card separado "Indicadores da regiao".
 
 **Implementacao:**
-- [ ] Atualizar prompt Filter2 com lista fixa de categorias
-- [ ] Validacao no backend: tipo_crime deve ser uma das categorias
-- [ ] Frontend Flutter: cards com icone/cor por categoria
-- [ ] Admin panel: filtro por categoria na tela Noticias
-- [ ] Analytics: agrupamento por categoria patrimonial/operacional/institucional
+- [ ] Atualizar prompt Filter2 com lista fixa de categorias + natureza + categoria_grupo
+- [ ] Atualizar types.ts (NewsExtraction) e queries.ts (insertNews) com novos campos
+- [ ] Validacao no backend: tipo_crime deve ser uma das 15 categorias
 - [ ] Filter2: aceitar estatisticas com natureza='estatistica' (hoje rejeita)
-- [ ] Schema: adicionar coluna `natureza` (ocorrencia/estatistica) na tabela news
-- [ ] Frontend Flutter: filtro ocorrencia vs estatistica, card "Indicadores da regiao"
-- [ ] Admin: filtro por natureza na tela Noticias
+- [ ] Admin panel: cores/filtros por categoria na tela Noticias
+- [ ] Admin panel: filtro por natureza (ocorrencia vs estatistica)
+- [ ] Frontend Flutter: cards com icone/cor por categoria
+- [ ] Frontend Flutter: filtro ocorrencia vs estatistica
+- [x] Schema: coluna `natureza` e `categoria_grupo` adicionadas (migration 013)
+- [x] Schema: coluna `must_change_password` em user_profiles (migration 013)
 
 ### Bloco C — Flutter App UI/UX
 - [ ] **Primeiro login**: apos login com senha temporaria, redirecionar pra tela "Crie sua nova senha"
@@ -179,8 +166,36 @@ Ambos entram no pipeline. Filter2 hoje rejeita estatisticas como e_crime=false �
 - [ ] Filtro de cidade poderia ser select com cidades do banco
 - [ ] CRIME_COLORS vai mudar com Bloco B2 (15 categorias)
 
+### Sessao 017 (2026-03-30) — Auditoria SQL + Migration 013
+
+**Auditoria completa de migrations (001-012):**
+- Verificado: todas as tabelas, colunas, FK, indexes, configs alinhados com codigo
+- 7 issues encontrados e corrigidos na migration 013
+
+**Migration 013 criada e rodada (prepare_b2_c_fixes.sql):**
+- UNIQUE constraint em api_rate_limits.provider
+- Deletado provider 'perplexity' do rate_limits (legado, usamos brave)
+- scan_cron_schedule corrigido: '0 * * * *' → '*/5 * * * *'
+- manual_search_max_results_30d corrigido: 15 → 50
+- Limpeza configs mortas: ssp_scraping_enabled, section_crawling_enabled/max_domains
+- CASCADE adicionado em monitored_locations.parent_id (delete estado = deleta cidades)
+- Nova coluna news.natureza (ocorrencia/estatistica) — prep B2
+- Nova coluna news.categoria_grupo (patrimonial/seguranca/operacional/fraude/institucional) — prep B2
+- Nova coluna user_profiles.must_change_password — prep Bloco C
+
+**Migrations 011 + 012 + 013 rodadas no Supabase e verificadas.**
+
+**Schema.sql atualizado** pra refletir estado final do banco.
+
+**Bloco B2 implementado (backend + admin):**
+- types.ts: TipoCrime (15 categorias), CategoriaGrupo (5 grupos), Natureza, mapa TIPO_CRIME_GRUPO
+- filter2GPT.ts: prompt novo com categorias explicitas, aceita estatisticas, valida tipo_crime
+- queries.ts: insertNews aceita natureza + categoria_grupo
+- scanPipeline.ts + manualSearchWorker.ts: passam novos campos
+- api.ts: NewsItem atualizado
+- news/page.tsx: cores por grupo, filtros categoria/natureza, fix fragment key, fix URL parsing
+
 **Pendente (proxima sessao):**
-- Fixes rapidos tela Noticias (fragment key, URL parsing)
-- Bloco B2: padronizacao tipos de crime (15 categorias em 5 grupos)
-- Bloco C: Flutter (primeiro login, biometria, troca senha)
-- Rodar migration 012 no Supabase
+- [ ] Testar B2 com scan real (ativar cidade, rodar, ver categorias)
+- [ ] Bloco C: Flutter (primeiro login, troca senha, biometria)
+- [ ] Bloco D: Deploy

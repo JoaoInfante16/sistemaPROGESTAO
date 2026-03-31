@@ -135,6 +135,8 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     // Build final results with sources array
     const finalResults = consolidated.map(news => ({
       tipo_crime: news.tipo_crime,
+      natureza: news.natureza,
+      categoria_grupo: news.categoria_grupo,
       cidade: news.cidade,
       bairro: news.bairro ?? null,
       rua: news.rua ?? null,

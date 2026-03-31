@@ -6,6 +6,13 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Table,
   TableBody,
   TableCell,
@@ -14,17 +21,37 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useAuth } from '@/lib/hooks/use-auth';
-import { api, type NewsItem } from '@/lib/api';
+import { api, type NewsItem, type CategoriaGrupo } from '@/lib/api';
 import { Search, ChevronLeft, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
 
-const CRIME_COLORS: Record<string, string> = {
-  homicidio: 'bg-red-500',
-  latrocinio: 'bg-red-700',
-  roubo: 'bg-orange-500',
-  furto: 'bg-yellow-500',
-  assalto: 'bg-orange-600',
-  trafico: 'bg-purple-500',
-  outro: 'bg-gray-500',
+// ============================================
+// Cores e labels por categoria_grupo
+// ============================================
+
+const GRUPO_CONFIG: Record<CategoriaGrupo, { label: string; color: string }> = {
+  patrimonial: { label: 'Patrimonial', color: 'bg-orange-500' },
+  seguranca: { label: 'Seguranca', color: 'bg-red-500' },
+  operacional: { label: 'Operacional', color: 'bg-blue-500' },
+  fraude: { label: 'Fraude', color: 'bg-purple-500' },
+  institucional: { label: 'Institucional', color: 'bg-gray-500' },
+};
+
+const TIPO_LABELS: Record<string, string> = {
+  roubo_furto: 'Roubo/Furto',
+  vandalismo: 'Vandalismo',
+  invasao: 'Invasao',
+  homicidio: 'Homicidio',
+  latrocinio: 'Latrocinio',
+  lesao_corporal: 'Lesao Corporal',
+  trafico: 'Trafico',
+  operacao_policial: 'Op. Policial',
+  manifestacao: 'Manifestacao',
+  bloqueio_via: 'Bloqueio de Via',
+  estelionato: 'Estelionato',
+  receptacao: 'Receptacao',
+  crime_ambiental: 'Crime Ambiental',
+  trabalho_irregular: 'Trabalho Irregular',
+  outros: 'Outros',
 };
 
 const PAGE_SIZE = 20;
@@ -39,6 +66,8 @@ export default function NewsPage() {
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [cidadeFilter, setCidadeFilter] = useState('');
+  const [grupoFilter, setGrupoFilter] = useState<string>('all');
+  const [naturezaFilter, setNaturezaFilter] = useState<string>('all');
   const [isSearching, setIsSearching] = useState(false);
 
   // Expanded row
@@ -96,10 +125,23 @@ export default function NewsPage() {
     return new Date(dateStr).toLocaleDateString('pt-BR');
   };
 
-  const crimeColor = (tipo: string) => {
-    const normalized = tipo.toLowerCase().replace(/í/g, 'i').replace(/á/g, 'a');
-    return CRIME_COLORS[normalized] || CRIME_COLORS['outro'];
+  const getGrupoConfig = (grupo: CategoriaGrupo | null) => {
+    if (!grupo || !GRUPO_CONFIG[grupo]) return { label: 'Sem grupo', color: 'bg-gray-400' };
+    return GRUPO_CONFIG[grupo];
   };
+
+  const getTipoLabel = (tipo: string) => TIPO_LABELS[tipo] || tipo;
+
+  const safeHostname = (url: string) => {
+    try { return new URL(url).hostname; } catch { return url; }
+  };
+
+  // Filtro client-side por grupo e natureza
+  const filteredNews = news.filter(item => {
+    if (grupoFilter !== 'all' && item.categoria_grupo !== grupoFilter) return false;
+    if (naturezaFilter !== 'all' && item.natureza !== naturezaFilter) return false;
+    return true;
+  });
 
   return (
     <div className="space-y-6">
@@ -107,7 +149,7 @@ export default function NewsPage() {
 
       {/* Search & Filter Bar */}
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 space-y-4">
           <div className="flex gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -132,6 +174,31 @@ export default function NewsPage() {
               </Button>
             )}
           </div>
+          <div className="flex gap-4">
+            <Select value={grupoFilter} onValueChange={setGrupoFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Categoria" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas categorias</SelectItem>
+                <SelectItem value="patrimonial">Patrimonial</SelectItem>
+                <SelectItem value="seguranca">Seguranca</SelectItem>
+                <SelectItem value="operacional">Operacional</SelectItem>
+                <SelectItem value="fraude">Fraude</SelectItem>
+                <SelectItem value="institucional">Institucional</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={naturezaFilter} onValueChange={setNaturezaFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Natureza" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                <SelectItem value="ocorrencia">Ocorrencias</SelectItem>
+                <SelectItem value="estatistica">Estatisticas</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardContent>
       </Card>
 
@@ -140,6 +207,11 @@ export default function NewsPage() {
         <CardHeader>
           <CardTitle className="text-lg">
             {isSearching ? `Resultados para "${searchQuery}"` : 'Feed de Noticias'}
+            {filteredNews.length !== news.length && (
+              <span className="ml-2 text-sm font-normal text-muted-foreground">
+                ({filteredNews.length} de {news.length})
+              </span>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -147,7 +219,7 @@ export default function NewsPage() {
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : news.length === 0 ? (
+          ) : filteredNews.length === 0 ? (
             <p className="py-12 text-center text-muted-foreground">
               Nenhuma noticia encontrada.
             </p>
@@ -156,7 +228,8 @@ export default function NewsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[120px]">Tipo</TableHead>
+                    <TableHead className="w-[130px]">Tipo</TableHead>
+                    <TableHead className="w-[90px]">Grupo</TableHead>
                     <TableHead className="w-[160px]">Local</TableHead>
                     <TableHead>Resumo</TableHead>
                     <TableHead className="w-[100px]">Data</TableHead>
@@ -164,17 +237,26 @@ export default function NewsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {news.map((item) => (
-                    <>
+                  {filteredNews.map((item) => {
+                    const grupo = getGrupoConfig(item.categoria_grupo);
+                    return (
                       <TableRow
                         key={item.id}
                         className="cursor-pointer hover:bg-muted/50"
                         onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
                       >
                         <TableCell>
-                          <Badge className={`${crimeColor(item.tipo_crime)} text-white`}>
-                            {item.tipo_crime}
-                          </Badge>
+                          <div className="flex flex-col gap-1">
+                            <Badge className={`${grupo.color} text-white text-xs`}>
+                              {getTipoLabel(item.tipo_crime)}
+                            </Badge>
+                            {item.natureza === 'estatistica' && (
+                              <Badge variant="outline" className="text-xs w-fit">Estatistica</Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-xs text-muted-foreground">{grupo.label}</span>
                         </TableCell>
                         <TableCell>
                           <div className="font-medium">{item.cidade}</div>
@@ -192,43 +274,46 @@ export default function NewsPage() {
                           </Badge>
                         </TableCell>
                       </TableRow>
-                      {expandedId === item.id && (
-                        <TableRow key={`${item.id}-expanded`}>
-                          <TableCell colSpan={5} className="bg-muted/30">
-                            <div className="space-y-2 p-2">
-                              <p className="text-sm">{item.resumo}</p>
-                              {item.rua && (
-                                <p className="text-xs text-muted-foreground">Rua: {item.rua}</p>
-                              )}
-                              {item.news_sources?.length > 0 && (
-                                <div>
-                                  <p className="text-xs font-medium mb-1">Fontes:</p>
-                                  <div className="flex flex-wrap gap-2">
-                                    {item.news_sources.map((src, i) => (
-                                      <a
-                                        key={i}
-                                        href={src.url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <ExternalLink className="h-3 w-3" />
-                                        {src.source_name || new URL(src.url).hostname}
-                                      </a>
-                                    ))}
-                                  </div>
+                    );
+                  })}
+                  {/* Expanded rows */}
+                  {filteredNews.map((item) =>
+                    expandedId === item.id ? (
+                      <TableRow key={`${item.id}-expanded`}>
+                        <TableCell colSpan={6} className="bg-muted/30">
+                          <div className="space-y-2 p-2">
+                            <p className="text-sm">{item.resumo}</p>
+                            {item.rua && (
+                              <p className="text-xs text-muted-foreground">Rua: {item.rua}</p>
+                            )}
+                            {item.news_sources?.length > 0 && (
+                              <div>
+                                <p className="text-xs font-medium mb-1">Fontes:</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {item.news_sources.map((src, i) => (
+                                    <a
+                                      key={i}
+                                      href={src.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <ExternalLink className="h-3 w-3" />
+                                      {src.source_name || safeHostname(src.url)}
+                                    </a>
+                                  ))}
                                 </div>
-                              )}
-                              <p className="text-xs text-muted-foreground">
-                                Criado em: {new Date(item.created_at).toLocaleString('pt-BR')}
-                              </p>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </>
-                  ))}
+                              </div>
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                              Criado em: {new Date(item.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+                            </p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : null
+                  )}
                 </TableBody>
               </Table>
 

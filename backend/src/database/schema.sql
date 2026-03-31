@@ -21,6 +21,8 @@ CREATE TABLE news (
   resumo TEXT NOT NULL,
   embedding vector(1536),
   confianca DECIMAL(3,2),
+  natureza TEXT DEFAULT 'ocorrencia' CHECK (natureza IN ('ocorrencia', 'estatistica')),
+  categoria_grupo TEXT DEFAULT NULL CHECK (categoria_grupo IN ('patrimonial', 'seguranca', 'operacional', 'fraude', 'institucional')),
   active BOOLEAN DEFAULT true,
   created_at TIMESTAMP DEFAULT NOW()
 );
@@ -56,7 +58,7 @@ CREATE TABLE monitored_locations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   type TEXT CHECK (type IN ('state', 'city')),
   name TEXT NOT NULL,
-  parent_id UUID REFERENCES monitored_locations(id),
+  parent_id UUID REFERENCES monitored_locations(id) ON DELETE CASCADE,
   active BOOLEAN DEFAULT true,
   mode TEXT CHECK (mode IN ('keywords', 'any')) DEFAULT 'any',
   keywords TEXT[],
@@ -75,6 +77,7 @@ CREATE TABLE user_profiles (
   email TEXT NOT NULL,
   is_admin BOOLEAN DEFAULT false,
   created_by UUID REFERENCES auth.users(id),
+  must_change_password BOOLEAN DEFAULT false,
   active BOOLEAN DEFAULT true,
   created_at TIMESTAMP DEFAULT NOW()
 );
@@ -145,12 +148,14 @@ CREATE TABLE api_rate_limits (
   monthly_quota INTEGER,
   active BOOLEAN DEFAULT true,
   updated_at TIMESTAMP DEFAULT NOW(),
-  updated_by UUID REFERENCES auth.users(id)
+  updated_by UUID REFERENCES auth.users(id),
+  CONSTRAINT api_rate_limits_provider_unique UNIQUE (provider)
 );
 
 -- Valores iniciais
 INSERT INTO api_rate_limits (provider, max_concurrent, min_time_ms, daily_quota, monthly_quota) VALUES
   ('google', 1, 100, 100, 3000),
+  ('brave', 5, 100, 1000, NULL),
   ('jina', 10, 50, NULL, NULL),
   ('openai', 5, 200, NULL, NULL);
 
@@ -202,11 +207,11 @@ INSERT INTO system_config (key, value, description, category, value_type) VALUES
   ('dedup_similarity_threshold', '0.85', 'Threshold de similaridade coseno para deduplicação (camada 2)', 'pipeline', 'number'),
   ('filter2_confidence_min', '0.7', 'Confiança mínima da extração GPT para aceitar notícia', 'pipeline', 'number'),
   ('content_fetch_concurrency', '5', 'Máximo de fetches simultâneos por pipeline run', 'pipeline', 'number'),
-  ('search_max_results', '10', 'Máximo de resultados por query de busca (Perplexity)', 'pipeline', 'number'),
+  ('search_max_results', '15', 'URLs por query no monitoramento automatico', 'pipeline', 'number'),
   ('filter2_max_content_chars', '4000', 'Máximo de caracteres enviados ao GPT no filter2', 'pipeline', 'number'),
   ('monthly_budget_usd', '100', 'Limite mensal de gastos em USD', 'budget', 'number'),
   ('budget_warning_threshold', '0.9', 'Threshold de alerta de orçamento (0.0 a 1.0)', 'budget', 'number'),
-  ('scan_cron_schedule', '0 * * * *', 'Expressão CRON para scans automáticos (requer restart)', 'scheduler', 'string'),
+  ('scan_cron_schedule', '*/5 * * * *', 'Expressão CRON para scans automáticos (requer restart)', 'scheduler', 'string'),
   ('worker_concurrency', '3', 'Máximo de scans em paralelo no worker (requer restart)', 'scheduler', 'number'),
   ('worker_max_per_minute', '10', 'Máximo de jobs por minuto no worker (requer restart)', 'scheduler', 'number'),
   ('scan_lock_ttl_minutes', '30', 'TTL do lock Redis para scans (minutos)', 'scheduler', 'number'),
@@ -217,7 +222,11 @@ INSERT INTO system_config (key, value, description, category, value_type) VALUES
   ('multi_query_enabled', 'true', 'Usar múltiplas variações de query na busca (além do mega prompt)', 'ingestion', 'boolean'),
   ('search_queries_per_scan', '2', 'Quantas queries por scan (1-5, rotação automática)', 'ingestion', 'number'),
   ('google_news_rss_enabled', 'true', 'Coleta via Google News RSS (gratuito)', 'ingestion', 'boolean'),
-  ('filter0_regex_enabled', 'true', 'Filtro regex que bloqueia redes sociais e palavras nao-crime antes do GPT', 'ingestion', 'boolean');
+  ('filter0_regex_enabled', 'true', 'Filtro regex que bloqueia redes sociais e palavras nao-crime antes do GPT', 'ingestion', 'boolean'),
+  -- Busca manual por período
+  ('manual_search_max_results_30d', '50', 'URLs por query na busca manual — 30 dias', 'pipeline', 'number'),
+  ('manual_search_max_results_60d', '50', 'URLs por query na busca manual — 60 dias', 'pipeline', 'number'),
+  ('manual_search_max_results_90d', '80', 'URLs por query na busca manual — 90 dias', 'pipeline', 'number');
 
 -- ============================================
 -- 11. UX: Notícias lidas + Favoritos (FASE 8.5)

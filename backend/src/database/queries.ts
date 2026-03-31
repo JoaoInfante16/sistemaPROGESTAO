@@ -48,6 +48,8 @@ export async function updateLocationLastCheck(locationId: string, timestamp: Dat
 
 interface InsertNewsParams {
   tipo_crime: string;
+  natureza?: string;
+  categoria_grupo?: string | null;
   cidade: string;
   bairro?: string;
   rua?: string;
@@ -62,12 +64,13 @@ export async function insertNews(params: InsertNewsParams): Promise<string> {
     .from('news')
     .insert({
       tipo_crime: params.tipo_crime,
+      natureza: params.natureza || 'ocorrencia',
+      categoria_grupo: params.categoria_grupo || null,
       cidade: params.cidade,
       bairro: params.bairro || null,
       rua: params.rua || null,
       data_ocorrencia: params.data_ocorrencia,
       resumo: params.resumo,
-      // pgvector espera string no formato "[0.1,0.2,...]"
       embedding: `[${params.embedding.join(',')}]`,
       confianca: params.confianca,
     })
