@@ -33,8 +33,8 @@ class PushService {
     // Create notification channel (Android)
     const channel = AndroidNotificationChannel(
       'crime_news',
-      'Crime News',
-      description: 'Notificações de novas notícias de crime',
+      'SIMEops',
+      description: 'Notificacoes de ocorrencias e buscas',
       importance: Importance.high,
     );
 
@@ -64,6 +64,22 @@ class PushService {
 
     // Foreground messages → local notification
     FirebaseMessaging.onMessage.listen(_showLocalNotification);
+
+    // Tap na notificação quando app está em background
+    FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
+
+    // Tap na notificação que abriu o app (estava fechado)
+    final initialMessage = await _fcm.getInitialMessage();
+    if (initialMessage != null) {
+      _handleNotificationTap(initialMessage);
+    }
+  }
+
+  void _handleNotificationTap(RemoteMessage message) {
+    // Por enquanto, apenas abre o app normalmente.
+    // O app já navega pro feed/busca conforme o estado do auth.
+    // Futuramente: checar message.data['type'] pra navegar direto
+    // pro resultado da busca manual.
   }
 
   void _showLocalNotification(RemoteMessage message) {
@@ -77,7 +93,7 @@ class PushService {
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(
           'crime_news',
-          'Crime News',
+          'SIMEops',
           importance: Importance.high,
           priority: Priority.high,
         ),

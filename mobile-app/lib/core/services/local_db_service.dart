@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/news_item.dart';
@@ -13,7 +14,14 @@ class LocalDbService {
   }
 
   Future<Database> _initDb() async {
-    final path = join(await getDatabasesPath(), 'netrios_news.db');
+    // Migrar DB antigo se existir
+    final dbPath = await getDatabasesPath();
+    final oldPath = join(dbPath, 'netrios_news.db');
+    final newPath = join(dbPath, 'simeops.db');
+    if (await File(oldPath).exists() && !await File(newPath).exists()) {
+      await File(oldPath).rename(newPath);
+    }
+    final path = newPath;
     return openDatabase(
       path,
       version: 1,

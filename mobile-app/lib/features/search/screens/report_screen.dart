@@ -132,16 +132,13 @@ class _ReportScreenState extends State<ReportScreen> {
         searchId: widget.searchId,
       );
 
-      final reportId = response['reportId'] as String;
-      // The URL will be the admin panel domain + /report/ID
-      // For now use a relative path - in production this would be the Vercel URL
-      final url = 'https://admin.netrios.com/report/$reportId';
+      final url = response['reportUrl'] as String;
 
       setState(() => _reportUrl = url);
 
       if (mounted) {
         await Share.share(
-          'Relatorio de Analise de Risco Criminal - ${widget.cidades.join(", ")}/${widget.estado}\n\n$url',
+          'SIMEops - Relatorio de Analise de Risco Criminal\n${widget.cidades.join(", ")}/${widget.estado}\n\n$url',
         );
       }
     } catch (e) {

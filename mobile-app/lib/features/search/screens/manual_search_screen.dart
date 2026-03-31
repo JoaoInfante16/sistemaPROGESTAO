@@ -32,6 +32,10 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   List<Map<String, dynamic>> _results = [];
   Map<String, dynamic>? _progress;
   Timer? _pollTimer;
+  DateTime? _searchStartTime;
+  Timer? _elapsedTimer;
+  String _elapsedText = '0s';
+  final Map<int, String> _stageDetails = {};
 
   static const _periodos = {
     7: 'Ultimos 7 dias',
@@ -88,8 +92,25 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _elapsedTimer?.cancel();
     _keywordCtrl.dispose();
     super.dispose();
+  }
+
+  void _startElapsedTimer() {
+    _searchStartTime = DateTime.now();
+    _elapsedTimer?.cancel();
+    _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || _searchStartTime == null) return;
+      final diff = DateTime.now().difference(_searchStartTime!);
+      setState(() {
+        if (diff.inMinutes > 0) {
+          _elapsedText = '${diff.inMinutes}m ${diff.inSeconds % 60}s';
+        } else {
+          _elapsedText = '${diff.inSeconds}s';
+        }
+      });
+    });
   }
 
   Future<void> _loadLocations() async {
@@ -122,6 +143,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       );
 
       setState(() => _searchId = searchId);
+      _startElapsedTimer();
       _startPolling();
     } catch (e) {
       setState(() => _searchStatus = 'failed');
@@ -146,11 +168,26 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         // Atualizar progresso da pipeline
         final progress = status['progress'] as Map<String, dynamic>?;
         if (mounted && progress != null) {
+          final stageNum = progress['stage_num'] as int? ?? 0;
+          final details = progress['details'] as String?;
+          // Salvar details do stage anterior quando avança
+          if (_progress != null) {
+            final prevStage = _progress!['stage_num'] as int? ?? 0;
+            final prevDetails = _progress!['details'] as String?;
+            if (prevStage > 0 && prevStage < stageNum && prevDetails != null) {
+              _stageDetails[prevStage] = prevDetails;
+            }
+          }
+          // Salvar details do stage atual
+          if (details != null) {
+            _stageDetails[stageNum] = details;
+          }
           setState(() => _progress = progress);
         }
 
         if (s == 'completed' || s == 'failed') {
           _pollTimer?.cancel();
+          _elapsedTimer?.cancel();
 
           if (s == 'completed') {
             final results = await api.getManualSearchResults(_searchId!);
@@ -172,11 +209,15 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
   void _resetSearch() {
     _pollTimer?.cancel();
+    _elapsedTimer?.cancel();
     setState(() {
       _searchId = null;
       _searchStatus = 'idle';
       _results = [];
       _progress = null;
+      _searchStartTime = null;
+      _elapsedText = '0s';
+      _stageDetails.clear();
     });
   }
 
@@ -289,17 +330,19 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   }
 
   static const _pipelineStages = [
-    ('google_search', 'Pesquisando na web', Icons.search),
-    ('ssp_scraping', 'Consultando SSP', Icons.shield),
-    ('filtering', 'Filtrando com IA', Icons.filter_alt),
-    ('fetching', 'Baixando conteudo', Icons.download),
-    ('analyzing', 'Analisando noticias', Icons.psychology),
-    ('saving', 'Salvando resultados', Icons.save),
+    ('searching', 'Pesquisando na web', Icons.travel_explore),
+    ('filter0', 'Filtro de relevancia', Icons.filter_list),
+    ('filter1', 'Analise de titulos (IA)', Icons.smart_toy),
+    ('fetching', 'Baixando artigos', Icons.cloud_download),
+    ('analyzing', 'Extraindo dados (IA)', Icons.psychology),
+    ('dedup', 'Consolidando resultados', Icons.compress),
+    ('saving', 'Salvando', Icons.check_circle),
   ];
 
   Widget _buildProgressStepper() {
     final currentStageNum = (_progress?['stage_num'] as int?) ?? 0;
     final details = _progress?['details'] as String?;
+    final progressValue = currentStageNum / _pipelineStages.length;
 
     return Center(
       child: SingleChildScrollView(
@@ -309,7 +352,30 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
           children: [
             Text(
               'Processando busca...',
-              style: Theme.of(context).textTheme.titleMedium,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _elapsedText,
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey[500],
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Progress bar geral
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: progressValue),
+                duration: const Duration(milliseconds: 500),
+                builder: (_, value, __) => LinearProgressIndicator(
+                  value: value,
+                  minHeight: 6,
+                ),
+              ),
             ),
             const SizedBox(height: 24),
             ...List.generate(_pipelineStages.length, (index) {
@@ -318,6 +384,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
               final isCompleted = stageNum < currentStageNum;
               final isCurrent = stageNum == currentStageNum;
               final isPending = stageNum > currentStageNum;
+              final stageDetail = _stageDetails[stageNum];
 
               final color = isCompleted
                   ? Colors.green
@@ -325,28 +392,24 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
                       ? Theme.of(context).colorScheme.primary
                       : Colors.grey[400]!;
 
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                 child: Row(
                   children: [
                     if (isCompleted)
-                      Icon(Icons.check_circle, color: color, size: 28)
+                      AnimatedScale(
+                        scale: 1.0,
+                        duration: const Duration(milliseconds: 300),
+                        child: Icon(Icons.check_circle, color: color, size: 28),
+                      )
                     else if (isCurrent)
                       SizedBox(
                         width: 28,
                         height: 28,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                color: color,
-                              ),
-                            ),
-                          ],
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: color,
                         ),
                       )
                     else
@@ -366,10 +429,23 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
                             ),
                           ),
                           if (isCurrent && details != null)
+                            AnimatedOpacity(
+                              opacity: 1.0,
+                              duration: const Duration(milliseconds: 200),
+                              child: Text(
+                                details,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Theme.of(context).colorScheme.primary,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          if (isCompleted && stageDetail != null)
                             Text(
-                              details,
+                              stageDetail,
                               style: TextStyle(
-                                fontSize: 12,
+                                fontSize: 11,
                                 color: Colors.grey[500],
                               ),
                             ),
@@ -498,7 +574,6 @@ class _ManualResultCard extends StatelessWidget {
     final bairro = result['bairro'] as String?;
     final resumo = result['resumo'] as String? ?? '';
     final dataStr = result['data_ocorrencia'] as String? ?? '';
-    final confianca = (result['confianca'] as num?)?.toDouble();
     final sourceUrl = result['source_url'] as String? ?? '';
 
     DateTime? data;
@@ -533,13 +608,6 @@ class _ManualResultCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (confianca != null) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    '${(confianca * 100).toInt()}%',
-                    style: TextStyle(color: Colors.grey[500], fontSize: 11),
-                  ),
-                ],
                 const Spacer(),
                 if (data != null)
                   Text(

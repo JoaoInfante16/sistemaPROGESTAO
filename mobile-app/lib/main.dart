@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -13,6 +14,19 @@ import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/change_password_screen.dart';
 import 'features/feed/screens/main_screen.dart';
 
+/// Navigator key global pra push service navegar sem BuildContext
+final navigatorKey = GlobalKey<NavigatorState>();
+
+/// Handler de push em background (top-level, fora de qualquer classe)
+@pragma('vm:entry-point')
+Future<void> _firebaseBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  // Notificação já é exibida automaticamente pelo FCM no Android
+  // quando app está em background/fechado e o payload tem "notification"
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -24,16 +38,18 @@ void main() async {
     // Already initialized (hot restart or auto-init via google-services.json)
   }
 
+  FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
+
   await Supabase.initialize(
     url: Env.supabaseUrl,
     anonKey: Env.supabaseAnonKey,
   );
 
-  runApp(const NetriosApp());
+  runApp(const SIMEopsApp());
 }
 
-class NetriosApp extends StatelessWidget {
-  const NetriosApp({super.key});
+class SIMEopsApp extends StatelessWidget {
+  const SIMEopsApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -44,6 +60,7 @@ class NetriosApp extends StatelessWidget {
         Provider(create: (_) => LocalDbService()),
       ],
       child: MaterialApp(
+        navigatorKey: navigatorKey,
         title: 'SIMEops',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(

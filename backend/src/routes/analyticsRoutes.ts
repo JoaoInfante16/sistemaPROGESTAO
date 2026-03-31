@@ -251,7 +251,8 @@ router.post(
         sources: mergedSources as Array<Record<string, unknown>>,
       });
 
-      res.json({ reportId });
+      const adminUrl = process.env.ADMIN_PANEL_URL || 'https://simeops-admin.vercel.app';
+      res.json({ reportId, reportUrl: `${adminUrl}/report/${reportId}` });
     } catch (error) {
       logger.error('[Analytics] Generate report error:', error);
       res.status(500).json({ error: 'Failed to generate report' });
