@@ -70,6 +70,43 @@ class NewsItem {
     );
   }
 
+  /// Converte resultado de busca manual (Map) pra NewsItem.
+  factory NewsItem.fromSearchResult(Map<String, dynamic> json) {
+    final sourceUrl = json['source_url'] as String? ?? '';
+    final sources = <NewsSource>[];
+    // sources pode ser uma lista de maps OU so source_url
+    final sourcesList = json['sources'] as List<dynamic>?;
+    if (sourcesList != null) {
+      for (final s in sourcesList) {
+        if (s is Map<String, dynamic>) {
+          sources.add(NewsSource(
+            url: s['url'] as String? ?? '',
+            sourceName: s['source_name'] as String?,
+          ));
+        } else if (s is String) {
+          sources.add(NewsSource(url: s));
+        }
+      }
+    } else if (sourceUrl.isNotEmpty) {
+      sources.add(NewsSource(url: sourceUrl));
+    }
+
+    return NewsItem(
+      id: json['id'] as String? ?? 'search-${json.hashCode}',
+      tipoCrime: json['tipo_crime'] as String? ?? 'outros',
+      cidade: json['cidade'] as String? ?? '',
+      bairro: json['bairro'] as String?,
+      rua: json['rua'] as String?,
+      dataOcorrencia: DateTime.tryParse(json['data_ocorrencia'] as String? ?? '') ?? DateTime.now(),
+      resumo: json['resumo'] as String? ?? '',
+      confianca: (json['confianca'] as num?)?.toDouble(),
+      createdAt: DateTime.now(),
+      sources: sources,
+      isUnread: false,
+      isFavorite: false,
+    );
+  }
+
   String get localFormatted {
     final parts = [cidade];
     if (bairro != null) parts.add(bairro!);

@@ -25,11 +25,12 @@ router.post(
   validateBody(schemas.triggerManualSearch),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { estado, cidades, periodo_dias, tipo_crime } = req.body as {
+      const { estado, cidades, periodo_dias, tipo_crime, profundidade } = req.body as {
         estado: string;
         cidades: string[];
         periodo_dias: number;
         tipo_crime?: string;
+        profundidade?: number;
       };
 
       const userId = req.user?.id || 'anonymous';
@@ -50,6 +51,7 @@ router.post(
           cidades,
           periodoDias: periodo_dias,
           tipoCrime: tipo_crime,
+          profundidade: profundidade || 1.0,
         },
         {
           attempts: 2,

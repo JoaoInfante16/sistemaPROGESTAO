@@ -33,10 +33,11 @@ export interface ManualSearchJobData {
   cidades: string[];
   periodoDias: number;
   tipoCrime?: string;
+  profundidade?: number;
 }
 
 async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void> {
-  const { searchId, estado, cidades, periodoDias, tipoCrime } = job.data;
+  const { searchId, estado, cidades, periodoDias, tipoCrime, profundidade = 1.0 } = job.data;
   const startTime = Date.now();
   const LOG_PREFIX = `[ManualSearch] ${searchId}`;
 
@@ -55,8 +56,9 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       : periodoDias <= 60 ? 'manual_search_max_results_60d'
       : 'manual_search_max_results_90d';
 
+    const baseMaxResults = await configManager.getNumber(maxResultsKey);
     const pipelineConfig = {
-      searchMaxResults: await configManager.getNumber(maxResultsKey),
+      searchMaxResults: Math.round(baseMaxResults * profundidade),
       contentFetchConcurrency: await configManager.getNumber('content_fetch_concurrency'),
       filter2ConfidenceMin: await configManager.getNumber('filter2_confidence_min'),
       filter2MaxContentChars: await configManager.getNumber('filter2_max_content_chars'),

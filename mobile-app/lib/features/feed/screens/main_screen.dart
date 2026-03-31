@@ -16,12 +16,13 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
   int _unreadCount = 0;
+  final _favoritesKey = GlobalKey<FavoritesScreenState>();
 
-  static const _tabs = <Widget>[
-    FeedScreen(),
-    FavoritesScreen(),
-    SearchScreen(),
-    SettingsScreen(),
+  late final List<Widget> _tabs = [
+    const FeedScreen(),
+    FavoritesScreen(key: _favoritesKey),
+    const SearchScreen(),
+    const SettingsScreen(),
   ];
 
   @override
@@ -53,8 +54,8 @@ class _MainScreenState extends State<MainScreen> {
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) {
           setState(() => _currentIndex = index);
-          // Refresh unread count when switching tabs
           if (index == 0) _loadUnreadCount();
+          if (index == 1) _favoritesKey.currentState?.reload();
         },
         destinations: [
           NavigationDestination(

@@ -1,10 +1,54 @@
+import 'dart:convert';
+import 'dart:math';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/api_service.dart';
-import '../widgets/mini_bar_chart.dart';
+import '../../../main.dart';
 import '../widgets/mini_trend_chart.dart';
+
+// Cores por tipo de crime (donut chart)
+const _crimeColors = <String, Color>{
+  'roubo_furto': Color(0xFFE05252),
+  'trafico': Color(0xFFE07852),
+  'homicidio': Color(0xFFCC3333),
+  'operacao_policial': Color(0xFF5B8DEF),
+  'vandalismo': Color(0xFFE0B852),
+  'lesao_corporal': Color(0xFFFF6B6B),
+  'latrocinio': Color(0xFF991111),
+  'bloqueio_via': Color(0xFF7AB648),
+  'manifestacao': Color(0xFF22B5C4),
+  'estelionato': Color(0xFF9B59B6),
+  'receptacao': Color(0xFF8E44AD),
+  'invasao': Color(0xFFE67E22),
+  'crime_ambiental': Color(0xFF27AE60),
+  'trabalho_irregular': Color(0xFF2980B9),
+  'outros': Color(0xFF8FA9C0),
+};
+
+const _tipoLabels = <String, String>{
+  'roubo_furto': 'Roubo/Furto',
+  'vandalismo': 'Vandalismo',
+  'invasao': 'Invasao',
+  'homicidio': 'Homicidio',
+  'latrocinio': 'Latrocinio',
+  'lesao_corporal': 'Lesao Corporal',
+  'trafico': 'Trafico',
+  'operacao_policial': 'Op. Policial',
+  'manifestacao': 'Manifestacao',
+  'bloqueio_via': 'Bloqueio de Via',
+  'estelionato': 'Estelionato',
+  'receptacao': 'Receptacao',
+  'crime_ambiental': 'Crime Ambiental',
+  'trabalho_irregular': 'Trabalho Irregular',
+  'outros': 'Outros',
+};
 
 class ReportScreen extends StatefulWidget {
   final String? searchId;
@@ -30,30 +74,124 @@ class _ReportScreenState extends State<ReportScreen> {
   bool _generatingLink = false;
   String? _reportUrl;
 
-  // Computed analytics from results
+  // Computed
   late final Map<String, int> _crimeTypeCounts;
   late final Map<String, int> _bairroCounts;
-  late final Map<String, int> _dateCounts;
-  late final List<Map<String, dynamic>> _byCrimeType;
   late final List<Map<String, dynamic>> _byDate;
-  late final String _topCrimeType;
-  late final int _totalCrimes;
+  late final int _totalOcorrencias;
+  late final int _totalEstatisticas;
+  late final List<Map<String, dynamic>> _estatisticas;
   late final List<Map<String, String>> _sourcesOficial;
   late final List<Map<String, String>> _sourcesMedia;
+
+  // Heatmap
+  List<_HeatPoint> _heatPoints = [];
+  bool _mapLoading = true;
 
   @override
   void initState() {
     super.initState();
     _computeAnalytics();
+    _loadHeatmap();
+  }
+
+  Future<void> _loadHeatmap() async {
+    if (widget.cidades.isEmpty || _bairroCounts.isEmpty) {
+      if (mounted) setState(() => _mapLoading = false);
+      return;
+    }
+
+    try {
+      final cidade = widget.cidades.first;
+      final estado = widget.estado;
+      final bairros = (_bairroCounts.entries.toList()
+            ..sort((a, b) => b.value.compareTo(a.value)))
+          .take(15)
+          .toList();
+
+      final points = <_HeatPoint>[];
+      for (final b in bairros) {
+        if (!mounted) return;
+        final coords = await _geocode(b.key, cidade, estado);
+        if (coords != null) {
+          points.add(_HeatPoint(b.key, b.value, coords));
+        }
+      }
+      if (mounted) setState(() { _heatPoints = points; _mapLoading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _mapLoading = false);
+    }
+  }
+
+  final _geoCache = <String, LatLng?>{};
+
+  Future<LatLng?> _geocode(String bairro, String cidade, String estado) async {
+    final key = '$bairro|$cidade|$estado'.toLowerCase();
+    if (_geoCache.containsKey(key)) return _geoCache[key];
+
+    try {
+      final query = Uri.encodeComponent('$bairro, $cidade, $estado, Brasil');
+      final url = 'https://nominatim.openstreetmap.org/search?q=$query&format=json&limit=1&countrycodes=br';
+      final res = await http.get(Uri.parse(url), headers: {'User-Agent': 'SIMEops/1.0'});
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as List;
+        if (data.isNotEmpty) {
+          final result = LatLng(double.parse(data[0]['lat']), double.parse(data[0]['lon']));
+          _geoCache[key] = result;
+          return result;
+        }
+      }
+    } catch (_) {}
+
+    // Fallback: geocodificar so a cidade
+    final cityKey = '_city|$cidade|$estado'.toLowerCase();
+    if (!_geoCache.containsKey(cityKey)) {
+      try {
+        final q = Uri.encodeComponent('$cidade, $estado, Brasil');
+        final res = await http.get(
+          Uri.parse('https://nominatim.openstreetmap.org/search?q=$q&format=json&limit=1&countrycodes=br'),
+          headers: {'User-Agent': 'SIMEops/1.0'},
+        );
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body) as List;
+          if (data.isNotEmpty) {
+            _geoCache[cityKey] = LatLng(double.parse(data[0]['lat']), double.parse(data[0]['lon']));
+          }
+        }
+      } catch (_) {}
+    }
+
+    final cityCoord = _geoCache[cityKey];
+    if (cityCoord != null) {
+      final jittered = LatLng(
+        cityCoord.latitude + (Random().nextDouble() - 0.5) * 0.02,
+        cityCoord.longitude + (Random().nextDouble() - 0.5) * 0.02,
+      );
+      _geoCache[key] = jittered;
+      return jittered;
+    }
+
+    _geoCache[key] = null;
+    return null;
   }
 
   void _computeAnalytics() {
     _crimeTypeCounts = {};
     _bairroCounts = {};
-    _dateCounts = {};
+    final dateCounts = <String, int>{};
+    final estatisticas = <Map<String, dynamic>>[];
+    int ocorrencias = 0;
 
     for (final r in widget.results) {
-      final tipo = r['tipo_crime'] as String? ?? 'Outro';
+      final natureza = r['natureza'] as String? ?? 'ocorrencia';
+
+      if (natureza == 'estatistica') {
+        estatisticas.add(r);
+        continue;
+      }
+
+      ocorrencias++;
+      final tipo = r['tipo_crime'] as String? ?? 'outros';
       _crimeTypeCounts[tipo] = (_crimeTypeCounts[tipo] ?? 0) + 1;
 
       final bairro = r['bairro'] as String?;
@@ -63,46 +201,38 @@ class _ReportScreenState extends State<ReportScreen> {
 
       final date = r['data_ocorrencia'] as String?;
       if (date != null) {
-        _dateCounts[date] = (_dateCounts[date] ?? 0) + 1;
+        dateCounts[date] = (dateCounts[date] ?? 0) + 1;
       }
     }
 
-    _totalCrimes = widget.results.length;
+    _totalOcorrencias = ocorrencias;
+    _totalEstatisticas = estatisticas.length;
+    _estatisticas = estatisticas;
 
-    _byCrimeType = _crimeTypeCounts.entries
-        .map((e) => <String, dynamic>{
-              'tipo_crime': e.key,
-              'count': e.value,
-              'percentage': _totalCrimes > 0
-                  ? (e.value / _totalCrimes * 100).round()
-                  : 0,
-            })
-        .toList()
-      ..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int));
-
-    _byDate = _dateCounts.entries
+    _byDate = dateCounts.entries
         .map((e) => <String, dynamic>{'date': e.key, 'count': e.value})
         .toList()
-      ..sort((a, b) =>
-          (a['date'] as String).compareTo(b['date'] as String));
+      ..sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
 
-    _topCrimeType =
-        _byCrimeType.isNotEmpty ? _byCrimeType.first['tipo_crime'] as String : 'N/A';
-
-    // Extract and classify sources
+    // Sources
     final officialPattern = RegExp(
-      r'\.gov\.br|\.ssp\.|\.seguranca\.|\.sesp\.|\.sspds\.|\.sejusp\.|\.segup\.',
-      caseSensitive: false,
-    );
+        r'\.gov\.br|\.ssp\.|\.seguranca\.|\.sesp\.|\.sspds\.|\.sejusp\.|\.segup\.',
+        caseSensitive: false);
     final seenUrls = <String>{};
     final oficial = <Map<String, String>>[];
     final media = <Map<String, String>>[];
 
     for (final r in widget.results) {
-      final url = r['url'] as String? ?? '';
+      final url = r['source_url'] as String? ?? r['url'] as String? ?? '';
       if (url.isEmpty || seenUrls.contains(url)) continue;
       seenUrls.add(url);
-      final entry = {'url': url, 'name': (r['fonte'] ?? r['source_name'] ?? url) as String};
+      String name;
+      try {
+        name = Uri.parse(url).host;
+      } catch (_) {
+        name = url;
+      }
+      final entry = {'url': url, 'name': name, 'title': (r['resumo'] as String? ?? '').split('.').first};
       if (officialPattern.hasMatch(url)) {
         oficial.add(entry);
       } else {
@@ -115,31 +245,28 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Future<void> _generateAndShareLink() async {
     setState(() => _generatingLink = true);
-
     try {
       final api = context.read<ApiService>();
       final now = DateTime.now();
-      final dateFrom = DateTime(now.year, now.month, now.day)
-          .subtract(Duration(days: widget.periodoDias));
+      final dateFrom = now.subtract(Duration(days: widget.periodoDias));
+      String fmt(DateTime d) =>
+          '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
       final response = await api.generateReport(
         cidade: widget.cidades.first,
         estado: widget.estado,
-        dateFrom:
-            '${dateFrom.year}-${dateFrom.month.toString().padLeft(2, '0')}-${dateFrom.day.toString().padLeft(2, '0')}',
-        dateTo:
-            '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
+        dateFrom: fmt(dateFrom),
+        dateTo: fmt(now),
         searchId: widget.searchId,
       );
 
       final url = (response['reportUrl'] as String?) ??
           'https://simeops-admin.vercel.app/report/${response['reportId']}';
-
       setState(() => _reportUrl = url);
 
       if (mounted) {
         await Share.share(
-          'SIMEops - Relatorio de Analise de Risco Criminal\n${widget.cidades.join(", ")}/${widget.estado}\n\n$url',
+          'SIMEops - Relatorio de Risco\n${widget.cidades.join(", ")}/${widget.estado}\n\n$url',
         );
       }
     } catch (e) {
@@ -153,361 +280,562 @@ class _ReportScreenState extends State<ReportScreen> {
     }
   }
 
-  Future<void> _openSourceUrl(String url) async {
+  Future<void> _openUrl(String url) async {
     final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
 
-  Future<void> _openInBrowser() async {
-    if (_reportUrl == null) return;
-    final uri = Uri.parse(_reportUrl!);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+  // ============================================
+  // UI COMPONENTS
+  // ============================================
+
+  Widget _sectionTitle(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10, top: 4),
+      child: Row(
+        children: [
+          Text(
+            text.toUpperCase(),
+            style: GoogleFonts.rajdhani(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 2,
+              color: SIMEopsColors.muted,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Container(
+                height: 1,
+                color: SIMEopsColors.teal.withValues(alpha: 0.15)),
+          ),
+        ],
+      ),
+    );
   }
+
+  Widget _card({required Widget child}) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: SIMEopsColors.navyMid.withValues(alpha: 0.95),
+        border:
+            Border.all(color: SIMEopsColors.teal.withValues(alpha: 0.15)),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: child,
+    );
+  }
+
+  // ============================================
+  // BUILD
+  // ============================================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: SIMEopsColors.navy,
       appBar: AppBar(
-        title: const Text('Relatorio de Risco'),
+        title: Text('RELATORIO DE RISCO',
+            style: GoogleFonts.rajdhani(
+                fontWeight: FontWeight.w700, letterSpacing: 1.5, fontSize: 16)),
         actions: [
           if (_reportUrl != null)
             IconButton(
               icon: const Icon(Icons.open_in_browser),
-              onPressed: _openInBrowser,
-              tooltip: 'Abrir no navegador',
+              onPressed: () => _openUrl(_reportUrl!),
             ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: Stack(
         children: [
-          // Header
-          Text(
-            'Analise Criminal',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '${widget.cidades.join(", ")} - ${widget.estado} | Ultimos ${widget.periodoDias} dias',
-            style: TextStyle(color: Colors.grey[600], fontSize: 14),
-          ),
-          const SizedBox(height: 20),
-
-          // Summary cards
-          Row(
+          ListView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
             children: [
-              _SummaryCard(
-                label: 'Total',
-                value: '$_totalCrimes',
-                icon: Icons.article,
-              ),
-              const SizedBox(width: 12),
-              _SummaryCard(
-                label: 'Mais comum',
-                value: _topCrimeType,
-                icon: Icons.warning_amber,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _SummaryCard(
-                label: 'Tipos',
-                value: '${_crimeTypeCounts.length}',
-                icon: Icons.category,
-              ),
-              const SizedBox(width: 12),
-              _SummaryCard(
-                label: 'Bairros',
-                value: '${_bairroCounts.length}',
-                icon: Icons.location_city,
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-
-          // Bar chart - crime by type
-          if (_byCrimeType.isNotEmpty) ...[
-            _SectionTitle('Ocorrencias por Tipo'),
-            const SizedBox(height: 8),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: MiniBarChart(data: _byCrimeType),
-              ),
-            ),
-            const SizedBox(height: 24),
-          ],
-
-          // Trend chart
-          if (_byDate.length > 1) ...[
-            _SectionTitle('Tendencia Temporal'),
-            const SizedBox(height: 8),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: MiniTrendChart(data: _byDate),
-              ),
-            ),
-            const SizedBox(height: 24),
-          ],
-
-          // Top bairros
-          if (_bairroCounts.isNotEmpty) ...[
-            _SectionTitle('Bairros com Mais Incidencias'),
-            const SizedBox(height: 8),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  children: () {
-                    final sorted = _bairroCounts.entries.toList()
-                      ..sort((a, b) => b.value.compareTo(a.value));
-                    final top = sorted.take(8).toList();
-                    final maxCount = top.first.value;
-                    return top.asMap().entries.map((entry) {
-                      final i = entry.key;
-                      final e = entry.value;
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 24,
-                              child: Text(
-                                '${i + 1}.',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[500],
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(e.key,
-                                          style: const TextStyle(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w500)),
-                                      Text('${e.value}',
-                                          style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey[600])),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 3),
-                                  LinearProgressIndicator(
-                                    value: e.value / maxCount,
-                                    backgroundColor: Colors.grey[200],
-                                    color: const Color(0xFF3b82f6),
-                                    minHeight: 4,
-                                    borderRadius: BorderRadius.circular(2),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList();
-                  }(),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-          ],
-
-          // Sources - Oficial
-          if (_sourcesOficial.isNotEmpty) ...[
-            _SectionTitle('Fontes Oficiais (SSP/Gov)'),
-            const SizedBox(height: 8),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: _sourcesOficial.map((s) => Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: InkWell(
-                      onTap: () => _openSourceUrl(s['url']!),
-                      child: Row(
+              // Cidade / Periodo card
+              _card(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.shield, size: 14, color: Colors.green[700]),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              s['name']!,
-                              style: TextStyle(
-                                color: Colors.green[700],
-                                fontSize: 13,
-                                decoration: TextDecoration.underline,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                          Text('CIDADE',
+                              style: GoogleFonts.rajdhani(
+                                  fontSize: 10,
+                                  letterSpacing: 1.5,
+                                  color: SIMEopsColors.muted.withValues(alpha: 0.6))),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${widget.cidades.join(", ")} — ${widget.estado}',
+                            style: GoogleFonts.exo2(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: SIMEopsColors.white),
                           ),
                         ],
                       ),
                     ),
-                  )).toList(),
+                    Container(
+                        width: 1,
+                        height: 36,
+                        color: SIMEopsColors.teal.withValues(alpha: 0.15)),
+                    const SizedBox(width: 16),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('PERIODO',
+                            style: GoogleFonts.rajdhani(
+                                fontSize: 10,
+                                letterSpacing: 1.5,
+                                color: SIMEopsColors.muted.withValues(alpha: 0.6))),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Ultimos ${widget.periodoDias} dias',
+                          style: GoogleFonts.exo2(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: SIMEopsColors.white),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-          ],
 
-          // Sources - Midia
-          _SectionTitle(
-            _sourcesMedia.isNotEmpty
-                ? 'Fontes Jornalisticas'
-                : 'Fontes (${widget.results.length} noticias analisadas)',
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_sourcesMedia.isNotEmpty)
-                    ..._sourcesMedia.take(10).map((s) => Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: InkWell(
-                        onTap: () => _openSourceUrl(s['url']!),
-                        child: Row(
+              // Resumo numerico
+              _sectionTitle('Resumo'),
+              _card(
+                child: Row(
+                  children: [
+                    _statBox('$_totalOcorrencias', 'Ocorrencias'),
+                    _dividerVertical(),
+                    _statBox('${_bairroCounts.length}', 'Bairros'),
+                    _dividerVertical(),
+                    _statBox('${_crimeTypeCounts.length}', 'Tipos'),
+                    if (_totalEstatisticas > 0) ...[
+                      _dividerVertical(),
+                      _statBox('$_totalEstatisticas', 'Indicadores'),
+                    ],
+                  ],
+                ),
+              ),
+
+              // Donut chart — Ocorrencias por tipo
+              if (_crimeTypeCounts.isNotEmpty) ...[
+                _sectionTitle('Ocorrencias por Tipo'),
+                _card(
+                  child: Row(
+                    children: [
+                      // Donut
+                      SizedBox(
+                        width: 130,
+                        height: 130,
+                        child: Stack(
+                          alignment: Alignment.center,
                           children: [
-                            const Icon(Icons.open_in_new, size: 14, color: Colors.blue),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                s['name']!,
-                                style: const TextStyle(
-                                  color: Colors.blue,
-                                  fontSize: 13,
-                                  decoration: TextDecoration.underline,
-                                ),
-                                overflow: TextOverflow.ellipsis,
+                            PieChart(
+                              PieChartData(
+                                sections: _crimeTypeCounts.entries.map((e) {
+                                  final color = _crimeColors[e.key] ?? const Color(0xFF8FA9C0);
+                                  return PieChartSectionData(
+                                    value: e.value.toDouble(),
+                                    color: color,
+                                    radius: 18,
+                                    showTitle: false,
+                                  );
+                                }).toList(),
+                                sectionsSpace: 2,
+                                centerSpaceRadius: 40,
                               ),
+                            ),
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('$_totalOcorrencias',
+                                    style: GoogleFonts.rajdhani(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.w700,
+                                        color: SIMEopsColors.white)),
+                                Text('TOTAL',
+                                    style: GoogleFonts.rajdhani(
+                                        fontSize: 9,
+                                        letterSpacing: 1,
+                                        color: SIMEopsColors.muted.withValues(alpha: 0.6))),
+                              ],
                             ),
                           ],
                         ),
                       ),
-                    )),
-                  if (_sourcesMedia.length > 10)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        '+ ${_sourcesMedia.length - 10} fontes adicionais',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                      const SizedBox(width: 16),
+                      // Legend
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: (_crimeTypeCounts.entries.toList()
+                                ..sort((a, b) => b.value.compareTo(a.value)))
+                              .take(6)
+                              .map((e) {
+                            final color =
+                                _crimeColors[e.key] ?? const Color(0xFF8FA9C0);
+                            final label = _tipoLabels[e.key] ?? e.key;
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 3),
+                              child: Row(
+                                children: [
+                                  Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                          color: color, shape: BoxShape.circle)),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                      child: Text(label,
+                                          style: GoogleFonts.exo2(
+                                              fontSize: 12,
+                                              color: SIMEopsColors.muted))),
+                                  Text('${e.value}',
+                                      style: GoogleFonts.rajdhani(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: SIMEopsColors.white)),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              // Mapa de calor
+              if (_heatPoints.isNotEmpty) ...[
+                _sectionTitle('Mapa de Ocorrencias'),
+                _card(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: SizedBox(
+                      height: 280,
+                      child: FlutterMap(
+                        options: MapOptions(
+                          initialCenter: _heatPoints.first.coords,
+                          initialZoom: 12,
+                          interactionOptions: const InteractionOptions(
+                            flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
+                          ),
+                        ),
+                        children: [
+                          TileLayer(
+                            urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+                            subdomains: const ['a', 'b', 'c', 'd'],
+                            userAgentPackageName: 'com.progestao.simeops',
+                          ),
+                          CircleLayer(
+                            circles: _heatPoints.map((p) {
+                              final maxCount = _heatPoints.map((h) => h.count).reduce(max);
+                              final intensity = p.count / maxCount;
+                              return CircleMarker(
+                                point: p.coords,
+                                radius: 12 + intensity * 28,
+                                color: Color.lerp(
+                                  const Color(0xFF22B5C4),
+                                  const Color(0xFFE05252),
+                                  intensity,
+                                )!.withValues(alpha: 0.4 + intensity * 0.3),
+                                borderColor: Color.lerp(
+                                  const Color(0xFF22B5C4),
+                                  const Color(0xFFE05252),
+                                  intensity,
+                                )!.withValues(alpha: 0.8),
+                                borderStrokeWidth: 1,
+                              );
+                            }).toList(),
+                          ),
+                        ],
                       ),
                     ),
-                  if (_sourcesMedia.isEmpty)
-                    Text(
-                      'Dados coletados via Perplexity Search, Google News RSS, '
-                      'portais de noticias regionais e SSPs.',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ),
+              ] else if (_mapLoading && _bairroCounts.isNotEmpty) ...[
+                _sectionTitle('Mapa de Ocorrencias'),
+                _card(
+                  child: SizedBox(
+                    height: 280,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(color: SIMEopsColors.teal),
+                          const SizedBox(height: 12),
+                          Text('Geocodificando bairros...',
+                              style: GoogleFonts.exo2(
+                                  fontSize: 12, color: SIMEopsColors.muted)),
+                        ],
+                      ),
                     ),
-                ],
+                  ),
+                ),
+              ],
+
+              // Bairros com mais incidencias
+              if (_bairroCounts.isNotEmpty) ...[
+                _sectionTitle('Bairros com Mais Incidencias'),
+                _card(
+                  child: Column(
+                    children: () {
+                      final sorted = _bairroCounts.entries.toList()
+                        ..sort((a, b) => b.value.compareTo(a.value));
+                      final top = sorted.take(8).toList();
+                      final maxCount = top.first.value;
+                      return top.asMap().entries.map((entry) {
+                        final i = entry.key;
+                        final e = entry.value;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 24,
+                                child: Text('${i + 1}.',
+                                    style: GoogleFonts.exo2(
+                                        fontSize: 12, color: SIMEopsColors.muted)),
+                              ),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(e.key,
+                                            style: GoogleFonts.exo2(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w500,
+                                                color: SIMEopsColors.white)),
+                                        Text('${e.value}',
+                                            style: GoogleFonts.rajdhani(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w700,
+                                                color: SIMEopsColors.muted)),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 3),
+                                    LinearProgressIndicator(
+                                      value: e.value / maxCount,
+                                      backgroundColor:
+                                          SIMEopsColors.teal.withValues(alpha: 0.1),
+                                      color: SIMEopsColors.teal,
+                                      minHeight: 4,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList();
+                    }(),
+                  ),
+                ),
+              ],
+
+              // Indicadores da Regiao (estatisticas + tendencia)
+              if (_estatisticas.isNotEmpty || _byDate.length > 1) ...[
+                _sectionTitle('Indicadores da Regiao'),
+                if (_byDate.length > 1)
+                  _card(
+                    child: SizedBox(
+                      height: 180,
+                      child: MiniTrendChart(data: _byDate),
+                    ),
+                  ),
+                if (_estatisticas.isNotEmpty) _card(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: _estatisticas.map((e) {
+                      final resumo = e['resumo'] as String? ?? '';
+                      final url = e['source_url'] as String? ?? '';
+                      String fonte;
+                      try {
+                        fonte = Uri.parse(url).host;
+                      } catch (_) {
+                        fonte = url;
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(resumo,
+                                style: GoogleFonts.exo2(
+                                    fontSize: 13, color: SIMEopsColors.white)),
+                            if (url.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              InkWell(
+                                onTap: () => _openUrl(url),
+                                child: Text('Fonte: $fonte',
+                                    style: GoogleFonts.exo2(
+                                        fontSize: 11,
+                                        color: SIMEopsColors.tealLight,
+                                        decoration: TextDecoration.underline)),
+                              ),
+                            ],
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+
+              // Fontes analisadas
+              _sectionTitle('Fontes Analisadas'),
+              _card(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_sourcesOficial.isNotEmpty) ...[
+                      ...List.generate(
+                        min(_sourcesOficial.length, 5),
+                        (i) => _sourceRow(i + 1, _sourcesOficial[i], true),
+                      ),
+                    ],
+                    ...List.generate(
+                      min(_sourcesMedia.length, 8),
+                      (i) => _sourceRow(
+                          (_sourcesOficial.length + i + 1), _sourcesMedia[i], false),
+                    ),
+                    if (_sourcesMedia.length > 8)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          '+ ${_sourcesMedia.length - 8} fontes adicionais',
+                          style: GoogleFonts.exo2(
+                              fontSize: 11,
+                              color: SIMEopsColors.muted.withValues(alpha: 0.5)),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 60),
+            ],
+          ),
+
+          // Botao fixo no bottom
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 24,
+            child: SizedBox(
+              height: 52,
+              child: FilledButton(
+                onPressed: _generatingLink ? null : _generateAndShareLink,
+                style: FilledButton.styleFrom(
+                  backgroundColor: SIMEopsColors.green,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: _generatingLink
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.arrow_upward,
+                              size: 18, color: Colors.white),
+                          const SizedBox(width: 8),
+                          Text('COMPARTILHAR RELATORIO',
+                              style: GoogleFonts.rajdhani(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 2,
+                                  color: Colors.white)),
+                        ],
+                      ),
               ),
             ),
           ),
-          const SizedBox(height: 32),
-
-          // Action buttons
-          FilledButton.icon(
-            onPressed: _generatingLink ? null : _generateAndShareLink,
-            icon: _generatingLink
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.share),
-            label: Text(_generatingLink
-                ? 'Gerando...'
-                : 'Compartilhar Relatorio'),
-          ),
-          const SizedBox(height: 12),
-          if (_reportUrl != null)
-            OutlinedButton.icon(
-              onPressed: _openInBrowser,
-              icon: const Icon(Icons.open_in_browser),
-              label: const Text('Abrir Dashboard Completo'),
-            ),
-          const SizedBox(height: 32),
         ],
       ),
     );
   }
-}
 
-class _SectionTitle extends StatelessWidget {
-  final String text;
-  const _SectionTitle(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
+  Widget _statBox(String value, String label) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(value,
+              style: GoogleFonts.rajdhani(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w700,
+                  color: SIMEopsColors.white)),
+          Text(label.toUpperCase(),
+              style: GoogleFonts.rajdhani(
+                  fontSize: 9,
+                  letterSpacing: 1,
+                  color: SIMEopsColors.muted.withValues(alpha: 0.6))),
+        ],
+      ),
     );
   }
-}
 
-class _SummaryCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
+  Widget _dividerVertical() {
+    return Container(
+        width: 1,
+        height: 36,
+        color: SIMEopsColors.teal.withValues(alpha: 0.15));
+  }
 
-  const _SummaryCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(icon, size: 20, color: Colors.grey[400]),
-              const SizedBox(height: 8),
-              Text(
-                value,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+  Widget _sourceRow(int index, Map<String, String> source, bool isOfficial) {
+    final color = isOfficial ? SIMEopsColors.tealLight : SIMEopsColors.muted;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        onTap: () => _openUrl(source['url']!),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('[$index]  ',
+                style: GoogleFonts.exo2(fontSize: 11, color: SIMEopsColors.muted.withValues(alpha: 0.5))),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(source['name']!,
+                      style: GoogleFonts.exo2(
+                          fontSize: 13, color: color, decoration: TextDecoration.underline)),
+                  if (source['title']?.isNotEmpty == true)
+                    Text(source['title']!,
+                        style: GoogleFonts.exo2(
+                            fontSize: 11,
+                            color: SIMEopsColors.muted.withValues(alpha: 0.6)),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                ],
               ),
-              Text(
-                label,
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
+}
+
+class _HeatPoint {
+  final String bairro;
+  final int count;
+  final LatLng coords;
+  const _HeatPoint(this.bairro, this.count, this.coords);
 }

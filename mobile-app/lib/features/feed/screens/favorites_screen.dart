@@ -9,10 +9,10 @@ class FavoritesScreen extends StatefulWidget {
   const FavoritesScreen({super.key});
 
   @override
-  State<FavoritesScreen> createState() => _FavoritesScreenState();
+  FavoritesScreenState createState() => FavoritesScreenState();
 }
 
-class _FavoritesScreenState extends State<FavoritesScreen> {
+class FavoritesScreenState extends State<FavoritesScreen> {
   final List<NewsItem> _favorites = [];
   bool _loading = false;
 
@@ -21,6 +21,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     super.initState();
     _load();
   }
+
+  Future<void> reload() async => _load();
 
   Future<void> _load() async {
     final api = context.read<ApiService>();

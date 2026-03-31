@@ -1,10 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../core/data/brazilian_locations.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/widgets/grid_background.dart';
+import '../../../main.dart';
 import '../widgets/multi_city_search_field.dart';
+import '../../feed/widgets/news_card.dart';
+import '../../feed/widgets/news_detail_sheet.dart';
+import '../../../core/models/news_item.dart';
 import 'report_screen.dart';
 
 class ManualSearchScreen extends StatefulWidget {
@@ -22,9 +27,13 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   String? _selectedEstado;
   Set<String> _selectedCidades = {};
   int _periodoDias = 30;
+  double _profundidade = 1.0; // 0.5, 1.0, 1.5, 2.0
   bool _useKeyword = false;
   final _keywordCtrl = TextEditingController();
   bool _loadingLocations = true;
+
+  static const _profLabels = ['Rapido\n50%', 'Normal\n100%', 'Avancado\n150%', 'Maximo\n200%'];
+  static const _profValues = [0.5, 1.0, 1.5, 2.0];
 
   // Search state
   String? _searchId;
@@ -140,6 +149,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         tipoCrime: (_useKeyword && _keywordCtrl.text.trim().length >= 2)
             ? _keywordCtrl.text.trim()
             : null,
+        profundidade: _profundidade,
       );
 
       setState(() => _searchId = searchId);
@@ -224,10 +234,32 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: SIMEopsColors.navy,
       appBar: AppBar(
-        title: const Text('Nova Busca'),
+        title: Text('NOVA BUSCA',
+            style: GoogleFonts.rajdhani(
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.5,
+            )),
       ),
-      body: _searchStatus == 'idle' ? _buildForm() : _buildResults(),
+      body: _searchStatus == 'idle'
+          ? GridBackground(child: _buildForm())
+          : _buildResults(),
+    );
+  }
+
+  Widget _sectionLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        text,
+        style: GoogleFonts.rajdhani(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 1.8,
+          color: SIMEopsColors.muted.withValues(alpha: 0.7),
+        ),
+      ),
     );
   }
 
@@ -236,16 +268,21 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    final canSearch = _selectedEstado != null && _selectedCidades.isNotEmpty;
+
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(20, 28, 20, 120),
       children: [
-        // Estado
+        // ESTADO
+        _sectionLabel('ESTADO'),
         DropdownButtonFormField<String>(
           key: const ValueKey('estado'),
           value: _selectedEstado,
-          decoration: const InputDecoration(
-            labelText: 'Estado',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            hintText: 'Selecione o estado',
+            prefixIcon: Icon(Icons.map_outlined,
+                color: SIMEopsColors.teal.withValues(alpha: 0.6), size: 20),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           ),
           isExpanded: true,
           items: _estados
@@ -256,9 +293,10 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
             _selectedCidades = {};
           }),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 18),
 
-        // Cidades - multi-select search field
+        // CIDADES
+        _sectionLabel('CIDADES'),
         MultiCitySearchField(
           key: ValueKey(_selectedEstado),
           estadoNome: _selectedEstado,
@@ -266,64 +304,202 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
             setState(() => _selectedCidades = cidades);
           },
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 18),
 
-        // Periodo
-        DropdownButtonFormField<int>(
-          key: const ValueKey('periodo'),
-          value: _periodoDias,
-          decoration: const InputDecoration(
-            labelText: 'Periodo',
-            border: OutlineInputBorder(),
-          ),
-          isExpanded: true,
-          items: _periodos.entries
-              .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
-              .toList(),
-          onChanged: (v) => setState(() => _periodoDias = v ?? 30),
+        // PERIODO — chips
+        _sectionLabel('PERIODO'),
+        Wrap(
+          spacing: 8,
+          children: _periodos.entries.map((e) {
+            final selected = _periodoDias == e.key;
+            return ChoiceChip(
+              label: Text('${e.key} dias'),
+              selected: selected,
+              onSelected: (_) => setState(() => _periodoDias = e.key),
+              selectedColor: SIMEopsColors.teal.withValues(alpha: 0.15),
+              side: BorderSide(
+                color: selected
+                    ? SIMEopsColors.teal
+                    : SIMEopsColors.teal.withValues(alpha: 0.15),
+              ),
+              labelStyle: GoogleFonts.exo2(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: selected ? SIMEopsColors.tealLight : SIMEopsColors.muted,
+              ),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
+              backgroundColor: SIMEopsColors.navyLight.withValues(alpha: 0.8),
+            );
+          }).toList(),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 18),
 
-        // Palavra-chave (tipo crime)
+        // PROFUNDIDADE — slider com 4 snaps
+        _sectionLabel('PROFUNDIDADE DA BUSCA'),
+        SliderTheme(
+          data: SliderThemeData(
+            activeTrackColor: SIMEopsColors.teal,
+            inactiveTrackColor: SIMEopsColors.teal.withValues(alpha: 0.15),
+            thumbColor: SIMEopsColors.tealLight,
+            overlayColor: SIMEopsColors.teal.withValues(alpha: 0.1),
+            trackHeight: 4,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+          ),
+          child: Slider(
+            value: _profValues.indexOf(_profundidade).toDouble(),
+            min: 0,
+            max: 3,
+            divisions: 3,
+            onChanged: (v) => setState(() => _profundidade = _profValues[v.round()]),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(4, (i) {
+              final selected = _profundidade == _profValues[i];
+              return Text(
+                _profLabels[i],
+                textAlign: TextAlign.center,
+                style: GoogleFonts.exo2(
+                  fontSize: 10,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  color: selected
+                      ? SIMEopsColors.tealLight
+                      : SIMEopsColors.muted.withValues(alpha: 0.5),
+                ),
+              );
+            }),
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // OPCIONAL — divider
         Row(
           children: [
-            Checkbox(
-              value: _useKeyword,
-              onChanged: (v) => setState(() => _useKeyword = v ?? false),
-            ),
             Expanded(
+                child: Container(
+                    height: 1,
+                    color: SIMEopsColors.teal.withValues(alpha: 0.1))),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
               child: Text(
-                'Filtrar por palavra-chave (opcional)',
-                style: Theme.of(context).textTheme.bodyMedium,
+                'OPCIONAL',
+                style: GoogleFonts.rajdhani(
+                  fontSize: 10,
+                  color: SIMEopsColors.muted.withValues(alpha: 0.5),
+                  letterSpacing: 1,
+                ),
               ),
             ),
+            Expanded(
+                child: Container(
+                    height: 1,
+                    color: SIMEopsColors.teal.withValues(alpha: 0.1))),
           ],
         ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _keywordCtrl,
-          enabled: _useKeyword,
-          maxLength: 50,
-          decoration: InputDecoration(
-            hintText: _useKeyword ? 'Ex: roubo, furto, homicidio...' : 'Todos',
-            border: const OutlineInputBorder(),
-            filled: !_useKeyword,
-            fillColor: !_useKeyword
-                ? Theme.of(context).colorScheme.surfaceContainerHighest
-                : null,
-            counterText: '',
+        const SizedBox(height: 16),
+
+        // KEYWORD — toggle switch
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: SIMEopsColors.navyLight.withValues(alpha: 0.8),
+            border: Border.all(
+                color: SIMEopsColors.teal.withValues(alpha: 0.15)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Switch(
+                value: _useKeyword,
+                onChanged: (v) => setState(() => _useKeyword = v),
+                activeThumbColor: SIMEopsColors.tealLight,
+                activeTrackColor: SIMEopsColors.teal.withValues(alpha: 0.3),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Filtrar por palavra-chave',
+                        style: GoogleFonts.exo2(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: SIMEopsColors.white)),
+                    Text('Ex: trafico, roubo, operacao policial',
+                        style: GoogleFonts.exo2(
+                            fontSize: 11,
+                            color: SIMEopsColors.muted.withValues(alpha: 0.6))),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 24),
 
-        // Start button
-        FilledButton.icon(
-          onPressed:
-              (_selectedEstado != null && _selectedCidades.isNotEmpty)
-                  ? _startSearch
-                  : null,
-          icon: const Icon(Icons.search),
-          label: const Text('Iniciar Busca'),
+        // Keyword input (animated)
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          child: _useKeyword
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: TextField(
+                    controller: _keywordCtrl,
+                    maxLength: 50,
+                    style: const TextStyle(color: SIMEopsColors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Ex: roubo, furto, homicidio...',
+                      prefixIcon: Icon(Icons.search,
+                          color: SIMEopsColors.teal.withValues(alpha: 0.6),
+                          size: 20),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      counterText: '',
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+        const SizedBox(height: 28),
+
+        // INICIAR BUSCA
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton(
+            onPressed: canSearch ? _startSearch : null,
+            style: FilledButton.styleFrom(
+              backgroundColor:
+                  canSearch ? SIMEopsColors.teal : SIMEopsColors.navyLight,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            child: Text(
+              'INICIAR BUSCA',
+              style: GoogleFonts.rajdhani(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 2,
+                color: canSearch
+                    ? Colors.white
+                    : SIMEopsColors.muted.withValues(alpha: 0.4),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // Disclaimer
+        Text(
+          'A busca analisa noticias publicas e pode levar alguns instantes.',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.exo2(
+            fontSize: 12,
+            color: SIMEopsColors.muted.withValues(alpha: 0.5),
+          ),
         ),
       ],
     );
@@ -518,19 +694,21 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.tonalIcon(
-                    onPressed: () {
+                    onPressed: (_selectedEstado != null) ? () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => ReportScreen(
                             searchId: _searchId,
-                            cidades: _selectedCidades.toList(),
+                            cidades: _selectedCidades.isNotEmpty
+                                ? _selectedCidades.toList()
+                                : [_selectedEstado!],
                             estado: _selectedEstado!,
                             periodoDias: _periodoDias,
                             results: _results,
                           ),
                         ),
                       );
-                    },
+                    } : null,
                     icon: const Icon(Icons.bar_chart),
                     label: const Text('Gerar Relatorio de Risco'),
                   ),
@@ -552,8 +730,11 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
               : ListView.builder(
                   itemCount: _results.length,
                   itemBuilder: (context, index) {
-                    final r = _results[index];
-                    return _ManualResultCard(result: r);
+                    final item = NewsItem.fromSearchResult(_results[index]);
+                    return NewsCard(
+                      news: item,
+                      onTap: () => NewsDetailSheet.show(context, item),
+                    );
                   },
                 ),
         ),
@@ -562,101 +743,3 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   }
 }
 
-class _ManualResultCard extends StatelessWidget {
-  final Map<String, dynamic> result;
-
-  const _ManualResultCard({required this.result});
-
-  @override
-  Widget build(BuildContext context) {
-    final tipoCrime = result['tipo_crime'] as String? ?? '';
-    final cidade = result['cidade'] as String? ?? '';
-    final bairro = result['bairro'] as String?;
-    final resumo = result['resumo'] as String? ?? '';
-    final dataStr = result['data_ocorrencia'] as String? ?? '';
-    final sourceUrl = result['source_url'] as String? ?? '';
-
-    DateTime? data;
-    try {
-      data = DateTime.parse(dataStr);
-    } catch (_) {}
-
-    final local = [cidade, if (bairro != null) bairro].join(', ');
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.blueGrey.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    tipoCrime.toUpperCase(),
-                    style: const TextStyle(
-                      color: Colors.blueGrey,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                if (data != null)
-                  Text(
-                    DateFormat('dd/MM/yyyy').format(data),
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Colors.grey[500]),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              resumo,
-              style: Theme.of(context).textTheme.bodyMedium,
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Icon(Icons.location_on, size: 14, color: Colors.grey[400]),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    local,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Colors.grey[600]),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (sourceUrl.isNotEmpty) ...[
-                  Icon(Icons.link, size: 14, color: Colors.grey[400]),
-                  const SizedBox(width: 4),
-                  Text(
-                    '1 fonte',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Colors.grey[500]),
-                  ),
-                ],
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

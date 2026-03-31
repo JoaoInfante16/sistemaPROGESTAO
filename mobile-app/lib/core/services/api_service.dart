@@ -188,11 +188,13 @@ class ApiService {
     required List<String> cidades,
     int periodoDias = 30,
     String? tipoCrime,
+    double profundidade = 1.0,
   }) async {
     final bodyMap = <String, dynamic>{
       'estado': estado,
       'cidades': cidades,
       'periodo_dias': periodoDias,
+      'profundidade': profundidade,
     };
     if (tipoCrime != null) bodyMap['tipo_crime'] = tipoCrime;
 

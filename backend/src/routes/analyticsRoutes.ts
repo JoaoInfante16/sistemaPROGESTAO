@@ -11,6 +11,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { validateQuery, validateBody, schemas } from '../middleware/validation';
+import { geocodeBairros } from '../services/geocoding/nominatim';
 import {
   getCrimeSummary,
   getCrimeTrend,
@@ -215,6 +216,12 @@ router.post(
       const sourcesOficial = mergedSources.filter(s => s.type === 'oficial');
       const sourcesMedia = mergedSources.filter(s => s.type === 'midia');
 
+      // Geocodificar bairros pra heatmap
+      const bairrosToGeocode = (mergedSummary.topBairros || [])
+        .slice(0, 15)
+        .map((b: { bairro: string; count: number }) => ({ bairro: b.bairro, count: b.count }));
+      const heatmapData = await geocodeBairros(bairrosToGeocode, cidade, estado);
+
       const reportData = {
         cidade,
         estado,
@@ -239,6 +246,7 @@ router.post(
         sources: mergedSources,
         sourcesOficial,
         sourcesMedia,
+        heatmapData,
       };
 
       const reportId = await createReport({

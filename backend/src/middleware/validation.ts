@@ -105,6 +105,7 @@ export const schemas = {
     cidades: z.array(z.string().min(2).max(100)).min(1).max(10),
     periodo_dias: z.number().int().min(1).max(365).default(30),
     tipo_crime: z.string().min(2).max(50).optional(),
+    profundidade: z.number().min(0.5).max(2.0).default(1.0),
   }),
 
   // Bulk import de cidades do IBGE para monitoramento
