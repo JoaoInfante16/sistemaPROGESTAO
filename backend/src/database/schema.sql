@@ -78,6 +78,7 @@ CREATE TABLE user_profiles (
   is_admin BOOLEAN DEFAULT false,
   created_by UUID REFERENCES auth.users(id),
   must_change_password BOOLEAN DEFAULT false,
+  password_reset_requested BOOLEAN DEFAULT false,
   active BOOLEAN DEFAULT true,
   created_at TIMESTAMP DEFAULT NOW()
 );

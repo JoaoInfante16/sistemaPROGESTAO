@@ -499,6 +499,8 @@ interface UserWithProfile {
   email: string;
   is_admin: boolean;
   active: boolean;
+  must_change_password: boolean;
+  password_reset_requested: boolean;
   created_at: string;
 }
 
@@ -528,6 +530,7 @@ export async function createUserProfile(
       email,
       is_admin: isAdmin,
       created_by: createdBy,
+      must_change_password: true,
     });
 
   if (error) {
@@ -537,7 +540,7 @@ export async function createUserProfile(
 
 export async function updateUserProfile(
   id: string,
-  updates: { active?: boolean }
+  updates: { active?: boolean; must_change_password?: boolean; password_reset_requested?: boolean }
 ): Promise<void> {
   const { error } = await supabase
     .from('user_profiles')
@@ -793,6 +796,30 @@ export async function markAsRead(userId: string, newsId: string) {
     .upsert({ user_id: userId, news_id: newsId }, { onConflict: 'user_id,news_id' });
 }
 
+export async function markAllAsRead(userId: string) {
+  // Pega todos os news IDs que o user ainda não leu
+  const { data: allNews } = await supabase
+    .from('news')
+    .select('id');
+
+  const { data: readNews } = await supabase
+    .from('user_news_read')
+    .select('news_id')
+    .eq('user_id', userId);
+
+  const readSet = new Set((readNews || []).map((r: { news_id: string }) => r.news_id));
+  const unread = (allNews || []).filter((n: { id: string }) => !readSet.has(n.id));
+
+  if (unread.length === 0) return 0;
+
+  const rows = unread.map((n: { id: string }) => ({ user_id: userId, news_id: n.id }));
+  await supabase
+    .from('user_news_read')
+    .upsert(rows, { onConflict: 'user_id,news_id' });
+
+  return unread.length;
+}
+
 export async function addFavorite(userId: string, newsId: string) {
   await supabase
     .from('user_favorites')
@@ -1034,6 +1061,7 @@ export const db = {
   upsertDevice,
   getUserNewsFeed,
   markAsRead,
+  markAllAsRead,
   addFavorite,
   removeFavorite,
   getUnreadCount,

@@ -63,15 +63,15 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.favorite_border, size: 64, color: Colors.grey[300]),
+            Icon(Icons.bookmark_outline, size: 64, color: Colors.grey[300]),
             const SizedBox(height: 16),
             Text(
-              'Nenhum favorito ainda',
+              'Nenhum item salvo',
               style: TextStyle(color: Colors.grey[500]),
             ),
             const SizedBox(height: 8),
             Text(
-              'Deslize uma noticia para a direita para favoritar',
+              'Deslize uma noticia para a direita para salvar',
               style: TextStyle(color: Colors.grey[400], fontSize: 12),
             ),
           ],

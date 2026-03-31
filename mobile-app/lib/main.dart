@@ -10,6 +10,7 @@ import 'core/services/api_service.dart';
 import 'core/services/local_db_service.dart';
 import 'core/services/push_service.dart';
 import 'features/auth/screens/login_screen.dart';
+import 'features/auth/screens/change_password_screen.dart';
 import 'features/feed/screens/main_screen.dart';
 
 void main() async {
@@ -76,12 +77,13 @@ class _AuthGateState extends State<AuthGate> {
   bool _pushInitialized = false;
   bool _configLoaded = false;
   bool _authRequired = true;
+  bool _checkingProfile = false;
+  bool _mustChangePassword = false;
 
   @override
   void initState() {
     super.initState();
     _loadAuthConfig();
-    // Safety: se tudo falhar, desbloqueia em 4 segundos
     Future.delayed(const Duration(seconds: 4), () {
       if (mounted && !_configLoaded) {
         setState(() => _configLoaded = true);
@@ -106,11 +108,34 @@ class _AuthGateState extends State<AuthGate> {
     }
   }
 
+  Future<void> _checkMustChangePassword() async {
+    if (_checkingProfile) return;
+    _checkingProfile = true;
+    try {
+      final api = context.read<ApiService>();
+      final profile = await api.getMyProfile();
+      if (mounted) {
+        final must = profile['must_change_password'] as bool? ?? false;
+        if (must != _mustChangePassword) {
+          setState(() => _mustChangePassword = must);
+        }
+      }
+    } catch (_) {
+      // Se falhar, nao bloqueia — deixa entrar
+    } finally {
+      _checkingProfile = false;
+    }
+  }
+
   void _initPush() {
     if (_pushInitialized) return;
     _pushInitialized = true;
     final api = context.read<ApiService>();
     PushService(api).init();
+  }
+
+  Future<void> _onPasswordChanged() async {
+    setState(() => _mustChangePassword = false);
   }
 
   @override
@@ -123,7 +148,7 @@ class _AuthGateState extends State<AuthGate> {
 
     final auth = context.watch<AuthService>();
 
-    // Se auth não é obrigatório, ir direto para MainScreen
+    // Se auth nao e obrigatorio, ir direto para MainScreen
     if (!_authRequired) {
       if (auth.isAuthenticated) {
         context.read<ApiService>().setToken(auth.accessToken);
@@ -135,10 +160,22 @@ class _AuthGateState extends State<AuthGate> {
     if (auth.isAuthenticated) {
       context.read<ApiService>().setToken(auth.accessToken);
       _initPush();
+
+      // Checar se precisa trocar senha (async, nao bloqueia)
+      _checkMustChangePassword();
+
+      if (_mustChangePassword) {
+        return ChangePasswordScreen(
+          onComplete: _onPasswordChanged,
+        );
+      }
+
       return const MainScreen();
     }
 
     _pushInitialized = false;
+    _mustChangePassword = false;
+    _checkingProfile = false;
     return const LoginScreen();
   }
 }

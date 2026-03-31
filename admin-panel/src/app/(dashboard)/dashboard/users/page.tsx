@@ -264,7 +264,21 @@ export default function UsersPage() {
               <TableBody>
                 {users.map((user) => (
                   <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.email}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{user.email}</span>
+                        {user.password_reset_requested && (
+                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                            Pediu reset
+                          </Badge>
+                        )}
+                        {user.must_change_password && !user.password_reset_requested && (
+                          <Badge className="bg-yellow-500 hover:bg-yellow-600 text-[10px] px-1.5 py-0">
+                            Senha temporaria
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <Badge variant={user.is_admin ? 'default' : 'secondary'}>
                         {user.is_admin ? 'Admin' : 'Usuario'}

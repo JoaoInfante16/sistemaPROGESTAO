@@ -108,6 +108,14 @@ class ApiService {
     _checkResponse(res);
   }
 
+  Future<void> markAllAsRead() async {
+    final res = await _client.post(
+      Uri.parse('$_baseUrl/news/mark-all-read'),
+      headers: _headers,
+    ).timeout(const Duration(seconds: 15));
+    _checkResponse(res);
+  }
+
   Future<void> addFavorite(String newsId) async {
     final res = await _client.post(
       Uri.parse('$_baseUrl/news/$newsId/favorite'),
@@ -132,6 +140,35 @@ class ApiService {
     _checkResponse(res);
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     return body['count'] as int? ?? 0;
+  }
+
+  // ── Auth ──
+
+  Future<Map<String, dynamic>> getMyProfile() async {
+    final res = await _client.get(
+      Uri.parse('$_baseUrl/auth/me'),
+      headers: _headers,
+    ).timeout(_timeout);
+    _checkResponse(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<void> requestPasswordReset(String email) async {
+    final res = await _client.post(
+      Uri.parse('$_baseUrl/auth/request-reset'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email}),
+    ).timeout(_timeout);
+    _checkResponse(res);
+  }
+
+  Future<void> changePassword(String newPassword) async {
+    final res = await _client.post(
+      Uri.parse('$_baseUrl/auth/change-password'),
+      headers: _headers,
+      body: jsonEncode({'new_password': newPassword}),
+    ).timeout(_timeout);
+    _checkResponse(res);
   }
 
   // ── Auth Config (público) ──

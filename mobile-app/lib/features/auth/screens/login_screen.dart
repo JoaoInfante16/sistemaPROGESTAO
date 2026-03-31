@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../core/services/api_service.dart';
 import '../../../core/services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -15,6 +16,13 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordCtrl = TextEditingController();
   bool _loading = false;
   String? _error;
+  bool _deviceAuthAvailable = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkDeviceAuth();
+  }
 
   @override
   void dispose() {
@@ -23,19 +31,59 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  Future<void> _checkDeviceAuth() async {
+    final auth = context.read<AuthService>();
+    final hasEnabled = await auth.hasDeviceAuthEnabled();
+    final isAvailable = await auth.isDeviceAuthAvailable();
+    if (mounted) {
+      setState(() => _deviceAuthAvailable = hasEnabled && isAvailable);
+    }
+  }
+
+  Future<void> _handleDeviceAuth() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final auth = context.read<AuthService>();
+      final success = await auth.authenticateWithDevice();
+      if (!success) {
+        setState(() => _error = 'Autenticacao cancelada.');
+        return;
+      }
+      await auth.signInWithDeviceAuth();
+    } catch (e) {
+      setState(() => _error = 'Falha na autenticacao. Tente com email e senha.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   Future<void> _handleForgotPassword() async {
     final emailController = TextEditingController(text: _emailCtrl.text.trim());
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Recuperar senha'),
-        content: TextField(
-          controller: emailController,
-          keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(
-            labelText: 'Email',
-            hintText: 'Digite seu email',
-          ),
+        icon: const Icon(Icons.lock_reset, size: 40),
+        title: const Text('Esqueceu a senha?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Digite seu email e vamos notificar o administrador para redefinir sua senha.'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                hintText: 'Digite seu email',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.email_outlined),
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -44,7 +92,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Enviar'),
+            child: const Text('Solicitar'),
           ),
         ],
       ),
@@ -52,16 +100,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (result == true && emailController.text.trim().isNotEmpty && mounted) {
       try {
-        await context.read<AuthService>().resetPassword(emailController.text.trim());
+        final api = context.read<ApiService>();
+        await api.requestPasswordReset(emailController.text.trim());
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Email de recuperacao enviado! Verifique sua caixa de entrada.')),
+            const SnackBar(content: Text('Solicitacao enviada! O administrador sera notificado.')),
           );
         }
-      } catch (e) {
+      } catch (_) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Erro ao enviar email de recuperacao')),
+            const SnackBar(content: Text('Solicitacao enviada! O administrador sera notificado.')),
           );
         }
       }
@@ -109,7 +158,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'SIMEops - PROGESTÃO',
+                    'SIMEops - PROGESTAO',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                           fontWeight: FontWeight.bold,
@@ -124,6 +173,36 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                   ),
                   const SizedBox(height: 48),
+
+                  // Botão de autenticação do device (se configurado)
+                  if (_deviceAuthAvailable) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: OutlinedButton.icon(
+                        onPressed: _loading ? null : _handleDeviceAuth,
+                        icon: const Icon(Icons.fingerprint, size: 28),
+                        label: const Text('Entrar com desbloqueio do celular'),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        const Expanded(child: Divider()),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Text(
+                            'ou entre com senha',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Colors.grey[500],
+                                ),
+                          ),
+                        ),
+                        const Expanded(child: Divider()),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
 
                   // Error
                   if (_error != null) ...[

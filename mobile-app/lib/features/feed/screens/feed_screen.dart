@@ -6,6 +6,8 @@ import '../../../core/services/local_db_service.dart';
 import '../widgets/news_card.dart';
 import '../widgets/news_detail_sheet.dart';
 
+enum SortOrder { newest, oldest }
+
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
 
@@ -23,6 +25,8 @@ class _FeedScreenState extends State<FeedScreen> {
   static const _limit = 20;
   String? _cidadeFilter;
   List<String> _cidades = [];
+  SortOrder _sortOrder = SortOrder.newest;
+  bool _markedAllRead = false;
 
   @override
   void initState() {
@@ -76,10 +80,27 @@ class _FeedScreenState extends State<FeedScreen> {
       );
       await db.upsertNews(items);
 
-      // Extract distinct cities for filter chips
       final cities = items.map((e) => e.cidade).toSet().toList()..sort();
       if (_cidades.isEmpty && cities.isNotEmpty) {
         _cidades = cities;
+      }
+
+      // Mark all as read na primeira abertura
+      if (!_markedAllRead) {
+        _markedAllRead = true;
+        api.markAllAsRead().then((_) {
+          if (mounted) {
+            setState(() {
+              for (final item in _news) {
+                item.isUnread = false;
+              }
+            });
+          }
+        }).catchError((_) {});
+      }
+
+      if (_sortOrder == SortOrder.oldest) {
+        items.sort((a, b) => a.dataOcorrencia.compareTo(b.dataOcorrencia));
       }
 
       setState(() {
@@ -113,9 +134,12 @@ class _FeedScreenState extends State<FeedScreen> {
       );
       await db.upsertNews(items);
 
-      // Grow city list from new results
       final newCities = items.map((e) => e.cidade).toSet();
       final merged = {..._cidades, ...newCities}.toList()..sort();
+
+      if (_sortOrder == SortOrder.oldest) {
+        items.sort((a, b) => a.dataOcorrencia.compareTo(b.dataOcorrencia));
+      }
 
       setState(() {
         _news.addAll(items);
@@ -150,6 +174,16 @@ class _FeedScreenState extends State<FeedScreen> {
       }
       setState(() => _news[index].isFavorite = !item.isFavorite);
     } catch (_) {}
+  }
+
+  void _applySortLocally() {
+    setState(() {
+      if (_sortOrder == SortOrder.newest) {
+        _news.sort((a, b) => b.dataOcorrencia.compareTo(a.dataOcorrencia));
+      } else {
+        _news.sort((a, b) => a.dataOcorrencia.compareTo(b.dataOcorrencia));
+      }
+    });
   }
 
   @override
@@ -190,40 +224,40 @@ class _FeedScreenState extends State<FeedScreen> {
 
     return Column(
       children: [
-        // City filter chips
-        if (_cidades.length > 1)
-          SizedBox(
-            height: 48,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilterChip(
-                    label: const Text('Todas'),
-                    selected: _cidadeFilter == null,
-                    onSelected: (_) {
-                      setState(() => _cidadeFilter = null);
-                      _refresh();
-                    },
-                  ),
+        // Filter bar
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            children: [
+              // City filter
+              Expanded(
+                child: _FilterDropdown(
+                  icon: Icons.location_on_outlined,
+                  label: _cidadeFilter ?? 'Todas as cidades',
+                  onTap: () => _showCityPicker(),
                 ),
-                for (final cidade in _cidades)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: FilterChip(
-                      label: Text(cidade),
-                      selected: _cidadeFilter == cidade,
-                      onSelected: (_) {
-                        setState(() => _cidadeFilter = cidade);
-                        _refresh();
-                      },
-                    ),
-                  ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 8),
+              // Sort order
+              _FilterDropdown(
+                icon: _sortOrder == SortOrder.newest
+                    ? Icons.arrow_downward
+                    : Icons.arrow_upward,
+                label: _sortOrder == SortOrder.newest
+                    ? 'Recentes'
+                    : 'Antigas',
+                onTap: () {
+                  setState(() {
+                    _sortOrder = _sortOrder == SortOrder.newest
+                        ? SortOrder.oldest
+                        : SortOrder.newest;
+                  });
+                  _applySortLocally();
+                },
+              ),
+            ],
           ),
+        ),
         // News list
         Expanded(
           child: RefreshIndicator(
@@ -253,6 +287,106 @@ class _FeedScreenState extends State<FeedScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  void _showCityPicker() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Filtrar por cidade',
+                style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.public,
+                color: _cidadeFilter == null
+                    ? Theme.of(ctx).colorScheme.primary
+                    : null,
+              ),
+              title: const Text('Todas as cidades'),
+              selected: _cidadeFilter == null,
+              onTap: () {
+                Navigator.pop(ctx);
+                setState(() => _cidadeFilter = null);
+                _refresh();
+              },
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _cidades.length,
+                itemBuilder: (ctx, i) => ListTile(
+                  leading: Icon(
+                    Icons.location_city,
+                    color: _cidadeFilter == _cidades[i]
+                        ? Theme.of(ctx).colorScheme.primary
+                        : null,
+                  ),
+                  title: Text(_cidades[i]),
+                  selected: _cidadeFilter == _cidades[i],
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    setState(() => _cidadeFilter = _cidades[i]);
+                    _refresh();
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterDropdown extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _FilterDropdown({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: Colors.grey[600]),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.bodySmall,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

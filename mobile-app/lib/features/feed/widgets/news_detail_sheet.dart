@@ -91,20 +91,6 @@ class NewsDetailSheet extends StatelessWidget {
                 ],
               ),
 
-              if (news.confianca != null) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(Icons.verified, size: 16),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Confianca: ${(news.confianca! * 100).toStringAsFixed(0)}%',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
-              ],
-
               const Divider(height: 32),
 
               // Full summary
@@ -141,11 +127,13 @@ class NewsDetailSheet extends StatelessWidget {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                source.sourceName ?? source.url,
+                                source.url,
                                 style: TextStyle(
                                   color: isOfficial ? Colors.green[700] : Colors.blue,
                                   decoration: TextDecoration.underline,
+                                  fontSize: 13,
                                 ),
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),

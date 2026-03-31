@@ -164,6 +164,9 @@ router.post(
         return;
       }
 
+      // Marcar que usuario precisa trocar senha + limpar pedido de reset
+      await db.updateUserProfile(req.params.id, { must_change_password: true, password_reset_requested: false });
+
       res.json({
         success: true,
         tempPassword: newPassword,
@@ -172,6 +175,116 @@ router.post(
     } catch (error) {
       logger.error('[Users] Reset password error:', error);
       res.status(500).json({ error: 'Failed to reset password' });
+    }
+  }
+);
+
+// ============================================
+// Endpoint publico (user nao autenticado)
+// ============================================
+
+const requestResetSchema = z.object({
+  email: z.string().email(),
+});
+
+/**
+ * POST /auth/request-reset
+ * User pede reset de senha (publico). Marca flag no perfil pro admin ver.
+ * Sempre retorna sucesso pra nao vazar se o email existe.
+ */
+router.post(
+  '/auth/request-reset',
+  validateBody(requestResetSchema),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { email } = req.body as { email: string };
+
+      // Buscar user por email
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('email', email)
+        .single();
+
+      if (data) {
+        await db.updateUserProfile(data.id, { password_reset_requested: true });
+        logger.info(`[Auth] Password reset requested for ${email}`);
+      }
+
+      // Sempre retorna sucesso (seguranca: nao revelar se email existe)
+      res.json({ success: true, message: 'Se o email estiver cadastrado, o administrador sera notificado.' });
+    } catch (error) {
+      logger.error('[Auth] Request reset error:', error);
+      res.json({ success: true, message: 'Se o email estiver cadastrado, o administrador sera notificado.' });
+    }
+  }
+);
+
+// ============================================
+// Auth endpoints (usuario autenticado, nao admin)
+// ============================================
+
+const changePasswordSchema = z.object({
+  new_password: z.string().min(6).max(100),
+});
+
+/**
+ * GET /auth/me
+ * Retorna perfil do usuario autenticado (inclui must_change_password).
+ */
+router.get(
+  '/auth/me',
+  requireAuth,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('id, email, is_admin, must_change_password, active')
+        .eq('id', req.user!.id)
+        .single();
+
+      if (error || !data) {
+        res.status(404).json({ error: 'Profile not found' });
+        return;
+      }
+
+      res.json(data);
+    } catch (error) {
+      logger.error('[Auth] Me error:', error);
+      res.status(500).json({ error: 'Failed to fetch profile' });
+    }
+  }
+);
+
+/**
+ * POST /auth/change-password
+ * Usuario autenticado troca a propria senha.
+ * Marca must_change_password = false apos troca.
+ */
+router.post(
+  '/auth/change-password',
+  requireAuth,
+  validateBody(changePasswordSchema),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { new_password } = req.body as { new_password: string };
+
+      const { error } = await supabase.auth.admin.updateUserById(req.user!.id, {
+        password: new_password,
+      });
+
+      if (error) {
+        res.status(400).json({ error: error.message });
+        return;
+      }
+
+      // Marcar que nao precisa mais trocar senha
+      await db.updateUserProfile(req.user!.id, { must_change_password: false });
+
+      res.json({ success: true, message: 'Senha alterada com sucesso.' });
+    } catch (error) {
+      logger.error('[Auth] Change password error:', error);
+      res.status(500).json({ error: 'Failed to change password' });
     }
   }
 );

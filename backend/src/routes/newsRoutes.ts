@@ -112,6 +112,25 @@ router.get(
 );
 
 /**
+ * POST /news/mark-all-read
+ * Marcar todas as notícias como lidas.
+ */
+router.post(
+  '/news/mark-all-read',
+  requireAuth,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = (req as unknown as { user: { id: string } }).user.id;
+      const count = await db.markAllAsRead(userId);
+      res.json({ success: true, markedCount: count });
+    } catch (error) {
+      logger.error('[News] Mark all read error:', error);
+      res.status(500).json({ error: 'Failed to mark all as read' });
+    }
+  }
+);
+
+/**
  * POST /news/:id/read
  * Marcar notícia como lida.
  */

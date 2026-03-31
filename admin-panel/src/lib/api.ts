@@ -72,6 +72,8 @@ export interface UserProfile {
   email: string;
   is_admin: boolean;
   active: boolean;
+  must_change_password: boolean;
+  password_reset_requested: boolean;
   created_at: string;
   created_by: string | null;
 }

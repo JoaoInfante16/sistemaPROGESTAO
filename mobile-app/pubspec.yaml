@@ -47,6 +47,8 @@ dependencies:
   flutter_slidable: ^4.0.3
   fl_chart: ^0.70.2
   share_plus: ^10.1.4
+  local_auth: ^3.0.1
+  flutter_secure_storage: ^10.0.0
 
 dev_dependencies:
   flutter_test:

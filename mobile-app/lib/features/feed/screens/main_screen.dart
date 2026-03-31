@@ -71,9 +71,9 @@ class _MainScreenState extends State<MainScreen> {
             label: 'Feed',
           ),
           const NavigationDestination(
-            icon: Icon(Icons.favorite_outline),
-            selectedIcon: Icon(Icons.favorite),
-            label: 'Favoritos',
+            icon: Icon(Icons.bookmark_outline),
+            selectedIcon: Icon(Icons.bookmark),
+            label: 'Salvos',
           ),
           const NavigationDestination(
             icon: Icon(Icons.search_outlined),

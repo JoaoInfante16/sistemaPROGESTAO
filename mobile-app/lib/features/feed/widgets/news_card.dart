@@ -17,34 +17,33 @@ class NewsCard extends StatelessWidget {
     this.onToggleFavorite,
   });
 
+  static String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final dateOnly = DateTime(date.year, date.month, date.day);
+
+    if (dateOnly == today) return 'Hoje';
+
+    final yesterday = today.subtract(const Duration(days: 1));
+    if (dateOnly == yesterday) return 'Ontem';
+
+    return DateFormat('dd/MM/yyyy').format(date);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Slidable(
-      // Swipe left: mark as read
-      endActionPane: ActionPane(
-        motion: const ScrollMotion(),
-        extentRatio: 0.25,
-        children: [
-          SlidableAction(
-            onPressed: (_) => onMarkRead?.call(),
-            backgroundColor: Colors.grey,
-            foregroundColor: Colors.white,
-            icon: Icons.check,
-            label: 'Lida',
-          ),
-        ],
-      ),
-      // Swipe right: favorite
+      // Swipe pra direita: salvar/remover
       startActionPane: ActionPane(
         motion: const ScrollMotion(),
         extentRatio: 0.25,
         children: [
           SlidableAction(
             onPressed: (_) => onToggleFavorite?.call(),
-            backgroundColor: news.isFavorite ? Colors.grey : Colors.amber,
+            backgroundColor: news.isFavorite ? Colors.grey : Colors.indigo,
             foregroundColor: Colors.white,
-            icon: news.isFavorite ? Icons.favorite : Icons.favorite_border,
-            label: news.isFavorite ? 'Remover' : 'Favoritar',
+            icon: news.isFavorite ? Icons.bookmark_remove : Icons.bookmark_add,
+            label: news.isFavorite ? 'Remover' : 'Salvar',
           ),
         ],
       ),
@@ -59,10 +58,12 @@ class NewsCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header: crime type + unread/favorite badges + date
+                // Header: crime type + badges + date
                 Row(
                   children: [
-                    _CrimeBadge(tipoCrime: news.tipoCrime),
+                    Flexible(
+                      child: _CrimeBadge(tipoCrime: news.tipoCrime),
+                    ),
                     if (news.isUnread) ...[
                       const SizedBox(width: 6),
                       Container(
@@ -84,7 +85,7 @@ class NewsCard extends StatelessWidget {
                     ],
                     if (news.isFavorite) ...[
                       const SizedBox(width: 4),
-                      const Icon(Icons.favorite, color: Colors.amber, size: 14),
+                      const Icon(Icons.bookmark, color: Colors.indigo, size: 16),
                     ],
                     if (news.hasOfficialSource) ...[
                       const SizedBox(width: 6),
@@ -112,28 +113,9 @@ class NewsCard extends StatelessWidget {
                         ),
                       ),
                     ],
-                    if (news.estadoUf != null) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          news.estadoUf!,
-                          style: TextStyle(
-                            color: Colors.grey[700],
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                    const Spacer(),
+                    const SizedBox(width: 8),
                     Text(
-                      DateFormat('dd/MM/yyyy').format(news.dataOcorrencia),
+                      _formatDate(news.dataOcorrencia),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Colors.grey[500],
                           ),
@@ -193,23 +175,59 @@ class _CrimeBadge extends StatelessWidget {
 
   const _CrimeBadge({required this.tipoCrime});
 
+  static const _categoriaGrupo = {
+    'roubo_furto': 'patrimonial',
+    'vandalismo': 'patrimonial',
+    'invasao': 'patrimonial',
+    'homicidio': 'seguranca',
+    'latrocinio': 'seguranca',
+    'lesao_corporal': 'seguranca',
+    'trafico': 'operacional',
+    'operacao_policial': 'operacional',
+    'manifestacao': 'operacional',
+    'bloqueio_via': 'operacional',
+    'estelionato': 'fraude',
+    'receptacao': 'fraude',
+    'crime_ambiental': 'institucional',
+    'trabalho_irregular': 'institucional',
+    'outros': 'institucional',
+  };
+
+  static const _grupoCores = {
+    'patrimonial': Colors.orange,
+    'seguranca': Colors.red,
+    'operacional': Colors.blue,
+    'fraude': Colors.purple,
+    'institucional': Colors.blueGrey,
+  };
+
+  static const _labels = {
+    'roubo_furto': 'Roubo/Furto',
+    'vandalismo': 'Vandalismo',
+    'invasao': 'Invasao',
+    'homicidio': 'Homicidio',
+    'latrocinio': 'Latrocinio',
+    'lesao_corporal': 'Lesao Corporal',
+    'trafico': 'Trafico',
+    'operacao_policial': 'Op. Policial',
+    'manifestacao': 'Manifestacao',
+    'bloqueio_via': 'Bloqueio Via',
+    'estelionato': 'Estelionato',
+    'receptacao': 'Receptacao',
+    'crime_ambiental': 'Crime Ambiental',
+    'trabalho_irregular': 'Trab. Irregular',
+    'outros': 'Outros',
+  };
+
   Color get _color {
-    switch (tipoCrime.toLowerCase()) {
-      case 'homicidio':
-        return Colors.red;
-      case 'roubo':
-        return Colors.orange;
-      case 'furto':
-        return Colors.amber;
-      case 'trafico':
-        return Colors.purple;
-      case 'assalto':
-        return Colors.deepOrange;
-      case 'sequestro':
-        return Colors.red[900]!;
-      default:
-        return Colors.blueGrey;
-    }
+    final key = tipoCrime.toLowerCase().replaceAll(' ', '_');
+    final grupo = _categoriaGrupo[key];
+    return _grupoCores[grupo] ?? Colors.blueGrey;
+  }
+
+  String get _label {
+    final key = tipoCrime.toLowerCase().replaceAll(' ', '_');
+    return _labels[key] ?? tipoCrime;
   }
 
   @override
@@ -221,12 +239,14 @@ class _CrimeBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
-        tipoCrime.toUpperCase(),
+        _label.toUpperCase(),
         style: TextStyle(
           color: _color,
           fontSize: 11,
           fontWeight: FontWeight.bold,
         ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }
