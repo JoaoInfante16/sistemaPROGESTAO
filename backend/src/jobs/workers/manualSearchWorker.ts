@@ -167,12 +167,14 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     // Push notification
     try {
       const tipoCrimeLabel = tipoCrime || 'crimes';
-      await sendPushToUser(
+      logger.info(`${LOG_PREFIX} Sending push to user ${job.data.userId}`);
+      const pushResult = await sendPushToUser(
         job.data.userId,
         'Busca concluida',
         `Encontramos ${finalResults.length} resultado${finalResults.length !== 1 ? 's' : ''} para ${tipoCrimeLabel} em ${estado}`,
         { search_id: searchId, type: 'manual_search_completed' }
       );
+      logger.info(`${LOG_PREFIX} Push result: sent=${pushResult.sent}, devices=${pushResult.deviceCount}, reason=${pushResult.reason || 'ok'}`);
     } catch (pushErr) {
       logger.warn(`${LOG_PREFIX} Push failed: ${(pushErr as Error).message}`);
     }
@@ -222,7 +224,11 @@ async function collectManualSearchUrls(
       : `d${periodoDias}`;
 
     const results = await rateLimiter.schedule(config.searchBackend, () =>
-      searchProvider.search(query, { maxResults: cfg.searchMaxResults, dateRestrict })
+      searchProvider.search(query, {
+        maxResults: cfg.searchMaxResults,
+        dateRestrict,
+        location: { city: cidade, state: estado, country: 'BR' },
+      })
     );
 
     for (const r of results) {

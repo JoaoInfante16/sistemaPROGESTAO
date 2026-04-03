@@ -195,7 +195,67 @@ Ambos entram no pipeline. Filter2 hoje rejeita estatisticas como e_crime=false �
 - api.ts: NewsItem atualizado
 - news/page.tsx: cores por grupo, filtros categoria/natureza, fix fragment key, fix URL parsing
 
+### Sessao 018 (2026-03-31) — Redesign Flutter + Mapa de Calor
+
+**Redesign Flutter completo:**
+- GridBackground widget (CustomPainter animado teal)
+- Login: grid animado no fundo
+- Busca: chips periodo, slider profundidade (Rapido/Normal/Avancado/Maximo = 50-200%), toggle keyword, botao teal, disclaimer
+- Backend: profundidade recebida e aplicada como multiplicador no max_results do worker
+- Relatorio: resumo numerico limpo, donut chart, indicadores da regiao, fontes numeradas, botao verde fixo
+- Cards busca manual: agora usam NewsCard + NewsDetailSheet (mesmos do feed)
+- Fix favoritos: tab Salvos recarrega ao trocar de tab
+
+**Mapa de Calor no Relatorio:**
+- Backend: servico geocoding/nominatim.ts (cache em memoria, rate limit 1req/sec, fallback pra cidade)
+- Backend: analyticsRoutes.ts geocodifica topBairros e salva heatmapData no report
+- Flutter: flutter_map + latlong2, CartoDB Dark Matter tiles
+- Circulos coloridos por intensidade (teal→vermelho), tamanho proporcional ao count
+- Geocodifica client-side via Nominatim ao abrir relatorio
+
+**Fixes:**
+- Null check no relatorio (protecoes em cidades vazia, _loadHeatmap, _selectedEstado)
+- Removido _ManualResultCard (substituido por NewsCard reutilizado)
+
+### Sessao 019 (2026-03-31) — Bugs + Prompts + Brave Headers
+
+**Fixes Flutter:**
+- Fix botao "Gerar Relatorio" desabilitado ao retomar busca — backend retorna params + report_id no status
+- Fix tela processing aparecendo ao clicar busca concluida no historico — estado 'loading' separado de 'processing'
+- Report salvo: botao muda pra "Ver Relatorio" (abre browser) quando ja gerou, "Gerar" quando nao
+- Dropdown cidades fecha ao selecionar (removido auto-reopen)
+- Header SIMEOPS com OPS em verde (consistente com login)
+- Mapa: circulos menores (8px base + 3px/ocorrencia, max 30px) em vez de gigantes
+- Delete buscas: long press → modo selecao → selecionar varios → deletar em batch
+  - Backend: DELETE /manual-search com array de IDs (so deleta do proprio usuario)
+  - Flutter: SearchScreen com modo selecao, selecionar todos, confirmacao
+
+**Brave Location Headers:**
+- BraveNewsProvider envia X-Loc-City, X-Loc-State, X-Loc-Country nos headers
+- X-Loc-Country: BR como default sempre
+- Auto-scan: passa cidade e estado da location monitorada
+- Busca manual: passa cada cidade do loop + estado
+- Teste comparativo: headers nao mudam muito quando query ja tem nome da cidade
+- Conclusao: headers ajudam marginalmente, filtro real de cidade e o Filter2 + post-filter
+
+**Prompts reescritos em ingles (melhor performance GPT):**
+- Filter1 Batch: aceita "crime statistics, violence indicators" (antes rejeitava estatisticas)
+- Filter1 Single: YES/NO em vez de SIM/NAO
+- Filter2: campos em ingles (is_crime, crime_type, nature, city, etc) + mapeamento EN→PT no validateExtraction
+  - Aceita resposta em ambos idiomas como fallback
+  - Summary em PT-BR ("summary in Brazilian Portuguese")
+- Dedup: YES/NO em vez de SIM/NAO
+
+**Investigacao deduplicacao:**
+- Auto-scan: 3 camadas (geo-temporal → embedding → GPT) funcionando corretamente
+- Fontes consolidadas: mesma noticia de globo + record = 1 card com 2 fontes
+- Push: so 1 notificacao por evento (duplicatas nao disparam push)
+- Busca manual: resultados isolados em search_results (por design, nao duplica no feed)
+
 **Pendente (proxima sessao):**
-- [ ] Testar B2 com scan real (ativar cidade, rodar, ver categorias)
-- [ ] Bloco C: Flutter (primeiro login, troca senha, biometria)
-- [ ] Bloco D: Deploy
+- [ ] Testar relatorio com dados reais (novo prompt ingles)
+- [ ] Testar profundidade busca (50-200%)
+- [ ] Push notification de busca manual — investigar se chega
+- [ ] Feed/Cards: ajustes menores de cor/estilo
+- [ ] Bloco C: Flutter auth (must_change_password, biometria)
+- [ ] Bloco D: Deploy (Render, Vercel, APK release)

@@ -88,17 +88,17 @@ export async function deduplicateNews(
  * Só chamada quando cosine similarity >= 0.85 (~5% dos casos).
  */
 async function confirmDuplicateWithGPT(resumo1: string, resumo2: string): Promise<boolean> {
-  const prompt = `Estes dois resumos descrevem o MESMO evento criminal?
+  const prompt = `Do these two summaries describe the SAME criminal event?
 
-Resumo 1: "${resumo1}"
-Resumo 2: "${resumo2}"
+Summary 1: "${resumo1}"
+Summary 2: "${resumo2}"
 
-Considere duplicata se:
-- Local, data e tipo de crime são idênticos
-- Vítimas/suspeitos mencionados são os mesmos
-- Detalhes principais coincidem
+Consider duplicate if:
+- Location, date and crime type are identical
+- Victims/suspects mentioned are the same
+- Key details match
 
-Responda APENAS "SIM" ou "NÃO":`;
+Answer ONLY "YES" or "NO":`;
 
   try {
     const response = await openai.chat.completions.create({
@@ -109,7 +109,7 @@ Responda APENAS "SIM" ou "NÃO":`;
     });
 
     const answer = response.choices[0].message.content?.trim().toUpperCase();
-    return answer === 'SIM';
+    return answer === 'YES';
   } catch (error) {
     logger.error('[Dedup] GPT confirmation error:', error);
     // Em caso de erro, assume não-duplicata (safe default: melhor duplicar que perder)

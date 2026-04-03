@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/data/brazilian_locations.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/widgets/grid_background.dart';
@@ -37,6 +38,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
   // Search state
   String? _searchId;
+  String? _reportId;
   String _searchStatus = 'idle'; // idle, processing, completed, failed
   List<Map<String, dynamic>> _results = [];
   Map<String, dynamic>? _progress;
@@ -65,14 +67,30 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   Future<void> _resumeSearch(String searchId) async {
     setState(() {
       _searchId = searchId;
-      _searchStatus = 'processing';
+      _searchStatus = 'loading';
     });
 
-    // Verificar status atual antes de polling
     try {
       final api = context.read<ApiService>();
       final status = await api.getManualSearchStatus(searchId);
       final s = status['status'] as String;
+
+      // Recuperar params originais e report_id
+      final params = status['params'] as Map<String, dynamic>?;
+      final reportId = status['report_id'] as String?;
+      if (mounted) {
+        setState(() {
+          _reportId = reportId;
+          if (params != null) {
+            _selectedEstado = params['estado'] as String?;
+            final cidades = params['cidades'];
+            if (cidades is List) {
+              _selectedCidades = cidades.map((c) => c.toString()).toSet();
+            }
+            _periodoDias = (params['periodo_dias'] as num?)?.toInt() ?? 30;
+          }
+        });
+      }
 
       if (s == 'completed') {
         final results = await api.getManualSearchResults(searchId);
@@ -85,7 +103,9 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       } else if (s == 'failed') {
         if (mounted) setState(() => _searchStatus = 'failed');
       } else {
-        // Ainda processando — iniciar polling
+        // Realmente ainda processando — mostra pipeline + iniciar timer
+        if (mounted) setState(() => _searchStatus = 'processing');
+        _startElapsedTimer();
         _startPolling();
       }
     } catch (_) {
@@ -217,11 +237,33 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     });
   }
 
+  Future<void> _openReport() async {
+    if (_reportId == null) return;
+    final adminUrl = 'https://simeops-admin.vercel.app/report/$_reportId';
+    final uri = Uri.parse(adminUrl);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Future<void> _checkForReport() async {
+    if (_searchId == null) return;
+    try {
+      final api = context.read<ApiService>();
+      final status = await api.getManualSearchStatus(_searchId!);
+      final reportId = status['report_id'] as String?;
+      if (reportId != null && mounted) {
+        setState(() => _reportId = reportId);
+      }
+    } catch (_) {}
+  }
+
   void _resetSearch() {
     _pollTimer?.cancel();
     _elapsedTimer?.cancel();
     setState(() {
       _searchId = null;
+      _reportId = null;
       _searchStatus = 'idle';
       _results = [];
       _progress = null;
@@ -244,7 +286,9 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       ),
       body: _searchStatus == 'idle'
           ? GridBackground(child: _buildForm())
-          : _buildResults(),
+          : _searchStatus == 'loading'
+              ? const Center(child: CircularProgressIndicator())
+              : _buildResults(),
     );
   }
 
@@ -693,25 +737,33 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
                 const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
-                  child: FilledButton.tonalIcon(
-                    onPressed: (_selectedEstado != null) ? () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => ReportScreen(
-                            searchId: _searchId,
-                            cidades: _selectedCidades.isNotEmpty
-                                ? _selectedCidades.toList()
-                                : [_selectedEstado!],
-                            estado: _selectedEstado!,
-                            periodoDias: _periodoDias,
-                            results: _results,
-                          ),
+                  child: _reportId != null
+                      ? FilledButton.icon(
+                          onPressed: () => _openReport(),
+                          icon: const Icon(Icons.description),
+                          label: const Text('Ver Relatorio de Risco'),
+                        )
+                      : FilledButton.tonalIcon(
+                          onPressed: (_selectedEstado != null) ? () async {
+                            await Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => ReportScreen(
+                                  searchId: _searchId,
+                                  cidades: _selectedCidades.isNotEmpty
+                                      ? _selectedCidades.toList()
+                                      : [_selectedEstado!],
+                                  estado: _selectedEstado!,
+                                  periodoDias: _periodoDias,
+                                  results: _results,
+                                ),
+                              ),
+                            );
+                            // Apos voltar da tela de relatorio, checar se foi gerado
+                            _checkForReport();
+                          } : null,
+                          icon: const Icon(Icons.bar_chart),
+                          label: const Text('Gerar Relatorio de Risco'),
                         ),
-                      );
-                    } : null,
-                    icon: const Icon(Icons.bar_chart),
-                    label: const Text('Gerar Relatorio de Risco'),
-                  ),
                 ),
               ],
             ],

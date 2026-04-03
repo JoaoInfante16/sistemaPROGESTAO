@@ -45,13 +45,18 @@ export class BraveNewsProvider implements SearchProvider {
 
       const url = `${BRAVE_NEWS_URL}?${params.toString()}`;
 
-      const response = await fetch(url, {
-        headers: {
-          'Accept': 'application/json',
-          'Accept-Encoding': 'gzip',
-          'X-Subscription-Token': this.apiKey,
-        },
-      });
+      const headers: Record<string, string> = {
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip',
+        'X-Subscription-Token': this.apiKey,
+        'X-Loc-Country': options.location?.country || 'BR',
+      };
+
+      // Localização — melhora relevância dos resultados
+      if (options.location?.city) headers['X-Loc-City'] = options.location.city;
+      if (options.location?.state) headers['X-Loc-State'] = options.location.state;
+
+      const response = await fetch(url, { headers });
 
       if (!response.ok) {
         const errorBody = await response.text();
@@ -71,7 +76,8 @@ export class BraveNewsProvider implements SearchProvider {
       if (pageResults.length < count) break;
     }
 
-    logger.info(`[BraveNews] "${query.substring(0, 50)}..." → ${allResults.length} results`);
+    const loc = options.location ? `[${options.location.city || '?'}/${options.location.state || '?'}]` : '[sem loc]';
+    logger.info(`[BraveNews] ${loc} "${query.substring(0, 50)}..." → ${allResults.length} results`);
     return allResults;
   }
 

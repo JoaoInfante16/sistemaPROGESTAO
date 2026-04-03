@@ -55,13 +55,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       final auth = context.read<AuthService>();
       final api = context.read<ApiService>();
 
-      // Confirma identidade com o device
-      final success = await auth.authenticateWithDevice();
-      if (!success) {
-        setState(() => _error = 'Autenticacao cancelada.');
-        return;
-      }
-
       // Gera senha forte aleatoria (user nunca vai precisar digitar)
       final generatedPassword = _generateStrongPassword();
 

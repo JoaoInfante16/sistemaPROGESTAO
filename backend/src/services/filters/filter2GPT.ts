@@ -17,55 +17,69 @@ export interface Filter2Result {
 }
 
 const VALID_TIPOS: Set<string> = new Set(Object.keys(TIPO_CRIME_GRUPO));
-const VALID_NATUREZAS: Set<string> = new Set(['ocorrencia', 'estatistica']);
+// Mapeamento nature (EN) → natureza (PT)
+const NATURE_MAP: Record<string, Natureza> = {
+  'occurrence': 'ocorrencia',
+  'statistic': 'estatistica',
+  'ocorrencia': 'ocorrencia',   // aceita PT tambem
+  'estatistica': 'estatistica',
+};
 
 function validateExtraction(data: Record<string, unknown>, minConfidence: number = 0.7): Filter2Result {
-  // e_crime deve ser true
-  if (data.e_crime !== true) return { extraction: null, rejectionReason: `e_crime=${data.e_crime}` };
+  // Mapear campos ingles → portugues (aceita ambos)
+  const isCrime = data.is_crime ?? data.e_crime;
+  const confidence = (data.confidence ?? data.confianca) as number | undefined;
+  const crimeType = ((data.crime_type ?? data.tipo_crime) as string | undefined)?.trim() ?? '';
+  const nature = (data.nature ?? data.natureza) as string | undefined;
+  const city = ((data.city ?? data.cidade) as string | undefined)?.trim() ?? '';
+  const summary = ((data.summary ?? data.resumo) as string | undefined)?.trim() ?? '';
+  const date = ((data.date ?? data.data_ocorrencia) as string | undefined)?.trim() ?? '';
+  const neighborhood = (data.neighborhood ?? data.bairro) as string | undefined;
+  const street = (data.street ?? data.rua) as string | undefined;
 
-  // Confianca: numero entre 0.0 e 1.0, minimo configuravel
-  if (typeof data.confianca !== 'number' || data.confianca < minConfidence || data.confianca > 1.0) {
-    return { extraction: null, rejectionReason: `confianca=${data.confianca} (min=${minConfidence})` };
+  // is_crime deve ser true
+  if (isCrime !== true) return { extraction: null, rejectionReason: `e_crime=${isCrime}` };
+
+  // Confianca: numero entre 0.0 e 1.0
+  if (typeof confidence !== 'number' || confidence < minConfidence || confidence > 1.0) {
+    return { extraction: null, rejectionReason: `confianca=${confidence} (min=${minConfidence})` };
   }
 
-  // tipo_crime: deve ser uma das 15 categorias padronizadas
-  const tipoCrime = typeof data.tipo_crime === 'string' ? data.tipo_crime.trim() : '';
-  if (!VALID_TIPOS.has(tipoCrime)) {
-    return { extraction: null, rejectionReason: `tipo_crime_invalido=${data.tipo_crime}` };
+  // tipo_crime: deve ser uma das 15 categorias
+  if (!VALID_TIPOS.has(crimeType)) {
+    return { extraction: null, rejectionReason: `tipo_crime_invalido=${crimeType}` };
   }
 
-  // natureza: ocorrencia ou estatistica (default: ocorrencia)
-  const natureza = typeof data.natureza === 'string' && VALID_NATUREZAS.has(data.natureza)
-    ? data.natureza as Natureza
-    : 'ocorrencia';
+  // natureza: mapear EN→PT (default: ocorrencia)
+  const natureza = (nature && NATURE_MAP[nature]) ? NATURE_MAP[nature] : 'ocorrencia';
 
-  // categoria_grupo: derivado do tipo_crime (ignora o que GPT retornar)
-  const categoriaGrupo = TIPO_CRIME_GRUPO[tipoCrime as TipoCrime];
+  // categoria_grupo: derivado do tipo_crime
+  const categoriaGrupo = TIPO_CRIME_GRUPO[crimeType as TipoCrime];
 
   // cidade e resumo obrigatorios
-  if (typeof data.cidade !== 'string' || data.cidade.trim().length === 0) return { extraction: null, rejectionReason: 'cidade_vazia' };
-  if (typeof data.resumo !== 'string' || data.resumo.trim().length === 0) return { extraction: null, rejectionReason: 'resumo_vazio' };
+  if (city.length === 0) return { extraction: null, rejectionReason: 'cidade_vazia' };
+  if (summary.length === 0) return { extraction: null, rejectionReason: 'resumo_vazio' };
 
-  // data_ocorrencia: YYYY-MM-DD
-  if (typeof data.data_ocorrencia !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(data.data_ocorrencia)) {
-    return { extraction: null, rejectionReason: `data_invalida=${data.data_ocorrencia}` };
+  // data: YYYY-MM-DD
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return { extraction: null, rejectionReason: `data_invalida=${date}` };
   }
 
-  const bairro = typeof data.bairro === 'string' ? data.bairro : undefined;
-  const rua = typeof data.rua === 'string' ? data.rua : undefined;
+  const bairro = typeof neighborhood === 'string' && neighborhood.trim() ? neighborhood.trim() : undefined;
+  const rua = typeof street === 'string' && street.trim() ? street.trim() : undefined;
 
   return {
     extraction: {
       e_crime: true,
-      tipo_crime: tipoCrime as TipoCrime,
+      tipo_crime: crimeType as TipoCrime,
       natureza,
       categoria_grupo: categoriaGrupo,
-      cidade: data.cidade as string,
+      cidade: city,
       bairro,
       rua,
-      data_ocorrencia: data.data_ocorrencia as string,
-      resumo: data.resumo as string,
-      confianca: data.confianca as number,
+      data_ocorrencia: date,
+      resumo: summary,
+      confianca: confidence,
     },
   };
 }
@@ -84,47 +98,47 @@ export async function filter2GPTWithReason(content: string, options: Filter2Opti
   const { maxContentChars = 4000, minConfidence = 0.7 } = options;
   const truncated = content.substring(0, maxContentChars);
 
-  const prompt = `Analise a seguinte notícia e extraia dados estruturados em JSON.
+  const prompt = `Analyze the following news article and extract structured data as JSON.
 
-REGRAS:
-1. "e_crime": true para QUALQUER notícia sobre segurança pública: ocorrências policiais, crimes, operações, estatísticas criminais, manifestações, bloqueios.
-2. "e_crime": false APENAS para: artigos acadêmicos, editoriais de opinião, páginas de categoria/tag, ou conteúdo sem relação com segurança pública.
-3. "natureza": "ocorrencia" para fatos individuais (roubo na loja X, homicídio no bairro Y). "estatistica" para dados agregados (roubos sobem 20%, índice de violência cai).
+RULES:
+1. "is_crime": true for ANY public safety content: police occurrences, crimes, operations, crime statistics, protests, road blockades.
+2. "is_crime": false ONLY for: academic essays, opinion editorials, category/tag pages, or content unrelated to public safety.
+3. "nature": "occurrence" for individual events (robbery at store X, murder in neighborhood Y). "statistic" for aggregated data (robberies up 20%, violence index drops).
 
-CATEGORIAS OBRIGATÓRIAS para "tipo_crime" (use EXATAMENTE um destes valores):
-- roubo_furto: assalto, furto, roubo, arrastão
-- vandalismo: depredação, quebra-quebra, pichação
-- invasao: ocupação, invasão, saque
-- homicidio: homicídio, feminicídio, assassinato
-- latrocinio: roubo seguido de morte
-- lesao_corporal: agressão, briga, tentativa de homicídio
-- trafico: tráfico de drogas, apreensão de drogas
-- operacao_policial: operação, batida, mandado, prisão, flagrante, apreensão de armas
-- manifestacao: protesto, manifestação, tumulto
-- bloqueio_via: interdição, bloqueio de rua/estrada
-- estelionato: golpe, fraude, estelionato
-- receptacao: venda de produto roubado, desmanche
-- crime_ambiental: desmatamento, poluição, crime ambiental
-- trabalho_irregular: trabalho escravo, trabalho irregular
-- outros: não se encaixa nas categorias acima
+MANDATORY CATEGORIES for "crime_type" (use EXACTLY one):
+- roubo_furto: robbery, theft, mugging, looting
+- vandalismo: vandalism, property destruction
+- invasao: invasion, occupation, looting
+- homicidio: homicide, femicide, murder
+- latrocinio: robbery followed by death
+- lesao_corporal: assault, fight, attempted murder
+- trafico: drug trafficking, drug seizure
+- operacao_policial: police operation, raid, warrant, arrest, weapon seizure
+- manifestacao: protest, demonstration, riot
+- bloqueio_via: road blockade, street interdiction
+- estelionato: scam, fraud
+- receptacao: receiving stolen goods, chop shop
+- crime_ambiental: environmental crime, pollution
+- trabalho_irregular: slave labor, irregular labor
+- outros: does not fit above categories
 
-NOTÍCIA:
+ARTICLE:
 ${truncated}
 
-Retorne APENAS JSON:
+Return ONLY JSON:
 {
-  "e_crime": true/false,
-  "tipo_crime": "uma das 15 categorias acima",
-  "natureza": "ocorrencia" ou "estatistica",
-  "cidade": "Nome da Cidade",
-  "bairro": "Nome do Bairro" ou null,
-  "rua": "Nome da Rua" ou null,
-  "data_ocorrencia": "YYYY-MM-DD",
-  "resumo": "Resumo em 1-2 frases",
-  "confianca": 0.0 a 1.0
+  "is_crime": true/false,
+  "crime_type": "one of 15 categories above",
+  "nature": "occurrence" or "statistic",
+  "city": "City Name",
+  "neighborhood": "Neighborhood Name" or null,
+  "street": "Street Name" or null,
+  "date": "YYYY-MM-DD",
+  "summary": "1-2 sentence summary in Brazilian Portuguese",
+  "confidence": 0.0 to 1.0
 }
 
-Se NÃO for sobre segurança pública, retorne: {"e_crime": false}`;
+If NOT about public safety, return: {"is_crime": false}`;
 
   try {
     const response = await openai.chat.completions.create({

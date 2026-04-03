@@ -538,22 +538,24 @@ class _ReportScreenState extends State<ReportScreen> {
                           ),
                           CircleLayer(
                             circles: _heatPoints.map((p) {
-                              final maxCount = _heatPoints.map((h) => h.count).reduce(max);
-                              final intensity = p.count / maxCount;
+                              // Raio baseado no count absoluto: 8px base + 3px por ocorrencia (max 30px)
+                              final radius = min(30.0, 8.0 + p.count * 3.0);
+                              // Cor: teal (baixo) → vermelho (alto, 5+)
+                              final intensity = min(1.0, p.count / 5.0);
                               return CircleMarker(
                                 point: p.coords,
-                                radius: 12 + intensity * 28,
+                                radius: radius,
                                 color: Color.lerp(
                                   const Color(0xFF22B5C4),
                                   const Color(0xFFE05252),
                                   intensity,
-                                )!.withValues(alpha: 0.4 + intensity * 0.3),
+                                )!.withValues(alpha: 0.35),
                                 borderColor: Color.lerp(
                                   const Color(0xFF22B5C4),
                                   const Color(0xFFE05252),
                                   intensity,
                                 )!.withValues(alpha: 0.8),
-                                borderStrokeWidth: 1,
+                                borderStrokeWidth: 1.5,
                               );
                             }).toList(),
                           ),

@@ -238,6 +238,15 @@ class ApiService {
     return (body['history'] as List<dynamic>).cast<Map<String, dynamic>>();
   }
 
+  Future<void> deleteSearches(List<String> ids) async {
+    final res = await _client.delete(
+      Uri.parse('$_baseUrl/manual-search'),
+      headers: _headers,
+      body: jsonEncode({'ids': ids}),
+    ).timeout(_timeout);
+    _checkResponse(res);
+  }
+
   // ── Analytics / Reports ──
 
   Future<Map<String, dynamic>> generateReport({

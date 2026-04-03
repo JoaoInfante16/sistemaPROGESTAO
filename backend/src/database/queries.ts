@@ -984,15 +984,29 @@ export async function getSearchStatus(searchId: string): Promise<{
   status: string;
   total_results: number | null;
   progress: Record<string, unknown> | null;
+  params: Record<string, unknown> | null;
+  report_id: string | null;
 }> {
   const { data, error } = await supabase
     .from('search_cache')
-    .select('status, total_results, progress')
+    .select('status, total_results, progress, params')
     .eq('search_id', searchId)
     .single();
 
   if (error || !data) throw new Error(`Search not found: ${searchId}`);
-  return data as { status: string; total_results: number | null; progress: Record<string, unknown> | null };
+
+  // Verificar se ja existe relatorio gerado pra esta busca
+  const { data: reportData } = await supabase
+    .from('reports')
+    .select('id')
+    .eq('search_id', searchId)
+    .limit(1)
+    .maybeSingle();
+
+  return {
+    ...(data as { status: string; total_results: number | null; progress: Record<string, unknown> | null; params: Record<string, unknown> | null }),
+    report_id: (reportData?.id as string) ?? null,
+  };
 }
 
 export async function getSearchResults(searchId: string): Promise<unknown[]> {

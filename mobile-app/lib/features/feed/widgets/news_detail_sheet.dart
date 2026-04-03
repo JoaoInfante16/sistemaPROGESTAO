@@ -173,9 +173,11 @@ class NewsDetailSheet extends StatelessWidget {
   }
 
   Future<void> _openUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
+    try {
+      final uri = Uri.parse(url);
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint('[URL] Failed to open: $url — $e');
     }
   }
 }

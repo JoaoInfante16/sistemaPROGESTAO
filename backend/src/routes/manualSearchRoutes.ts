@@ -10,6 +10,7 @@ import { Router, Request, Response } from 'express';
 import { requireSearchPermission } from '../middleware/auth';
 import { validateBody, schemas } from '../middleware/validation';
 import { db } from '../database/queries';
+import { supabase } from '../config/database';
 import { manualSearchQueue } from '../jobs/workers/manualSearchWorker';
 import { logger } from '../middleware/logger';
 
@@ -119,6 +120,44 @@ router.get(
     } catch (error) {
       logger.error('[ManualSearch] History error:', error);
       res.status(500).json({ error: 'Failed to get history' });
+    }
+  }
+);
+
+/**
+ * DELETE /manual-search
+ * Deleta buscas por lista de IDs. Cascade deleta search_results e reports.
+ */
+router.delete(
+  '/manual-search',
+  requireSearchPermission,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { ids } = req.body as { ids: string[] };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        res.status(400).json({ error: 'ids array required' });
+        return;
+      }
+
+      const userId = req.user?.id || 'anonymous';
+
+      // Deletar apenas buscas do proprio usuario
+      const { error } = await supabase
+        .from('search_cache')
+        .delete()
+        .in('search_id', ids)
+        .eq('user_id', userId);
+
+      if (error) {
+        res.status(500).json({ error: error.message });
+        return;
+      }
+
+      logger.info(`[ManualSearch] Deleted ${ids.length} searches for user ${userId}`);
+      res.json({ success: true, deleted: ids.length });
+    } catch (error) {
+      logger.error('[ManualSearch] Delete error:', error);
+      res.status(500).json({ error: 'Failed to delete searches' });
     }
   }
 );

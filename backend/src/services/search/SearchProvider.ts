@@ -13,6 +13,11 @@ export interface SearchResult {
 export interface SearchOptions {
   maxResults?: number;
   dateRestrict?: string; // ex: "d7" (últimos 7 dias)
+  location?: {
+    city?: string;
+    state?: string;
+    country?: string;
+  };
 }
 
 export interface SearchProvider {

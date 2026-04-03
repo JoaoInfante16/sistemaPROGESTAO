@@ -43,21 +43,19 @@ export async function filter1GPTBatch(snippets: string[]): Promise<boolean[]> {
 }
 
 async function filter1GPTBatchSingle(snippets: string[]): Promise<boolean[]> {
-  const prompt = `Analise os seguintes ${snippets.length} snippets de notícias.
-Para cada um, determine se é uma notícia de OCORRÊNCIA POLICIAL REAL.
+  const prompt = `Analyze the following ${snippets.length} news snippets.
+For each one, determine if it relates to PUBLIC SAFETY (crime, police, security).
 
 SNIPPETS:
 ${snippets.map((snippet, index) => `${index}. "${snippet}"`).join('\n')}
 
-Retorne um JSON com array de true/false:
-{
-  "results": [true, false, true, ...]
-}
+Return JSON with boolean array:
+{"results": [true, false, true, ...]}
 
-IMPORTANTE:
-- Retorne EXATAMENTE ${snippets.length} valores booleanos
-- true = QUALQUER ocorrência policial real: roubo, furto, homicídio, feminicídio, latrocínio, tráfico, assalto, prisão, apreensão, operação policial, confronto, flagrante, mandado, cárcere privado, estelionato, sequestro, crime organizado, etc.
-- false = NÃO é ocorrência policial: novela, futebol, receita, horóscopo, estatísticas gerais, editoriais de opinião, artigos acadêmicos`;
+RULES:
+- Return EXACTLY ${snippets.length} boolean values
+- true = ANY public safety content: robbery, theft, murder, drug trafficking, arrest, police operation, seizure, fraud, protest, road blockade, crime statistics, violence indicators
+- false = NOT public safety: soap opera, sports, recipe, horoscope, celebrity gossip, entertainment, academic theory with no real data`;
 
   // Retry 1x antes de fallback "all true"
   for (let attempt = 1; attempt <= 2; attempt++) {
@@ -118,13 +116,11 @@ IMPORTANTE:
  * Fallback para snippet único (evita overhead do batch com 1 item).
  */
 async function filter1Single(snippet: string): Promise<boolean> {
-  const prompt = `Analise o seguinte snippet de notícia e responda APENAS "SIM" ou "NÃO":
+  const prompt = `Is this news snippet about a real public safety event or crime statistic?
 
 Snippet: "${snippet}"
 
-Pergunta: Isso é uma notícia de ocorrência policial real (roubo, furto, homicídio, feminicídio, tráfico, prisão, apreensão, operação policial, confronto, crime organizado, etc)?
-
-Resposta:`;
+Answer ONLY "YES" or "NO":`;
 
   try {
     const response = await openai.chat.completions.create({
@@ -135,7 +131,7 @@ Resposta:`;
     });
 
     const answer = response.choices[0].message.content?.trim().toUpperCase();
-    return answer === 'SIM';
+    return answer === 'YES';
   } catch (error) {
     logger.error('[Filter1Single] GPT error:', error);
     return false;

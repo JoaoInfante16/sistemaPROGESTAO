@@ -4,8 +4,9 @@ import 'package:intl/intl.dart';
 class HistoryCard extends StatelessWidget {
   final Map<String, dynamic> search;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
-  const HistoryCard({super.key, required this.search, required this.onTap});
+  const HistoryCard({super.key, required this.search, required this.onTap, this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
@@ -46,6 +47,7 @@ class HistoryCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(14),

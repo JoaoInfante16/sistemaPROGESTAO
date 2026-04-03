@@ -102,7 +102,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   }
 
   // STAGE 1: Multi-Source URL Collector
-  const { allResults, queryCount, sources } = await collectUrls(location, pipelineConfig);
+  const { allResults, queryCount, sources } = await collectUrls(location, pipelineConfig, parentState?.name);
   const searchResults = deduplicateResults(allResults);
   logger.info(`${LOG_PREFIX} Collected ${allResults.length} URLs → ${searchResults.length} unique (sources: ${sources.join(', ')})`);
 
@@ -298,7 +298,8 @@ async function collectUrls(
     multiQueryEnabled: boolean;
     queriesPerScan: number;
     googleNewsRSSEnabled: boolean;
-  }
+  },
+  stateName?: string,
 ): Promise<CollectResult> {
   const allResults: SearchResult[] = [];
   const sources: string[] = [];
@@ -316,7 +317,10 @@ async function collectUrls(
   for (const query of queries) {
     try {
       const results = await rateLimiter.schedule(config.searchBackend, () =>
-        searchProvider.search(query, { maxResults: cfg.searchMaxResults })
+        searchProvider.search(query, {
+          maxResults: cfg.searchMaxResults,
+          location: { city: location.name, state: stateName, country: 'BR' },
+        })
       );
       allResults.push(...results);
       queryCount++;

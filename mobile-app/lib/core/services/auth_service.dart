@@ -51,11 +51,14 @@ class AuthService extends ChangeNotifier {
   /// Pede pro user confirmar identidade usando o sistema do device
   Future<bool> authenticateWithDevice() async {
     try {
-      return await _localAuth.authenticate(
-        localizedReason: 'Confirme sua identidade para entrar',
-        biometricOnly: false, // permite PIN/padrão também
+      final result = await _localAuth.authenticate(
+        localizedReason: 'Confirme sua identidade para continuar',
+        biometricOnly: false,
       );
-    } catch (_) {
+      debugPrint('[Auth] authenticateWithDevice result: $result');
+      return result;
+    } catch (e) {
+      debugPrint('[Auth] authenticateWithDevice error: $e');
       return false;
     }
   }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/api_service.dart';
+import '../../../main.dart';
 import 'feed_screen.dart';
 import 'favorites_screen.dart';
 import '../../search/screens/search_screen.dart';
@@ -43,7 +45,20 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('SIMEops'),
+        title: RichText(
+          text: TextSpan(
+            style: GoogleFonts.rajdhani(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 2,
+              color: SIMEopsColors.white,
+            ),
+            children: const [
+              TextSpan(text: 'SIME'),
+              TextSpan(text: 'OPS', style: TextStyle(color: SIMEopsColors.greenLight)),
+            ],
+          ),
+        ),
         centerTitle: true,
       ),
       body: IndexedStack(
