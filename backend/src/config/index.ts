@@ -34,6 +34,8 @@ export const config = {
   googleSearchEngineId: optionalEnv('GOOGLE_SEARCH_ENGINE_ID', ''),
   perplexityApiKey: optionalEnv('PERPLEXITY_API_KEY', ''),
   braveApiKey: optionalEnv('BRAVE_API_KEY', ''),
+  brightdataApiKey: optionalEnv('BRIGHTDATA_API_KEY', ''),
+  brightdataZone: optionalEnv('BRIGHTDATA_ZONE', 'simeopss'),
 
   // Content Fetcher (optional - pipeline won't run without it)
   contentBackend: optionalEnv('CONTENT_BACKEND', 'jina'),

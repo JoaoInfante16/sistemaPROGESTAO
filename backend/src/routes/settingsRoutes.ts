@@ -213,7 +213,7 @@ router.get(
       );
 
       // Aggregate by provider (map legacy names to current)
-      const byProvider: Record<string, number> = { brave: 0, jina: 0, openai: 0 };
+      const byProvider: Record<string, number> = { brightdata: 0, brave: 0, jina: 0, openai: 0 };
       for (const row of rows) {
         const r = row as { provider: string; cost_usd: unknown };
         const provider = r.provider;
@@ -255,6 +255,7 @@ router.get(
         totalScansThisMonth: totalScans,
         totalCostThisMonth: parseFloat(totalCost.toFixed(4)),
         avgCostByProvider: {
+          brightdata: parseFloat(byProvider.brightdata.toFixed(4)),
           brave: parseFloat(byProvider.brave.toFixed(4)),
           jina: parseFloat(byProvider.jina.toFixed(4)),
           openai: parseFloat(byProvider.openai.toFixed(4)),

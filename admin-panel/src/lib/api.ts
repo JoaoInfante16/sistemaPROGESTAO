@@ -357,7 +357,7 @@ export const api = {
       avgCostPerScan: number;
       totalScansThisMonth: number;
       totalCostThisMonth: number;
-      avgCostByProvider: { brave: number; jina: number; openai: number };
+      avgCostByProvider: { brightdata: number; brave: number; jina: number; openai: number };
       activeCities: number;
       estimatedScansPerDay: number;
     }>('/settings/cost-estimate', { token }),

@@ -35,7 +35,7 @@ export default function DashboardPage() {
     avgCostPerScan: number;
     totalScansThisMonth: number;
     totalCostThisMonth: number;
-    avgCostByProvider: { brave: number; jina: number; openai: number };
+    avgCostByProvider: { brightdata: number; brave: number; jina: number; openai: number };
     activeCities: number;
     estimatedScansPerDay: number;
   } | null>(null);
@@ -147,7 +147,11 @@ export default function DashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-4 text-center">
+              <div className="grid grid-cols-4 gap-4 text-center">
+                <div>
+                  <p className="text-xs text-muted-foreground">Bright Data</p>
+                  <p className="font-mono text-lg font-bold">${costEstimate.avgCostByProvider.brightdata.toFixed(4)}</p>
+                </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Brave</p>
                   <p className="font-mono text-lg font-bold">${costEstimate.avgCostByProvider.brave.toFixed(4)}</p>

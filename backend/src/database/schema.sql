@@ -142,7 +142,7 @@ CREATE INDEX idx_logs_created ON operation_logs(created_at DESC);
 
 CREATE TABLE api_rate_limits (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  provider TEXT NOT NULL CHECK (provider IN ('google', 'perplexity', 'brave', 'jina', 'openai')),
+  provider TEXT NOT NULL CHECK (provider IN ('google', 'perplexity', 'brave', 'brightdata', 'jina', 'openai')),
   max_concurrent INTEGER NOT NULL DEFAULT 5,
   min_time_ms INTEGER NOT NULL DEFAULT 100,
   daily_quota INTEGER,
@@ -157,6 +157,7 @@ CREATE TABLE api_rate_limits (
 INSERT INTO api_rate_limits (provider, max_concurrent, min_time_ms, daily_quota, monthly_quota) VALUES
   ('google', 1, 100, 100, 3000),
   ('brave', 5, 100, 1000, NULL),
+  ('brightdata', 10, 100, NULL, NULL),
   ('jina', 10, 50, NULL, NULL),
   ('openai', 5, 200, NULL, NULL);
 
@@ -167,7 +168,7 @@ INSERT INTO api_rate_limits (provider, max_concurrent, min_time_ms, daily_quota,
 CREATE TABLE budget_tracking (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   source TEXT NOT NULL CHECK (source IN ('auto_scan', 'manual_search')),
-  provider TEXT NOT NULL CHECK (provider IN ('google', 'perplexity', 'brave', 'jina', 'openai')),
+  provider TEXT NOT NULL CHECK (provider IN ('google', 'perplexity', 'brave', 'brightdata', 'jina', 'openai')),
   cost_usd DECIMAL(10,6) NOT NULL,
   details JSONB,
   created_at TIMESTAMP DEFAULT NOW()

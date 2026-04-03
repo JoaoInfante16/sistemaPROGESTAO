@@ -107,11 +107,17 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   logger.info(`${LOG_PREFIX} Collected ${allResults.length} URLs → ${searchResults.length} unique (sources: ${sources.join(', ')})`);
 
   if (queryCount > 0) {
+    // Bright Data: $0.0015/request, com paginacao (20 results/page)
+    // Brave: $0.005/query (sem paginacao interna)
+    const isBrightData = config.searchBackend === 'brightdata';
+    const requestsPerQuery = isBrightData ? Math.ceil(pipelineConfig.searchMaxResults / 20) : 1;
+    const costPerRequest = isBrightData ? 0.0015 : 0.005;
+    const totalRequests = queryCount * requestsPerQuery;
     await db.trackCost({
       source: 'auto_scan',
-      provider: config.searchBackend as 'google' | 'perplexity' | 'brave',
-      cost_usd: queryCount * 0.005,
-      details: { queryCount, resultsCount: searchResults.length, sources },
+      provider: config.searchBackend as 'google' | 'perplexity' | 'brave' | 'brightdata',
+      cost_usd: totalRequests * costPerRequest,
+      details: { queryCount, requestsPerQuery, totalRequests, resultsCount: searchResults.length, sources },
     });
   }
 
@@ -155,7 +161,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
     await db.insertOperationLog({
       location_id: locationId, stage: 'complete',
       urls_processed: searchResults.length, news_found: 0,
-      cost_usd: calculateCost(queryCount, afterFilter0.length, 0, 0), duration_ms: duration,
+      cost_usd: calculateCost(queryCount, afterFilter0.length, 0, 0, pipelineConfig.searchMaxResults), duration_ms: duration,
     });
     return buildResult(location, searchResults.length, afterFilter0.length, 0, 0, 0, 0, 0, duration);
   }
@@ -268,7 +274,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   await db.updateLocationLastCheck(locationId, new Date());
 
   const duration = Date.now() - startTime;
-  const totalCost = calculateCost(queryCount, afterFilter0.length, validContents.length, extractions.length);
+  const totalCost = calculateCost(queryCount, afterFilter0.length, validContents.length, extractions.length, pipelineConfig.searchMaxResults);
 
   await db.insertOperationLog({
     location_id: locationId, stage: 'complete',
@@ -353,8 +359,11 @@ async function collectUrls(
 // Helpers
 // ============================================
 
-function calculateCost(queries: number, filter1Count: number, jinaFetches: number, filter2Count: number): number {
-  return queries * 0.005 + (filter1Count > 0 ? 0.0002 : 0) + jinaFetches * 0.002 + filter2Count * 0.0005 + filter2Count * 0.00002;
+function calculateCost(queries: number, filter1Count: number, jinaFetches: number, filter2Count: number, searchMaxResults?: number): number {
+  const isBrightData = config.searchBackend === 'brightdata';
+  const requestsPerQuery = isBrightData ? Math.ceil((searchMaxResults || 20) / 20) : 1;
+  const costPerRequest = isBrightData ? 0.0015 : 0.005;
+  return queries * requestsPerQuery * costPerRequest + (filter1Count > 0 ? 0.0002 : 0) + jinaFetches * 0.002 + filter2Count * 0.0005 + filter2Count * 0.00002;
 }
 
 function buildResult(

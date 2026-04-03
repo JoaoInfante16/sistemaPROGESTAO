@@ -20,6 +20,13 @@ export interface SearchOptions {
   };
 }
 
+export interface SearchResponse {
+  results: SearchResult[];
+  requestCount: number; // quantas HTTP requests foram feitas (para cost tracking)
+}
+
 export interface SearchProvider {
   search(query: string, options?: SearchOptions): Promise<SearchResult[]>;
+  /** Se o provider suporta, retorna metadata com requestCount pra paginacao */
+  searchWithMeta?(query: string, options?: SearchOptions): Promise<SearchResponse>;
 }

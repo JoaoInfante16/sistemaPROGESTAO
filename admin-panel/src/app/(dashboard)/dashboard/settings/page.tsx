@@ -77,7 +77,7 @@ const AUTO_SCAN_THRESHOLDS: ThresholdConfig[] = [
   {
     key: 'search_max_results',
     label: 'URLs por busca',
-    description: 'Quantidade de URLs que o Brave retorna por query.',
+    description: 'Quantidade de URLs retornadas por query (Bright Data SERP).',
     tooltip: 'Mais URLs = mais cobertura mas mais custo de processamento (Jina+GPT). Recomendado: 10-20.',
     min: 1,
     max: 100,
@@ -265,19 +265,22 @@ export default function SettingsPage() {
     const scansPorDia = cidades * (1440 / freq);
 
     // Custos reais por scan (auto-scan)
-    const braveCostPerScan = 0.005;           // 1 query Brave
+    // Bright Data pagina: ceil(urls/20) requests por query
+    const searchRequestsPerScan = Math.ceil(urlsPerScan / 20);
+    const searchCostPerScan = searchRequestsPerScan * 0.0015;  // $0.0015/request Bright Data SERP
     const jinaCostPerScan = urlsPerScan * 0.002;    // Jina fetch per URL
     const openaiCostPerScan = 0.0002 + urlsPerScan * (0.0005 + 0.00002); // Filter1 batch + Filter2 + Embedding
-    const totalCostPerScan = braveCostPerScan + jinaCostPerScan + openaiCostPerScan;
+    const totalCostPerScan = searchCostPerScan + jinaCostPerScan + openaiCostPerScan;
 
-    const braveMonthly = braveCostPerScan * scansPorDia * 30;
+    const searchMonthly = searchCostPerScan * scansPorDia * 30;
     const jinaMonthly = jinaCostPerScan * scansPorDia * 30;
     const openaiMonthly = openaiCostPerScan * scansPorDia * 30;
     const autoScanMonthly = totalCostPerScan * scansPorDia * 30;
 
     // Busca manual (usa URLs do periodo 30d como referencia)
     const manualUrls = parseInt(getConfigValue('manual_search_max_results_30d')) || 50;
-    const manualCostPerSearch = 0.005 + 0.0002 + manualUrls * (0.002 + 0.0005 + 0.00002);
+    const manualSearchRequests = Math.ceil(manualUrls / 20);
+    const manualCostPerSearch = manualSearchRequests * 0.0015 + 0.0002 + manualUrls * (0.002 + 0.0005 + 0.00002);
     const manualMonthly = buscas * 30 * manualCostPerSearch;
 
     const grandTotal = autoScanMonthly + manualMonthly;
@@ -285,7 +288,7 @@ export default function SettingsPage() {
     return {
       scansPorDia,
       totalCostPerScan,
-      braveMonthly,
+      searchMonthly,
       jinaMonthly,
       openaiMonthly,
       autoScanMonthly,
@@ -463,13 +466,15 @@ export default function SettingsPage() {
                     const freq = parseInt(scanFrequency) || 60;
                     const urls = parseInt(editingConfig['search_max_results'] ?? getConfigValue('search_max_results')) || 15;
                     const scansPerDay = 1440 / freq;
-                    // Custo real por scan: Brave query + Filter1 batch + Jina fetch + Filter2 + Embedding
-                    const costPerScan = 0.005 + 0.0002 + (urls * 0.002) + (urls * 0.0005) + (urls * 0.00002);
+                    // Custo real por scan: Bright Data SERP (paginado) + Filter1 batch + Jina fetch + Filter2 + Embedding
+                    const searchPages = Math.ceil(urls / 20);
+                    const searchCost = searchPages * 0.0015;
+                    const costPerScan = searchCost + 0.0002 + (urls * 0.002) + (urls * 0.0005) + (urls * 0.00002);
                     const costPerMonth = scansPerDay * 30 * costPerScan;
                     return (
                       <>
                         <div className="space-y-1 text-xs text-muted-foreground mb-2">
-                          <div className="flex justify-between"><span>Brave (1 query)</span><span className="font-mono">$0.0050</span></div>
+                          <div className="flex justify-between"><span>Bright Data SERP ({searchPages} req × $0.0015)</span><span className="font-mono">${searchCost.toFixed(4)}</span></div>
                           <div className="flex justify-between"><span>Jina ({urls} URLs × $0.002)</span><span className="font-mono">${(urls * 0.002).toFixed(4)}</span></div>
                           <div className="flex justify-between"><span>OpenAI Filter + Embedding ({urls} URLs)</span><span className="font-mono">${(0.0002 + urls * 0.0005 + urls * 0.00002).toFixed(4)}</span></div>
                           <div className="flex justify-between border-t pt-1"><span className="font-medium text-foreground">Custo por scan</span><span className="font-mono font-medium text-foreground">${costPerScan.toFixed(4)}</span></div>
@@ -508,8 +513,9 @@ export default function SettingsPage() {
                   const hasChange = editingConfig[threshold.key] !== undefined;
                   const isSaving = savingConfig.has(threshold.key);
                   const urlCount = parseInt(currentVal) || 0;
-                  // Brave query + Filter1 batch + Jina + Filter2 + Embedding
-                  const estimatedCost = 0.005 + 0.0002 + urlCount * (0.002 + 0.0005 + 0.00002);
+                  // Bright Data SERP (paginado) + Filter1 batch + Jina + Filter2 + Embedding
+                  const searchReqs = Math.ceil(urlCount / 20);
+                  const estimatedCost = searchReqs * 0.0015 + 0.0002 + urlCount * (0.002 + 0.0005 + 0.00002);
                   return (
                     <div key={threshold.key} className="rounded-lg border p-4">
                       <div className="flex items-center justify-between mb-3">
@@ -669,9 +675,9 @@ export default function SettingsPage() {
                     </TableHeader>
                     <TableBody>
                       <TableRow>
-                        <TableCell>Brave News (busca)</TableCell>
-                        <TableCell className="text-right font-mono">$0.0050</TableCell>
-                        <TableCell className="text-right font-mono">${costEstimate.braveMonthly.toFixed(2)}</TableCell>
+                        <TableCell>Bright Data SERP (busca, $0.0015/req)</TableCell>
+                        <TableCell className="text-right font-mono">${costEstimate.totalCostPerScan > 0 ? (costEstimate.searchMonthly / (costEstimate.scansPorDia * 30 || 1)).toFixed(4) : '0.0015'}/scan</TableCell>
+                        <TableCell className="text-right font-mono">${costEstimate.searchMonthly.toFixed(2)}</TableCell>
                       </TableRow>
                       <TableRow>
                         <TableCell>Jina (fetch conteudo)</TableCell>

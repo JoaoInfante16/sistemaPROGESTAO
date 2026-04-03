@@ -74,11 +74,17 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       LOG_PREFIX,
     );
 
+    // Bright Data: $0.0015/request, com paginacao (20 results/page) por cidade
+    // Brave: $0.005/query (sem paginacao interna)
+    const isBrightData = config.searchBackend === 'brightdata';
+    const requestsPerCity = isBrightData ? Math.ceil(pipelineConfig.searchMaxResults / 20) : 1;
+    const costPerRequest = isBrightData ? 0.0015 : 0.005;
+    const totalRequests = cidades.length * requestsPerCity;
     await db.trackCost({
       source: 'manual_search',
-      provider: config.searchBackend as 'google' | 'perplexity' | 'brave',
-      cost_usd: cidades.length * 0.005,
-      details: { searchId, cidadesCount: cidades.length, resultsCount: searchResults.length },
+      provider: config.searchBackend as 'google' | 'perplexity' | 'brave' | 'brightdata',
+      cost_usd: totalRequests * costPerRequest,
+      details: { searchId, cidadesCount: cidades.length, requestsPerCity, totalRequests, resultsCount: searchResults.length },
     });
 
     const rejectedUrls: RejectedUrl[] = [];
