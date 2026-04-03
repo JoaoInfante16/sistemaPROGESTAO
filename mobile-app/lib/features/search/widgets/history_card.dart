@@ -25,7 +25,7 @@ class HistoryCard extends StatelessWidget {
     DateTime? date;
     try {
       date = DateTime.parse(createdAt);
-    } catch (_) {}
+    } catch (e) { debugPrint('[HistoryCard] Date parse error: $e'); }
 
     final statusColor = switch (status) {
       'completed' => Colors.green,

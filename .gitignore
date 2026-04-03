@@ -67,3 +67,6 @@ docker-compose.override.yml
 **/credentials/
 firebase-service-account.json
 google-credentials.json
+
+# Claude Code local settings (pode conter API keys em bash commands)
+.claude/settings.local.json

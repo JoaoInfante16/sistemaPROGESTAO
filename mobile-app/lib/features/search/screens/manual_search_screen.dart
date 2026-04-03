@@ -47,6 +47,10 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   Timer? _elapsedTimer;
   String _elapsedText = '0s';
   final Map<int, String> _stageDetails = {};
+  int _pollCount = 0;
+  int _consecutiveErrors = 0;
+  static const _maxPolls = 200; // ~10 min at 3s intervals
+  static const _maxConsecutiveErrors = 5;
 
   static const _periodos = {
     7: 'Ultimos 7 dias',
@@ -187,12 +191,29 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
   void _startPolling() {
     _pollTimer?.cancel();
+    _pollCount = 0;
+    _consecutiveErrors = 0;
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       if (_searchId == null) return;
+
+      _pollCount++;
+      if (_pollCount > _maxPolls) {
+        _pollTimer?.cancel();
+        _elapsedTimer?.cancel();
+        if (mounted) {
+          setState(() => _searchStatus = 'failed');
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Busca demorou demais. Verifique o historico.')),
+          );
+        }
+        return;
+      }
+
       final api = context.read<ApiService>();
 
       try {
         final status = await api.getManualSearchStatus(_searchId!);
+        _consecutiveErrors = 0;
         final s = status['status'] as String;
 
         // Atualizar progresso da pipeline
@@ -200,7 +221,6 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         if (mounted && progress != null) {
           final stageNum = progress['stage_num'] as int? ?? 0;
           final details = progress['details'] as String?;
-          // Salvar details do stage anterior quando avança
           if (_progress != null) {
             final prevStage = _progress!['stage_num'] as int? ?? 0;
             final prevDetails = _progress!['details'] as String?;
@@ -208,7 +228,6 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
               _stageDetails[prevStage] = prevDetails;
             }
           }
-          // Salvar details do stage atual
           if (details != null) {
             _stageDetails[stageNum] = details;
           }
@@ -231,8 +250,19 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
             if (mounted) setState(() => _searchStatus = 'failed');
           }
         }
-      } catch (_) {
-        // Continue polling
+      } catch (e) {
+        _consecutiveErrors++;
+        debugPrint('[ManualSearch] Poll error #$_consecutiveErrors: $e');
+        if (_consecutiveErrors >= _maxConsecutiveErrors) {
+          _pollTimer?.cancel();
+          _elapsedTimer?.cancel();
+          if (mounted) {
+            setState(() => _searchStatus = 'failed');
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Erro de conexao. Verifique o historico.')),
+            );
+          }
+        }
       }
     });
   }
@@ -255,7 +285,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       if (reportId != null && mounted) {
         setState(() => _reportId = reportId);
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('[ManualSearch] Check report error: $e'); }
   }
 
   void _resetSearch() {

@@ -25,6 +25,7 @@ const DEFAULT_CONFIGS: Record<string, RateLimitConfig> = {
   openai: { provider: 'openai', max_concurrent: 5, min_time_ms: 200, daily_quota: null, monthly_quota: null },
   google_news_rss: { provider: 'google_news_rss', max_concurrent: 2, min_time_ms: 1000, daily_quota: null, monthly_quota: null },
   brave: { provider: 'brave', max_concurrent: 5, min_time_ms: 100, daily_quota: 1000, monthly_quota: null },
+  brightdata: { provider: 'brightdata', max_concurrent: 10, min_time_ms: 100, daily_quota: null, monthly_quota: null },
 };
 
 class DynamicRateLimiter {

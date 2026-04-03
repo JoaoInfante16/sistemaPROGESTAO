@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'api_service.dart';
@@ -59,7 +60,7 @@ class PushService {
       final platform = Platform.isIOS ? 'ios' : 'android';
       try {
         await _api.registerDevice(newToken, platform);
-      } catch (_) {}
+      } catch (e) { debugPrint('[Push] Token refresh error: $e'); }
     });
 
     // Foreground messages → local notification

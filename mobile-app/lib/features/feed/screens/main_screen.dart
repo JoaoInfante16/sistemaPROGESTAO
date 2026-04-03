@@ -38,7 +38,7 @@ class _MainScreenState extends State<MainScreen> {
       final api = context.read<ApiService>();
       final count = await api.getUnreadCount();
       if (mounted) setState(() => _unreadCount = count);
-    } catch (_) {}
+    } catch (e) { debugPrint('[Main] Unread count error: $e'); }
   }
 
   @override

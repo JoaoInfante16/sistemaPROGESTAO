@@ -160,7 +160,7 @@ class _FeedScreenState extends State<FeedScreen> {
     try {
       await api.markAsRead(item.id);
       setState(() => _news[index].isUnread = false);
-    } catch (_) {}
+    } catch (e) { debugPrint('[Feed] Mark read error: $e'); }
   }
 
   Future<void> _toggleFavorite(int index) async {
@@ -173,7 +173,7 @@ class _FeedScreenState extends State<FeedScreen> {
         await api.addFavorite(item.id);
       }
       setState(() => _news[index].isFavorite = !item.isFavorite);
-    } catch (_) {}
+    } catch (e) { debugPrint('[Feed] Toggle favorite error: $e'); }
   }
 
   void _applySortLocally() {

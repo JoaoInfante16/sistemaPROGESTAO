@@ -118,7 +118,8 @@ class _ReportScreenState extends State<ReportScreen> {
         }
       }
       if (mounted) setState(() { _heatPoints = points; _mapLoading = false; });
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[Report] Heat map error: $e');
       if (mounted) setState(() => _mapLoading = false);
     }
   }
@@ -126,6 +127,7 @@ class _ReportScreenState extends State<ReportScreen> {
   final _geoCache = <String, LatLng?>{};
 
   Future<LatLng?> _geocode(String bairro, String cidade, String estado) async {
+    if (_geoCache.length > 100) _geoCache.clear();
     final key = '$bairro|$cidade|$estado'.toLowerCase();
     if (_geoCache.containsKey(key)) return _geoCache[key];
 
@@ -141,7 +143,7 @@ class _ReportScreenState extends State<ReportScreen> {
           return result;
         }
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('[Report] Geocode error: $e'); }
 
     // Fallback: geocodificar so a cidade
     final cityKey = '_city|$cidade|$estado'.toLowerCase();
@@ -158,7 +160,7 @@ class _ReportScreenState extends State<ReportScreen> {
             _geoCache[cityKey] = LatLng(double.parse(data[0]['lat']), double.parse(data[0]['lon']));
           }
         }
-      } catch (_) {}
+      } catch (e) { debugPrint('[Report] City geocode error: $e'); }
     }
 
     final cityCoord = _geoCache[cityKey];

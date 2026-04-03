@@ -51,7 +51,7 @@ class FavoritesScreenState extends State<FavoritesScreen> {
     try {
       await api.removeFavorite(item.id);
       setState(() => _favorites.removeAt(index));
-    } catch (_) {}
+    } catch (e) { debugPrint('[Favorites] Remove error: $e'); }
   }
 
   @override
