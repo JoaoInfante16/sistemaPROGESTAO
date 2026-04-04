@@ -4,6 +4,7 @@
 // Análise completa do artigo: extrai dados estruturados.
 // Recebe conteúdo completo da Jina, retorna NewsExtraction ou null.
 
+import * as Sentry from '@sentry/node';
 import OpenAI from 'openai';
 import { config } from '../../config';
 import { logger } from '../../middleware/logger';
@@ -184,6 +185,7 @@ If NOT about public safety, return: {"is_crime": false}`;
     const result = validateExtraction(data, minConfidence);
     return { ...result, tokensUsed };
   } catch (error) {
+    Sentry.captureException(error, { tags: { provider: 'openai', stage: 'filter2' } });
     logger.error('Filter2 GPT error:', error);
     return { extraction: null, rejectionReason: `gpt_error: ${(error as Error).message}`, tokensUsed: 0 };
   }

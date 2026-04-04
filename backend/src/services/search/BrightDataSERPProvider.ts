@@ -5,6 +5,7 @@
 // WEB mode (busca manual): Dataset API Top 100, web generico, after:, 1 req = ate 100 resultados
 // Docs: https://docs.brightdata.com/scraping-automation/serp-api
 
+import * as Sentry from '@sentry/node';
 import { SearchProvider, SearchResult, SearchOptions, SearchResponse } from './SearchProvider';
 import { config } from '../../config';
 import { logger } from '../../middleware/logger';
@@ -49,7 +50,10 @@ export class BrightDataSERPProvider implements SearchProvider {
           return await this.searchWebTop100(query, options);
         } catch (err) {
           logger.warn(`[BrightData] Web Top100 attempt ${attempt} failed: ${(err as Error).message}`);
-          if (attempt === 2) throw err;
+          if (attempt === 2) {
+            Sentry.captureException(err, { tags: { provider: 'brightdata', mode: 'web_top100' } });
+            throw err;
+          }
           logger.info('[BrightData] Retrying Top100...');
         }
       }

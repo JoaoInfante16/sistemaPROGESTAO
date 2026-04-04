@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/node';
 import express from 'express';
 import cors from 'cors';
 import { Worker } from 'bullmq';
@@ -10,6 +11,31 @@ import { createManualSearchWorker } from './jobs/workers/manualSearchWorker';
 import { startScheduler, stopScheduler } from './jobs/scheduler/cronScheduler';
 import { startNewsEventListener } from './services/notifications/newsEventListener';
 import { redis } from './config/redis';
+
+// ============================================
+// Sentry — Error Tracking
+// ============================================
+if (config.sentryDsn) {
+  Sentry.init({
+    dsn: config.sentryDsn,
+    environment: config.nodeEnv,
+    tracesSampleRate: config.nodeEnv === 'production' ? 0.2 : 1.0,
+    integrations: [Sentry.expressIntegration()],
+  });
+  logger.info(`[Sentry] Initialized (env: ${config.nodeEnv})`);
+} else {
+  logger.info('[Sentry] Disabled (SENTRY_DSN not set)');
+}
+
+// Capturar crashes globais
+process.on('unhandledRejection', (reason) => {
+  Sentry.captureException(reason);
+  logger.error(`[UnhandledRejection] ${reason}`);
+});
+process.on('uncaughtException', (err) => {
+  Sentry.captureException(err);
+  logger.error(`[UncaughtException] ${err.message}`);
+});
 
 const app = express();
 
@@ -24,6 +50,11 @@ app.use(express.json());
 
 // Routes
 app.use(routes);
+
+// Sentry error handler (ANTES do errorHandler customizado)
+if (config.sentryDsn) {
+  Sentry.setupExpressErrorHandler(app);
+}
 
 // Error handler (deve ser o ultimo middleware)
 app.use(errorHandler);

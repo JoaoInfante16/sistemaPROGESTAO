@@ -65,6 +65,9 @@ export const config = {
 
   // Logging
   logLevel: optionalEnv('LOG_LEVEL', 'info'),
+
+  // Sentry (opcional — skip se vazio)
+  sentryDsn: optionalEnv('SENTRY_DSN', ''),
 } as const;
 
 export type Config = typeof config;

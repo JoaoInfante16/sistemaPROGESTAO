@@ -25,6 +25,7 @@
   "author": "Netrios Team",
   "license": "UNLICENSED",
   "dependencies": {
+    "@sentry/node": "^10.47.0",
     "@supabase/supabase-js": "^2.39.3",
     "bottleneck": "^2.19.5",
     "bullmq": "^5.1.0",

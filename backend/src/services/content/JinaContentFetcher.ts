@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/node';
 import { ContentFetcher, FetchedContent } from './ContentFetcher';
 import { config } from '../../config';
 import { logger } from '../../middleware/logger';
@@ -23,6 +24,7 @@ export class JinaContentFetcher implements ContentFetcher {
         return await this.fetchWithBrightData(url);
       }
 
+      Sentry.captureException(err, { tags: { provider: 'jina' }, extra: { url: url.substring(0, 100) } });
       throw err;
     }
   }

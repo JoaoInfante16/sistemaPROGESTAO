@@ -11,9 +11,8 @@ WORKDIR /app
 COPY package*.json ./
 COPY tsconfig.json ./
 
-# Install dependencies
-RUN npm ci --only=production && \
-    npm ci --only=development
+# Install all dependencies (dev needed for tsc build)
+RUN npm ci
 
 # Copy source code
 COPY src ./src

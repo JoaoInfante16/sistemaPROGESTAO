@@ -4,6 +4,7 @@
 // Usa pipelineCore para stages compartilhados.
 // Peculiaridades: dedup contra DB, push por notícia, operation logs.
 
+import * as Sentry from '@sentry/node';
 import { config } from '../../config';
 import { deduplicateNews } from '../../services/deduplication';
 import { db } from '../../database/queries';
@@ -38,6 +39,7 @@ export async function executePipeline(locationId: string): Promise<PipelineResul
     return await runPipeline(locationId, startTime);
   } catch (error) {
     const duration = Date.now() - startTime;
+    Sentry.captureException(error, { tags: { component: 'scan_pipeline', locationId } });
     logger.error(`${LOG_PREFIX} FATAL error for location ${locationId}: ${(error as Error).message}`);
 
     try {

@@ -4,6 +4,7 @@
 // Substitui N chamadas individuais por 1 chamada batch.
 // Economia: ~90% em API calls, ~84% em latência.
 
+import * as Sentry from '@sentry/node';
 import OpenAI from 'openai';
 import { config } from '../../config';
 import { logger } from '../../middleware/logger';
@@ -113,6 +114,7 @@ RULES:
     logger.info(`[Filter1Batch] ${snippets.length} snippets, ${tokensUsed} tokens`);
     return { results: (data.results as unknown[]).map((val: unknown) => val === true), tokensUsed };
   } catch (error) {
+    Sentry.captureException(error, { tags: { provider: 'openai', stage: 'filter1' } });
     logger.error(`[Filter1Batch] Attempt ${attempt} GPT error:`, error);
     if (attempt < 2) continue;
     return { results: snippets.map(() => true), tokensUsed: 0 };

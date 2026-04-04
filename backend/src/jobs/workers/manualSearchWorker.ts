@@ -4,6 +4,7 @@
 // Usa pipelineCore para stages compartilhados.
 // Peculiaridades: filtro cidade/estado, progress tracking, search_results.
 
+import * as Sentry from '@sentry/node';
 import { Worker, Job, Queue } from 'bullmq';
 import { redis } from '../../config/redis';
 import { config } from '../../config';
@@ -203,6 +204,7 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       logger.warn(`${LOG_PREFIX} Push failed: ${(pushErr as Error).message}`);
     }
   } catch (error) {
+    Sentry.captureException(error, { tags: { component: 'manual_search', searchId } });
     logger.error(`${LOG_PREFIX} failed: ${(error as Error).message}`);
     await db.updateSearchStatus(searchId, 'failed');
 
