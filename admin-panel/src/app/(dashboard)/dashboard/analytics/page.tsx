@@ -222,7 +222,7 @@ export default function AnalyticsPage() {
               highlight={comparison?.overallDelta?.startsWith('+') ? 'red' : 'green'}
             />
             <StatCard
-              label="Confianca Media"
+              label="Confiança Média"
               value={summary.avgConfianca > 0 ? `${Math.round(summary.avgConfianca * 100)}%` : 'N/A'}
             />
           </div>

@@ -36,6 +36,14 @@ router.post(
 
       const userId = req.user?.id || 'anonymous';
 
+      // Verificar se já tem busca em andamento
+      const history = await db.getUserSearchHistory(userId);
+      const running = history.find((s: { status: string }) => s.status === 'processing');
+      if (running) {
+        res.status(409).json({ error: 'Já existe uma busca em andamento. Cancele antes de iniciar outra.' });
+        return;
+      }
+
       // Criar registro na search_cache
       const searchId = await db.createSearchCache({
         user_id: userId,
@@ -120,6 +128,38 @@ router.get(
     } catch (error) {
       logger.error('[ManualSearch] History error:', error);
       res.status(500).json({ error: 'Failed to get history' });
+    }
+  }
+);
+
+/**
+ * POST /manual-search/:id/cancel
+ * Cancela uma busca em andamento.
+ */
+router.post(
+  '/manual-search/:id/cancel',
+  requireSearchPermission,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const searchId = req.params.id;
+      const userId = req.user?.id || 'anonymous';
+
+      // Marcar como cancelled no DB
+      await db.updateSearchStatus(searchId, 'cancelled');
+
+      // Remover jobs pendentes da fila
+      const jobs = await manualSearchQueue.getJobs(['active', 'waiting', 'delayed']);
+      for (const job of jobs) {
+        if (job.data?.searchId === searchId) {
+          await job.remove().catch(() => {});
+        }
+      }
+
+      logger.info(`[ManualSearch] Cancelled search ${searchId} by user ${userId}`);
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('[ManualSearch] Cancel error:', error);
+      res.status(500).json({ error: 'Failed to cancel search' });
     }
   }
 );

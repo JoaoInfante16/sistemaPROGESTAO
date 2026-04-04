@@ -73,7 +73,7 @@ class FavoritesScreenState extends State<FavoritesScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Deslize uma noticia para a direita para salvar',
+              'Deslize uma notícia para a direita para salvar',
               style: TextStyle(color: Colors.grey[400], fontSize: 12),
             ),
           ],

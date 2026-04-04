@@ -7,7 +7,6 @@
 import { Worker, Job, Queue } from 'bullmq';
 import { redis } from '../../config/redis';
 import { config } from '../../config';
-import { fetchGoogleNewsRSS } from '../../services/search/GoogleNewsRSSProvider';
 import { db } from '../../database/queries';
 import { logger } from '../../middleware/logger';
 import { rateLimiter } from '../../services/rateLimiter';
@@ -34,6 +33,15 @@ export interface ManualSearchJobData {
   periodoDias: number;
   tipoCrime?: string;
   profundidade?: number;
+}
+
+async function isCancelled(searchId: string): Promise<boolean> {
+  try {
+    const status = await db.getSearchStatus(searchId);
+    return status.status === 'cancelled';
+  } catch {
+    return false; // Erro de DB não é cancelamento
+  }
 }
 
 async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void> {
@@ -66,6 +74,7 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     };
 
     // STAGE 1: Collect URLs
+    if (await isCancelled(searchId)) { logger.info(`${LOG_PREFIX} cancelled before stage 1`); return; }
     await db.updateSearchProgress(searchId, { stage: 'searching', stage_num: 1, total_stages: 7, details: `Pesquisando ${cidades.length} cidades` });
 
     const { searchResults, sourceTypeMap } = await collectManualSearchUrls(
@@ -90,17 +99,20 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     const rejectedUrls: RejectedUrl[] = [];
 
     // STAGE 2: Filter0
+    if (await isCancelled(searchId)) { logger.info(`${LOG_PREFIX} cancelled before stage 2`); return; }
     await db.updateSearchProgress(searchId, { stage: 'filtering', stage_num: 2, total_stages: 7, details: `${searchResults.length} URLs para filtrar` });
     const afterFilter0 = runFilter0(searchResults, pipelineConfig.filter0RegexEnabled, rejectedUrls, LOG_PREFIX);
 
     // STAGE 3: Filter1
+    if (await isCancelled(searchId)) { logger.info(`${LOG_PREFIX} cancelled before stage 3`); return; }
     await db.updateSearchProgress(searchId, { stage: 'filtering', stage_num: 3, total_stages: 7, details: `${afterFilter0.length} URLs no GPT` });
-    const afterFilter1 = await runFilter1(afterFilter0, rejectedUrls, LOG_PREFIX);
+    const filter1Result = await runFilter1(afterFilter0, rejectedUrls, LOG_PREFIX);
+    const afterFilter1 = filter1Result.passed;
 
     await db.trackCost({
       source: 'manual_search', provider: 'openai',
-      cost_usd: afterFilter0.length > 0 ? 0.0002 : 0,
-      details: { searchId, stage: 'filter1_batch', snippetCount: afterFilter0.length },
+      cost_usd: filter1Result.tokensUsed * 0.00000015,
+      details: { searchId, stage: 'filter1_batch', snippetCount: afterFilter0.length, tokensUsed: filter1Result.tokensUsed },
     });
 
     if (afterFilter1.length === 0) {
@@ -111,32 +123,38 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     }
 
     // STAGE 4: Content Fetch
+    if (await isCancelled(searchId)) { logger.info(`${LOG_PREFIX} cancelled before stage 4`); return; }
     await db.updateSearchProgress(searchId, { stage: 'fetching', stage_num: 4, total_stages: 7, details: `${afterFilter1.length} artigos` });
     const validContents = await runContentFetch(afterFilter1, pipelineConfig.contentFetchConcurrency, rejectedUrls, LOG_PREFIX);
 
+    const jinaTokensTotal = validContents.reduce((sum, c) => sum + (c.tokensUsed || 0), 0);
     await db.trackCost({
       source: 'manual_search', provider: 'jina',
-      cost_usd: validContents.length * 0.002,
-      details: { searchId, stage: 'fetch', count: validContents.length },
+      cost_usd: jinaTokensTotal * 0.00000005,
+      details: { searchId, stage: 'fetch', count: validContents.length, tokensUsed: jinaTokensTotal },
     });
 
     // STAGE 5: Filter2 + Embedding (com filtro de cidade/estado e data)
+    if (await isCancelled(searchId)) { logger.info(`${LOG_PREFIX} cancelled before stage 5`); return; }
     await db.updateSearchProgress(searchId, { stage: 'analyzing', stage_num: 5, total_stages: 7, details: `${validContents.length} conteudos` });
-    const extractions = await runFilter2WithEmbedding(
+    const filter2Result = await runFilter2WithEmbedding(
       validContents,
       { maxContentChars: pipelineConfig.filter2MaxContentChars, minConfidence: pipelineConfig.filter2ConfidenceMin },
       rejectedUrls, LOG_PREFIX,
       { periodoDias, estado, cidades },
       sourceTypeMap,
     );
+    const extractions = filter2Result.extractions;
 
+    const f2tokens = filter2Result.tokensUsed;
     await db.trackCost({
       source: 'manual_search', provider: 'openai',
-      cost_usd: validContents.length * 0.0005 + extractions.length * 0.00002,
-      details: { searchId, stage: 'filter2+embedding', analyzed: validContents.length, extracted: extractions.length },
+      cost_usd: f2tokens.filter2 * 0.00000015 + f2tokens.embedding * 0.00000002,
+      details: { searchId, stage: 'filter2+embedding', analyzed: validContents.length, extracted: extractions.length, tokensUsed: f2tokens },
     });
 
     // STAGE 6: Dedup intra-batch
+    if (await isCancelled(searchId)) { logger.info(`${LOG_PREFIX} cancelled before stage 6`); return; }
     await db.updateSearchProgress(searchId, { stage: 'dedup', stage_num: 6, total_stages: 7, details: `Consolidando ${extractions.length} resultados` });
     const { consolidated } = runIntraBatchDedup(extractions, LOG_PREFIX);
 
@@ -172,12 +190,12 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
 
     // Push notification
     try {
-      const tipoCrimeLabel = tipoCrime || 'crimes';
+      const cidadesLabel = cidades.length <= 2 ? cidades.join(' e ') : `${cidades.length} cidades`;
       logger.info(`${LOG_PREFIX} Sending push to user ${job.data.userId}`);
       const pushResult = await sendPushToUser(
         job.data.userId,
-        'Busca concluida',
-        `Encontramos ${finalResults.length} resultado${finalResults.length !== 1 ? 's' : ''} para ${tipoCrimeLabel} em ${estado}`,
+        `Busca concluída — ${finalResults.length} resultado${finalResults.length !== 1 ? 's' : ''}`,
+        `${cidadesLabel} (${estado}) · ${tipoCrime || 'todos os crimes'} · ${periodoDias} dias`,
         { search_id: searchId, type: 'manual_search_completed' }
       );
       logger.info(`${LOG_PREFIX} Push result: sent=${pushResult.sent}, devices=${pushResult.deviceCount}, reason=${pushResult.reason || 'ok'}`);
@@ -190,8 +208,8 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
 
     try {
       await sendPushToUser(
-        job.data.userId, 'Busca falhou',
-        'Sua busca nao pode ser concluida. Tente novamente.',
+        job.data.userId, 'Busca não concluída',
+        'Ocorreu um erro durante a busca. Tente novamente.',
         { search_id: searchId, type: 'manual_search_failed' }
       );
     } catch (_) { /* non-fatal */ }
@@ -214,62 +232,77 @@ async function collectManualSearchUrls(
   const allResults: Array<{ url: string; title: string; snippet: string }> = [];
   const seenUrls = new Set<string>();
 
-  // 1. Search provider (Brave/Perplexity) — 1 query por cidade
-  for (const cidade of cidades) {
-    const localidade = `${cidade}, ${estado}`;
-    const query = tipoCrime
-      ? `${tipoCrime} ${localidade}`
-      : `notícias policiais ocorrências crimes assalto roubo homicídio prisão tráfico operação policial flagrante ${localidade}`;
+  const dateRestrict = periodoDias <= 1 ? 'd1'
+    : periodoDias <= 7 ? 'd7'
+    : periodoDias <= 30 ? 'd30'
+    : periodoDias <= 60 ? 'd60'
+    : `d${periodoDias}`;
 
-    logger.info(`${logPrefix} query: ${query.substring(0, 100)}...`);
+  // 1 + 2 em PARALELO por cidade: Web Top100 (volume) + News paginado (qualidade)
+  const cityPromises = cidades.map(async (cidade) => {
+    const cityResults: Array<{ url: string; title: string; snippet: string; source: string }> = [];
 
-    const dateRestrict = periodoDias <= 1 ? 'd1'
-      : periodoDias <= 7 ? 'd7'
-      : periodoDias <= 30 ? 'd30'
-      : periodoDias <= 60 ? 'd60'
-      : `d${periodoDias}`;
+    // Web Top100
+    const webQuery = tipoCrime
+      ? `allintext:"${cidade}" ${tipoCrime} ocorrência policial -site:instagram.com -site:facebook.com -site:youtube.com`
+      : `allintext:"${cidade}" (ocorrência OR crime OR segurança OR policial OR estatística) -site:instagram.com -site:facebook.com -site:youtube.com`;
 
-    const results = await rateLimiter.schedule(config.searchBackend, () =>
-      searchProvider.search(query, {
-        maxResults: cfg.searchMaxResults,
-        dateRestrict,
-        location: { city: cidade, state: estado, country: 'BR' },
-      })
-    );
+    logger.info(`${logPrefix} [${cidade}] Web+News em paralelo | ${dateRestrict}`);
 
-    for (const r of results) {
+    const [webResults, newsResults] = await Promise.allSettled([
+      // Web Top100
+      rateLimiter.schedule(config.searchBackend, () =>
+        searchProvider.search(webQuery, {
+          maxResults: cfg.searchMaxResults,
+          dateRestrict,
+          searchMode: 'web',
+          location: { city: cidade, state: estado, country: 'BR' },
+        })
+      ),
+      // News paginado
+      rateLimiter.schedule(config.searchBackend, () =>
+        searchProvider.search(
+          tipoCrime ? `${tipoCrime} ${cidade} ${estado}` : `notícias policiais ocorrências crime ${cidade} ${estado}`,
+          {
+            maxResults: 30,
+            dateRestrict,
+            searchMode: 'news',
+            location: { city: cidade, state: estado, country: 'BR' },
+          }
+        )
+      ),
+    ]);
+
+    if (webResults.status === 'fulfilled') {
+      for (const r of webResults.value) cityResults.push({ ...r, source: 'web' });
+    } else {
+      logger.warn(`${logPrefix} [${cidade}] Web Top100 failed: ${webResults.reason}`);
+    }
+
+    if (newsResults.status === 'fulfilled') {
+      for (const r of newsResults.value) cityResults.push({ ...r, source: 'news' });
+    } else {
+      logger.warn(`${logPrefix} [${cidade}] News failed: ${newsResults.reason}`);
+    }
+
+    logger.info(`${logPrefix} [${cidade}] Web: ${webResults.status === 'fulfilled' ? webResults.value.length : 0} + News: ${newsResults.status === 'fulfilled' ? newsResults.value.length : 0}`);
+    return cityResults;
+  });
+
+  // Todas as cidades em paralelo
+  const cityResultsAll = await Promise.all(cityPromises);
+
+  for (const cityResults of cityResultsAll) {
+    for (const r of cityResults) {
       if (!seenUrls.has(r.url)) {
         seenUrls.add(r.url);
-        sourceTypeMap.set(r.url, 'google');
-        allResults.push(r);
+        sourceTypeMap.set(r.url, r.source);
+        allResults.push({ url: r.url, title: r.title, snippet: r.snippet });
       }
     }
   }
 
-  logger.info(`${logPrefix} found ${allResults.length} unique URLs from ${cidades.length} cidades`);
-
-  // 2. Google News RSS
-  const rssEnabled = await configManager.getBoolean('google_news_rss_enabled');
-  if (rssEnabled) {
-    try {
-      for (const cidade of cidades) {
-        const rssQuery = tipoCrime ? `${tipoCrime} ${cidade} ${estado}` : `crime policial ${cidade} ${estado}`;
-        const rssResults = await rateLimiter.schedule('google_news_rss', () =>
-          fetchGoogleNewsRSS(rssQuery, { maxAgeDays: periodoDias })
-        );
-        for (const r of rssResults) {
-          if (!seenUrls.has(r.url)) {
-            seenUrls.add(r.url);
-            sourceTypeMap.set(r.url, 'google');
-            allResults.push(r);
-          }
-        }
-      }
-      logger.info(`${logPrefix} after RSS: ${allResults.length} total URLs`);
-    } catch (error) {
-      logger.warn(`${logPrefix} RSS failed: ${(error as Error).message}`);
-    }
-  }
+  logger.info(`${logPrefix} Total: ${allResults.length} URLs from ${cidades.length} cidades (parallel)`);
 
   // Dedup URLs
   const searchResults = deduplicateResults(allResults);
@@ -290,6 +323,8 @@ export function createManualSearchWorker(): Worker {
       connection: redis,
       concurrency: 2,
       drainDelay: 30000,
+      stalledInterval: 300000, // 5 min — Top100 pode levar 3min
+      lockDuration: 600000,    // 10 min lock
       limiter: { max: 5, duration: 60000 },
     }
   );

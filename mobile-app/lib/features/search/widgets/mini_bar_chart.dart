@@ -10,9 +10,9 @@ class MiniBarChart extends StatelessWidget {
     'Roubo': Color(0xFFef4444),
     'Furto': Color(0xFFf97316),
     'Assalto': Color(0xFFdc2626),
-    'Homicidio': Color(0xFF7f1d1d),
-    'Latrocinio': Color(0xFF991b1b),
-    'Trafico': Color(0xFF7c3aed),
+    'Homicídio': Color(0xFF7f1d1d),
+    'Latrocínio': Color(0xFF991b1b),
+    'Tráfico': Color(0xFF7c3aed),
   };
 
   Color _getColor(String tipo) =>

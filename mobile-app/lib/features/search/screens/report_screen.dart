@@ -35,16 +35,16 @@ const _crimeColors = <String, Color>{
 const _tipoLabels = <String, String>{
   'roubo_furto': 'Roubo/Furto',
   'vandalismo': 'Vandalismo',
-  'invasao': 'Invasao',
-  'homicidio': 'Homicidio',
-  'latrocinio': 'Latrocinio',
-  'lesao_corporal': 'Lesao Corporal',
-  'trafico': 'Trafico',
+  'invasao': 'Invasão',
+  'homicidio': 'Homicídio',
+  'latrocinio': 'Latrocínio',
+  'lesao_corporal': 'Lesão Corporal',
+  'trafico': 'Tráfico',
   'operacao_policial': 'Op. Policial',
-  'manifestacao': 'Manifestacao',
+  'manifestacao': 'Manifestação',
   'bloqueio_via': 'Bloqueio de Via',
   'estelionato': 'Estelionato',
-  'receptacao': 'Receptacao',
+  'receptacao': 'Receptação',
   'crime_ambiental': 'Crime Ambiental',
   'trabalho_irregular': 'Trabalho Irregular',
   'outros': 'Outros',
@@ -268,13 +268,13 @@ class _ReportScreenState extends State<ReportScreen> {
 
       if (mounted) {
         await Share.share(
-          'SIMEops - Relatorio de Risco\n${widget.cidades.join(", ")}/${widget.estado}\n\n$url',
+          'SIMEops - Relatório de Risco\n${widget.cidades.join(", ")}/${widget.estado}\n\n$url',
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao gerar relatorio: $e')),
+          SnackBar(content: Text('Erro ao gerar relatório: $e')),
         );
       }
     } finally {
@@ -414,7 +414,7 @@ class _ReportScreenState extends State<ReportScreen> {
               _card(
                 child: Row(
                   children: [
-                    _statBox('$_totalOcorrencias', 'Ocorrencias'),
+                    _statBox('$_totalOcorrencias', 'Ocorrências'),
                     _dividerVertical(),
                     _statBox('${_bairroCounts.length}', 'Bairros'),
                     _dividerVertical(),
@@ -429,7 +429,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
               // Donut chart — Ocorrencias por tipo
               if (_crimeTypeCounts.isNotEmpty) ...[
-                _sectionTitle('Ocorrencias por Tipo'),
+                _sectionTitle('Ocorrências por Tipo'),
                 _card(
                   child: Row(
                     children: [
@@ -518,7 +518,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
               // Mapa de calor
               if (_heatPoints.isNotEmpty) ...[
-                _sectionTitle('Mapa de Ocorrencias'),
+                _sectionTitle('Mapa de Ocorrências'),
                 _card(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
@@ -567,7 +567,7 @@ class _ReportScreenState extends State<ReportScreen> {
                   ),
                 ),
               ] else if (_mapLoading && _bairroCounts.isNotEmpty) ...[
-                _sectionTitle('Mapa de Ocorrencias'),
+                _sectionTitle('Mapa de Ocorrências'),
                 _card(
                   child: SizedBox(
                     height: 280,
@@ -653,7 +653,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
               // Indicadores da Regiao (estatisticas + tendencia)
               if (_estatisticas.isNotEmpty || _byDate.length > 1) ...[
-                _sectionTitle('Indicadores da Regiao'),
+                _sectionTitle('Indicadores da Região'),
                 if (_byDate.length > 1)
                   _card(
                     child: SizedBox(

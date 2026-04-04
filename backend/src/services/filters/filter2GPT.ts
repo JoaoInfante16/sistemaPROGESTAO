@@ -14,9 +14,27 @@ const openai = new OpenAI({ apiKey: config.openaiApiKey });
 export interface Filter2Result {
   extraction: NewsExtraction | null;
   rejectionReason?: string;
+  tokensUsed?: number;
 }
 
 const VALID_TIPOS: Set<string> = new Set(Object.keys(TIPO_CRIME_GRUPO));
+
+// Aliases: tipos que o GPT retorna mas não estão nas 15 categorias
+const TIPO_ALIAS: Record<string, string> = {
+  'estatistica': 'outros',
+  'statistic': 'outros',
+  'statistics': 'outros',
+  'tortura': 'lesao_corporal',
+  'torture': 'lesao_corporal',
+  'sequestro': 'outros',
+  'corrupcao': 'estelionato',
+  'extorsao': 'estelionato',
+  'feminicidio': 'homicidio',
+  'estupro': 'lesao_corporal',
+  'incendio': 'vandalismo',
+  'porte_arma': 'operacao_policial',
+  'contrabando': 'trafico',
+};
 // Mapeamento nature (EN) → natureza (PT)
 const NATURE_MAP: Record<string, Natureza> = {
   'occurrence': 'ocorrencia',
@@ -45,16 +63,17 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
     return { extraction: null, rejectionReason: `confianca=${confidence} (min=${minConfidence})` };
   }
 
-  // tipo_crime: deve ser uma das 15 categorias
-  if (!VALID_TIPOS.has(crimeType)) {
+  // tipo_crime: deve ser uma das 15 categorias (ou alias)
+  const mappedType = VALID_TIPOS.has(crimeType) ? crimeType : (TIPO_ALIAS[crimeType] || null);
+  if (!mappedType) {
     return { extraction: null, rejectionReason: `tipo_crime_invalido=${crimeType}` };
   }
 
   // natureza: mapear EN→PT (default: ocorrencia)
   const natureza = (nature && NATURE_MAP[nature]) ? NATURE_MAP[nature] : 'ocorrencia';
 
-  // categoria_grupo: derivado do tipo_crime
-  const categoriaGrupo = TIPO_CRIME_GRUPO[crimeType as TipoCrime];
+  // categoria_grupo: derivado do tipo_crime (mapeado)
+  const categoriaGrupo = TIPO_CRIME_GRUPO[mappedType as TipoCrime];
 
   // cidade e resumo obrigatorios
   if (city.length === 0) return { extraction: null, rejectionReason: 'cidade_vazia' };
@@ -71,7 +90,7 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
   return {
     extraction: {
       e_crime: true,
-      tipo_crime: crimeType as TipoCrime,
+      tipo_crime: mappedType as TipoCrime,
       natureza,
       categoria_grupo: categoriaGrupo,
       cidade: city,
@@ -104,6 +123,7 @@ RULES:
 1. "is_crime": true for ANY public safety content: police occurrences, crimes, operations, crime statistics, protests, road blockades.
 2. "is_crime": false ONLY for: academic essays, opinion editorials, category/tag pages, or content unrelated to public safety.
 3. "nature": "occurrence" for individual events (robbery at store X, murder in neighborhood Y). "statistic" for aggregated data (robberies up 20%, violence index drops).
+4. "date": MUST be the article's PUBLICATION DATE, not dates mentioned in the article body. Look for date in the header, byline, or URL. If unsure, use today's date.
 
 MANDATORY CATEGORIES for "crime_type" (use EXACTLY one):
 - roubo_furto: robbery, theft, mugging, looting
@@ -133,7 +153,7 @@ Return ONLY JSON:
   "city": "City Name",
   "neighborhood": "Neighborhood Name" or null,
   "street": "Street Name" or null,
-  "date": "YYYY-MM-DD",
+  "date": "YYYY-MM-DD (publication date of the article, NOT dates mentioned in the text)",
   "summary": "1-2 sentence summary in Brazilian Portuguese",
   "confidence": 0.0 to 1.0
 }
@@ -149,20 +169,22 @@ If NOT about public safety, return: {"is_crime": false}`;
     });
 
     const raw = response.choices[0].message.content || '{}';
+    const tokensUsed = response.usage?.total_tokens || 0;
     logger.debug(`[Filter2] content preview: ${truncated.substring(0, 150).replace(/\n/g, ' ')}...`);
-    logger.debug(`[Filter2] GPT response: ${raw.substring(0, 300)}`);
+    logger.debug(`[Filter2] GPT response: ${raw.substring(0, 300)} (${tokensUsed} tokens)`);
 
     let data: Record<string, unknown>;
     try {
       data = JSON.parse(raw) as Record<string, unknown>;
     } catch {
       logger.error(`Filter2 GPT: invalid JSON response: ${raw.substring(0, 200)}`);
-      return { extraction: null, rejectionReason: 'json_invalido' };
+      return { extraction: null, rejectionReason: 'json_invalido', tokensUsed };
     }
 
-    return validateExtraction(data, minConfidence);
+    const result = validateExtraction(data, minConfidence);
+    return { ...result, tokensUsed };
   } catch (error) {
     logger.error('Filter2 GPT error:', error);
-    return { extraction: null, rejectionReason: `gpt_error: ${(error as Error).message}` };
+    return { extraction: null, rejectionReason: `gpt_error: ${(error as Error).message}`, tokensUsed: 0 };
   }
 }

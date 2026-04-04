@@ -19,30 +19,38 @@ const openai = new OpenAI({ apiKey: config.openaiApiKey });
  */
 const BATCH_CHUNK_SIZE = 30; // Max snippets por chamada GPT (evita estourar context window)
 
-export async function filter1GPTBatch(snippets: string[]): Promise<boolean[]> {
-  if (snippets.length === 0) return [];
+export interface Filter1Result {
+  results: boolean[];
+  tokensUsed: number;
+}
+
+export async function filter1GPTBatch(snippets: string[]): Promise<Filter1Result> {
+  if (snippets.length === 0) return { results: [], tokensUsed: 0 };
 
   // Se só tem 1 snippet, não precisa de batch
   if (snippets.length === 1) {
-    return [await filter1Single(snippets[0])];
+    const { result, tokensUsed } = await filter1Single(snippets[0]);
+    return { results: [result], tokensUsed };
   }
 
   // Dividir em chunks pra não estourar context window do GPT
   if (snippets.length > BATCH_CHUNK_SIZE) {
     logger.info(`[Filter1Batch] Splitting ${snippets.length} snippets into chunks of ${BATCH_CHUNK_SIZE}`);
     const results: boolean[] = [];
+    let totalTokens = 0;
     for (let i = 0; i < snippets.length; i += BATCH_CHUNK_SIZE) {
       const chunk = snippets.slice(i, i + BATCH_CHUNK_SIZE);
-      const chunkResults = await filter1GPTBatchSingle(chunk);
-      results.push(...chunkResults);
+      const chunkResult = await filter1GPTBatchSingle(chunk);
+      results.push(...chunkResult.results);
+      totalTokens += chunkResult.tokensUsed;
     }
-    return results;
+    return { results, tokensUsed: totalTokens };
   }
 
   return filter1GPTBatchSingle(snippets);
 }
 
-async function filter1GPTBatchSingle(snippets: string[]): Promise<boolean[]> {
+async function filter1GPTBatchSingle(snippets: string[]): Promise<Filter1Result> {
   const prompt = `Analyze the following ${snippets.length} news snippets.
 For each one, determine if it relates to PUBLIC SAFETY (crime, police, security).
 
@@ -68,6 +76,7 @@ RULES:
     });
 
     const raw = response.choices[0].message.content || '{}';
+    const tokensUsed = response.usage?.total_tokens || 0;
 
     let data: Record<string, unknown>;
     try {
@@ -75,14 +84,14 @@ RULES:
     } catch {
       logger.error(`[Filter1Batch] Attempt ${attempt}: Invalid JSON response: ${raw.substring(0, 200)}`);
       if (attempt < 2) continue;
-      return snippets.map(() => true);
+      return { results: snippets.map(() => true), tokensUsed };
     }
 
     // Validar resposta
     if (!Array.isArray(data.results)) {
       logger.error(`[Filter1Batch] Attempt ${attempt}: results is not array: ${raw.substring(0, 200)}`);
       if (attempt < 2) continue;
-      return snippets.map(() => true);
+      return { results: snippets.map(() => true), tokensUsed };
     }
 
     // GPT às vezes retorna ±1-2 itens. Ajustar em vez de descartar tudo.
@@ -101,21 +110,22 @@ RULES:
     }
 
     // Garantir que todos são boolean
-    return (data.results as unknown[]).map((val: unknown) => val === true);
+    logger.info(`[Filter1Batch] ${snippets.length} snippets, ${tokensUsed} tokens`);
+    return { results: (data.results as unknown[]).map((val: unknown) => val === true), tokensUsed };
   } catch (error) {
     logger.error(`[Filter1Batch] Attempt ${attempt} GPT error:`, error);
     if (attempt < 2) continue;
-    return snippets.map(() => true); // Fallback após 2 tentativas
+    return { results: snippets.map(() => true), tokensUsed: 0 };
   }
   } // end for
 
-  return snippets.map(() => true); // Fallback (nunca deve chegar aqui)
+  return { results: snippets.map(() => true), tokensUsed: 0 };
 }
 
 /**
  * Fallback para snippet único (evita overhead do batch com 1 item).
  */
-async function filter1Single(snippet: string): Promise<boolean> {
+async function filter1Single(snippet: string): Promise<{ result: boolean; tokensUsed: number }> {
   const prompt = `Is this news snippet about a real public safety event or crime statistic?
 
 Snippet: "${snippet}"
@@ -131,9 +141,10 @@ Answer ONLY "YES" or "NO":`;
     });
 
     const answer = response.choices[0].message.content?.trim().toUpperCase();
-    return answer === 'YES';
+    const tokensUsed = response.usage?.total_tokens || 0;
+    return { result: answer === 'YES', tokensUsed };
   } catch (error) {
     logger.error('[Filter1Single] GPT error:', error);
-    return false;
+    return { result: false, tokensUsed: 0 };
   }
 }

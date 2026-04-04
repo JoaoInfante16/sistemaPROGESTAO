@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'api_service.dart';
 
 class PushService {
@@ -9,8 +10,21 @@ class PushService {
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
   final ApiService _api;
+  static const _storage = FlutterSecureStorage();
+  static const _notificationsKey = 'notifications_enabled';
 
   PushService(this._api);
+
+  /// Verifica se notificações estão habilitadas (default: true)
+  static Future<bool> areNotificationsEnabled() async {
+    final value = await _storage.read(key: _notificationsKey);
+    return value != 'false';
+  }
+
+  /// Habilita/desabilita notificações
+  static Future<void> setNotificationsEnabled(bool enabled) async {
+    await _storage.write(key: _notificationsKey, value: enabled ? 'true' : 'false');
+  }
 
   Future<void> init() async {
     // Request permission (iOS + Android 13+)
@@ -35,7 +49,7 @@ class PushService {
     const channel = AndroidNotificationChannel(
       'crime_news',
       'SIMEops',
-      description: 'Notificacoes de ocorrencias e buscas',
+      description: 'Notificações de ocorrências e buscas',
       importance: Importance.high,
     );
 
@@ -44,14 +58,17 @@ class PushService {
             AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
 
-    // Register device token with backend
-    final token = await _fcm.getToken();
-    if (token != null) {
-      final platform = Platform.isIOS ? 'ios' : 'android';
-      try {
-        await _api.registerDevice(token, platform);
-      } catch (_) {
-        // Will retry on next app open
+    // Register device token with backend (só se notificações habilitadas)
+    final enabled = await areNotificationsEnabled();
+    if (enabled) {
+      final token = await _fcm.getToken();
+      if (token != null) {
+        final platform = Platform.isIOS ? 'ios' : 'android';
+        try {
+          await _api.registerDevice(token, platform);
+        } catch (_) {
+          // Will retry on next app open
+        }
       }
     }
 
@@ -83,9 +100,13 @@ class PushService {
     // pro resultado da busca manual.
   }
 
-  void _showLocalNotification(RemoteMessage message) {
+  void _showLocalNotification(RemoteMessage message) async {
     final notification = message.notification;
     if (notification == null) return;
+
+    // Respeitar preferência do usuário
+    final enabled = await areNotificationsEnabled();
+    if (!enabled) return;
 
     _localNotifications.show(
       id: notification.hashCode,

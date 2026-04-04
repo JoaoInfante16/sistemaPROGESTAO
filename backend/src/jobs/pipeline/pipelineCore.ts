@@ -101,11 +101,11 @@ export async function runFilter1(
   urls: SearchResult[],
   rejectedUrls: RejectedUrl[],
   logPrefix: string,
-): Promise<SearchResult[]> {
-  if (urls.length === 0) return [];
+): Promise<{ passed: SearchResult[]; tokensUsed: number }> {
+  if (urls.length === 0) return { passed: [], tokensUsed: 0 };
 
   const snippets = urls.map((r) => r.snippet);
-  const batchResults = await rateLimiter.schedule('openai', () =>
+  const { results: batchResults, tokensUsed } = await rateLimiter.schedule('openai', () =>
     filter1GPTBatch(snippets)
   );
 
@@ -118,8 +118,8 @@ export async function runFilter1(
     }
   }
 
-  logger.info(`${logPrefix} filter1: ${urls.length} → ${passed.length} (${urls.length - passed.length} rejeitadas)`);
-  return passed;
+  logger.info(`${logPrefix} filter1: ${urls.length} → ${passed.length} (${urls.length - passed.length} rejeitadas) [${tokensUsed} tokens]`);
+  return { passed, tokensUsed };
 }
 
 // ============================================
@@ -163,6 +163,11 @@ export async function runContentFetch(
 // Stage 4: Filter2 — GPT Full Analysis + Embedding
 // ============================================
 
+export interface Filter2StageResult {
+  extractions: ExtractedNews[];
+  tokensUsed: { filter2: number; embedding: number };
+}
+
 export async function runFilter2WithEmbedding(
   contents: FetchedContent[],
   cfg: { maxContentChars: number; minConfidence: number },
@@ -170,16 +175,19 @@ export async function runFilter2WithEmbedding(
   logPrefix: string,
   postFilter?: PostFilter2Options,
   sourceTypeMap?: Map<string, string>,
-): Promise<ExtractedNews[]> {
+): Promise<Filter2StageResult> {
   const extractions: ExtractedNews[] = [];
+  let filter2Tokens = 0;
+  let embeddingTokens = 0;
 
   for (const fetched of contents) {
-    const { extraction: extracted, rejectionReason } = await rateLimiter.schedule('openai', () =>
+    const { extraction: extracted, rejectionReason, tokensUsed: f2tokens = 0 } = await rateLimiter.schedule('openai', () =>
       filter2GPTWithReason(fetched.content, {
         maxContentChars: cfg.maxContentChars,
         minConfidence: cfg.minConfidence,
       })
     );
+    filter2Tokens += f2tokens;
 
     if (!extracted) {
       const reason = rejectionReason || 'unknown';
@@ -188,14 +196,14 @@ export async function runFilter2WithEmbedding(
       continue;
     }
 
-    // Post-filter: date range
+    // Post-filter: date range (comparar só YYYY-MM-DD, sem timezone)
     if (postFilter?.periodoDias) {
-      const newsDate = new Date(extracted.data_ocorrencia);
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - postFilter.periodoDias);
-      if (newsDate < cutoff) {
+      const cutoffStr = cutoff.toISOString().split('T')[0]; // YYYY-MM-DD
+      if (extracted.data_ocorrencia < cutoffStr) {
         rejectedUrls.push({ url: fetched.url, stage: 'filter2_date', reason: `Data antiga: ${extracted.data_ocorrencia}` });
-        logger.info(`${logPrefix} filter2 data fora: ${extracted.data_ocorrencia} (cutoff: ${cutoff.toISOString().split('T')[0]})`);
+        logger.info(`${logPrefix} filter2 data fora: ${extracted.data_ocorrencia} (cutoff: ${cutoffStr}) → ${fetched.url.substring(0, 80)}`);
         continue;
       }
     }
@@ -210,7 +218,7 @@ export async function runFilter2WithEmbedding(
 
       if (!cidadeMatch && !estadoNoResumo) {
         rejectedUrls.push({ url: fetched.url, stage: 'filter2_location', reason: `Local errado: ${extracted.cidade}` });
-        logger.info(`${logPrefix} filter2 cidade fora: ${extracted.cidade} (esperado: ${postFilter.cidades.join(', ')}, ${postFilter.estado})`);
+        logger.info(`${logPrefix} filter2 cidade fora: ${extracted.cidade} (esperado: ${postFilter.cidades.join(', ')}, ${postFilter.estado}) → ${fetched.url.substring(0, 80)}`);
         continue;
       }
     }
@@ -219,6 +227,7 @@ export async function runFilter2WithEmbedding(
     const embeddingResult = await rateLimiter.schedule('openai', () =>
       embeddingProvider.generate(extracted.resumo)
     );
+    embeddingTokens += embeddingResult.tokensUsed;
 
     extractions.push({
       ...extracted,
@@ -228,8 +237,8 @@ export async function runFilter2WithEmbedding(
     });
   }
 
-  logger.info(`${logPrefix} filter2: ${contents.length} → ${extractions.length} (${contents.length - extractions.length} rejeitadas)`);
-  return extractions;
+  logger.info(`${logPrefix} filter2: ${contents.length} → ${extractions.length} (${contents.length - extractions.length} rejeitadas) [filter2: ${filter2Tokens} tokens, embedding: ${embeddingTokens} tokens]`);
+  return { extractions, tokensUsed: { filter2: filter2Tokens, embedding: embeddingTokens } };
 }
 
 // ============================================

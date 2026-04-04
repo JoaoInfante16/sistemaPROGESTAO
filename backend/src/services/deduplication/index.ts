@@ -20,6 +20,7 @@ export interface DedupResult {
   isDuplicate: boolean;
   existingId?: string;
   layer?: 1 | 2 | 3; // Qual camada decidiu
+  tokensUsed: number;
 }
 
 /**
@@ -40,7 +41,7 @@ export async function deduplicateNews(
 
   if (candidates.length === 0) {
     logger.debug('[Dedup] Layer 1: no candidates → new');
-    return { isDuplicate: false, layer: 1 };
+    return { isDuplicate: false, layer: 1, tokensUsed: 0 };
   }
 
   logger.debug(`[Dedup] Layer 1: ${candidates.length} candidates found`);
@@ -49,7 +50,7 @@ export async function deduplicateNews(
   const validCandidates = candidates.filter(c => Array.isArray(c.embedding) && c.embedding.length === 1536);
   if (validCandidates.length === 0) {
     logger.debug('[Dedup] Layer 2: no candidates with valid embeddings → new');
-    return { isDuplicate: false, layer: 2 };
+    return { isDuplicate: false, layer: 2, tokensUsed: 0 };
   }
 
   const similarities = validCandidates.map((c) => ({
@@ -65,29 +66,29 @@ export async function deduplicateNews(
 
   if (topMatch.score < similarityThreshold) {
     logger.debug(`[Dedup] Layer 2: score ${topMatch.score.toFixed(3)} < ${similarityThreshold} → new`);
-    return { isDuplicate: false, layer: 2 };
+    return { isDuplicate: false, layer: 2, tokensUsed: 0 };
   }
 
   // CAMADA 3: Confirmação GPT (caro, mas só ~5% dos casos chegam aqui)
   logger.debug('[Dedup] High similarity, confirming with GPT...');
-  const isDupe = await confirmDuplicateWithGPT(newsData.resumo, topMatch.resumo);
+  const { isDupe, tokensUsed } = await confirmDuplicateWithGPT(newsData.resumo, topMatch.resumo);
 
   if (isDupe) {
     // Adicionar URL como fonte alternativa do artigo existente
     await db.insertNewsSource(topMatch.id, sourceUrl);
-    logger.info(`[Dedup] Duplicate confirmed (score=${topMatch.score.toFixed(3)}), source added to ${topMatch.id}`);
-    return { isDuplicate: true, existingId: topMatch.id, layer: 3 };
+    logger.info(`[Dedup] Duplicate confirmed (score=${topMatch.score.toFixed(3)}), source added to ${topMatch.id} (${tokensUsed} tokens)`);
+    return { isDuplicate: true, existingId: topMatch.id, layer: 3, tokensUsed };
   }
 
   logger.debug('[Dedup] Layer 3: GPT says different → new');
-  return { isDuplicate: false, layer: 3 };
+  return { isDuplicate: false, layer: 3, tokensUsed };
 }
 
 /**
  * Confirmação via GPT: compara dois resumos para determinar se descrevem o mesmo evento.
  * Só chamada quando cosine similarity >= 0.85 (~5% dos casos).
  */
-async function confirmDuplicateWithGPT(resumo1: string, resumo2: string): Promise<boolean> {
+async function confirmDuplicateWithGPT(resumo1: string, resumo2: string): Promise<{ isDupe: boolean; tokensUsed: number }> {
   const prompt = `Do these two summaries describe the SAME criminal event?
 
 Summary 1: "${resumo1}"
@@ -109,11 +110,11 @@ Answer ONLY "YES" or "NO":`;
     });
 
     const answer = response.choices[0].message.content?.trim().toUpperCase();
-    return answer === 'YES';
+    const tokensUsed = response.usage?.total_tokens || 0;
+    return { isDupe: answer === 'YES', tokensUsed };
   } catch (error) {
     logger.error('[Dedup] GPT confirmation error:', error);
-    // Em caso de erro, assume não-duplicata (safe default: melhor duplicar que perder)
-    return false;
+    return { isDupe: false, tokensUsed: 0 };
   }
 }
 

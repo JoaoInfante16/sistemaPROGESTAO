@@ -53,6 +53,28 @@ function ensureFirebase(): boolean {
   }
 }
 
+const TIPO_CRIME_LABELS: Record<string, string> = {
+  roubo_furto: 'Roubo/Furto',
+  vandalismo: 'Vandalismo',
+  invasao: 'Invasão',
+  homicidio: 'Homicídio',
+  latrocinio: 'Latrocínio',
+  lesao_corporal: 'Lesão Corporal',
+  trafico: 'Tráfico',
+  operacao_policial: 'Operação Policial',
+  manifestacao: 'Manifestação',
+  bloqueio_via: 'Bloqueio de Via',
+  estelionato: 'Estelionato',
+  receptacao: 'Receptação',
+  crime_ambiental: 'Crime Ambiental',
+  trabalho_irregular: 'Trabalho Irregular',
+  outros: 'Outros',
+};
+
+function formatTipoCrime(tipo: string): string {
+  return TIPO_CRIME_LABELS[tipo] || tipo.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 interface PushNewsData {
   id: string;
   tipo_crime: string;
@@ -106,9 +128,13 @@ export async function sendPushNotification(
     return { sent: false, reason: 'Nenhum dispositivo registrado. Abra o app no celular e faca login para registrar.', deviceCount: 0, successCount: 0 };
   }
 
-  const title = `${newsData.tipo_crime} em ${newsData.cidade}${newsData.bairro ? ' - ' + newsData.bairro : ''}`;
-  const body = newsData.resumo.length > 100
-    ? newsData.resumo.substring(0, 100) + '...'
+  const tipoLabel = formatTipoCrime(newsData.tipo_crime);
+  const localLabel = newsData.bairro
+    ? `${newsData.bairro}, ${newsData.cidade}`
+    : newsData.cidade;
+  const title = `${tipoLabel} em ${localLabel}`;
+  const body = newsData.resumo.length > 120
+    ? newsData.resumo.substring(0, 117) + '...'
     : newsData.resumo;
 
   const tokens = devices.map((d) => d.device_token as string);

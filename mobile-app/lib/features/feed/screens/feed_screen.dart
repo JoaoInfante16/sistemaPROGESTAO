@@ -200,7 +200,7 @@ class _FeedScreenState extends State<FeedScreen> {
             Icon(Icons.newspaper, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
-              'Nenhuma noticia ainda',
+              'Nenhuma notícia ainda',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: Colors.grey[600],
                   ),

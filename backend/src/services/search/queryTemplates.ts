@@ -32,7 +32,7 @@ export const QUERY_TEMPLATES: QueryTemplate[] = [
       if (hasKeywords) {
         return `${loc.keywords!.join(' ')} ${loc.name}`;
       }
-      return `notícias policiais ocorrências crimes assalto roubo homicídio prisão tráfico operação policial flagrante ${loc.name}`;
+      return `notícias policiais ocorrências crime ${loc.name}`;
     },
   },
   {

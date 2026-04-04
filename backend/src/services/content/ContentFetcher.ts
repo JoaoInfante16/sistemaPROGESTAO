@@ -9,6 +9,7 @@ export interface FetchedContent {
   title: string;
   content: string; // Texto limpo extraído
   wordCount: number;
+  tokensUsed?: number; // Tokens consumidos pelo provider (Jina)
 }
 
 export interface ContentFetcher {

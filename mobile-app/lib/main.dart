@@ -189,11 +189,32 @@ class _AuthGateState extends State<AuthGate> {
   void initState() {
     super.initState();
     _loadAuthConfig();
+    _setupAuthRefresh();
     Future.delayed(const Duration(seconds: 4), () {
       if (mounted && !_configLoaded) {
         setState(() => _configLoaded = true);
       }
     });
+  }
+
+  void _setupAuthRefresh() {
+    final auth = context.read<AuthService>();
+    final api = context.read<ApiService>();
+
+    // Atualizar token no ApiService quando Supabase faz auto-refresh
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      final newToken = data.session?.accessToken ?? '';
+      if (newToken.isNotEmpty) {
+        api.setToken(newToken);
+        debugPrint('[AuthGate] Token refreshed');
+      }
+    });
+
+    // Callback pra forçar logout quando API retorna 401
+    api.onAuthExpired = () {
+      debugPrint('[AuthGate] Auth expired — signing out');
+      auth.signOut();
+    };
   }
 
   Future<void> _loadAuthConfig() async {

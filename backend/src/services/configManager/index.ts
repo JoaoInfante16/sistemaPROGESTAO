@@ -39,7 +39,7 @@ const DEFAULTS: Record<string, string> = {
   // Ingestão robusta - fontes
   multi_query_enabled: 'true',
   search_queries_per_scan: '2',
-  google_news_rss_enabled: 'true',
+  google_news_rss_enabled: 'false',
   filter0_regex_enabled: 'true',
 };
 

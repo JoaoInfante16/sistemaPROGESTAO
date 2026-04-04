@@ -221,7 +221,7 @@ export default function NewsPage() {
             </div>
           ) : filteredNews.length === 0 ? (
             <p className="py-12 text-center text-muted-foreground">
-              Nenhuma noticia encontrada.
+              Nenhuma notícia encontrada.
             </p>
           ) : (
             <>

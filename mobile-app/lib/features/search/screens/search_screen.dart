@@ -166,7 +166,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     const Icon(Icons.error_outline, size: 48, color: Colors.red),
                     const SizedBox(height: 12),
                     Text(
-                      'Erro ao carregar historico',
+                      'Erro ao carregar histórico',
                       style: Theme.of(context).textTheme.titleMedium,
                       textAlign: TextAlign.center,
                     ),

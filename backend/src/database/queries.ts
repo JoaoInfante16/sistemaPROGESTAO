@@ -938,7 +938,7 @@ export async function createSearchCache(p: CreateSearchCacheParams): Promise<str
 
 export async function updateSearchStatus(
   searchId: string,
-  status: 'completed' | 'failed',
+  status: 'completed' | 'failed' | 'cancelled',
   totalResults?: number
 ): Promise<void> {
   const update: Record<string, unknown> = { status };

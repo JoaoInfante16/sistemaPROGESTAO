@@ -97,18 +97,18 @@ const MANUAL_SEARCH_THRESHOLDS: ThresholdConfig[] = [
   },
   {
     key: 'manual_search_max_results_60d',
-    label: 'URLs — periodo 60 dias',
-    description: 'Quantidade de URLs por query na busca manual com periodo de 60 dias.',
-    tooltip: 'Periodos maiores tem mais noticias. Recomendado: 50-80.',
+    label: 'URLs — período 60 dias',
+    description: 'Quantidade de URLs por query na busca manual com período de 60 dias.',
+    tooltip: 'Períodos maiores têm mais notícias. Recomendado: 50-80.',
     min: 1,
     max: 100,
     step: 5,
   },
   {
     key: 'manual_search_max_results_90d',
-    label: 'URLs — periodo 90 dias',
-    description: 'Quantidade de URLs por query na busca manual com periodo de 90 dias.',
-    tooltip: 'Periodos maiores tem mais noticias. Recomendado: 50-80.',
+    label: 'URLs — período 90 dias',
+    description: 'Quantidade de URLs por query na busca manual com período de 90 dias.',
+    tooltip: 'Períodos maiores têm mais notícias. Recomendado: 50-80.',
     min: 1,
     max: 100,
     step: 5,
@@ -118,18 +118,18 @@ const MANUAL_SEARCH_THRESHOLDS: ThresholdConfig[] = [
 const AI_FILTER_THRESHOLDS: ThresholdConfig[] = [
   {
     key: 'filter2_confidence_min',
-    label: 'Confianca minima',
-    description: 'Nivel de certeza do AI para aceitar uma noticia como crime real.',
-    tooltip: 'Aumentar se aparecem noticias falsas/irrelevantes. Diminuir se noticias reais estao sumindo. Recomendado: 0.6-0.8.',
+    label: 'Confiança mínima',
+    description: 'Nível de certeza do AI para aceitar uma notícia como crime real.',
+    tooltip: 'Aumentar se aparecem notícias falsas/irrelevantes. Diminuir se notícias reais estão sumindo. Recomendado: 0.6-0.8.',
     min: 0.1,
     max: 1.0,
     step: 0.05,
   },
   {
     key: 'dedup_similarity_threshold',
-    label: 'Similaridade de deduplicacao',
-    description: 'Quao parecidas duas noticias precisam ser para serem consideradas duplicatas.',
-    tooltip: 'Aumentar se aparecem noticias duplicadas. Diminuir se noticias diferentes estao sendo removidas. Recomendado: 0.80-0.90.',
+    label: 'Similaridade de deduplicação',
+    description: 'Quão parecidas duas notícias precisam ser para serem consideradas duplicatas.',
+    tooltip: 'Aumentar se aparecem notícias duplicadas. Diminuir se notícias diferentes estão sendo removidas. Recomendado: 0.80-0.90.',
     min: 0.5,
     max: 1.0,
     step: 0.05,
@@ -172,7 +172,7 @@ export default function SettingsPage() {
         setCalcCidades(String(ce.activeCities));
       }
     } catch {
-      toast.error('Erro ao carregar configuracoes');
+      toast.error('Erro ao carregar configurações');
     } finally {
       setLoading(false);
     }
@@ -220,7 +220,7 @@ export default function SettingsPage() {
       await loadAll();
       toast.success(`${key} ${newValue === 'true' ? 'ativado' : 'desativado'}`);
     } catch {
-      toast.error('Erro ao atualizar configuracao');
+      toast.error('Erro ao atualizar configuração');
     } finally {
       setSavingConfig((prev) => {
         const next = new Set(prev);
@@ -241,9 +241,9 @@ export default function SettingsPage() {
         return next;
       });
       await loadAll();
-      toast.success('Configuracao atualizada');
+      toast.success('Configuração atualizada');
     } catch {
-      toast.error('Erro ao atualizar configuracao');
+      toast.error('Erro ao atualizar configuração');
     } finally {
       setSavingConfig((prev) => {
         const next = new Set(prev);
@@ -264,12 +264,17 @@ export default function SettingsPage() {
     const urlsPerScan = parseInt(getConfigValue('search_max_results')) || 15;
     const scansPorDia = cidades * (1440 / freq);
 
-    // Custos reais por scan (auto-scan)
+    // Custos estimados por scan (auto-scan)
     // Bright Data pagina: ceil(urls/20) requests por query
     const searchRequestsPerScan = Math.ceil(urlsPerScan / 20);
     const searchCostPerScan = searchRequestsPerScan * 0.0015;  // $0.0015/request Bright Data SERP
-    const jinaCostPerScan = urlsPerScan * 0.002;    // Jina fetch per URL
-    const openaiCostPerScan = 0.0002 + urlsPerScan * (0.0005 + 0.00002); // Filter1 batch + Filter2 + Embedding
+    // ~60% das URLs passam filter0+filter1 e chegam no Jina
+    const urlsToFetch = Math.round(urlsPerScan * 0.6);
+    const jinaCostPerScan = urlsToFetch * 0.0001;   // Jina: ~$50/1B tokens, ~2k tokens/artigo ≈ $0.0001
+    // Filter1: ~200 tokens/snippet × $0.15/1M = $0.00003/URL
+    // Filter2: ~4k tokens/artigo × $0.15/1M = $0.0006/URL (só URLs que passaram)
+    // Embedding: ~500 tokens × $0.02/1M = $0.00001/URL
+    const openaiCostPerScan = urlsPerScan * 0.00003 + urlsToFetch * (0.0006 + 0.00001);
     const totalCostPerScan = searchCostPerScan + jinaCostPerScan + openaiCostPerScan;
 
     const searchMonthly = searchCostPerScan * scansPorDia * 30;
@@ -279,8 +284,9 @@ export default function SettingsPage() {
 
     // Busca manual (usa URLs do periodo 30d como referencia)
     const manualUrls = parseInt(getConfigValue('manual_search_max_results_30d')) || 50;
+    const manualFetched = Math.round(manualUrls * 0.6);
     const manualSearchRequests = Math.ceil(manualUrls / 20);
-    const manualCostPerSearch = manualSearchRequests * 0.0015 + 0.0002 + manualUrls * (0.002 + 0.0005 + 0.00002);
+    const manualCostPerSearch = manualSearchRequests * 0.0015 + manualUrls * 0.00003 + manualFetched * (0.0001 + 0.0006 + 0.00001);
     const manualMonthly = buscas * 30 * manualCostPerSearch;
 
     const grandTotal = autoScanMonthly + manualMonthly;
@@ -309,7 +315,7 @@ export default function SettingsPage() {
   return (
     <TooltipProvider>
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">Configuracoes</h1>
+        <h1 className="text-2xl font-bold">Configurações</h1>
 
         {/* ============================================ */}
         {/* Auth Toggle - destaque */}
@@ -322,12 +328,12 @@ export default function SettingsPage() {
               </div>
               <div>
                 <p className="font-medium">
-                  Autenticacao no App: {isConfigEnabled('auth_required') ? 'Obrigatoria' : 'Desligada'}
+                  Autenticação no App: {isConfigEnabled('auth_required') ? 'Obrigatória' : 'Desligada'}
                 </p>
                 <p className="text-sm text-muted-foreground">
                   {isConfigEnabled('auth_required')
                     ? 'Usuarios precisam fazer login para usar o app mobile.'
-                    : 'App mobile funciona sem login. Qualquer pessoa pode ver as noticias.'}
+                    : 'App mobile funciona sem login. Qualquer pessoa pode ver as notícias.'}
                 </p>
               </div>
             </div>
@@ -346,11 +352,11 @@ export default function SettingsPage() {
           <TabsList>
             <TabsTrigger value="config">
               <SlidersHorizontal className="mr-2 h-4 w-4" />
-              Configuracoes
+              Configurações
             </TabsTrigger>
             <TabsTrigger value="costs">
               <Calculator className="mr-2 h-4 w-4" />
-              Configuracao de Custos
+              Configuração de Custos
             </TabsTrigger>
           </TabsList>
 
@@ -369,7 +375,7 @@ export default function SettingsPage() {
                   Monitoramento Automatico (Auto-Scan)
                 </CardTitle>
                 <CardDescription>
-                  O sistema busca noticias automaticamente para cada cidade ativa no intervalo configurado.
+                  O sistema busca notícias automaticamente para cada cidade ativa no intervalo configurado.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -385,7 +391,7 @@ export default function SettingsPage() {
                           </TooltipTrigger>
                           <TooltipContent side="right" className="max-w-[300px]">
                             <p className="text-sm">
-                              Frequencias menores encontram noticias mais rapido, mas gastam mais.
+                              Frequências menores encontram notícias mais rápido, mas gastam mais.
                               Aplica para todas as cidades monitoradas.
                             </p>
                           </TooltipContent>
@@ -405,7 +411,7 @@ export default function SettingsPage() {
                             setScanFrequency(value);
                             toast.success(`Frequencia: ${SCAN_FREQUENCY_OPTIONS.find(o => o.value === value)?.label}. ${result.updated} cidades atualizadas.`);
                           } catch {
-                            toast.error('Erro ao atualizar frequencia');
+                            toast.error('Erro ao atualizar frequência');
                           } finally {
                             setSavingFrequency(false);
                           }
@@ -423,6 +429,38 @@ export default function SettingsPage() {
                           ))}
                         </SelectContent>
                       </Select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Toggles: RSS e Filtro Regex */}
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-lg border p-4 flex items-center justify-between">
+                    <div>
+                      <Label className="font-medium">Google News RSS</Label>
+                      <p className="text-sm text-muted-foreground">Fonte complementar gratuita. Desligar se usar Bright Data (mesma fonte).</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {savingConfig.has('google_news_rss_enabled') && <Loader2 className="h-4 w-4 animate-spin" />}
+                      <Switch
+                        checked={isConfigEnabled('google_news_rss_enabled')}
+                        onCheckedChange={() => toggleConfig('google_news_rss_enabled', isConfigEnabled('google_news_rss_enabled'))}
+                        disabled={savingConfig.has('google_news_rss_enabled')}
+                      />
+                    </div>
+                  </div>
+                  <div className="rounded-lg border p-4 flex items-center justify-between">
+                    <div>
+                      <Label className="font-medium">Filtro Regex (pre-GPT)</Label>
+                      <p className="text-sm text-muted-foreground">Bloqueia redes sociais e URLs irrelevantes antes do GPT.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {savingConfig.has('filter0_regex_enabled') && <Loader2 className="h-4 w-4 animate-spin" />}
+                      <Switch
+                        checked={isConfigEnabled('filter0_regex_enabled')}
+                        onCheckedChange={() => toggleConfig('filter0_regex_enabled', isConfigEnabled('filter0_regex_enabled'))}
+                        disabled={savingConfig.has('filter0_regex_enabled')}
+                      />
                     </div>
                   </div>
                 </div>
@@ -469,14 +507,15 @@ export default function SettingsPage() {
                     // Custo real por scan: Bright Data SERP (paginado) + Filter1 batch + Jina fetch + Filter2 + Embedding
                     const searchPages = Math.ceil(urls / 20);
                     const searchCost = searchPages * 0.0015;
-                    const costPerScan = searchCost + 0.0002 + (urls * 0.002) + (urls * 0.0005) + (urls * 0.00002);
+                    const fetchedUrls = Math.round(urls * 0.6);
+                    const costPerScan = searchCost + (urls * 0.00003) + (fetchedUrls * 0.0001) + (fetchedUrls * 0.0006) + (fetchedUrls * 0.00001);
                     const costPerMonth = scansPerDay * 30 * costPerScan;
                     return (
                       <>
                         <div className="space-y-1 text-xs text-muted-foreground mb-2">
-                          <div className="flex justify-between"><span>Bright Data SERP ({searchPages} req × $0.0015)</span><span className="font-mono">${searchCost.toFixed(4)}</span></div>
-                          <div className="flex justify-between"><span>Jina ({urls} URLs × $0.002)</span><span className="font-mono">${(urls * 0.002).toFixed(4)}</span></div>
-                          <div className="flex justify-between"><span>OpenAI Filter + Embedding ({urls} URLs)</span><span className="font-mono">${(0.0002 + urls * 0.0005 + urls * 0.00002).toFixed(4)}</span></div>
+                          <div className="flex justify-between"><span>Bright Data SERP ({searchPages} req × $0,0015)</span><span className="font-mono">${searchCost.toFixed(4)}</span></div>
+                          <div className="flex justify-between"><span>Jina (~{fetchedUrls} URLs × ~$0,0001)</span><span className="font-mono">${(fetchedUrls * 0.0001).toFixed(4)}</span></div>
+                          <div className="flex justify-between"><span>OpenAI Filter + Embedding (~{fetchedUrls} URLs)</span><span className="font-mono">${(urls * 0.00003 + fetchedUrls * 0.00061).toFixed(4)}</span></div>
                           <div className="flex justify-between border-t pt-1"><span className="font-medium text-foreground">Custo por scan</span><span className="font-mono font-medium text-foreground">${costPerScan.toFixed(4)}</span></div>
                         </div>
                         <div className="flex items-center justify-between text-sm border-t pt-2">
@@ -515,7 +554,8 @@ export default function SettingsPage() {
                   const urlCount = parseInt(currentVal) || 0;
                   // Bright Data SERP (paginado) + Filter1 batch + Jina + Filter2 + Embedding
                   const searchReqs = Math.ceil(urlCount / 20);
-                  const estimatedCost = searchReqs * 0.0015 + 0.0002 + urlCount * (0.002 + 0.0005 + 0.00002);
+                  const fetchCount = Math.round(urlCount * 0.6);
+                  const estimatedCost = searchReqs * 0.0015 + urlCount * 0.00003 + fetchCount * (0.0001 + 0.0006 + 0.00001);
                   return (
                     <div key={threshold.key} className="rounded-lg border p-4">
                       <div className="flex items-center justify-between mb-3">
@@ -557,7 +597,7 @@ export default function SettingsPage() {
                   Filtros de Inteligencia Artificial
                 </CardTitle>
                 <CardDescription>
-                  Ajuste a sensibilidade dos filtros que decidem se uma noticia e relevante e se ja foi processada antes.
+                  Ajuste a sensibilidade dos filtros que decidem se uma notícia é relevante e se já foi processada antes.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -606,10 +646,10 @@ export default function SettingsPage() {
                   Calculadora de Custos
                 </CardTitle>
                 <CardDescription>
-                  Estimativa de custo mensal baseada nas fontes ativas e configuracoes atuais.
+                  Estimativa de custo mensal baseada nas fontes ativas e configurações atuais.
                   {avgCostPerScan > 0 && (
                     <span className="ml-1 font-mono text-xs">
-                      (custo medio real: ${avgCostPerScan.toFixed(4)}/scan)
+                      (custo médio real: ${avgCostPerScan.toFixed(4)}/scan)
                     </span>
                   )}
                 </CardDescription>
@@ -680,13 +720,13 @@ export default function SettingsPage() {
                         <TableCell className="text-right font-mono">${costEstimate.searchMonthly.toFixed(2)}</TableCell>
                       </TableRow>
                       <TableRow>
-                        <TableCell>Jina (fetch conteudo)</TableCell>
-                        <TableCell className="text-right font-mono">$0.0020/URL</TableCell>
+                        <TableCell>Jina (fetch conteúdo)</TableCell>
+                        <TableCell className="text-right font-mono">$0,0001/URL</TableCell>
                         <TableCell className="text-right font-mono">${costEstimate.jinaMonthly.toFixed(2)}</TableCell>
                       </TableRow>
                       <TableRow>
                         <TableCell>OpenAI (filtros + embedding)</TableCell>
-                        <TableCell className="text-right font-mono">$0.0005/URL</TableCell>
+                        <TableCell className="text-right font-mono">$0,0006/URL</TableCell>
                         <TableCell className="text-right font-mono">${costEstimate.openaiMonthly.toFixed(2)}</TableCell>
                       </TableRow>
                       {costEstimate.manualMonthly > 0 && (
@@ -705,7 +745,7 @@ export default function SettingsPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-lg font-bold">
-                        Total estimado: ${costEstimate.grandTotal.toFixed(2)} / mes
+                        Total estimado: ${costEstimate.grandTotal.toFixed(2)} / mês
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {costEstimate.scansPorDia.toFixed(0)} scans/dia × ${costEstimate.totalCostPerScan.toFixed(4)}/scan
@@ -715,8 +755,8 @@ export default function SettingsPage() {
                 </div>
 
                 <p className="text-xs text-muted-foreground">
-                  * Valores estimados. Custo real varia conforme volume de noticias encontradas por scan.
-                  Custo de processamento (AI) inclui filtros GPT, embeddings e deduplicacao.
+                  * Valores estimados. Custo real varia conforme volume de notícias encontradas por scan.
+                  Custo de processamento (AI) inclui filtros GPT, embeddings e deduplicação.
                 </p>
 
               </CardContent>

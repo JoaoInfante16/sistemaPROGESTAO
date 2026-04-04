@@ -13,6 +13,7 @@ export interface SearchResult {
 export interface SearchOptions {
   maxResults?: number;
   dateRestrict?: string; // ex: "d7" (últimos 7 dias)
+  searchMode?: 'news' | 'web'; // news = tbm=nws (auto-scan), web = Top100 generico (busca manual)
   location?: {
     city?: string;
     state?: string;

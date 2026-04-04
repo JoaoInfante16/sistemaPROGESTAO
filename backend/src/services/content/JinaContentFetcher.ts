@@ -16,7 +16,7 @@ export class JinaContentFetcher implements ContentFetcher {
       return await this.fetchWithJina(url);
     } catch (err) {
       const msg = (err as Error).message || '';
-      const isSSLOrBlock = msg.includes('422') || msg.includes('SSL') || msg.includes('CERT') || msg.includes('403');
+      const isSSLOrBlock = msg.includes('422') || msg.includes('503') || msg.includes('SSL') || msg.includes('CERT') || msg.includes('403');
 
       if (isSSLOrBlock && config.brightdataApiKey) {
         logger.warn(`[Jina] Failed for ${url.substring(0, 60)}, trying Bright Data fallback: ${msg.substring(0, 100)}`);
@@ -43,36 +43,48 @@ export class JinaContentFetcher implements ContentFetcher {
       throw new Error(`Jina Reader API error (${response.status}): ${errorBody}`);
     }
 
+    // Capturar tokens do header (Jina retorna em x-jina-tokens-used)
+    const jinaTokens = parseInt(response.headers.get('x-jina-tokens-used') || '0', 10);
+
     const rawText = await response.text();
     logger.debug(`[Jina] ${url.substring(0, 60)} raw response: ${rawText.substring(0, 300).replace(/\n/g, ' ')}`);
 
     let data: {
-      data?: { content?: string; title?: string; text?: string; description?: string };
+      data?: { content?: string; title?: string; text?: string; description?: string; usage?: { tokens?: number } };
       content?: string;
       title?: string;
       text?: string;
+      usage?: { tokens?: number };
     };
 
     try {
       data = JSON.parse(rawText);
     } catch {
-      logger.debug(`[Jina] ${url.substring(0, 60)} returned plain text (${rawText.length} chars)`);
+      const wordCount = rawText.trim() ? rawText.trim().split(/\s+/).length : 0;
+      // Estimar tokens: ~1.3 tokens por palavra em PT-BR
+      const estimatedTokens = jinaTokens || Math.ceil(wordCount * 1.3);
+      logger.debug(`[Jina] ${url.substring(0, 60)} returned plain text (${rawText.length} chars, ~${estimatedTokens} tokens)`);
       return {
         url,
         title: '',
         content: rawText,
-        wordCount: rawText.trim() ? rawText.trim().split(/\s+/).length : 0,
+        wordCount,
+        tokensUsed: estimatedTokens,
       };
     }
 
     const content = data.data?.content || data.data?.text || data.data?.description || data.content || data.text || '';
-    logger.info(`[Jina] ${url.substring(0, 60)} content=${content.length} chars, title="${(data.data?.title || data.title || '').substring(0, 50)}"`);
+    const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
+    // Tokens: header > response body > estimativa
+    const tokensUsed = jinaTokens || data.usage?.tokens || data.data?.usage?.tokens || Math.ceil(wordCount * 1.3);
+    logger.info(`[Jina] ${url.substring(0, 60)} content=${content.length} chars, ~${tokensUsed} tokens`);
 
     return {
       url,
       title: data.data?.title || data.title || '',
       content,
-      wordCount: content.trim() ? content.trim().split(/\s+/).length : 0,
+      wordCount,
+      tokensUsed,
     };
   }
 

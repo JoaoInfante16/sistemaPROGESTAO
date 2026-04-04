@@ -6,8 +6,11 @@ import '../models/news_item.dart';
 class ApiService {
   final String _baseUrl = Env.apiUrl;
   final http.Client _client = http.Client();
-  static const _timeout = Duration(seconds: 8);
+  static const _timeout = Duration(seconds: 15);
   String _token = '';
+
+  /// Callback pra forçar logout quando token expira (setado pelo AuthGate)
+  void Function()? onAuthExpired;
 
   void setToken(String token) {
     _token = token;
@@ -237,6 +240,14 @@ class ApiService {
     return (body['history'] as List<dynamic>).cast<Map<String, dynamic>>();
   }
 
+  Future<void> cancelSearch(String searchId) async {
+    final res = await _client.post(
+      Uri.parse('$_baseUrl/manual-search/$searchId/cancel'),
+      headers: _headers,
+    ).timeout(_timeout);
+    _checkResponse(res);
+  }
+
   Future<void> deleteSearches(List<String> ids) async {
     final res = await _client.delete(
       Uri.parse('$_baseUrl/manual-search'),
@@ -298,6 +309,11 @@ class ApiService {
   // ── Helpers ──
 
   void _checkResponse(http.Response res) {
+    if (res.statusCode == 401) {
+      // Token expirou — forçar logout
+      onAuthExpired?.call();
+      throw ApiException(statusCode: 401, message: 'Sessão expirada. Faça login novamente.');
+    }
     if (res.statusCode >= 400) {
       String message = 'Erro desconhecido';
       try {

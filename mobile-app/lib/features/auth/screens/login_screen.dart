@@ -240,7 +240,7 @@ class _LoginScreenState extends State<LoginScreen>
 
                             // Descricao
                             Text(
-                              'Sistema de Monitoramento de\nOcorrencias Policiais',
+                              'Sistema de Monitoramento de\nOcorrências Policiais',
                               textAlign: TextAlign.center,
                               style: GoogleFonts.exo2(
                                 fontSize: 11,

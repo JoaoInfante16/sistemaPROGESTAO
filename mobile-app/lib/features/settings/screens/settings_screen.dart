@@ -1,9 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/push_service.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  bool _notificationsEnabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotificationPref();
+  }
+
+  Future<void> _loadNotificationPref() async {
+    final enabled = await PushService.areNotificationsEnabled();
+    if (mounted) setState(() => _notificationsEnabled = enabled);
+  }
+
+  Future<void> _toggleNotifications(bool value) async {
+    setState(() => _notificationsEnabled = value);
+    await PushService.setNotificationsEnabled(value);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +56,7 @@ class SettingsScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        auth.currentUser?.email ?? 'Modo anonimo',
+                        auth.currentUser?.email ?? 'Modo anônimo',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       Text(
@@ -50,13 +74,34 @@ class SettingsScreen extends StatelessWidget {
         ),
         const SizedBox(height: 24),
 
+        // Notificações
+        Card(
+          child: Column(
+            children: [
+              SwitchListTile(
+                secondary: const Icon(Icons.notifications_outlined),
+                title: const Text('Notificações'),
+                subtitle: Text(
+                  _notificationsEnabled
+                      ? 'Você receberá alertas de novas ocorrências'
+                      : 'Notificações desativadas',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                value: _notificationsEnabled,
+                onChanged: _toggleNotifications,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+
         // App info
         Card(
           child: Column(
             children: [
               ListTile(
                 leading: const Icon(Icons.info_outline),
-                title: const Text('Versao'),
+                title: const Text('Versão'),
                 trailing: const Text('1.0.0'),
               ),
               const Divider(height: 1),
@@ -73,7 +118,7 @@ class SettingsScreen extends StatelessWidget {
         // Logout (so mostra se logado)
         if (auth.isAuthenticated)
           FilledButton.tonal(
-            onPressed: () => _confirmLogout(context),
+            onPressed: _confirmLogout,
             style: FilledButton.styleFrom(
               foregroundColor: Colors.red,
             ),
@@ -90,7 +135,7 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  void _confirmLogout(BuildContext context) {
+  void _confirmLogout() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(

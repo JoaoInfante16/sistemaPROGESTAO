@@ -137,7 +137,7 @@ export default function PublicReportPage() {
             highlight={rd.summary.comparisonDelta.startsWith('+') ? 'red' : 'green'}
           />
           <SummaryCard
-            label="Confianca Media"
+            label="Confiança Média"
             value={rd.summary.avgConfianca > 0 ? `${Math.round(rd.summary.avgConfianca * 100)}%` : 'N/A'}
           />
         </div>

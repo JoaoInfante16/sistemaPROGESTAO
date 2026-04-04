@@ -138,7 +138,8 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   }
 
   // STAGE 3: Filter1
-  const afterFilter1 = await runFilter1(afterFilter0, rejectedUrls, LOG_PREFIX);
+  const filter1Result = await runFilter1(afterFilter0, rejectedUrls, LOG_PREFIX);
+  const afterFilter1 = filter1Result.passed;
 
   // Save rejected from filter1
   const filter1Rejected = rejectedUrls.filter(r => r.stage === 'filter1');
@@ -151,8 +152,8 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
 
   await db.trackCost({
     source: 'auto_scan', provider: 'openai',
-    cost_usd: afterFilter0.length > 0 ? 0.0002 : 0,
-    details: { stage: 'filter1_batch', snippetCount: afterFilter0.length },
+    cost_usd: filter1Result.tokensUsed * 0.00000015, // gpt-4o-mini: $0.15/1M input tokens
+    details: { stage: 'filter1_batch', snippetCount: afterFilter0.length, tokensUsed: filter1Result.tokensUsed },
   });
 
   if (afterFilter1.length === 0) {
@@ -169,10 +170,11 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   // STAGE 4: Content Fetch
   const validContents = await runContentFetch(afterFilter1, pipelineConfig.contentFetchConcurrency, rejectedUrls, LOG_PREFIX);
 
+  const jinaTokensTotal = validContents.reduce((sum, c) => sum + (c.tokensUsed || 0), 0);
   await db.trackCost({
     source: 'auto_scan', provider: 'jina',
-    cost_usd: validContents.length * 0.002,
-    details: { stage: 'fetch', count: validContents.length },
+    cost_usd: jinaTokensTotal * 0.00000005, // Jina: $50/1B tokens = $0.00000005/token
+    details: { stage: 'fetch', count: validContents.length, tokensUsed: jinaTokensTotal },
   });
 
   // STAGE 5: Filter2 + Embedding (com filtro de cidade/estado)
@@ -182,12 +184,13 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
     periodoDias: 7,
   } : undefined;
 
-  const extractions = await runFilter2WithEmbedding(
+  const filter2Result = await runFilter2WithEmbedding(
     validContents,
     { maxContentChars: pipelineConfig.filter2MaxContentChars, minConfidence: pipelineConfig.filter2ConfidenceMin },
     rejectedUrls, LOG_PREFIX,
     locationPostFilter,
   );
+  const extractions = filter2Result.extractions;
 
   // Save rejected from filter2
   const filter2Rejected = rejectedUrls.filter(r => r.stage === 'filter2');
@@ -198,10 +201,11 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
     })));
   }
 
+  const f2tokens = filter2Result.tokensUsed;
   await db.trackCost({
     source: 'auto_scan', provider: 'openai',
-    cost_usd: validContents.length * 0.0005 + extractions.length * 0.00002,
-    details: { stage: 'filter2+embedding', analyzed: validContents.length, extracted: extractions.length },
+    cost_usd: f2tokens.filter2 * 0.00000015 + f2tokens.embedding * 0.00000002, // gpt-4o-mini + embedding-3-small
+    details: { stage: 'filter2+embedding', analyzed: validContents.length, extracted: extractions.length, tokensUsed: f2tokens },
   });
 
   // STAGE 5.5: Intra-batch dedup
@@ -325,6 +329,7 @@ async function collectUrls(
       const results = await rateLimiter.schedule(config.searchBackend, () =>
         searchProvider.search(query, {
           maxResults: cfg.searchMaxResults,
+          dateRestrict: 'd1',
           location: { city: location.name, state: stateName, country: 'BR' },
         })
       );
@@ -363,7 +368,7 @@ function calculateCost(queries: number, filter1Count: number, jinaFetches: numbe
   const isBrightData = config.searchBackend === 'brightdata';
   const requestsPerQuery = isBrightData ? Math.ceil((searchMaxResults || 20) / 20) : 1;
   const costPerRequest = isBrightData ? 0.0015 : 0.005;
-  return queries * requestsPerQuery * costPerRequest + (filter1Count > 0 ? 0.0002 : 0) + jinaFetches * 0.002 + filter2Count * 0.0005 + filter2Count * 0.00002;
+  return queries * requestsPerQuery * costPerRequest + (filter1Count > 0 ? 0.0001 : 0) + jinaFetches * 0.0003 + filter2Count * 0.001 + filter2Count * 0.00001;
 }
 
 function buildResult(

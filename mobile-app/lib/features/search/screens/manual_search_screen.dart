@@ -14,7 +14,7 @@ import '../../../core/models/news_item.dart';
 import 'report_screen.dart';
 
 class ManualSearchScreen extends StatefulWidget {
-  /// Se fornecido, retoma uma busca existente (do historico).
+  /// Se fornecido, retoma uma busca existente (do histórico).
   final String? resumeSearchId;
 
   const ManualSearchScreen({super.key, this.resumeSearchId});
@@ -203,7 +203,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         if (mounted) {
           setState(() => _searchStatus = 'failed');
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Busca demorou demais. Verifique o historico.')),
+            const SnackBar(content: Text('Busca demorou demais. Verifique o histórico.')),
           );
         }
         return;
@@ -259,7 +259,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
           if (mounted) {
             setState(() => _searchStatus = 'failed');
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Erro de conexao. Verifique o historico.')),
+              const SnackBar(content: Text('Erro de conexão. Verifique o histórico.')),
             );
           }
         }
@@ -291,6 +291,15 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   void _resetSearch() {
     _pollTimer?.cancel();
     _elapsedTimer?.cancel();
+
+    // Cancelar no backend se busca em andamento
+    if (_searchId != null && (_searchStatus == 'processing' || _searchStatus == 'loading')) {
+      final api = context.read<ApiService>();
+      api.cancelSearch(_searchId!).catchError((e) {
+        debugPrint('[ManualSearch] Cancel error: $e');
+      });
+    }
+
     setState(() {
       _searchId = null;
       _reportId = null;
@@ -300,6 +309,8 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       _searchStartTime = null;
       _elapsedText = '0s';
       _stageDetails.clear();
+      _pollCount = 0;
+      _consecutiveErrors = 0;
     });
   }
 
@@ -503,7 +514,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
                             color: SIMEopsColors.white)),
-                    Text('Ex: trafico, roubo, operacao policial',
+                    Text('Ex: tráfico, roubo, operação policial',
                         style: GoogleFonts.exo2(
                             fontSize: 11,
                             color: SIMEopsColors.muted.withValues(alpha: 0.6))),
@@ -568,7 +579,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
         // Disclaimer
         Text(
-          'A busca analisa noticias publicas e pode levar alguns instantes.',
+          'A busca analisa notícias públicas e pode levar alguns instantes.',
           textAlign: TextAlign.center,
           style: GoogleFonts.exo2(
             fontSize: 12,
@@ -581,8 +592,8 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
   static const _pipelineStages = [
     ('searching', 'Pesquisando na web', Icons.travel_explore),
-    ('filter0', 'Filtro de relevancia', Icons.filter_list),
-    ('filter1', 'Analise de titulos (IA)', Icons.smart_toy),
+    ('filter0', 'Filtro de relevância', Icons.filter_list),
+    ('filter1', 'Análise de títulos (IA)', Icons.smart_toy),
     ('fetching', 'Baixando artigos', Icons.cloud_download),
     ('analyzing', 'Extraindo dados (IA)', Icons.psychology),
     ('dedup', 'Consolidando resultados', Icons.compress),
@@ -771,7 +782,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
                       ? FilledButton.icon(
                           onPressed: () => _openReport(),
                           icon: const Icon(Icons.description),
-                          label: const Text('Ver Relatorio de Risco'),
+                          label: const Text('Ver Relatório de Risco'),
                         )
                       : FilledButton.tonalIcon(
                           onPressed: (_selectedEstado != null) ? () async {
@@ -788,11 +799,11 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
                                 ),
                               ),
                             );
-                            // Apos voltar da tela de relatorio, checar se foi gerado
+                            // Após voltar da tela de relatório, checar se foi gerado
                             _checkForReport();
                           } : null,
                           icon: const Icon(Icons.bar_chart),
-                          label: const Text('Gerar Relatorio de Risco'),
+                          label: const Text('Gerar Relatório de Risco'),
                         ),
                 ),
               ],
@@ -804,7 +815,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
           child: _results.isEmpty
               ? Center(
                   child: Text(
-                    'Nenhuma noticia encontrada para os filtros selecionados',
+                    'Nenhuma notícia encontrada para os filtros selecionados',
                     style: TextStyle(color: Colors.grey[500]),
                     textAlign: TextAlign.center,
                   ),
