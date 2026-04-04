@@ -12,7 +12,7 @@ COPY package*.json ./
 COPY tsconfig.json ./
 
 # Install all dependencies (dev needed for tsc build)
-RUN npm ci
+RUN npm install
 
 # Copy source code
 COPY src ./src
@@ -28,7 +28,7 @@ WORKDIR /app
 
 # Install only production dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
