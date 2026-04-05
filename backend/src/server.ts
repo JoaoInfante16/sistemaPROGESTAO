@@ -9,6 +9,7 @@ import routes from './routes';
 import { createScanWorker } from './jobs/workers/scanWorker';
 import { createManualSearchWorker } from './jobs/workers/manualSearchWorker';
 import { startScheduler, stopScheduler } from './jobs/scheduler/cronScheduler';
+import { startBillingScheduler, stopBillingScheduler } from './jobs/scheduler/billingScheduler';
 import { startNewsEventListener } from './services/notifications/newsEventListener';
 import { redis } from './config/redis';
 
@@ -79,6 +80,7 @@ const server = app.listen(config.port, () => {
   scanWorker = createScanWorker();
   manualSearchWorker = createManualSearchWorker();
   startScheduler();
+  startBillingScheduler();
   startNewsEventListener().catch((err) => {
     logger.warn(`[Server] NewsEventListener failed to start: ${(err as Error).message}`);
   });
@@ -99,8 +101,9 @@ async function gracefulShutdown(signal: string): Promise<void> {
     logger.info('[Shutdown] HTTP server closed');
   });
 
-  // 2. Stop scheduler (no new jobs)
+  // 2. Stop schedulers (no new jobs)
   stopScheduler();
+  stopBillingScheduler();
 
   // 3. Close workers (wait for current jobs to finish)
   const WORKER_TIMEOUT = 30_000;

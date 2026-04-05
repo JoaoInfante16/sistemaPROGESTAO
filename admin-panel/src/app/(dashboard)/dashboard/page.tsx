@@ -91,7 +91,7 @@ export default function DashboardPage() {
     },
     {
       title: 'Custo mensal (USD)',
-      value: stats?.costThisMonth != null ? `$${stats.costThisMonth.toFixed(2)}` : '-',
+      value: stats?.costThisMonth != null ? `$${stats.costThisMonth.toFixed(2).replace('.', ',')}` : '-',
       icon: DollarSign,
     },
     {
@@ -150,23 +150,23 @@ export default function DashboardPage() {
               <div className="grid grid-cols-4 gap-4 text-center">
                 <div>
                   <p className="text-xs text-muted-foreground">Bright Data</p>
-                  <p className="font-mono text-lg font-bold">${costEstimate.avgCostByProvider.brightdata.toFixed(4)}</p>
+                  <p className="font-mono text-lg font-bold">${costEstimate.avgCostByProvider.brightdata.toFixed(4).replace('.', ',')}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Brave</p>
-                  <p className="font-mono text-lg font-bold">${costEstimate.avgCostByProvider.brave.toFixed(4)}</p>
+                  <p className="font-mono text-lg font-bold">${costEstimate.avgCostByProvider.brave.toFixed(4).replace('.', ',')}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Jina</p>
-                  <p className="font-mono text-lg font-bold">${costEstimate.avgCostByProvider.jina.toFixed(4)}</p>
+                  <p className="font-mono text-lg font-bold">${costEstimate.avgCostByProvider.jina.toFixed(4).replace('.', ',')}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">OpenAI</p>
-                  <p className="font-mono text-lg font-bold">${costEstimate.avgCostByProvider.openai.toFixed(4)}</p>
+                  <p className="font-mono text-lg font-bold">${costEstimate.avgCostByProvider.openai.toFixed(4).replace('.', ',')}</p>
                 </div>
               </div>
               <p className="mt-3 text-center text-xs text-muted-foreground">
-                Total real: <span className="font-mono font-bold">${costEstimate.totalCostThisMonth.toFixed(4)}</span> ({costEstimate.totalScansThisMonth} scans)
+                Total real: <span className="font-mono font-bold">${costEstimate.totalCostThisMonth.toFixed(4).replace('.', ',')}</span> ({costEstimate.totalScansThisMonth} scans)
               </p>
             </CardContent>
           </Card>
@@ -197,11 +197,11 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Custo medio/scan</span>
-                      <span className="font-mono font-bold">${avgCost.toFixed(4)}</span>
+                      <span className="font-mono font-bold">${avgCost.toFixed(4).replace('.', ',')}</span>
                     </div>
                     <div className="border-t pt-2 flex justify-between">
                       <span className="font-medium">Expectativa mensal</span>
-                      <span className="font-mono text-lg font-bold">${expectedMonthly.toFixed(2)}</span>
+                      <span className="font-mono text-lg font-bold">${expectedMonthly.toFixed(2).replace('.', ',')}</span>
                     </div>
                   </div>
                 );

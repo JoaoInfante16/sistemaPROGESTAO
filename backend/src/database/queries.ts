@@ -858,6 +858,34 @@ export async function getUnreadCount(userId: string): Promise<number> {
   return count || 0;
 }
 
+// ============================================
+// Billing History
+// ============================================
+
+export interface BillingRecord {
+  id: string;
+  month: string;
+  total_cost_usd: number;
+  total_scans: number;
+  breakdown: Record<string, number>;
+  closed_at: string;
+}
+
+export async function getBillingHistory(limit = 12): Promise<BillingRecord[]> {
+  const { data, error } = await supabase
+    .from('billing_history')
+    .select('*')
+    .order('month', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    logger.error(`[Billing] Failed to fetch history: ${error.message}`);
+    return [];
+  }
+
+  return data || [];
+}
+
 export async function getUserFavorites(userId: string, params: { offset: number; limit: number }) {
   const { data: favIds, error: favError } = await supabase
     .from('user_favorites')
@@ -1093,4 +1121,5 @@ export const db = {
   getRecentRejectedUrls,
   cleanupOldRejectedUrls,
   clearRejectedUrls,
+  getBillingHistory,
 };

@@ -9,6 +9,7 @@ import {
   Users,
   Settings,
   LogOut,
+  Receipt,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/hooks/use-auth';
@@ -20,6 +21,7 @@ const navItems = [
   { href: '/dashboard/news', label: 'Notícias', icon: Newspaper },
   { href: '/dashboard/locations', label: 'Monitoramentos', icon: MapPin },
   { href: '/dashboard/users', label: 'Usuários', icon: Users },
+  { href: '/dashboard/billing', label: 'Billing', icon: Receipt },
   { href: '/dashboard/settings', label: 'Configurações', icon: Settings },
 ];
 

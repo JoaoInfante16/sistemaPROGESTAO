@@ -204,6 +204,15 @@ export interface ReportData {
   expires_at: string;
 }
 
+export interface BillingRecord {
+  id: string;
+  month: string;
+  total_cost_usd: number;
+  total_scans: number;
+  breakdown: Record<string, number>;
+  closed_at: string;
+}
+
 // ============================================
 // API Client - paths match backend routes exactly
 // ============================================
@@ -413,4 +422,10 @@ export const api = {
   getPublicReport: (reportId: string) =>
     apiFetch<ReportData>(`/public/report/${reportId}`),
 
+  // Billing
+  getBillingHistory: (token: string) =>
+    apiFetch<BillingRecord[]>('/billing/history', { token }),
+
+  closeBillingMonth: (token: string) =>
+    apiFetch<{ success: boolean }>('/billing/close', { method: 'POST', token }),
 };

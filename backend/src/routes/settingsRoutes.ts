@@ -400,4 +400,40 @@ router.delete(
   }
 );
 
+// ============================================
+// Billing History
+// ============================================
+
+router.get(
+  '/billing/history',
+  requireAuth,
+  requireAdmin,
+  async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const history = await db.getBillingHistory();
+      res.json(history);
+    } catch (error) {
+      logger.error('[Billing] History error:', error);
+      res.status(500).json({ error: 'Failed to fetch billing history' });
+    }
+  }
+);
+
+// POST /billing/close — fecha o mes anterior manualmente
+router.post(
+  '/billing/close',
+  requireAuth,
+  requireAdmin,
+  async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const { closeMonth } = await import('../jobs/scheduler/billingScheduler');
+      await closeMonth();
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('[Billing] Close error:', error);
+      res.status(500).json({ error: 'Failed to close month' });
+    }
+  }
+);
+
 export default router;

@@ -41,6 +41,8 @@ const DEFAULTS: Record<string, string> = {
   search_queries_per_scan: '2',
   google_news_rss_enabled: 'false',
   filter0_regex_enabled: 'true',
+  // Billing
+  billing_close_day: '1',
 };
 
 class ConfigManager {
