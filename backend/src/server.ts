@@ -40,9 +40,15 @@ process.on('uncaughtException', (err) => {
 const app = express();
 
 // Middleware
+const allowedOrigins = config.corsOrigin.split(',').map(o => o.trim());
 app.use(
   cors({
-    origin: config.corsOrigin.split(','),
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, health checks)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      callback(new Error(`CORS blocked: ${origin}`));
+    },
     credentials: true,
   })
 );
