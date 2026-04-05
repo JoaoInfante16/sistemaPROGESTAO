@@ -88,7 +88,7 @@ router.get(
   validateQuery(schemas.pagination),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const userId = (req as unknown as { user?: { id: string } }).user?.id;
+      const userId = req.user?.id;
       const offset = parseInt(req.query.offset as string) || 0;
       const limit = parseInt(req.query.limit as string) || 20;
       const cidade = req.query.cidade as string | undefined;
@@ -120,7 +120,7 @@ router.post(
   requireAuth,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const userId = (req as unknown as { user: { id: string } }).user.id;
+      const userId = req.user!.id;
       const count = await db.markAllAsRead(userId);
       res.json({ success: true, markedCount: count });
     } catch (error) {
@@ -139,7 +139,7 @@ router.post(
   requireAuth,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const userId = (req as unknown as { user: { id: string } }).user.id;
+      const userId = req.user!.id;
       await db.markAsRead(userId, req.params.id);
       res.json({ success: true });
     } catch (error) {
@@ -158,7 +158,7 @@ router.post(
   requireAuth,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const userId = (req as unknown as { user: { id: string } }).user.id;
+      const userId = req.user!.id;
       await db.addFavorite(userId, req.params.id);
       res.json({ success: true });
     } catch (error) {
@@ -177,7 +177,7 @@ router.delete(
   requireAuth,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const userId = (req as unknown as { user: { id: string } }).user.id;
+      const userId = req.user!.id;
       await db.removeFavorite(userId, req.params.id);
       res.json({ success: true });
     } catch (error) {
@@ -196,7 +196,7 @@ router.get(
   requireAuth,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const userId = (req as unknown as { user: { id: string } }).user.id;
+      const userId = req.user!.id;
       const count = await db.getUnreadCount(userId);
       res.json({ count });
     } catch (error) {
@@ -216,7 +216,7 @@ router.get(
   validateQuery(schemas.pagination),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const userId = (req as unknown as { user: { id: string } }).user.id;
+      const userId = req.user!.id;
       const offset = parseInt(req.query.offset as string) || 0;
       const limit = parseInt(req.query.limit as string) || 20;
 

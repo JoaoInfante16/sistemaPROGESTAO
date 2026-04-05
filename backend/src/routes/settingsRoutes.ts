@@ -59,7 +59,8 @@ router.get(
         .order('provider');
 
       if (error) {
-        res.status(500).json({ error: error.message });
+        logger.error('[Settings] Rate limits fetch error:', error.message);
+        res.status(500).json({ error: 'Failed to fetch rate limits' });
         return;
       }
 
@@ -90,7 +91,8 @@ router.patch(
         .single();
 
       if (error) {
-        res.status(500).json({ error: error.message });
+        logger.error('[Settings] Rate limit update error:', error.message);
+        res.status(500).json({ error: 'Failed to update rate limit' });
         return;
       }
 
