@@ -259,7 +259,7 @@ router.post(
         sources: mergedSources as Array<Record<string, unknown>>,
       });
 
-      const adminUrl = process.env.ADMIN_PANEL_URL || 'https://simeops-admin.vercel.app';
+      const adminUrl = process.env.ADMIN_PANEL_URL || 'https://sistemaprogestao.onrender.com';
       res.json({ reportId, reportUrl: `${adminUrl}/report/${reportId}` });
     } catch (error) {
       logger.error('[Analytics] Generate report error:', error);

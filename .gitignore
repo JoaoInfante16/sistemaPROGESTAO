@@ -48,6 +48,10 @@ mobile-app/android/.gradle/
 mobile-app/android/app/debug/
 mobile-app/android/app/profile/
 mobile-app/android/app/release/
+mobile-app/android/kotlin/sessions/
+mobile-app/linux/flutter/generated_plugin*
+mobile-app/macos/Flutter/GeneratedPluginRegistrant.swift
+mobile-app/windows/flutter/generated_plugin*
 
 # TypeScript
 *.tsbuildinfo

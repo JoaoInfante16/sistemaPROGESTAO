@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../core/data/brazilian_locations.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/widgets/grid_background.dart';
@@ -268,12 +267,21 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   }
 
   Future<void> _openReport() async {
-    if (_reportId == null) return;
-    final adminUrl = 'https://simeops-admin.vercel.app/report/$_reportId';
-    final uri = Uri.parse(adminUrl);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+    if (_selectedEstado == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ReportScreen(
+          searchId: _searchId,
+          cidades: _selectedCidades.isNotEmpty
+              ? _selectedCidades.toList()
+              : [_selectedEstado!],
+          estado: _selectedEstado!,
+          periodoDias: _periodoDias,
+          results: _results,
+        ),
+      ),
+    );
+    _checkForReport();
   }
 
   Future<void> _checkForReport() async {
