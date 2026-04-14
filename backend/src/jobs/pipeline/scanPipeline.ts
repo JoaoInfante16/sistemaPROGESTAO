@@ -183,7 +183,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   const locationPostFilter = parentState ? {
     estado: parentState.name,
     cidades: [location.name],
-    periodoDias: 7,
+    periodoDias: 2,
   } : undefined;
 
   const filter2Result = await runFilter2WithEmbedding(

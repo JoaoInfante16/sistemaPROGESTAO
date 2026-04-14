@@ -64,6 +64,25 @@ class NewsCard extends StatelessWidget {
                     Flexible(
                       child: _CrimeBadge(tipoCrime: news.tipoCrime),
                     ),
+                    if (news.natureza == 'estatistica') ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.blueGrey.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          'INDICADOR',
+                          style: TextStyle(
+                            color: Colors.blueGrey,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                     if (news.isUnread) ...[
                       const SizedBox(width: 6),
                       Container(
@@ -201,22 +220,12 @@ class _CrimeBadge extends StatelessWidget {
     'institucional': Colors.blueGrey,
   };
 
-  static const _labels = {
-    'roubo_furto': 'Roubo/Furto',
-    'vandalismo': 'Vandalismo',
-    'invasao': 'Invasão',
-    'homicidio': 'Homicídio',
-    'latrocinio': 'Latrocínio',
-    'lesao_corporal': 'Lesão Corporal',
-    'trafico': 'Tráfico',
-    'operacao_policial': 'Op. Policial',
-    'manifestacao': 'Manifestação',
-    'bloqueio_via': 'Bloqueio Via',
-    'estelionato': 'Estelionato',
-    'receptacao': 'Receptação',
-    'crime_ambiental': 'Crime Ambiental',
-    'trabalho_irregular': 'Trab. Irregular',
-    'outros': 'Outros',
+  static const _grupoLabels = {
+    'patrimonial': 'Patrimonial',
+    'seguranca': 'Seguranca',
+    'operacional': 'Operacional',
+    'fraude': 'Fraude',
+    'institucional': 'Institucional',
   };
 
   Color get _color {
@@ -227,7 +236,8 @@ class _CrimeBadge extends StatelessWidget {
 
   String get _label {
     final key = tipoCrime.toLowerCase().replaceAll(' ', '_');
-    return _labels[key] ?? tipoCrime;
+    final grupo = _categoriaGrupo[key] ?? 'institucional';
+    return _grupoLabels[grupo] ?? grupo;
   }
 
   @override

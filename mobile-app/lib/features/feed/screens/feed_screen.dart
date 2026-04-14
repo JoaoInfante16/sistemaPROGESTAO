@@ -137,6 +137,21 @@ class _FeedScreenState extends State<FeedScreen> {
     }
   }
 
+  Future<void> _markAllAsRead() async {
+    final api = context.read<ApiService>();
+    try {
+      await api.markAllAsRead();
+      setState(() {
+        for (final n in _news) {
+          n.isUnread = false;
+        }
+        _markedAllRead = true;
+      });
+    } catch (e) {
+      debugPrint('[Feed] Mark all read error: $e');
+    }
+  }
+
   Future<void> _markAsRead(int index) async {
     final item = _news[index];
     if (!item.isUnread) return;
@@ -201,38 +216,113 @@ class _FeedScreenState extends State<FeedScreen> {
       );
     }
 
-    return Column(
-      children: [
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: _refresh,
-            child: ListView.builder(
-              controller: _scrollCtrl,
-              itemCount: _news.length + (_hasMore ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index == _news.length) {
-                  return const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Center(child: CircularProgressIndicator()),
-                  );
-                }
+    final hasUnread = _news.any((n) => n.isUnread);
 
-                return NewsCard(
-                  news: _news[index],
-                  onTap: () {
-                    _markAsRead(index);
-                    NewsDetailSheet.show(context, _news[index]);
+    return Stack(
+      children: [
+        Column(
+          children: [
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _refresh,
+                child: ListView.builder(
+                  controller: _scrollCtrl,
+                  itemCount: _news.length + (_hasMore ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (index == _news.length) {
+                      return const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
+
+                    final item = _news[index];
+                    final showDateHeader = index == 0 ||
+                        _dateKey(item.dataOcorrencia) != _dateKey(_news[index - 1].dataOcorrencia);
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (showDateHeader)
+                          _DateHeader(date: item.dataOcorrencia),
+                        NewsCard(
+                          news: item,
+                          onTap: () {
+                            _markAsRead(index);
+                            NewsDetailSheet.show(context, item);
+                          },
+                          onMarkRead: () => _markAsRead(index),
+                          onToggleFavorite: () => _toggleFavorite(index),
+                        ),
+                      ],
+                    );
                   },
-                  onMarkRead: () => _markAsRead(index),
-                  onToggleFavorite: () => _toggleFavorite(index),
-                );
-              },
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (hasUnread && !_markedAllRead)
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: FloatingActionButton.small(
+              backgroundColor: const Color(0xFF1A8F9A),
+              onPressed: _markAllAsRead,
+              tooltip: 'Marcar todas como lidas',
+              child: const Icon(Icons.done_all, color: Colors.white, size: 20),
             ),
           ),
-        ),
       ],
     );
   }
 
+  String _dateKey(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }
 
+class _DateHeader extends StatelessWidget {
+  final DateTime date;
+  const _DateHeader({required this.date});
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final d = DateTime(date.year, date.month, date.day);
+    final diff = today.difference(d).inDays;
+
+    String label;
+    if (diff == 0) {
+      label = 'Hoje';
+    } else if (diff == 1) {
+      label = 'Ontem';
+    } else if (diff < 7) {
+      const weekdays = ['Segunda', 'Terca', 'Quarta', 'Quinta', 'Sexta', 'Sabado', 'Domingo'];
+      label = weekdays[date.weekday - 1];
+    } else {
+      label = '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+      child: Row(
+        children: [
+          Expanded(child: Divider(color: Colors.white.withValues(alpha: 0.08))),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF5A6A7A),
+                letterSpacing: 1.2,
+              ),
+            ),
+          ),
+          Expanded(child: Divider(color: Colors.white.withValues(alpha: 0.08))),
+        ],
+      ),
+    );
+  }
+}

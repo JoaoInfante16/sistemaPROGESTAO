@@ -17,6 +17,7 @@ class NewsSource {
 class NewsItem {
   final String id;
   final String tipoCrime;
+  final String natureza; // 'ocorrencia' ou 'estatistica'
   final String cidade;
   final String? bairro;
   final String? rua;
@@ -34,6 +35,7 @@ class NewsItem {
   NewsItem({
     required this.id,
     required this.tipoCrime,
+    this.natureza = 'ocorrencia',
     required this.cidade,
     this.bairro,
     this.rua,
@@ -53,6 +55,7 @@ class NewsItem {
     return NewsItem(
       id: json['id'] as String,
       tipoCrime: json['tipo_crime'] as String,
+      natureza: json['natureza'] as String? ?? 'ocorrencia',
       cidade: json['cidade'] as String,
       bairro: json['bairro'] as String?,
       rua: json['rua'] as String?,
@@ -96,6 +99,7 @@ class NewsItem {
     return NewsItem(
       id: json['id'] as String? ?? 'search-${json.hashCode}',
       tipoCrime: json['tipo_crime'] as String? ?? 'outros',
+      natureza: json['natureza'] as String? ?? 'ocorrencia',
       cidade: json['cidade'] as String? ?? '',
       bairro: json['bairro'] as String?,
       rua: json['rua'] as String?,

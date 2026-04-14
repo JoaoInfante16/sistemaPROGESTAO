@@ -53,27 +53,25 @@ function ensureFirebase(): boolean {
   }
 }
 
-const TIPO_CRIME_LABELS: Record<string, string> = {
-  roubo_furto: 'Roubo/Furto',
-  vandalismo: 'Vandalismo',
-  invasao: 'Invasão',
-  homicidio: 'Homicídio',
-  latrocinio: 'Latrocínio',
-  lesao_corporal: 'Lesão Corporal',
-  trafico: 'Tráfico',
-  operacao_policial: 'Operação Policial',
-  manifestacao: 'Manifestação',
-  bloqueio_via: 'Bloqueio de Via',
-  estelionato: 'Estelionato',
-  receptacao: 'Receptação',
-  crime_ambiental: 'Crime Ambiental',
-  trabalho_irregular: 'Trabalho Irregular',
-  estatistica: 'Estatística',
-  outros: 'Outros',
+const TIPO_TO_GRUPO: Record<string, string> = {
+  roubo_furto: 'patrimonial', vandalismo: 'patrimonial', invasao: 'patrimonial',
+  homicidio: 'seguranca', latrocinio: 'seguranca', lesao_corporal: 'seguranca',
+  trafico: 'operacional', operacao_policial: 'operacional', manifestacao: 'operacional', bloqueio_via: 'operacional',
+  estelionato: 'fraude', receptacao: 'fraude',
+  crime_ambiental: 'institucional', trabalho_irregular: 'institucional', estatistica: 'institucional', outros: 'institucional',
+};
+
+const GRUPO_LABELS: Record<string, string> = {
+  patrimonial: 'Patrimonial',
+  seguranca: 'Segurança',
+  operacional: 'Operacional',
+  fraude: 'Fraude',
+  institucional: 'Institucional',
 };
 
 function formatTipoCrime(tipo: string): string {
-  return TIPO_CRIME_LABELS[tipo] || tipo.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const grupo = TIPO_TO_GRUPO[tipo] || 'institucional';
+  return GRUPO_LABELS[grupo] || grupo;
 }
 
 interface PushNewsData {

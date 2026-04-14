@@ -46,12 +46,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  void _openCity(CityOverview city) {
-    Navigator.of(context).push(
+  void _openCity(CityOverview city) async {
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => CityDetailScreen(city: city),
       ),
     );
+    // Reload badges when returning from detail
+    _loadCities();
   }
 
   @override

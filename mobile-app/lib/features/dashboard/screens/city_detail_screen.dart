@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/city_overview.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/utils/type_helpers.dart';
@@ -681,6 +682,12 @@ class _CityDetailScreenState extends State<CityDetailScreen>
         children: estatisticas.take(5).map((e) {
           final resumo = e['resumo'] as String? ?? '';
           final data = e['data_ocorrencia'] as String? ?? '';
+          final sourceUrl = e['source_url'] as String?;
+          String? fonte;
+          if (sourceUrl != null && sourceUrl.isNotEmpty) {
+            try { fonte = Uri.parse(sourceUrl).host; } catch (_) { fonte = sourceUrl; }
+          }
+
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Column(
@@ -688,7 +695,25 @@ class _CityDetailScreenState extends State<CityDetailScreen>
               children: [
                 Text(resumo, style: GoogleFonts.exo2(fontSize: 13, color: SIMEopsColors.white)),
                 const SizedBox(height: 4),
-                Text(data, style: GoogleFonts.exo2(fontSize: 11, color: SIMEopsColors.muted.withValues(alpha: 0.5))),
+                Row(
+                  children: [
+                    Text(data, style: GoogleFonts.exo2(fontSize: 11, color: SIMEopsColors.muted.withValues(alpha: 0.5))),
+                    if (fonte != null) ...[
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: () => launchUrl(Uri.parse(sourceUrl!), mode: LaunchMode.externalApplication),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.open_in_new, size: 11, color: SIMEopsColors.teal.withValues(alpha: 0.7)),
+                            const SizedBox(width: 3),
+                            Text(fonte, style: GoogleFonts.exo2(fontSize: 11, color: SIMEopsColors.teal.withValues(alpha: 0.7))),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ],
             ),
           );

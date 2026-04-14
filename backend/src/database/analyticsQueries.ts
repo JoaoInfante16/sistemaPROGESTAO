@@ -55,7 +55,7 @@ export async function getCrimeSummary(
   let countConfianca = 0;
   let officialCount = 0;
   let mediaCount = 0;
-  const estatisticas: Array<{ resumo: string; data_ocorrencia: string; created_at: string }> = [];
+  const estatisticas: Array<{ resumo: string; data_ocorrencia: string; created_at: string; source_url: string | null }> = [];
 
   for (const row of rows) {
     const tipo = row.tipo_crime as string;
@@ -85,10 +85,12 @@ export async function getCrimeSummary(
 
     // Estatisticas
     if ((row.natureza as string) === 'estatistica') {
+      const firstSource = sources.length > 0 ? sources[0].url : null;
       estatisticas.push({
         resumo: row.resumo as string,
         data_ocorrencia: row.data_ocorrencia as string,
         created_at: row.created_at as string,
+        source_url: firstSource,
       });
     }
   }
