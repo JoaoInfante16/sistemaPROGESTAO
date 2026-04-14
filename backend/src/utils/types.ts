@@ -28,6 +28,7 @@ export interface NewsExtraction {
   natureza: Natureza;
   categoria_grupo: CategoriaGrupo;
   cidade: string;
+  estado?: string;
   bairro?: string;
   rua?: string;
   data_ocorrencia: string; // YYYY-MM-DD

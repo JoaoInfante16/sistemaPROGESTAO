@@ -52,6 +52,7 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
   const city = ((data.city ?? data.cidade) as string | undefined)?.trim() ?? '';
   const summary = ((data.summary ?? data.resumo) as string | undefined)?.trim() ?? '';
   const date = ((data.date ?? data.data_ocorrencia) as string | undefined)?.trim() ?? '';
+  const state = ((data.state ?? data.estado) as string | undefined)?.trim() ?? '';
   const neighborhood = (data.neighborhood ?? data.bairro) as string | undefined;
   const street = (data.street ?? data.rua) as string | undefined;
 
@@ -94,6 +95,7 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
       natureza,
       categoria_grupo: categoriaGrupo,
       cidade: city,
+      estado: state || undefined,
       bairro,
       rua,
       data_ocorrencia: date,
@@ -151,6 +153,7 @@ Return ONLY JSON:
   "crime_type": "one of 15 categories above",
   "nature": "occurrence" or "statistic",
   "city": "City Name",
+  "state": "Brazilian State Name (e.g. Santa Catarina, São Paulo)" or null,
   "neighborhood": "Neighborhood Name" or null,
   "street": "Street Name" or null,
   "date": "YYYY-MM-DD (publication date of the article, NOT dates mentioned in the text)",

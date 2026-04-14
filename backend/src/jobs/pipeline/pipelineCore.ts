@@ -211,14 +211,20 @@ export async function runFilter2WithEmbedding(
     // Post-filter: cidade/estado
     if (postFilter?.cidades && postFilter?.estado) {
       const cidadeExtraida = normalizeText(extracted.cidade);
-      const estadoLower = normalizeText(postFilter.estado);
+      const estadoExtraido = normalizeText(extracted.estado || '');
+      const estadoEsperado = normalizeText(postFilter.estado);
       const cidadesLower = postFilter.cidades.map(normalizeText);
-      const cidadeMatch = cidadesLower.some(c => cidadeExtraida.includes(c) || c.includes(cidadeExtraida));
-      const estadoNoResumo = normalizeText(extracted.resumo).includes(estadoLower);
 
-      if (!cidadeMatch && !estadoNoResumo) {
-        rejectedUrls.push({ url: fetched.url, stage: 'filter2_location', reason: `Local errado: ${extracted.cidade}` });
-        logger.info(`${logPrefix} filter2 cidade fora: ${extracted.cidade} (esperado: ${postFilter.cidades.join(', ')}, ${postFilter.estado}) → ${fetched.url.substring(0, 80)}`);
+      // Match exato de cidade, ou parcial se estado bater
+      const cidadeExata = cidadesLower.some(c => cidadeExtraida === c);
+      const cidadeParcial = cidadesLower.some(c => cidadeExtraida.includes(c) || c.includes(cidadeExtraida));
+      const estadoBate = estadoExtraido.length > 0 && estadoExtraido.includes(estadoEsperado);
+
+      const aceitar = cidadeExata || (cidadeParcial && estadoBate);
+
+      if (!aceitar) {
+        rejectedUrls.push({ url: fetched.url, stage: 'filter2_location', reason: `Local errado: ${extracted.cidade}/${extracted.estado || '?'} (esperado: ${postFilter.estado})` });
+        logger.info(`${logPrefix} filter2 cidade/estado fora: ${extracted.cidade}/${extracted.estado || '?'} (esperado: ${postFilter.cidades.join(', ')}, ${postFilter.estado}) → ${fetched.url.substring(0, 80)}`);
         continue;
       }
     }

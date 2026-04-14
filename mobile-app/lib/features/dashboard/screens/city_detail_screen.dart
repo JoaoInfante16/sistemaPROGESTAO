@@ -45,7 +45,6 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   // Relatorio data
   Map<String, dynamic>? _summary;
   List<dynamic>? _trend;
-  Map<String, dynamic>? _comparison;
   bool _loadingOverview = true;
   String _trendPeriod = '30d';
 
@@ -103,22 +102,13 @@ class _CityDetailScreenState extends State<CityDetailScreen>
       final api = context.read<ApiService>();
       final now = DateTime.now();
       final d30 = now.subtract(const Duration(days: 30));
-      final d60 = now.subtract(const Duration(days: 60));
 
-      final results = await Future.wait([
-        api.getCrimeSummary(_activeCidade, _dateStr(d30), _dateStr(now))
-            .catchError((_) => <String, dynamic>{}),
-        api.getCrimeComparison(
-          _activeCidade,
-          _dateStr(d60), _dateStr(d30),
-          _dateStr(d30), _dateStr(now),
-        ).catchError((_) => <String, dynamic>{}),
-      ]);
+      final summary = await api.getCrimeSummary(_activeCidade, _dateStr(d30), _dateStr(now))
+          .catchError((_) => <String, dynamic>{});
 
       if (mounted) {
         setState(() {
-          _summary = results[0];
-          _comparison = results[1];
+          _summary = summary;
           _loadingOverview = false;
         });
         _geocodeBairros();
@@ -335,7 +325,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
 
     final types = (_summary?['byCrimeType'] as List<dynamic>?) ?? [];
     final bairros = (_summary?['topBairros'] as List<dynamic>?) ?? [];
-    final sourceCounts = _summary?['sourceCounts'] as Map<String, dynamic>?;
+
     final estatisticas = (_summary?['estatisticas'] as List<dynamic>?) ?? [];
     final totalCrimes = safeInt(_summary?['totalCrimes']);
     final totalBairros = bairros.length;
@@ -350,7 +340,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
           children: [
             // Resumo numerico
             _sectionTitle('Resumo'),
-            _buildResumoCard(totalCrimes, totalBairros, totalTipos, estatisticas.length, sourceCounts),
+            _buildResumoCard(totalCrimes, totalBairros, totalTipos, estatisticas.length),
 
             // Donut chart por tipo (identico ao report_screen)
             if (types.isNotEmpty) ...[
@@ -391,12 +381,6 @@ class _CityDetailScreenState extends State<CityDetailScreen>
             _sectionTitle('Indicadores da Região'),
             _buildTrendWithFilters(),
 
-            // Comparativo
-            if (_comparison != null && _comparison!.isNotEmpty) ...[
-              _sectionTitle('Comparativo'),
-              _buildComparison(),
-            ],
-
             // Indicadores regionais (estatisticas da internet)
             if (estatisticas.isNotEmpty) ...[
               _sectionTitle('Estatísticas de Segurança'),
@@ -412,9 +396,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
 
   // ── Resumo numerico (identico ao report_screen) ──
 
-  Widget _buildResumoCard(int total, int bairros, int tipos, int indicadores, Map<String, dynamic>? sourceCounts) {
-    final official = safeInt(sourceCounts?['official']);
-    final media = safeInt(sourceCounts?['media']);
+  Widget _buildResumoCard(int total, int bairros, int tipos, int indicadores) {
     return _rCard(
       child: Row(
         children: [
@@ -427,10 +409,6 @@ class _CityDetailScreenState extends State<CityDetailScreen>
             _dividerV(),
             _statBox('$indicadores', 'Indicadores'),
           ],
-          _dividerV(),
-          _statBox('$official', 'Oficiais'),
-          _dividerV(),
-          _statBox('$media', 'Mídia'),
         ],
       ),
     );
@@ -689,57 +667,6 @@ class _CityDetailScreenState extends State<CityDetailScreen>
               height: 80,
               child: Center(child: Text('Sem dados de tendência', style: GoogleFonts.exo2(fontSize: 12, color: SIMEopsColors.muted))),
             ),
-        ],
-      ),
-    );
-  }
-
-  // ── Comparativo ──
-
-  Widget _buildComparison() {
-    final changes = (_comparison!['changes'] as List<dynamic>?) ?? [];
-    final delta = safeDoubleOrNull(_comparison!['overallDelta']);
-    if (changes.isEmpty && delta == null) return const SizedBox();
-
-    return _rCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text('vs. período anterior', style: GoogleFonts.exo2(fontSize: 14, fontWeight: FontWeight.w600, color: SIMEopsColors.white)),
-              if (delta != null) ...[
-                const Spacer(),
-                Text(
-                  '${delta > 0 ? '+' : ''}${delta.toStringAsFixed(0)}%',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16,
-                      color: delta > 0 ? Colors.red[300] : Colors.green[300]),
-                ),
-              ],
-            ],
-          ),
-          if (changes.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            ...changes.take(5).map((c) {
-              final tipo = c['tipo_crime'] as String? ?? '';
-              final change = safeDouble(c['changePercent']);
-              final label = crimeLabels[tipo] ?? tipo;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(label, style: GoogleFonts.exo2(fontSize: 12, color: SIMEopsColors.muted)),
-                    Text(
-                      '${change > 0 ? '+' : ''}${change.toStringAsFixed(0)}%',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                          color: change > 0 ? Colors.red[300] : Colors.green[300]),
-                    ),
-                  ],
-                ),
-              );
-            }),
-          ],
         ],
       ),
     );

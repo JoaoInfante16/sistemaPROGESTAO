@@ -64,14 +64,14 @@ class _GridPainter extends CustomPainter {
       ..color = const Color(0xFF1A8F9A).withValues(alpha: opacity)
       ..strokeWidth = 0.5;
 
-    // Direction changes smoothly over time using sin waves at different frequencies
-    // This creates a wandering motion that never resets
-    final dx = speed * time * (0.7 + 0.3 * sin(time * 0.05))
-        + 8 * sin(time * 0.13)
-        + 5 * sin(time * 0.31);
-    final dy = speed * time * (0.4 + 0.2 * sin(time * 0.07))
-        + 6 * sin(time * 0.17)
-        + 4 * sin(time * 0.23);
+    // Constant speed drift + subtle direction changes via sin waves
+    // Speed never changes, only the direction wanders smoothly
+    final dx = speed * time
+        + 12 * sin(time * 0.08)
+        + 7 * sin(time * 0.19);
+    final dy = speed * time * 0.6
+        + 10 * sin(time * 0.11)
+        + 6 * sin(time * 0.27);
 
     // Modulo spacing for seamless tiling
     final offsetX = dx % spacing;
