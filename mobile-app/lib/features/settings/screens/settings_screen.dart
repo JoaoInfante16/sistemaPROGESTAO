@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/api_service.dart';
 import '../../../core/services/push_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -25,8 +28,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _toggleNotifications(bool value) async {
+    final api = context.read<ApiService>();
     setState(() => _notificationsEnabled = value);
     await PushService.setNotificationsEnabled(value);
+
+    try {
+      if (value) {
+        final token = await FirebaseMessaging.instance.getToken();
+        if (token != null) {
+          final platform = Platform.isIOS ? 'ios' : 'android';
+          await api.registerDevice(token, platform);
+        }
+      } else {
+        await api.unregisterDevice();
+      }
+    } catch (e) {
+      debugPrint('[Settings] Toggle push registration error: $e');
+    }
   }
 
   @override

@@ -10,7 +10,6 @@ import { createScanWorker } from './jobs/workers/scanWorker';
 import { createManualSearchWorker } from './jobs/workers/manualSearchWorker';
 import { startScheduler, stopScheduler } from './jobs/scheduler/cronScheduler';
 import { startBillingScheduler, stopBillingScheduler } from './jobs/scheduler/billingScheduler';
-import { startNewsEventListener } from './services/notifications/newsEventListener';
 import { redis } from './config/redis';
 
 // ============================================
@@ -81,9 +80,6 @@ const server = app.listen(config.port, () => {
   manualSearchWorker = createManualSearchWorker();
   startScheduler();
   startBillingScheduler();
-  startNewsEventListener().catch((err) => {
-    logger.warn(`[Server] NewsEventListener failed to start: ${(err as Error).message}`);
-  });
 });
 
 // ============================================

@@ -739,6 +739,17 @@ export async function upsertDevice(
   }
 }
 
+export async function removeUserDevices(userId: string): Promise<void> {
+  const { error } = await supabase
+    .from('user_devices')
+    .delete()
+    .eq('user_id', userId);
+
+  if (error) {
+    throw new Error(`Failed to remove devices: ${error.message}`);
+  }
+}
+
 // Namespace export para usar como db.getLocation(), db.insertNews(), etc.
 // ============================================
 // User Feed (with read/favorite status)
@@ -1128,6 +1139,7 @@ export const db = {
   updateGroup,
   deleteGroup,
   getGroupMembers,
+  removeUserDevices,
 };
 
 // ============================================

@@ -358,6 +358,14 @@ class ApiService {
     _checkResponse(res);
   }
 
+  Future<void> unregisterDevice() async {
+    final res = await _client.delete(
+      Uri.parse('$_baseUrl/devices'),
+      headers: _headers,
+    ).timeout(_timeout);
+    _checkResponse(res);
+  }
+
   // ── Helpers ──
 
   void _checkResponse(http.Response res) {

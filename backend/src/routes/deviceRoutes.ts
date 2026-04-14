@@ -39,4 +39,22 @@ router.post(
   }
 );
 
+/**
+ * DELETE /devices
+ * Remove device token (user desativou notificações).
+ */
+router.delete(
+  '/devices',
+  requireAuth,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      await db.removeUserDevices(req.user?.id ?? '');
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('[Devices] Remove error:', error);
+      res.status(500).json({ error: 'Failed to remove device' });
+    }
+  }
+);
+
 export default router;

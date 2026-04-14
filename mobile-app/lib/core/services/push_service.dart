@@ -22,7 +22,7 @@ class PushService {
     return value != 'false';
   }
 
-  /// Habilita/desabilita notificações
+  /// Habilita/desabilita notificações (storage local)
   static Future<void> setNotificationsEnabled(bool enabled) async {
     await _storage.write(key: _notificationsKey, value: enabled ? 'true' : 'false');
   }

@@ -18,7 +18,6 @@ import { Separator } from '@/components/ui/separator';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/dashboard/news', label: 'Notícias', icon: Newspaper },
   { href: '/dashboard/locations', label: 'Monitoramentos', icon: MapPin },
   { href: '/dashboard/users', label: 'Usuários', icon: Users },
   { href: '/dashboard/billing', label: 'Billing', icon: Receipt },
