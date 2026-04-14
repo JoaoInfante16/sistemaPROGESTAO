@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../../../core/utils/type_helpers.dart';
 
 class MiniBarChart extends StatelessWidget {
   final List<Map<String, dynamic>> data; // [{tipo_crime, count, percentage}]
@@ -28,7 +29,7 @@ class MiniBarChart extends StatelessWidget {
 
     final maxCount = data.fold<int>(
       0,
-      (max, d) => (d['count'] as int) > max ? d['count'] as int : max,
+      (max, d) => safeInt(d['count']) > max ? safeInt(d['count']) : max,
     );
 
     return SizedBox(
@@ -86,7 +87,7 @@ class MiniBarChart extends StatelessWidget {
               x: i,
               barRods: [
                 BarChartRodData(
-                  toY: (d['count'] as int).toDouble(),
+                  toY: safeDouble(d['count']),
                   color: _getColor(d['tipo_crime'] as String),
                   width: 20,
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),

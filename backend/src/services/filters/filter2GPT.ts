@@ -22,9 +22,8 @@ const VALID_TIPOS: Set<string> = new Set(Object.keys(TIPO_CRIME_GRUPO));
 
 // Aliases: tipos que o GPT retorna mas não estão nas 15 categorias
 const TIPO_ALIAS: Record<string, string> = {
-  'estatistica': 'outros',
-  'statistic': 'outros',
-  'statistics': 'outros',
+  'statistic': 'estatistica',
+  'statistics': 'estatistica',
   'tortura': 'lesao_corporal',
   'torture': 'lesao_corporal',
   'sequestro': 'outros',

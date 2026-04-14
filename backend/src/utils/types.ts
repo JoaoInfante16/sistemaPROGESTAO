@@ -8,7 +8,7 @@ export type TipoCrime =
   | 'homicidio' | 'latrocinio' | 'lesao_corporal'      // seguranca
   | 'trafico' | 'operacao_policial' | 'manifestacao' | 'bloqueio_via' // operacional
   | 'estelionato' | 'receptacao'                        // fraude
-  | 'crime_ambiental' | 'trabalho_irregular' | 'outros'; // institucional
+  | 'crime_ambiental' | 'trabalho_irregular' | 'estatistica' | 'outros'; // institucional
 
 export type CategoriaGrupo = 'patrimonial' | 'seguranca' | 'operacional' | 'fraude' | 'institucional';
 export type Natureza = 'ocorrencia' | 'estatistica';
@@ -19,7 +19,7 @@ export const TIPO_CRIME_GRUPO: Record<TipoCrime, CategoriaGrupo> = {
   homicidio: 'seguranca', latrocinio: 'seguranca', lesao_corporal: 'seguranca',
   trafico: 'operacional', operacao_policial: 'operacional', manifestacao: 'operacional', bloqueio_via: 'operacional',
   estelionato: 'fraude', receptacao: 'fraude',
-  crime_ambiental: 'institucional', trabalho_irregular: 'institucional', outros: 'institucional',
+  crime_ambiental: 'institucional', trabalho_irregular: 'institucional', estatistica: 'institucional', outros: 'institucional',
 };
 
 export interface NewsExtraction {

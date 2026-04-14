@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../../../core/utils/type_helpers.dart';
 
 class MiniTrendChart extends StatelessWidget {
   final List<Map<String, dynamic>> data; // [{date, count}]
@@ -15,7 +16,7 @@ class MiniTrendChart extends StatelessWidget {
     }
 
     final spots = data.asMap().entries.map((e) {
-      return FlSpot(e.key.toDouble(), (e.value['count'] as int).toDouble());
+      return FlSpot(e.key.toDouble(), safeDouble(e.value['count']));
     }).toList();
 
     final maxY = spots.fold<double>(0, (max, s) => s.y > max ? s.y : max);

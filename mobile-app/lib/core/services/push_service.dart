@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../../main.dart';
 import 'api_service.dart';
 
 class PushService {
@@ -94,10 +95,23 @@ class PushService {
   }
 
   void _handleNotificationTap(RemoteMessage message) {
-    // Por enquanto, apenas abre o app normalmente.
-    // O app já navega pro feed/busca conforme o estado do auth.
-    // Futuramente: checar message.data['type'] pra navegar direto
-    // pro resultado da busca manual.
+    final cidade = message.data['cidade'] as String?;
+    if (cidade != null && cidade.isNotEmpty) {
+      // Import lazily to avoid circular deps
+      _navigateToCity(cidade);
+    }
+  }
+
+  void _navigateToCity(String cidade) {
+    // Uses global navigatorKey from main.dart
+    try {
+      final nav = navigatorKey.currentState;
+      if (nav == null) return;
+      // Lazy import via route — push CityDetailScreen
+      nav.pushNamed('/city', arguments: cidade);
+    } catch (e) {
+      debugPrint('[Push] Navigate to city error: $e');
+    }
   }
 
   void _showLocalNotification(RemoteMessage message) async {

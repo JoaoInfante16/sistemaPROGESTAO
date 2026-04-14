@@ -68,6 +68,7 @@ const TIPO_CRIME_LABELS: Record<string, string> = {
   receptacao: 'Receptação',
   crime_ambiental: 'Crime Ambiental',
   trabalho_irregular: 'Trabalho Irregular',
+  estatistica: 'Estatística',
   outros: 'Outros',
 };
 

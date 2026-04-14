@@ -213,6 +213,15 @@ export interface BillingRecord {
   closed_at: string;
 }
 
+export interface CityGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  active: boolean;
+  created_at: string;
+  cities: { id: string; name: string }[];
+}
+
 // ============================================
 // API Client - paths match backend routes exactly
 // ============================================
@@ -428,4 +437,25 @@ export const api = {
 
   closeBillingMonth: (token: string) =>
     apiFetch<{ success: boolean }>('/billing/close', { method: 'POST', token }),
+
+  // Groups
+  getGroups: (token: string) =>
+    apiFetch<CityGroup[]>('/groups', { token }),
+
+  createGroup: (token: string, data: { name: string; description?: string; locationIds: string[] }) =>
+    apiFetch<{ id: string; success: boolean }>('/groups', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      token,
+    }),
+
+  updateGroup: (token: string, id: string, data: { name?: string; description?: string; active?: boolean; locationIds?: string[] }) =>
+    apiFetch<{ success: boolean }>(`/groups/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+      token,
+    }),
+
+  deleteGroup: (token: string, id: string) =>
+    apiFetch<{ success: boolean }>(`/groups/${id}`, { method: 'DELETE', token }),
 };

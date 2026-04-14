@@ -27,13 +27,9 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   String? _selectedEstado;
   Set<String> _selectedCidades = {};
   int _periodoDias = 30;
-  double _profundidade = 1.0; // 0.5, 1.0, 1.5, 2.0
   bool _useKeyword = false;
   final _keywordCtrl = TextEditingController();
   bool _loadingLocations = true;
-
-  static const _profLabels = ['Rapido\n50%', 'Normal\n100%', 'Avancado\n150%', 'Maximo\n200%'];
-  static const _profValues = [0.5, 1.0, 1.5, 2.0];
 
   // Search state
   String? _searchId;
@@ -52,7 +48,6 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   static const _maxConsecutiveErrors = 5;
 
   static const _periodos = {
-    7: 'Ultimos 7 dias',
     30: 'Ultimos 30 dias',
     60: 'Ultimos 60 dias',
     90: 'Ultimos 90 dias',
@@ -172,7 +167,6 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         tipoCrime: (_useKeyword && _keywordCtrl.text.trim().length >= 2)
             ? _keywordCtrl.text.trim()
             : null,
-        profundidade: _profundidade,
       );
 
       setState(() => _searchId = searchId);
@@ -428,46 +422,6 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         ),
         const SizedBox(height: 18),
 
-        // PROFUNDIDADE — slider com 4 snaps
-        _sectionLabel('PROFUNDIDADE DA BUSCA'),
-        SliderTheme(
-          data: SliderThemeData(
-            activeTrackColor: SIMEopsColors.teal,
-            inactiveTrackColor: SIMEopsColors.teal.withValues(alpha: 0.15),
-            thumbColor: SIMEopsColors.tealLight,
-            overlayColor: SIMEopsColors.teal.withValues(alpha: 0.1),
-            trackHeight: 4,
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-          ),
-          child: Slider(
-            value: _profValues.indexOf(_profundidade).toDouble(),
-            min: 0,
-            max: 3,
-            divisions: 3,
-            onChanged: (v) => setState(() => _profundidade = _profValues[v.round()]),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(4, (i) {
-              final selected = _profundidade == _profValues[i];
-              return Text(
-                _profLabels[i],
-                textAlign: TextAlign.center,
-                style: GoogleFonts.exo2(
-                  fontSize: 10,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                  color: selected
-                      ? SIMEopsColors.tealLight
-                      : SIMEopsColors.muted.withValues(alpha: 0.5),
-                ),
-              );
-            }),
-          ),
-        ),
-        const SizedBox(height: 20),
 
         // OPCIONAL — divider
         Row(

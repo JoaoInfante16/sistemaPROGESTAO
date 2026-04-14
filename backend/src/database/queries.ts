@@ -1122,4 +1122,136 @@ export const db = {
   cleanupOldRejectedUrls,
   clearRejectedUrls,
   getBillingHistory,
+  // Groups
+  getGroups,
+  createGroup,
+  updateGroup,
+  deleteGroup,
+  getGroupMembers,
 };
+
+// ============================================
+// City Groups
+// ============================================
+
+export interface CityGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  active: boolean;
+  created_at: string;
+  cities: { id: string; name: string }[];
+}
+
+export async function getGroups(): Promise<CityGroup[]> {
+  const { data: groups, error } = await supabase
+    .from('city_groups')
+    .select('*')
+    .order('name');
+
+  if (error) {
+    logger.error('[Groups] Failed to fetch:', error.message);
+    return [];
+  }
+
+  const { data: members } = await supabase
+    .from('city_group_members')
+    .select('group_id, location_id, monitored_locations(id, name)')
+    .order('created_at');
+
+  const membersByGroup = new Map<string, { id: string; name: string }[]>();
+  for (const m of members || []) {
+    const loc = m.monitored_locations as unknown as { id: string; name: string } | null;
+    if (!loc) continue;
+    const list = membersByGroup.get(m.group_id) || [];
+    list.push({ id: loc.id, name: loc.name });
+    membersByGroup.set(m.group_id, list);
+  }
+
+  return (groups || []).map((g) => ({
+    ...g,
+    cities: membersByGroup.get(g.id) || [],
+  }));
+}
+
+export async function getGroupMembers(groupId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('city_group_members')
+    .select('location_id')
+    .eq('group_id', groupId);
+
+  if (error) return [];
+  return (data || []).map((m) => m.location_id);
+}
+
+export async function createGroup(
+  name: string,
+  description: string | null,
+  locationIds: string[]
+): Promise<string> {
+  const { data, error } = await supabase
+    .from('city_groups')
+    .insert({ name, description })
+    .select('id')
+    .single();
+
+  if (error) throw new Error(`Failed to create group: ${error.message}`);
+
+  if (locationIds.length > 0) {
+    const members = locationIds.map((lid) => ({
+      group_id: data.id,
+      location_id: lid,
+    }));
+    const { error: memberError } = await supabase
+      .from('city_group_members')
+      .insert(members);
+    if (memberError) {
+      logger.error('[Groups] Failed to add members:', memberError.message);
+    }
+  }
+
+  return data.id;
+}
+
+export async function updateGroup(
+  id: string,
+  updates: { name?: string; description?: string; active?: boolean; locationIds?: string[] }
+): Promise<void> {
+  const { locationIds, ...fields } = updates;
+
+  if (Object.keys(fields).length > 0) {
+    const { error } = await supabase
+      .from('city_groups')
+      .update(fields)
+      .eq('id', id);
+    if (error) throw new Error(`Failed to update group: ${error.message}`);
+  }
+
+  // Toggle group active → cascade to member cities
+  if (updates.active !== undefined) {
+    const memberIds = await getGroupMembers(id);
+    if (memberIds.length > 0) {
+      await supabase
+        .from('monitored_locations')
+        .update({ active: updates.active })
+        .in('id', memberIds);
+    }
+  }
+
+  if (locationIds !== undefined) {
+    // Replace all members
+    await supabase.from('city_group_members').delete().eq('group_id', id);
+    if (locationIds.length > 0) {
+      const members = locationIds.map((lid) => ({
+        group_id: id,
+        location_id: lid,
+      }));
+      await supabase.from('city_group_members').insert(members);
+    }
+  }
+}
+
+export async function deleteGroup(id: string): Promise<void> {
+  const { error } = await supabase.from('city_groups').delete().eq('id', id);
+  if (error) throw new Error(`Failed to delete group: ${error.message}`);
+}

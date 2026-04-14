@@ -11,6 +11,8 @@ import 'core/services/auth_service.dart';
 import 'core/services/api_service.dart';
 import 'core/services/local_db_service.dart';
 import 'core/services/push_service.dart';
+import 'core/models/city_overview.dart';
+import 'features/dashboard/screens/city_detail_screen.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/change_password_screen.dart';
 import 'features/feed/screens/main_screen.dart';
@@ -166,6 +168,15 @@ class SIMEopsApp extends StatelessWidget {
         theme: _buildTheme(Brightness.light),
         darkTheme: _buildTheme(Brightness.dark),
         home: const AuthGate(),
+        onGenerateRoute: (settings) {
+          if (settings.name == '/city') {
+            final cidade = settings.arguments as String;
+            return MaterialPageRoute(
+              builder: (_) => _CityRouteWrapper(cidade: cidade),
+            );
+          }
+          return null;
+        },
       ),
     );
   }
@@ -303,5 +314,28 @@ class _AuthGateState extends State<AuthGate> {
     _mustChangePassword = false;
     _checkingProfile = false;
     return const LoginScreen();
+  }
+}
+
+/// Wrapper para navegar pra CityDetailScreen a partir de push notification.
+/// Cria um CityOverview minimo com o nome da cidade.
+class _CityRouteWrapper extends StatelessWidget {
+  final String cidade;
+  const _CityRouteWrapper({required this.cidade});
+
+  @override
+  Widget build(BuildContext context) {
+    return CityDetailScreen(
+      city: CityOverview(
+        id: '',
+        name: cidade,
+        type: 'city',
+        totalCrimes30d: 0,
+        totalCrimes: 0,
+        trendPercent: 0,
+        topCrimePercent: 0,
+        unreadCount: 0,
+      ),
+    );
   }
 }

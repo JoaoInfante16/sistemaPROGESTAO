@@ -20,6 +20,7 @@ import {
   getNewsSources,
   createReport,
   getReport,
+  getCitiesOverview,
 } from '../database/analyticsQueries';
 import { logger } from '../middleware/logger';
 
@@ -290,6 +291,25 @@ router.get(
     } catch (error) {
       logger.error('[Analytics] Public report error:', error);
       res.status(500).json({ error: 'Failed to fetch report' });
+    }
+  }
+);
+
+// ============================================
+// Cities Overview (Dashboard)
+// ============================================
+
+router.get(
+  '/analytics/cities-overview',
+  requireAuth,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.id;
+      const items = await getCitiesOverview(userId);
+      res.json({ items });
+    } catch (error) {
+      logger.error('[Analytics] Cities overview error:', error);
+      res.status(500).json({ error: 'Failed to fetch cities overview' });
     }
   }
 );

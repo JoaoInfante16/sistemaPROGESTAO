@@ -22,7 +22,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { useAuth } from '@/lib/hooks/use-auth';
 import { api, type StateWithCities } from '@/lib/api';
-import { Database, Loader2 } from 'lucide-react';
+import { Database, Loader2, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface IBGEEstado {
@@ -49,6 +49,8 @@ export function IBGEImportDialog({ existingLocations, onImportComplete }: IBGEIm
   const [mode, setMode] = useState<'any' | 'keywords'>('any');
   const [frequency, setFrequency] = useState('60');
   const [importing, setImporting] = useState(false);
+  const [createGroup, setCreateGroup] = useState(false);
+  const [groupName, setGroupName] = useState('');
 
   // Load IBGE JSON when dialog opens
   useEffect(() => {
@@ -127,6 +129,10 @@ export function IBGEImportDialog({ existingLocations, onImportComplete }: IBGEIm
 
   const handleImport = async () => {
     if (selectedCities.size === 0 || !selectedEstado) return;
+    if (createGroup && !groupName.trim()) {
+      toast.error('Digite o nome do grupo');
+      return;
+    }
     setImporting(true);
     try {
       const token = await getToken();
@@ -136,13 +142,42 @@ export function IBGEImportDialog({ existingLocations, onImportComplete }: IBGEIm
         mode,
         scan_frequency_minutes: parseInt(frequency) || 60,
       });
-      toast.success(
-        `Importado: ${result.imported} cidades. ${result.skipped > 0 ? `${result.skipped} ja existiam.` : ''}`
-      );
+
+      // Create group if requested
+      if (createGroup && groupName.trim()) {
+        // Get the location IDs of the imported cities
+        const locations = await api.getLocations(token);
+        const state = locations.find((s) => s.name.toLowerCase() === selectedEstado.toLowerCase());
+        const importedCityNames = new Set(Array.from(selectedCities).map((c) => c.toLowerCase()));
+        const cityIds = (state?.cities || [])
+          .filter((c) => importedCityNames.has(c.name.toLowerCase()))
+          .map((c) => c.id);
+
+        if (cityIds.length > 0) {
+          await api.createGroup(token, {
+            name: groupName.trim(),
+            locationIds: cityIds,
+          });
+          toast.success(
+            `Importado: ${result.imported} cidades + grupo "${groupName.trim()}" criado.`
+          );
+        } else {
+          toast.success(
+            `Importado: ${result.imported} cidades. Grupo nao criado (cidades nao encontradas).`
+          );
+        }
+      } else {
+        toast.success(
+          `Importado: ${result.imported} cidades. ${result.skipped > 0 ? `${result.skipped} ja existiam.` : ''}`
+        );
+      }
+
       setOpen(false);
       setSelectedEstado('');
       setSelectedCities(new Set());
       setSearchFilter('');
+      setCreateGroup(false);
+      setGroupName('');
       onImportComplete();
     } catch (err) {
       toast.error((err as Error).message || 'Erro ao importar');
@@ -286,6 +321,27 @@ export function IBGEImportDialog({ existingLocations, onImportComplete }: IBGEIm
                     </Select>
                   </div>
                 </div>
+
+                {/* Group option (shows when 2+ cities selected) */}
+                {selectedCities.size >= 2 && (
+                  <div className="space-y-2 border rounded-md p-3 bg-muted/30">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={createGroup}
+                        onCheckedChange={(v) => setCreateGroup(!!v)}
+                      />
+                      <Layers className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Criar grupo de cidades</span>
+                    </label>
+                    {createGroup && (
+                      <Input
+                        placeholder={`Ex: Grande ${selectedEstado.split(' ')[0] || ''}`}
+                        value={groupName}
+                        onChange={(e) => setGroupName(e.target.value)}
+                      />
+                    )}
+                  </div>
+                )}
 
                 {/* Import button */}
                 <Button

@@ -1,3 +1,5 @@
+import '../utils/type_helpers.dart';
+
 class NewsSource {
   final String url;
   final String? sourceName;
@@ -57,7 +59,7 @@ class NewsItem {
       dataOcorrencia: DateTime.parse(json['data_ocorrencia'] as String),
       resumo: json['resumo'] as String,
       resumoAgregado: json['resumo_agregado'] as String?,
-      confianca: (json['confianca'] as num?)?.toDouble(),
+      confianca: safeDoubleOrNull(json['confianca']),
       createdAt: DateTime.parse(json['created_at'] as String),
       sources: (json['news_sources'] as List<dynamic>?)
               ?.map((s) => NewsSource.fromJson(s as Map<String, dynamic>))
@@ -99,7 +101,7 @@ class NewsItem {
       rua: json['rua'] as String?,
       dataOcorrencia: DateTime.tryParse(json['data_ocorrencia'] as String? ?? '') ?? DateTime.now(),
       resumo: json['resumo'] as String? ?? '',
-      confianca: (json['confianca'] as num?)?.toDouble(),
+      confianca: safeDoubleOrNull(json['confianca']),
       createdAt: DateTime.now(),
       sources: sources,
       isUnread: false,

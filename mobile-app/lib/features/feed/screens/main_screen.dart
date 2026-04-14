@@ -3,8 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/api_service.dart';
 import '../../../main.dart';
-import 'feed_screen.dart';
-import 'favorites_screen.dart';
+import '../../dashboard/screens/dashboard_screen.dart';
 import '../../search/screens/search_screen.dart';
 import '../../settings/screens/settings_screen.dart';
 
@@ -18,11 +17,9 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
   int _unreadCount = 0;
-  final _favoritesKey = GlobalKey<FavoritesScreenState>();
 
   late final List<Widget> _tabs = [
-    const FeedScreen(),
-    FavoritesScreen(key: _favoritesKey),
+    const DashboardScreen(),
     const SearchScreen(),
     const SettingsScreen(),
   ];
@@ -70,26 +67,20 @@ class _MainScreenState extends State<MainScreen> {
         onDestinationSelected: (index) {
           setState(() => _currentIndex = index);
           if (index == 0) _loadUnreadCount();
-          if (index == 1) _favoritesKey.currentState?.reload();
         },
         destinations: [
           NavigationDestination(
             icon: Badge(
               isLabelVisible: _unreadCount > 0,
               label: Text('$_unreadCount'),
-              child: const Icon(Icons.newspaper_outlined),
+              child: const Icon(Icons.dashboard_outlined),
             ),
             selectedIcon: Badge(
               isLabelVisible: _unreadCount > 0,
               label: Text('$_unreadCount'),
-              child: const Icon(Icons.newspaper),
+              child: const Icon(Icons.dashboard),
             ),
-            label: 'Feed',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.bookmark_outline),
-            selectedIcon: Icon(Icons.bookmark),
-            label: 'Salvos',
+            label: 'Dashboard',
           ),
           const NavigationDestination(
             icon: Icon(Icons.search_outlined),

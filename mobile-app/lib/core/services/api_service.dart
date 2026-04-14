@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/env.dart';
 import '../models/news_item.dart';
+import '../utils/type_helpers.dart';
 
 class ApiService {
   final String _baseUrl = Env.apiUrl;
@@ -141,7 +142,7 @@ class ApiService {
     ).timeout(_timeout);
     _checkResponse(res);
     final body = jsonDecode(res.body) as Map<String, dynamic>;
-    return body['count'] as int? ?? 0;
+    return safeInt(body['count']);
   }
 
   // ── Auth ──
@@ -190,13 +191,11 @@ class ApiService {
     required List<String> cidades,
     int periodoDias = 30,
     String? tipoCrime,
-    double profundidade = 1.0,
   }) async {
     final bodyMap = <String, dynamic>{
       'estado': estado,
       'cidades': cidades,
       'periodo_dias': periodoDias,
-      'profundidade': profundidade,
     };
     if (tipoCrime != null) bodyMap['tipo_crime'] = tipoCrime;
 
@@ -288,6 +287,59 @@ class ApiService {
       Uri.parse('$_baseUrl/analytics/search-report/$searchId'),
       headers: _headers,
     ).timeout(_timeout);
+    _checkResponse(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  // ── Cities Overview (Dashboard) ──
+
+  Future<List<Map<String, dynamic>>> getCitiesOverview() async {
+    final res = await _client.get(
+      Uri.parse('$_baseUrl/analytics/cities-overview'),
+      headers: _headers,
+    ).timeout(_timeout);
+    _checkResponse(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return (body['items'] as List<dynamic>).cast<Map<String, dynamic>>();
+  }
+
+  Future<Map<String, dynamic>> getCrimeSummary(
+    String cidade, String dateFrom, String dateTo,
+  ) async {
+    final params = {'cidade': cidade, 'dateFrom': dateFrom, 'dateTo': dateTo};
+    final uri = Uri.parse('$_baseUrl/analytics/crime-summary')
+        .replace(queryParameters: params);
+    final res = await _client.get(uri, headers: _headers).timeout(_timeout);
+    _checkResponse(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getCrimeTrend(
+    String cidade, String dateFrom, String dateTo, {String groupBy = 'week'}
+  ) async {
+    final params = {
+      'cidade': cidade, 'dateFrom': dateFrom, 'dateTo': dateTo, 'groupBy': groupBy,
+    };
+    final uri = Uri.parse('$_baseUrl/analytics/crime-trend')
+        .replace(queryParameters: params);
+    final res = await _client.get(uri, headers: _headers).timeout(_timeout);
+    _checkResponse(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getCrimeComparison(
+    String cidade,
+    String period1Start, String period1End,
+    String period2Start, String period2End,
+  ) async {
+    final params = {
+      'cidade': cidade,
+      'period1Start': period1Start, 'period1End': period1End,
+      'period2Start': period2Start, 'period2End': period2End,
+    };
+    final uri = Uri.parse('$_baseUrl/analytics/crime-comparison')
+        .replace(queryParameters: params);
+    final res = await _client.get(uri, headers: _headers).timeout(_timeout);
     _checkResponse(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }

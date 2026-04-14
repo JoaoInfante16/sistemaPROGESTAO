@@ -14,9 +14,21 @@ import { logger } from '../middleware/logger';
 interface CrimeSummaryResult {
   totalCrimes: number;
   byCrimeType: Array<{ tipo_crime: string; count: number; percentage: number }>;
+  byCategory: Array<{ category: string; count: number; percentage: number }>;
   topBairros: Array<{ bairro: string; count: number }>;
   avgConfianca: number;
+  sourceCounts: { official: number; media: number };
+  estatisticas: Array<{ resumo: string; data_ocorrencia: string; created_at: string }>;
 }
+
+// Mapa tipo → categoria (duplicado de types.ts pra evitar import circular)
+const TIPO_CATEGORIA: Record<string, string> = {
+  roubo_furto: 'patrimonial', vandalismo: 'patrimonial', invasao: 'patrimonial',
+  homicidio: 'seguranca', latrocinio: 'seguranca', lesao_corporal: 'seguranca',
+  trafico: 'operacional', operacao_policial: 'operacional', manifestacao: 'operacional', bloqueio_via: 'operacional',
+  estelionato: 'fraude', receptacao: 'fraude',
+  crime_ambiental: 'institucional', trabalho_irregular: 'institucional', estatistica: 'institucional', outros: 'institucional',
+};
 
 export async function getCrimeSummary(
   cidade: string,
@@ -25,7 +37,7 @@ export async function getCrimeSummary(
 ): Promise<CrimeSummaryResult> {
   const { data, error } = await supabase
     .from('news')
-    .select('tipo_crime, bairro, confianca')
+    .select('tipo_crime, bairro, confianca, natureza, resumo, data_ocorrencia, created_at, news_sources(url)')
     .eq('cidade', cidade)
     .eq('active', true)
     .gte('data_ocorrencia', dateFrom)
@@ -36,15 +48,21 @@ export async function getCrimeSummary(
   const rows = data || [];
   const totalCrimes = rows.length;
 
-  // Group by tipo_crime
   const typeMap = new Map<string, number>();
+  const categoryMap = new Map<string, number>();
   const bairroMap = new Map<string, number>();
   let sumConfianca = 0;
   let countConfianca = 0;
+  let officialCount = 0;
+  let mediaCount = 0;
+  const estatisticas: Array<{ resumo: string; data_ocorrencia: string; created_at: string }> = [];
 
   for (const row of rows) {
     const tipo = row.tipo_crime as string;
     typeMap.set(tipo, (typeMap.get(tipo) || 0) + 1);
+
+    const cat = TIPO_CATEGORIA[tipo] || 'institucional';
+    categoryMap.set(cat, (categoryMap.get(cat) || 0) + 1);
 
     const bairro = row.bairro as string | null;
     if (bairro) {
@@ -56,11 +74,36 @@ export async function getCrimeSummary(
       sumConfianca += conf;
       countConfianca++;
     }
+
+    // Fontes
+    const sources = (row.news_sources as Array<{ url: string }>) || [];
+    if (sources.some((s) => isOfficialSource(s.url))) {
+      officialCount++;
+    } else {
+      mediaCount++;
+    }
+
+    // Estatisticas
+    if ((row.natureza as string) === 'estatistica') {
+      estatisticas.push({
+        resumo: row.resumo as string,
+        data_ocorrencia: row.data_ocorrencia as string,
+        created_at: row.created_at as string,
+      });
+    }
   }
 
   const byCrimeType = Array.from(typeMap.entries())
     .map(([tipo_crime, count]) => ({
       tipo_crime,
+      count,
+      percentage: totalCrimes > 0 ? Math.round((count / totalCrimes) * 1000) / 10 : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  const byCategory = Array.from(categoryMap.entries())
+    .map(([category, count]) => ({
+      category,
       count,
       percentage: totalCrimes > 0 ? Math.round((count / totalCrimes) * 1000) / 10 : 0,
     }))
@@ -74,10 +117,13 @@ export async function getCrimeSummary(
   return {
     totalCrimes,
     byCrimeType,
+    byCategory,
     topBairros,
     avgConfianca: countConfianca > 0
       ? Math.round((sumConfianca / countConfianca) * 100) / 100
       : 0,
+    sourceCounts: { official: officialCount, media: mediaCount },
+    estatisticas: estatisticas.slice(0, 10),
   };
 }
 
@@ -502,4 +548,240 @@ export async function getReport(reportId: string): Promise<{
     created_at: string;
     expires_at: string;
   };
+}
+
+// ============================================
+// Cities Overview (Dashboard)
+// ============================================
+
+export interface CityOverviewItem {
+  id: string;
+  name: string;
+  type: 'city' | 'group';
+  parentState: string | null;
+  cityCount?: number;
+  cityNames?: string[];
+  totalCrimes: number;
+  totalCrimes30d: number;
+  trendPercent: number;
+  topCrimeType: string | null;
+  topCrimePercent: number;
+  unreadCount: number;
+  lastNewsAt: string | null;
+}
+
+export async function getCitiesOverview(userId?: string): Promise<CityOverviewItem[]> {
+  const now = new Date();
+  const d30ago = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  // 1. Get all active monitored cities with parent state
+  const { data: locations } = await supabase
+    .from('monitored_locations')
+    .select('id, name, parent_id, type')
+    .eq('active', true)
+    .eq('type', 'city');
+
+  if (!locations || locations.length === 0) return [];
+
+  // Get state names for parent_id mapping
+  const { data: states } = await supabase
+    .from('monitored_locations')
+    .select('id, name')
+    .eq('type', 'state');
+
+  const stateMap = new Map<string, string>();
+  for (const s of states || []) stateMap.set(s.id, s.name);
+
+  const cityNames = locations.map((l) => l.name);
+
+  // 2. Count ALL news per city (total acumulado)
+  const { data: newsAll } = await supabase
+    .from('news')
+    .select('cidade, tipo_crime, created_at')
+    .eq('active', true)
+    .in('cidade', cityNames);
+
+  // 3. Count news per city (last 30 days, for recent stats)
+  const { data: news30d } = await supabase
+    .from('news')
+    .select('cidade')
+    .eq('active', true)
+    .gte('data_ocorrencia', d30ago)
+    .in('cidade', cityNames);
+
+  // 4. Unread count per city (user-specific)
+  let readIds = new Set<string>();
+  if (userId) {
+    const { data: readItems } = await supabase
+      .from('user_news_read')
+      .select('news_id')
+      .eq('user_id', userId);
+    readIds = new Set((readItems || []).map((r: { news_id: string }) => r.news_id));
+  }
+
+  // 5. Get all news IDs from last 30d for unread calculation
+  const { data: recentNewsIds } = await supabase
+    .from('news')
+    .select('id, cidade')
+    .eq('active', true)
+    .gte('data_ocorrencia', d30ago)
+    .in('cidade', cityNames);
+
+  // Aggregate per city
+  const cityStats = new Map<string, {
+    countTotal: number;
+    count30d: number;
+    crimeTypes: Map<string, number>;
+    unread: number;
+    lastNewsAt: string | null;
+  }>();
+
+  // Initialize
+  for (const loc of locations) {
+    cityStats.set(loc.name, {
+      countTotal: 0,
+      count30d: 0,
+      crimeTypes: new Map(),
+      unread: 0,
+      lastNewsAt: null,
+    });
+  }
+
+  // Count ALL news + crime types + last news (total acumulado)
+  for (const n of newsAll || []) {
+    const s = cityStats.get(n.cidade);
+    if (!s) continue;
+    s.countTotal++;
+    s.crimeTypes.set(n.tipo_crime, (s.crimeTypes.get(n.tipo_crime) || 0) + 1);
+    if (!s.lastNewsAt || n.created_at > s.lastNewsAt) {
+      s.lastNewsAt = n.created_at;
+    }
+  }
+
+  // Count last 30d (for recent reference)
+  for (const n of news30d || []) {
+    const s = cityStats.get(n.cidade);
+    if (s) s.count30d++;
+  }
+
+  // Count unread
+  for (const n of recentNewsIds || []) {
+    const s = cityStats.get(n.cidade);
+    if (s && !readIds.has(n.id)) s.unread++;
+  }
+
+  // Build city items
+  const items: CityOverviewItem[] = locations.map((loc) => {
+    const s = cityStats.get(loc.name)!;
+    const trend = 0; // trend removed — will be in overview detail
+
+    let topCrime: string | null = null;
+    let topCrimeCount = 0;
+    for (const [type, count] of s.crimeTypes) {
+      if (count > topCrimeCount) {
+        topCrime = type;
+        topCrimeCount = count;
+      }
+    }
+
+    return {
+      id: loc.id,
+      name: loc.name,
+      type: 'city' as const,
+      parentState: stateMap.get(loc.parent_id) || null,
+      totalCrimes: s.countTotal,
+      totalCrimes30d: s.count30d,
+      trendPercent: parseFloat(trend.toFixed(1)),
+      topCrimeType: topCrime,
+      topCrimePercent: s.countTotal > 0 ? parseFloat(((topCrimeCount / s.countTotal) * 100).toFixed(1)) : 0,
+      unreadCount: s.unread,
+      lastNewsAt: s.lastNewsAt,
+    };
+  });
+
+  // 6. Build group aggregates
+  const { data: groups } = await supabase
+    .from('city_groups')
+    .select('id, name, active')
+    .eq('active', true);
+
+  if (groups && groups.length > 0) {
+    const { data: members } = await supabase
+      .from('city_group_members')
+      .select('group_id, monitored_locations(name)');
+
+    const membersByGroup = new Map<string, string[]>();
+    for (const m of members || []) {
+      const loc = m.monitored_locations as unknown as { name: string } | null;
+      if (!loc) continue;
+      const list = membersByGroup.get(m.group_id) || [];
+      list.push(loc.name);
+      membersByGroup.set(m.group_id, list);
+    }
+
+    for (const g of groups) {
+      const groupCities = membersByGroup.get(g.id) || [];
+      if (groupCities.length === 0) continue;
+
+      let totalAll = 0, total30d = 0, unread = 0;
+      let lastAt: string | null = null;
+      const crimeAgg = new Map<string, number>();
+
+      for (const cn of groupCities) {
+        const s = cityStats.get(cn);
+        if (!s) continue;
+        totalAll += s.countTotal;
+        total30d += s.count30d;
+        unread += s.unread;
+        if (s.lastNewsAt && (!lastAt || s.lastNewsAt > lastAt)) lastAt = s.lastNewsAt;
+        for (const [type, count] of s.crimeTypes) {
+          crimeAgg.set(type, (crimeAgg.get(type) || 0) + count);
+        }
+      }
+
+      let topCrime: string | null = null;
+      let topCount = 0;
+      for (const [type, count] of crimeAgg) {
+        if (count > topCount) { topCrime = type; topCount = count; }
+      }
+
+      const trend = total30d > 0 ? 0 : 0; // trend removed for now
+
+      items.push({
+        id: g.id,
+        name: g.name,
+        type: 'group',
+        parentState: null,
+        cityCount: groupCities.length,
+        cityNames: groupCities,
+        totalCrimes: totalAll,
+        totalCrimes30d: total30d,
+        trendPercent: parseFloat(trend.toFixed(1)),
+        topCrimeType: topCrime,
+        topCrimePercent: totalAll > 0 ? parseFloat(((topCount / totalAll) * 100).toFixed(1)) : 0,
+        unreadCount: unread,
+        lastNewsAt: lastAt,
+      });
+    }
+  }
+
+  // Remove individual cities that belong to a group (avoid duplicates)
+  const citiesInGroups = new Set<string>();
+  for (const item of items) {
+    if (item.type === 'group' && item.cityNames) {
+      for (const cn of item.cityNames) citiesInGroups.add(cn);
+    }
+  }
+  const filtered = items.filter(
+    (item) => item.type === 'group' || !citiesInGroups.has(item.name)
+  );
+
+  // Sort: groups first, then by unread desc, then by totalCrimes desc
+  filtered.sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'group' ? -1 : 1;
+    if (a.unreadCount !== b.unreadCount) return b.unreadCount - a.unreadCount;
+    return b.totalCrimes30d - a.totalCrimes30d;
+  });
+
+  return filtered;
 }
