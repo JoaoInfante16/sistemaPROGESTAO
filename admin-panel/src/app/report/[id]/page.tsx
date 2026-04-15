@@ -6,8 +6,6 @@ import { Download, AlertTriangle, Clock, MapPin, Shield } from 'lucide-react';
 import { api, type ReportData } from '@/lib/api';
 import { CrimePieChart } from '@/components/analytics/crime-pie-chart';
 import { CrimeTrendChart } from '@/components/analytics/crime-trend-chart';
-import { RiskScore } from '@/components/analytics/risk-score';
-import { CredibilityBadge, CredibilityChart } from '@/components/analytics/credibility-badge';
 import { ReportHeatMap } from '@/components/analytics/report-heat-map';
 import { SourcesSection, SourceNote } from '@/components/analytics/sources-section';
 import { exportDashboardPDF } from '@/lib/pdf-export';
@@ -84,11 +82,6 @@ export default function PublicReportPage() {
     ? `Fonte: ${sources.reduce((s, src) => s + src.count, 0)} referências de ${sources.map(s => s.name).slice(0, 3).join(', ')}${sources.length > 3 ? ` e +${sources.length - 3} fontes` : ''}`
     : undefined;
 
-  const officialCount = rd.sourceCounts?.official ?? sourcesOficial.length;
-  const mediaCount = rd.sourceCounts?.media ?? sourcesMedia.length;
-  const credibilityPercent = rd.credibilityPercent ?? (officialCount + mediaCount > 0 ? Math.round((officialCount / (officialCount + mediaCount)) * 100) : 0);
-  const riskScore = rd.riskScore ?? 0;
-  const riskLevel = rd.riskLevel ?? 'baixo';
   const byCategory = rd.byCategory || [];
   const heatmapData = rd.heatmapData || [];
 
@@ -127,36 +120,18 @@ export default function PublicReportPage() {
           </div>
         </div>
 
-        {/* 1. Indice de Risco */}
-        <div className="mb-6">
-          <RiskScore score={riskScore} level={riskLevel} />
-        </div>
-
-        {/* 2. Resumo - 3 cards */}
+        {/* 1. Resumo - 3 cards */}
         <div className="grid grid-cols-3 gap-4 mb-6">
           <SummaryCard label="Total de Ocorrências" value={String(rd.summary.totalCrimes)} />
           <SummaryCard label="Bairros Afetados" value={String(rd.topBairros?.length || 0)} />
           <SummaryCard label="Tipos de Crime" value={String(rd.byCrimeType?.length || 0)} />
         </div>
 
-        {/* 3. Selo de Confiabilidade */}
-        <div className="mb-6">
-          <CredibilityBadge
-            officialCount={officialCount}
-            mediaCount={mediaCount}
-            credibilityPercent={credibilityPercent}
-          />
-        </div>
-
-        {/* 4. Donut por CATEGORIA + Credibilidade */}
+        {/* 2. Donut por CATEGORIA */}
         <div className="grid lg:grid-cols-2 gap-6 mb-8">
           <div className="rounded-xl border p-6">
             <h2 className="text-lg font-semibold mb-4">Distribuição por Categoria</h2>
             <CrimePieChart data={rd.byCrimeType} byCategory={byCategory} sourceNote={sourceNoteText} />
-          </div>
-
-          <div>
-            <CredibilityChart officialCount={officialCount} mediaCount={mediaCount} />
           </div>
         </div>
 

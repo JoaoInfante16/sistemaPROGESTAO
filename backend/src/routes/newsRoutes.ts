@@ -92,17 +92,18 @@ router.get(
       const offset = parseInt(req.query.offset as string) || 0;
       const limit = parseInt(req.query.limit as string) || 20;
       const cidade = req.query.cidade as string | undefined;
+      const cidades = req.query.cidades ? String(req.query.cidades).split(',').map(c => c.trim()).filter(Boolean) : undefined;
 
       const cityToUF = await db.getCityToUFMap();
 
       // Usuario anonimo → feed basico (sem read/favorite status)
       if (!userId) {
-        const result = await db.getNewsFeed({ cidade, offset, limit });
+        const result = await db.getNewsFeed({ cidade, cidades, offset, limit });
         res.json({ ...result, news: enrichFeedItems(result.news, cityToUF) });
         return;
       }
 
-      const result = await db.getUserNewsFeed(userId, { offset, limit, cidade });
+      const result = await db.getUserNewsFeed(userId, { offset, limit, cidade, cidades });
       res.json({ ...result, news: enrichFeedItems(result.news, cityToUF) });
     } catch (error) {
       logger.error('[News] User feed error:', error);

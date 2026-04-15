@@ -12,8 +12,6 @@ import '../../../core/models/city_overview.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/utils/type_helpers.dart';
 import '../../../core/widgets/grid_background.dart';
-import '../../../core/widgets/risk_score_widget.dart';
-import '../../../core/widgets/credibility_widget.dart';
 import '../../../main.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../feed/screens/feed_screen.dart';
@@ -317,7 +315,11 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   }
 
   Widget _buildFeedTab() {
-    final cidade = _isGroup ? _selectedSubCity : widget.city.name;
+    if (_isGroup && _selectedSubCity == null) {
+      // "Todas" — mostrar noticias de todas as cidades do grupo
+      return FeedScreen(key: const ValueKey('group-all'), citiesFilter: widget.city.cityNames);
+    }
+    final cidade = _isGroup ? _selectedSubCity! : widget.city.name;
     return FeedScreen(key: ValueKey(cidade), cityFilter: cidade);
   }
 
@@ -334,11 +336,6 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     final totalBairros = bairros.length;
     final totalTipos = types.length;
 
-    final riskScore = safeDouble(_summary?['riskScore']);
-    final riskLevel = (_summary?['riskLevel'] as String?) ?? 'baixo';
-    final officialCount = safeInt((_summary?['sourceCounts'] as Map<String, dynamic>?)?['official']);
-    final mediaCount = safeInt((_summary?['sourceCounts'] as Map<String, dynamic>?)?['media']);
-
     return GridBackground(
       child: RefreshIndicator(
         onRefresh: _loadOverview,
@@ -346,27 +343,15 @@ class _CityDetailScreenState extends State<CityDetailScreen>
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           children: [
-            // Indice de Risco
-            if (totalCrimes > 0)
-              RiskScoreWidget(score: riskScore, level: riskLevel),
-
             // Resumo numerico
             _sectionTitle('Resumo'),
             _buildResumoCard(totalCrimes, totalBairros, totalTipos, estatisticas.length),
-
-            // Selo de Confiabilidade
-            if (officialCount + mediaCount > 0)
-              CredibilityBadge(officialCount: officialCount, mediaCount: mediaCount),
 
             // Donut chart por CATEGORIA
             if (types.isNotEmpty) ...[
               _sectionTitle('Distribuição por Categoria'),
               _buildCategoryDonut(types, totalCrimes),
             ],
-
-            // Credibilidade das fontes
-            if (officialCount + mediaCount > 0)
-              CredibilityChart(officialCount: officialCount, mediaCount: mediaCount),
 
             // Mapa de calor
             if (_heatPoints.isNotEmpty) ...[

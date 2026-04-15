@@ -9,8 +9,10 @@ import '../widgets/news_detail_sheet.dart';
 class FeedScreen extends StatefulWidget {
   /// Se fornecido, fixa o filtro de cidade (usado no CityDetailScreen)
   final String? cityFilter;
+  /// Se fornecido, filtra por lista de cidades (usado em grupos)
+  final List<String>? citiesFilter;
 
-  const FeedScreen({super.key, this.cityFilter});
+  const FeedScreen({super.key, this.cityFilter, this.citiesFilter});
 
   @override
   State<FeedScreen> createState() => _FeedScreenState();
@@ -25,6 +27,7 @@ class _FeedScreenState extends State<FeedScreen> {
   int _offset = 0;
   static const _limit = 20;
   late final String? _cidadeFilter = widget.cityFilter;
+  late final List<String>? _cidadesFilter = widget.citiesFilter;
   bool _markedAllRead = false;
 
   @override
@@ -54,10 +57,12 @@ class _FeedScreenState extends State<FeedScreen> {
     final db = context.read<LocalDbService>();
     final cached = await db.getCachedNews(limit: 50);
     if (cached.isNotEmpty && _news.isEmpty) {
-      // Filtrar cache pela cidade se tiver filtro ativo
-      final filtered = _cidadeFilter != null
-          ? cached.where((n) => n.cidade == _cidadeFilter).toList()
-          : cached;
+      // Filtrar cache pela cidade/cidades se tiver filtro ativo
+      final filtered = _cidadesFilter != null
+          ? cached.where((n) => _cidadesFilter.contains(n.cidade)).toList()
+          : _cidadeFilter != null
+              ? cached.where((n) => n.cidade == _cidadeFilter).toList()
+              : cached;
       setState(() {
         _news.addAll(filtered);
       });
@@ -78,6 +83,7 @@ class _FeedScreenState extends State<FeedScreen> {
         offset: 0,
         limit: _limit,
         cidade: _cidadeFilter,
+        cidades: _cidadesFilter,
       );
       await db.upsertNews(items);
 
@@ -110,6 +116,7 @@ class _FeedScreenState extends State<FeedScreen> {
         offset: _offset,
         limit: _limit,
         cidade: _cidadeFilter,
+        cidades: _cidadesFilter,
       );
       await db.upsertNews(items);
 

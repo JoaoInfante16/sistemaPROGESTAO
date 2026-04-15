@@ -209,6 +209,7 @@ export async function getCurrentMonthCost(): Promise<number> {
 
 interface NewsFeedParams {
   cidade?: string;
+  cidades?: string[];
   offset: number;
   limit: number;
 }
@@ -234,7 +235,9 @@ export async function getNewsFeed(params: NewsFeedParams): Promise<{ news: NewsF
     .order('created_at', { ascending: false })
     .range(params.offset, params.offset + params.limit - 1);
 
-  if (params.cidade) {
+  if (params.cidades && params.cidades.length > 0) {
+    query = query.in('cidade', params.cidades);
+  } else if (params.cidade) {
     query = query.eq('cidade', params.cidade);
   }
 
@@ -755,7 +758,7 @@ export async function removeUserDevices(userId: string): Promise<void> {
 // User Feed (with read/favorite status)
 // ============================================
 
-export async function getUserNewsFeed(userId: string, params: { offset: number; limit: number; cidade?: string }) {
+export async function getUserNewsFeed(userId: string, params: { offset: number; limit: number; cidade?: string; cidades?: string[] }) {
   let query = supabase
     .from('news')
     .select('id, tipo_crime, natureza, cidade, bairro, rua, data_ocorrencia, resumo, resumo_agregado, confianca, created_at, news_sources(url, source_name)')
@@ -763,7 +766,9 @@ export async function getUserNewsFeed(userId: string, params: { offset: number; 
     .order('created_at', { ascending: false })
     .range(params.offset, params.offset + params.limit - 1);
 
-  if (params.cidade) {
+  if (params.cidades && params.cidades.length > 0) {
+    query = query.in('cidade', params.cidades);
+  } else if (params.cidade) {
     query = query.eq('cidade', params.cidade);
   }
 

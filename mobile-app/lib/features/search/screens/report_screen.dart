@@ -10,8 +10,6 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/api_service.dart';
-import '../../../core/widgets/risk_score_widget.dart';
-import '../../../core/widgets/credibility_widget.dart';
 import '../../../main.dart';
 import '../widgets/mini_trend_chart.dart';
 
@@ -210,14 +208,6 @@ class _ReportScreenState extends State<ReportScreen> {
     _sourcesMedia = media;
   }
 
-  static const _categoryWeights = {
-    'seguranca': 3.0,
-    'operacional': 2.0,
-    'patrimonial': 1.5,
-    'fraude': 1.0,
-    'institucional': 0.5,
-  };
-
   static const _tipoToCategory = {
     'roubo_furto': 'patrimonial', 'vandalismo': 'patrimonial', 'invasao': 'patrimonial',
     'homicidio': 'seguranca', 'latrocinio': 'seguranca', 'lesao_corporal': 'seguranca',
@@ -225,25 +215,6 @@ class _ReportScreenState extends State<ReportScreen> {
     'estelionato': 'fraude', 'receptacao': 'fraude',
     'crime_ambiental': 'institucional', 'trabalho_irregular': 'institucional', 'estatistica': 'institucional', 'outros': 'institucional',
   };
-
-  double _calculateRiskScore() {
-    if (_totalOcorrencias == 0 || widget.periodoDias == 0) return 0;
-    double weightedSum = 0;
-    for (final entry in _crimeTypeCounts.entries) {
-      final cat = _tipoToCategory[entry.key] ?? 'institucional';
-      final weight = _categoryWeights[cat] ?? 0.5;
-      weightedSum += entry.value * weight;
-    }
-    final perDay = weightedSum / widget.periodoDias;
-    return (perDay * 10).clamp(0, 10).roundToDouble() / 10 * 10 > 10 ? 10 : double.parse((perDay).toStringAsFixed(1)).clamp(0.0, 10.0);
-  }
-
-  String _calculateRiskLevel() {
-    final score = _calculateRiskScore();
-    if (score <= 3) return 'baixo';
-    if (score <= 6) return 'moderado';
-    return 'alto';
-  }
 
   static const _categoryColors = <String, Color>{
     'patrimonial': Color(0xFFF97316),
@@ -506,18 +477,6 @@ class _ReportScreenState extends State<ReportScreen> {
                 ),
               ),
 
-              // Indice de Risco
-              RiskScoreWidget(
-                score: _calculateRiskScore(),
-                level: _calculateRiskLevel(),
-              ),
-
-              // Selo de Confiabilidade
-              CredibilityBadge(
-                officialCount: _sourcesOficial.length,
-                mediaCount: _sourcesMedia.length,
-              ),
-
               // Resumo numerico
               _sectionTitle('Resumo'),
               _card(
@@ -541,13 +500,6 @@ class _ReportScreenState extends State<ReportScreen> {
                 _sectionTitle('Distribuição por Categoria'),
                 _buildCategoryDonut(),
               ],
-
-              // Credibilidade das Fontes
-              if (_sourcesOficial.isNotEmpty || _sourcesMedia.isNotEmpty)
-                CredibilityChart(
-                  officialCount: _sourcesOficial.length,
-                  mediaCount: _sourcesMedia.length,
-                ),
 
               // Mapa de calor
               if (_heatPoints.isNotEmpty) ...[

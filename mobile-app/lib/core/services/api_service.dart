@@ -28,12 +28,17 @@ class ApiService {
     int offset = 0,
     int limit = 20,
     String? cidade,
+    List<String>? cidades,
   }) async {
     final params = <String, String>{
       'offset': '$offset',
       'limit': '$limit',
     };
-    if (cidade != null) params['cidade'] = cidade;
+    if (cidades != null && cidades.isNotEmpty) {
+      params['cidades'] = cidades.join(',');
+    } else if (cidade != null) {
+      params['cidade'] = cidade;
+    }
 
     final uri =
         Uri.parse('$_baseUrl/news/feed').replace(queryParameters: params);
