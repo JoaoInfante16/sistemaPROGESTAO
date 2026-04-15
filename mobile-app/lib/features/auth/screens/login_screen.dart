@@ -20,15 +20,15 @@ class _LoginScreenState extends State<LoginScreen>
   final _passwordCtrl = TextEditingController();
   bool _loading = false;
   bool _obscurePassword = true;
+  bool _rememberMe = false;
   String? _error;
-  bool _deviceAuthAvailable = false;
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
 
   @override
   void initState() {
     super.initState();
-    _checkDeviceAuth();
+    _tryAutoLogin();
     _animCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
@@ -37,43 +37,27 @@ class _LoginScreenState extends State<LoginScreen>
     _animCtrl.forward();
   }
 
+  Future<void> _tryAutoLogin() async {
+    final auth = context.read<AuthService>();
+    final hasCredentials = await auth.hasDeviceAuthEnabled();
+    if (!hasCredentials) return;
+
+    setState(() => _loading = true);
+    try {
+      await auth.signInWithDeviceAuth();
+    } catch (_) {
+      // Credenciais salvas invalidas, limpar e mostrar login normal
+      await auth.clearSavedCredentials();
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   @override
   void dispose() {
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
     _animCtrl.dispose();
     super.dispose();
-  }
-
-  Future<void> _checkDeviceAuth() async {
-    final auth = context.read<AuthService>();
-    final hasEnabled = await auth.hasDeviceAuthEnabled();
-    final isAvailable = await auth.isDeviceAuthAvailable();
-    if (mounted) {
-      setState(() => _deviceAuthAvailable = hasEnabled && isAvailable);
-    }
-  }
-
-  Future<void> _handleDeviceAuth() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-
-    try {
-      final auth = context.read<AuthService>();
-      final success = await auth.authenticateWithDevice();
-      if (!success) {
-        setState(() => _error = 'Autenticacao cancelada.');
-        return;
-      }
-      await auth.signInWithDeviceAuth();
-    } catch (e) {
-      setState(
-          () => _error = 'Falha na autenticacao. Tente com email e senha.');
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
   }
 
   Future<void> _handleForgotPassword() async {
@@ -151,10 +135,18 @@ class _LoginScreenState extends State<LoginScreen>
     });
 
     try {
-      await context.read<AuthService>().signIn(
+      final auth = context.read<AuthService>();
+      await auth.signIn(
             _emailCtrl.text.trim(),
             _passwordCtrl.text,
           );
+
+      // Salvar credenciais se "lembrar senha" ativo
+      if (_rememberMe) {
+        await auth.saveCredentials(_emailCtrl.text.trim(), _passwordCtrl.text);
+      } else {
+        await auth.clearSavedCredentials();
+      }
     } catch (e) {
       setState(() => _error = 'Email ou senha incorretos');
     } finally {
@@ -285,63 +277,6 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                             const SizedBox(height: 22),
 
-                            // Device auth button
-                            if (_deviceAuthAvailable) ...[
-                              SizedBox(
-                                width: double.infinity,
-                                height: 48,
-                                child: OutlinedButton.icon(
-                                  onPressed: _loading ? null : _handleDeviceAuth,
-                                  style: OutlinedButton.styleFrom(
-                                    side: BorderSide(
-                                        color: SIMEopsColors.teal
-                                            .withValues(alpha: 0.3)),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                  icon: Icon(Icons.fingerprint,
-                                      size: 24, color: SIMEopsColors.tealLight),
-                                  label: Text(
-                                    'ENTRAR COM DESBLOQUEIO',
-                                    style: GoogleFonts.rajdhani(
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 1.5,
-                                      color: SIMEopsColors.tealLight,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              Row(
-                                children: [
-                                  Expanded(
-                                      child: Container(
-                                          height: 1,
-                                          color: SIMEopsColors.teal
-                                              .withValues(alpha: 0.1))),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 12),
-                                    child: Text(
-                                      'ou entre com senha',
-                                      style: GoogleFonts.exo2(
-                                        fontSize: 11,
-                                        color: SIMEopsColors.muted
-                                            .withValues(alpha: 0.5),
-                                      ),
-                                    ),
-                                  ),
-                                  Expanded(
-                                      child: Container(
-                                          height: 1,
-                                          color: SIMEopsColors.teal
-                                              .withValues(alpha: 0.1))),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                            ],
-
                             // Error
                             if (_error != null) ...[
                               Container(
@@ -440,7 +375,37 @@ class _LoginScreenState extends State<LoginScreen>
                               },
                               onFieldSubmitted: (_) => _handleLogin(),
                             ),
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 16),
+
+                            // Lembrar minha senha
+                            GestureDetector(
+                              onTap: () => setState(() => _rememberMe = !_rememberMe),
+                              child: Row(
+                                children: [
+                                  SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: Checkbox(
+                                      value: _rememberMe,
+                                      onChanged: (v) => setState(() => _rememberMe = v ?? false),
+                                      activeColor: SIMEopsColors.teal,
+                                      side: BorderSide(
+                                        color: SIMEopsColors.muted.withValues(alpha: 0.5),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    'Lembrar minha senha',
+                                    style: GoogleFonts.exo2(
+                                      fontSize: 13,
+                                      color: SIMEopsColors.muted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 20),
 
                             // ENTRAR button
                             SizedBox(
@@ -497,6 +462,28 @@ class _LoginScreenState extends State<LoginScreen>
                                   fontSize: 13,
                                   color: SIMEopsColors.muted
                                       .withValues(alpha: 0.7),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+
+                            // Badge BETA
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: SIMEopsColors.teal.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: SIMEopsColors.teal.withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: Text(
+                                'BETA',
+                                style: GoogleFonts.rajdhani(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 3,
+                                  color: SIMEopsColors.teal,
                                 ),
                               ),
                             ),
