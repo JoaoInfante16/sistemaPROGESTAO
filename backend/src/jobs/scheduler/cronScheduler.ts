@@ -34,7 +34,9 @@ export function startScheduler(): void {
     logger.info('[CRON] Checking locations to scan...');
 
     try {
-      const locations = await db.getActiveLocations();
+      const allLocations = await db.getActiveLocations();
+      // Só escanear cidades (type=city), não estados/grupos (type=state)
+      const locations = allLocations.filter(l => l.type === 'city');
 
       let enqueued = 0;
       let skipped = 0;

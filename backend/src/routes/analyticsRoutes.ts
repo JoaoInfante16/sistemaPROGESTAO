@@ -195,27 +195,27 @@ router.post(
         }
       }
 
-      // Merge data: prefer news table data, supplement with search results
-      const mergedSummary = summary && summary.totalCrimes > 0
-        ? summary
-        : searchReport
-          ? {
-              totalCrimes: searchReport.totalResults,
-              byCrimeType: searchReport.byCrimeType,
-              byCategory: [] as Array<{ category: string; count: number; percentage: number }>,
-              topBairros: searchReport.topBairros,
-              avgConfianca: 0,
-              sourceCounts: { official: 0, media: 0 },
-              credibilityPercent: 0,
-              riskScore: 0,
-              riskLevel: 'baixo' as const,
-            }
+      // Merge data: se veio de busca manual (searchId), priorizar searchReport
+      const mergedSummary = searchReport
+        ? {
+            totalCrimes: searchReport.totalResults,
+            byCrimeType: searchReport.byCrimeType,
+            byCategory: [] as Array<{ category: string; count: number; percentage: number }>,
+            topBairros: searchReport.topBairros,
+            avgConfianca: 0,
+            sourceCounts: summary?.sourceCounts ?? { official: 0, media: 0 },
+            credibilityPercent: summary?.credibilityPercent ?? 0,
+            riskScore: summary?.riskScore ?? 0,
+            riskLevel: summary?.riskLevel ?? 'baixo' as const,
+          }
+        : summary && summary.totalCrimes > 0
+          ? summary
           : { totalCrimes: 0, byCrimeType: [], byCategory: [], topBairros: [], avgConfianca: 0, sourceCounts: { official: 0, media: 0 }, credibilityPercent: 0, riskScore: 0, riskLevel: 'baixo' as const };
 
-      const mergedSources = sources && sources.length > 0
-        ? sources
-        : searchReport
-          ? searchReport.sources.map(s => ({ name: s.name, count: 1, urls: [s.url], type: s.type }))
+      const mergedSources = searchReport
+        ? searchReport.sources.map(s => ({ name: s.name, count: 1, urls: [s.url], type: s.type }))
+        : sources && sources.length > 0
+          ? sources
           : [];
 
       // Separar fontes oficiais vs midia

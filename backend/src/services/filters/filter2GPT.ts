@@ -148,6 +148,12 @@ MANDATORY CATEGORIES for "crime_type" (use EXACTLY one):
 - trabalho_irregular: slave labor, irregular labor
 - outros: does not fit above categories
 
+LOCATION RULES:
+5. "city" MUST be the MUNICIPALITY (cidade/município) where the crime physically happened. NOT the state, NOT a nearby city.
+6. "neighborhood" is a subdivision WITHIN the city (bairro/distrito). Another municipality is NOT a neighborhood. Examples: "Pinheiros" is a neighborhood of São Paulo. "São José dos Campos" is a SEPARATE CITY, not a neighborhood.
+7. "state" must be the Brazilian state of that city. IMPORTANT: "São Paulo" can be both a state AND a city — use "São Paulo" as state only if referring to the state, and as city only if the crime happened in the city of São Paulo itself.
+8. If the article does not specify the exact city, use the most specific location mentioned.
+
 ARTICLE:
 ${truncated}
 
@@ -156,9 +162,9 @@ Return ONLY JSON:
   "is_crime": true/false,
   "crime_type": "one of 15 categories above",
   "nature": "occurrence" or "statistic",
-  "city": "City Name",
-  "state": "Brazilian State Name (e.g. Santa Catarina, São Paulo)" or null,
-  "neighborhood": "Neighborhood Name" or null,
+  "city": "Municipality where the crime happened (cidade/município)",
+  "state": "Brazilian State of that municipality" or null,
+  "neighborhood": "Neighborhood/bairro within the city" or null,
   "street": "Street Name" or null,
   "date": "YYYY-MM-DD (publication date of the article, NOT dates mentioned in the text)",
   "summary": "1-2 sentence summary in Brazilian Portuguese",
