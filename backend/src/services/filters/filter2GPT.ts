@@ -80,9 +80,13 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
   if (city.length === 0) return { extraction: null, rejectionReason: 'cidade_vazia' };
   if (summary.length === 0) return { extraction: null, rejectionReason: 'resumo_vazio' };
 
-  // data: YYYY-MM-DD
+  // data: YYYY-MM-DD, nao pode ser futura
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return { extraction: null, rejectionReason: `data_invalida=${date}` };
+  }
+  const today = new Date().toISOString().split('T')[0];
+  if (date > today) {
+    return { extraction: null, rejectionReason: `data_futura=${date}` };
   }
 
   const bairro = typeof neighborhood === 'string' && neighborhood.trim() ? neighborhood.trim() : undefined;

@@ -222,7 +222,7 @@ class _CrimeBadge extends StatelessWidget {
 
   static const _grupoLabels = {
     'patrimonial': 'Patrimonial',
-    'seguranca': 'Seguranca',
+    'seguranca': 'Segurança',
     'operacional': 'Operacional',
     'fraude': 'Fraude',
     'institucional': 'Institucional',

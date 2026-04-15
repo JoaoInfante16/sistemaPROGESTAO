@@ -29,7 +29,7 @@ class DefaultFirebaseOptions {
         // MVP suporta apenas Android. iOS sera configurado em versao futura.
         // Para adicionar iOS: rodar `flutterfire configure` com projeto Firebase atualizado.
         throw UnsupportedError(
-          'iOS nao e suportado no MVP. Apenas Android esta configurado.',
+          'iOS não é suportado no MVP. Apenas Android está configurado.',
         );
       case TargetPlatform.macOS:
         throw UnsupportedError(

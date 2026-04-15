@@ -87,7 +87,7 @@ class CityCard extends StatelessWidget {
                 children: [
                   _StatChip(
                     icon: Icons.article_outlined,
-                    label: '${city.totalCrimes} ocorrencia${city.totalCrimes != 1 ? 's' : ''}',
+                    label: '${city.totalCrimes} ocorrência${city.totalCrimes != 1 ? 's' : ''}',
                   ),
                 ],
               ),

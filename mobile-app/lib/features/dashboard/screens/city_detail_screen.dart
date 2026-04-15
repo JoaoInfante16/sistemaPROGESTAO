@@ -293,7 +293,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
                 labelColor: SIMEopsColors.teal,
                 unselectedLabelColor: SIMEopsColors.muted,
                 tabs: const [
-                  Tab(text: 'Noticias'),
+                  Tab(text: 'Notícias'),
                   Tab(text: 'Relatório'),
                 ],
               ),

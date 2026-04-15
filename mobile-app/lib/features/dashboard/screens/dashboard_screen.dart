@@ -83,7 +83,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Icon(Icons.cloud_off, size: 48, color: SIMEopsColors.muted.withValues(alpha: 0.4)),
             const SizedBox(height: 16),
             Text(
-              'Nao foi possivel carregar',
+              'Não foi possível carregar',
               style: TextStyle(color: SIMEopsColors.muted, fontSize: 14),
             ),
             const SizedBox(height: 12),

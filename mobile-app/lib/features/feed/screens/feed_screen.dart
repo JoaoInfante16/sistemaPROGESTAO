@@ -81,20 +81,7 @@ class _FeedScreenState extends State<FeedScreen> {
       );
       await db.upsertNews(items);
 
-      // Mark all as read na primeira abertura
-      if (!_markedAllRead) {
-        _markedAllRead = true;
-        api.markAllAsRead().then((_) {
-          if (mounted) {
-            setState(() {
-              for (final item in _news) {
-                item.isUnread = false;
-              }
-            });
-          }
-        }).catchError((_) {});
-      }
-
+      items.sort((a, b) => b.dataOcorrencia.compareTo(a.dataOcorrencia));
       setState(() {
         _news.clear();
         _news.addAll(items);
@@ -128,6 +115,7 @@ class _FeedScreenState extends State<FeedScreen> {
 
       setState(() {
         _news.addAll(items);
+        _news.sort((a, b) => b.dataOcorrencia.compareTo(a.dataOcorrencia));
         _offset += items.length;
         _hasMore = items.length >= _limit;
         _loading = false;
@@ -297,7 +285,7 @@ class _DateHeader extends StatelessWidget {
     } else if (diff == 1) {
       label = 'Ontem';
     } else if (diff < 7) {
-      const weekdays = ['Segunda', 'Terca', 'Quarta', 'Quinta', 'Sexta', 'Sabado', 'Domingo'];
+      const weekdays = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
       label = weekdays[date.weekday - 1];
     } else {
       label = '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';

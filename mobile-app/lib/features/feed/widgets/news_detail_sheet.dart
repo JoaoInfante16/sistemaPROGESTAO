@@ -3,6 +3,30 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/news_item.dart';
 
+const _tipoLabels = <String, String>{
+  'roubo_furto': 'SUBTRAÇÃO',
+  'vandalismo': 'VANDALISMO',
+  'invasao': 'INVASÃO',
+  'homicidio': 'HOMICÍDIO',
+  'latrocinio': 'LATROCÍNIO',
+  'lesao_corporal': 'LESÃO CORPORAL',
+  'trafico': 'TRÁFICO',
+  'operacao_policial': 'OPERAÇÃO POLICIAL',
+  'manifestacao': 'MANIFESTAÇÃO',
+  'bloqueio_via': 'BLOQUEIO DE VIA',
+  'estelionato': 'ESTELIONATO',
+  'receptacao': 'RECEPTAÇÃO',
+  'crime_ambiental': 'CRIME AMBIENTAL',
+  'trabalho_irregular': 'TRABALHO IRREGULAR',
+  'estatistica': 'ESTATÍSTICA',
+  'outros': 'OUTROS',
+};
+
+String _tipoCrimeLabel(String tipo) {
+  final key = tipo.toLowerCase().replaceAll(' ', '_');
+  return _tipoLabels[key] ?? tipo.toUpperCase();
+}
+
 class NewsDetailSheet extends StatelessWidget {
   final NewsItem news;
 
@@ -55,7 +79,7 @@ class NewsDetailSheet extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  news.tipoCrime.toUpperCase(),
+                  _tipoCrimeLabel(news.tipoCrime),
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onPrimaryContainer,
                     fontWeight: FontWeight.bold,

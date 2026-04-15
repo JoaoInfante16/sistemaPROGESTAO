@@ -242,7 +242,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                           ),
                           validator: (v) {
                             if (v != _passwordCtrl.text) {
-                              return 'Senhas nao conferem';
+                              return 'Senhas não conferem';
                             }
                             return null;
                           },

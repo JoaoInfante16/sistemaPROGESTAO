@@ -43,7 +43,7 @@ export const config = {
 
   // LLM (OpenAI) (optional - pipeline won't run without it)
   openaiApiKey: optionalEnv('OPENAI_API_KEY', ''),
-  openaiModel: optionalEnv('OPENAI_MODEL', 'gpt-4o-mini'),
+  openaiModel: optionalEnv('OPENAI_MODEL', 'gpt-5-nano'),
   openaiEmbeddingModel: optionalEnv('OPENAI_EMBEDDING_MODEL', 'text-embedding-3-small'),
 
   // Firebase (opcional até FASE 4 - push notifications)
