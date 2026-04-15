@@ -12,9 +12,11 @@ import '../../../core/models/city_overview.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/utils/type_helpers.dart';
 import '../../../core/widgets/grid_background.dart';
+import '../../../core/widgets/risk_score_widget.dart';
+import '../../../core/widgets/credibility_widget.dart';
 import '../../../main.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../feed/screens/feed_screen.dart';
-import '../widgets/city_card.dart'; // crimeLabels
 
 const _stateAbbr = <String, String>{
   'Acre': 'AC', 'Alagoas': 'AL', 'Amapá': 'AP', 'Amazonas': 'AM',
@@ -332,6 +334,11 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     final totalBairros = bairros.length;
     final totalTipos = types.length;
 
+    final riskScore = safeDouble(_summary?['riskScore']);
+    final riskLevel = (_summary?['riskLevel'] as String?) ?? 'baixo';
+    final officialCount = safeInt((_summary?['sourceCounts'] as Map<String, dynamic>?)?['official']);
+    final mediaCount = safeInt((_summary?['sourceCounts'] as Map<String, dynamic>?)?['media']);
+
     return GridBackground(
       child: RefreshIndicator(
         onRefresh: _loadOverview,
@@ -339,15 +346,27 @@ class _CityDetailScreenState extends State<CityDetailScreen>
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           children: [
+            // Indice de Risco
+            if (totalCrimes > 0)
+              RiskScoreWidget(score: riskScore, level: riskLevel),
+
             // Resumo numerico
             _sectionTitle('Resumo'),
             _buildResumoCard(totalCrimes, totalBairros, totalTipos, estatisticas.length),
 
-            // Donut chart por tipo (identico ao report_screen)
+            // Selo de Confiabilidade
+            if (officialCount + mediaCount > 0)
+              CredibilityBadge(officialCount: officialCount, mediaCount: mediaCount),
+
+            // Donut chart por CATEGORIA
             if (types.isNotEmpty) ...[
-              _sectionTitle('Ocorrências por Tipo'),
-              _buildDonutChart(types, totalCrimes),
+              _sectionTitle('Distribuição por Categoria'),
+              _buildCategoryDonut(types, totalCrimes),
             ],
+
+            // Credibilidade das fontes
+            if (officialCount + mediaCount > 0)
+              CredibilityChart(officialCount: officialCount, mediaCount: mediaCount),
 
             // Mapa de calor
             if (_heatPoints.isNotEmpty) ...[
@@ -388,6 +407,10 @@ class _CityDetailScreenState extends State<CityDetailScreen>
               _buildIndicadores(estatisticas),
             ],
 
+            // Botao compartilhar
+            if (totalCrimes > 0)
+              _buildShareButton(),
+
             const SizedBox(height: 60),
           ],
         ),
@@ -415,28 +438,43 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     );
   }
 
-  // ── Donut chart por tipo (identico ao report_screen) ──
+  // ── Donut chart por CATEGORIA ──
 
-  static const _crimeColors = <String, Color>{
-    'roubo_furto': Color(0xFFE05252),
-    'trafico': Color(0xFFE07852),
-    'homicidio': Color(0xFFCC3333),
-    'operacao_policial': Color(0xFF5B8DEF),
-    'vandalismo': Color(0xFFE0B852),
-    'lesao_corporal': Color(0xFFFF6B6B),
-    'latrocinio': Color(0xFF991111),
-    'bloqueio_via': Color(0xFF7AB648),
-    'manifestacao': Color(0xFF22B5C4),
-    'estelionato': Color(0xFF9B59B6),
-    'receptacao': Color(0xFF8E44AD),
-    'invasao': Color(0xFFE67E22),
-    'crime_ambiental': Color(0xFF27AE60),
-    'trabalho_irregular': Color(0xFF2980B9),
-    'estatistica': Color(0xFF22B5C4),
-    'outros': Color(0xFF8FA9C0),
+  static const _categoryColors = <String, Color>{
+    'patrimonial': Color(0xFFF97316),
+    'seguranca': Color(0xFFEF4444),
+    'operacional': Color(0xFF3B82F6),
+    'fraude': Color(0xFF8B5CF6),
+    'institucional': Color(0xFF64748B),
   };
 
-  Widget _buildDonutChart(List<dynamic> types, int total) {
+  static const _categoryLabels = <String, String>{
+    'patrimonial': 'Patrimonial',
+    'seguranca': 'Segurança',
+    'operacional': 'Operacional',
+    'fraude': 'Fraude',
+    'institucional': 'Institucional',
+  };
+
+  static const _tipoToCategory = <String, String>{
+    'roubo_furto': 'patrimonial', 'vandalismo': 'patrimonial', 'invasao': 'patrimonial',
+    'homicidio': 'seguranca', 'latrocinio': 'seguranca', 'lesao_corporal': 'seguranca',
+    'trafico': 'operacional', 'operacao_policial': 'operacional', 'manifestacao': 'operacional', 'bloqueio_via': 'operacional',
+    'estelionato': 'fraude', 'receptacao': 'fraude',
+    'crime_ambiental': 'institucional', 'trabalho_irregular': 'institucional', 'estatistica': 'institucional', 'outros': 'institucional',
+  };
+
+  Widget _buildCategoryDonut(List<dynamic> types, int total) {
+    // Agrupar por categoria
+    final catMap = <String, int>{};
+    for (final t in types) {
+      final tipo = t['tipo_crime'] as String? ?? 'outros';
+      final count = safeInt(t['count']);
+      final cat = _tipoToCategory[tipo] ?? 'institucional';
+      catMap[cat] = (catMap[cat] ?? 0) + count;
+    }
+    final sorted = catMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+
     return _rCard(
       child: Row(
         children: [
@@ -448,11 +486,9 @@ class _CityDetailScreenState extends State<CityDetailScreen>
               children: [
                 PieChart(
                   PieChartData(
-                    sections: types.map((t) {
-                      final tipo = t['tipo_crime'] as String? ?? '';
-                      final count = safeInt(t['count']);
-                      final color = _crimeColors[tipo] ?? const Color(0xFF8FA9C0);
-                      return PieChartSectionData(value: count.toDouble(), color: color, radius: 18, showTitle: false);
+                    sections: sorted.map((e) {
+                      final color = _categoryColors[e.key] ?? const Color(0xFF64748B);
+                      return PieChartSectionData(value: e.value.toDouble(), color: color, radius: 18, showTitle: false);
                     }).toList(),
                     sectionsSpace: 2,
                     centerSpaceRadius: 40,
@@ -472,11 +508,9 @@ class _CityDetailScreenState extends State<CityDetailScreen>
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: types.take(6).map((t) {
-                final tipo = t['tipo_crime'] as String? ?? '';
-                final count = safeInt(t['count']);
-                final color = _crimeColors[tipo] ?? const Color(0xFF8FA9C0);
-                final label = crimeLabels[tipo] ?? tipo;
+              children: sorted.map((e) {
+                final color = _categoryColors[e.key] ?? const Color(0xFF64748B);
+                final label = _categoryLabels[e.key] ?? e.key;
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Row(
@@ -484,7 +518,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
                       Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
                       const SizedBox(width: 8),
                       Expanded(child: Text(label, style: GoogleFonts.exo2(fontSize: 12, color: SIMEopsColors.muted))),
-                      Text('$count', style: GoogleFonts.rajdhani(fontSize: 14, fontWeight: FontWeight.w700, color: SIMEopsColors.white)),
+                      Text('${e.value}', style: GoogleFonts.rajdhani(fontSize: 14, fontWeight: FontWeight.w700, color: SIMEopsColors.white)),
                     ],
                   ),
                 );
@@ -494,6 +528,67 @@ class _CityDetailScreenState extends State<CityDetailScreen>
         ],
       ),
     );
+  }
+
+  // ── Botao compartilhar relatorio ──
+
+  bool _sharing = false;
+
+  Widget _buildShareButton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: _sharing ? null : _shareReport,
+          icon: _sharing
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Icon(Icons.share),
+          label: Text(_sharing ? 'Gerando...' : 'Compartilhar Relatório'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: SIMEopsColors.teal,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _shareReport() async {
+    setState(() => _sharing = true);
+    try {
+      final api = context.read<ApiService>();
+      final now = DateTime.now();
+      final from = now.subtract(const Duration(days: 30));
+      String fmt(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+      final estado = widget.city.parentState ?? '';
+      final response = await api.generateReport(
+        cidade: _activeCidade,
+        estado: estado,
+        dateFrom: fmt(from),
+        dateTo: fmt(now),
+      );
+
+      final url = (response['reportUrl'] as String?) ??
+          'https://sistemaprogestao.onrender.com/report/${response['reportId']}';
+
+      if (mounted) {
+        await Share.share(
+          'SIMEops - Relatório de Risco\n$_activeCidade/$estado\n\n$url',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao gerar relatório: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
   }
 
   // ── Mapa de calor (identico ao report_screen) ──

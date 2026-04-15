@@ -10,45 +10,10 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/widgets/risk_score_widget.dart';
+import '../../../core/widgets/credibility_widget.dart';
 import '../../../main.dart';
 import '../widgets/mini_trend_chart.dart';
-
-// Cores por tipo de crime (donut chart)
-const _crimeColors = <String, Color>{
-  'roubo_furto': Color(0xFFE05252),
-  'trafico': Color(0xFFE07852),
-  'homicidio': Color(0xFFCC3333),
-  'operacao_policial': Color(0xFF5B8DEF),
-  'vandalismo': Color(0xFFE0B852),
-  'lesao_corporal': Color(0xFFFF6B6B),
-  'latrocinio': Color(0xFF991111),
-  'bloqueio_via': Color(0xFF7AB648),
-  'manifestacao': Color(0xFF22B5C4),
-  'estelionato': Color(0xFF9B59B6),
-  'receptacao': Color(0xFF8E44AD),
-  'invasao': Color(0xFFE67E22),
-  'crime_ambiental': Color(0xFF27AE60),
-  'trabalho_irregular': Color(0xFF2980B9),
-  'outros': Color(0xFF8FA9C0),
-};
-
-const _tipoLabels = <String, String>{
-  'roubo_furto': 'Roubo/Furto',
-  'vandalismo': 'Vandalismo',
-  'invasao': 'Invasão',
-  'homicidio': 'Homicídio',
-  'latrocinio': 'Latrocínio',
-  'lesao_corporal': 'Lesão Corporal',
-  'trafico': 'Tráfico',
-  'operacao_policial': 'Op. Policial',
-  'manifestacao': 'Manifestação',
-  'bloqueio_via': 'Bloqueio de Via',
-  'estelionato': 'Estelionato',
-  'receptacao': 'Receptação',
-  'crime_ambiental': 'Crime Ambiental',
-  'trabalho_irregular': 'Trabalho Irregular',
-  'outros': 'Outros',
-};
 
 class ReportScreen extends StatefulWidget {
   final String? searchId;
@@ -245,6 +210,138 @@ class _ReportScreenState extends State<ReportScreen> {
     _sourcesMedia = media;
   }
 
+  static const _categoryWeights = {
+    'seguranca': 3.0,
+    'operacional': 2.0,
+    'patrimonial': 1.5,
+    'fraude': 1.0,
+    'institucional': 0.5,
+  };
+
+  static const _tipoToCategory = {
+    'roubo_furto': 'patrimonial', 'vandalismo': 'patrimonial', 'invasao': 'patrimonial',
+    'homicidio': 'seguranca', 'latrocinio': 'seguranca', 'lesao_corporal': 'seguranca',
+    'trafico': 'operacional', 'operacao_policial': 'operacional', 'manifestacao': 'operacional', 'bloqueio_via': 'operacional',
+    'estelionato': 'fraude', 'receptacao': 'fraude',
+    'crime_ambiental': 'institucional', 'trabalho_irregular': 'institucional', 'estatistica': 'institucional', 'outros': 'institucional',
+  };
+
+  double _calculateRiskScore() {
+    if (_totalOcorrencias == 0 || widget.periodoDias == 0) return 0;
+    double weightedSum = 0;
+    for (final entry in _crimeTypeCounts.entries) {
+      final cat = _tipoToCategory[entry.key] ?? 'institucional';
+      final weight = _categoryWeights[cat] ?? 0.5;
+      weightedSum += entry.value * weight;
+    }
+    final perDay = weightedSum / widget.periodoDias;
+    return (perDay * 10).clamp(0, 10).roundToDouble() / 10 * 10 > 10 ? 10 : double.parse((perDay).toStringAsFixed(1)).clamp(0.0, 10.0);
+  }
+
+  String _calculateRiskLevel() {
+    final score = _calculateRiskScore();
+    if (score <= 3) return 'baixo';
+    if (score <= 6) return 'moderado';
+    return 'alto';
+  }
+
+  static const _categoryColors = <String, Color>{
+    'patrimonial': Color(0xFFF97316),
+    'seguranca': Color(0xFFEF4444),
+    'operacional': Color(0xFF3B82F6),
+    'fraude': Color(0xFF8B5CF6),
+    'institucional': Color(0xFF64748B),
+  };
+
+  static const _categoryLabels = <String, String>{
+    'patrimonial': 'Patrimonial',
+    'seguranca': 'Segurança',
+    'operacional': 'Operacional',
+    'fraude': 'Fraude',
+    'institucional': 'Institucional',
+  };
+
+  Map<String, int> get _categoryCounts {
+    final map = <String, int>{};
+    for (final e in _crimeTypeCounts.entries) {
+      final cat = _tipoToCategory[e.key] ?? 'institucional';
+      map[cat] = (map[cat] ?? 0) + e.value;
+    }
+    return map;
+  }
+
+  Widget _buildCategoryDonut() {
+    final cats = _categoryCounts;
+    final sorted = cats.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+
+    return _card(
+      child: Row(
+        children: [
+          SizedBox(
+            width: 130,
+            height: 130,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                PieChart(
+                  PieChartData(
+                    sections: sorted.map((e) {
+                      final color = _categoryColors[e.key] ?? const Color(0xFF64748B);
+                      return PieChartSectionData(
+                        value: e.value.toDouble(),
+                        color: color,
+                        radius: 18,
+                        showTitle: false,
+                      );
+                    }).toList(),
+                    sectionsSpace: 2,
+                    centerSpaceRadius: 40,
+                  ),
+                ),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('$_totalOcorrencias',
+                        style: GoogleFonts.rajdhani(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                            color: SIMEopsColors.white)),
+                    Text('TOTAL',
+                        style: GoogleFonts.rajdhani(
+                            fontSize: 9,
+                            letterSpacing: 1,
+                            color: SIMEopsColors.muted.withValues(alpha: 0.6))),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: sorted.map((e) {
+                final color = _categoryColors[e.key] ?? const Color(0xFF64748B);
+                final label = _categoryLabels[e.key] ?? e.key;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(label, style: GoogleFonts.exo2(fontSize: 12, color: SIMEopsColors.muted))),
+                      Text('${e.value}', style: GoogleFonts.rajdhani(fontSize: 14, fontWeight: FontWeight.w700, color: SIMEopsColors.white)),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _generateAndShareLink() async {
     setState(() => _generatingLink = true);
     try {
@@ -409,6 +506,18 @@ class _ReportScreenState extends State<ReportScreen> {
                 ),
               ),
 
+              // Indice de Risco
+              RiskScoreWidget(
+                score: _calculateRiskScore(),
+                level: _calculateRiskLevel(),
+              ),
+
+              // Selo de Confiabilidade
+              CredibilityBadge(
+                officialCount: _sourcesOficial.length,
+                mediaCount: _sourcesMedia.length,
+              ),
+
               // Resumo numerico
               _sectionTitle('Resumo'),
               _card(
@@ -427,94 +536,18 @@ class _ReportScreenState extends State<ReportScreen> {
                 ),
               ),
 
-              // Donut chart — Ocorrencias por tipo
+              // Donut chart — Ocorrencias por CATEGORIA
               if (_crimeTypeCounts.isNotEmpty) ...[
-                _sectionTitle('Ocorrências por Tipo'),
-                _card(
-                  child: Row(
-                    children: [
-                      // Donut
-                      SizedBox(
-                        width: 130,
-                        height: 130,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            PieChart(
-                              PieChartData(
-                                sections: _crimeTypeCounts.entries.map((e) {
-                                  final color = _crimeColors[e.key] ?? const Color(0xFF8FA9C0);
-                                  return PieChartSectionData(
-                                    value: e.value.toDouble(),
-                                    color: color,
-                                    radius: 18,
-                                    showTitle: false,
-                                  );
-                                }).toList(),
-                                sectionsSpace: 2,
-                                centerSpaceRadius: 40,
-                              ),
-                            ),
-                            Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text('$_totalOcorrencias',
-                                    style: GoogleFonts.rajdhani(
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.w700,
-                                        color: SIMEopsColors.white)),
-                                Text('TOTAL',
-                                    style: GoogleFonts.rajdhani(
-                                        fontSize: 9,
-                                        letterSpacing: 1,
-                                        color: SIMEopsColors.muted.withValues(alpha: 0.6))),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      // Legend
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: (_crimeTypeCounts.entries.toList()
-                                ..sort((a, b) => b.value.compareTo(a.value)))
-                              .take(6)
-                              .map((e) {
-                            final color =
-                                _crimeColors[e.key] ?? const Color(0xFF8FA9C0);
-                            final label = _tipoLabels[e.key] ?? e.key;
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 3),
-                              child: Row(
-                                children: [
-                                  Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: BoxDecoration(
-                                          color: color, shape: BoxShape.circle)),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                      child: Text(label,
-                                          style: GoogleFonts.exo2(
-                                              fontSize: 12,
-                                              color: SIMEopsColors.muted))),
-                                  Text('${e.value}',
-                                      style: GoogleFonts.rajdhani(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700,
-                                          color: SIMEopsColors.white)),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                _sectionTitle('Distribuição por Categoria'),
+                _buildCategoryDonut(),
               ],
+
+              // Credibilidade das Fontes
+              if (_sourcesOficial.isNotEmpty || _sourcesMedia.isNotEmpty)
+                CredibilityChart(
+                  officialCount: _sourcesOficial.length,
+                  mediaCount: _sourcesMedia.length,
+                ),
 
               // Mapa de calor
               if (_heatPoints.isNotEmpty) ...[

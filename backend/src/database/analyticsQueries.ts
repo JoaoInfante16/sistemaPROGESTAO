@@ -18,7 +18,38 @@ interface CrimeSummaryResult {
   topBairros: Array<{ bairro: string; count: number }>;
   avgConfianca: number;
   sourceCounts: { official: number; media: number };
-  estatisticas: Array<{ resumo: string; data_ocorrencia: string; created_at: string }>;
+  credibilityPercent: number;
+  riskScore: number;
+  riskLevel: 'baixo' | 'moderado' | 'alto';
+  estatisticas: Array<{ resumo: string; data_ocorrencia: string; created_at: string; source_url: string | null }>;
+}
+
+// Pesos por categoria para calculo de risco
+const CATEGORY_RISK_WEIGHT: Record<string, number> = {
+  seguranca: 3,
+  operacional: 2,
+  patrimonial: 1.5,
+  fraude: 1,
+  institucional: 0.5,
+};
+
+function calculateRiskScore(
+  byCategory: Array<{ category: string; count: number }>,
+  totalCrimes: number,
+  days: number
+): { riskScore: number; riskLevel: 'baixo' | 'moderado' | 'alto' } {
+  if (totalCrimes === 0 || days === 0) return { riskScore: 0, riskLevel: 'baixo' };
+
+  const weightedSum = byCategory.reduce((sum, cat) => {
+    const weight = CATEGORY_RISK_WEIGHT[cat.category] || 0.5;
+    return sum + cat.count * weight;
+  }, 0);
+
+  const avgWeightedPerDay = weightedSum / days;
+  const score = Math.min(10, Math.round(avgWeightedPerDay * 10) / 10);
+
+  const level = score <= 3 ? 'baixo' : score <= 6 ? 'moderado' : 'alto';
+  return { riskScore: score, riskLevel: level };
 }
 
 // Mapa tipo → categoria (duplicado de types.ts pra evitar import circular)
@@ -116,6 +147,12 @@ export async function getCrimeSummary(
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 
+  const totalSources = officialCount + mediaCount;
+  const credibilityPercent = totalSources > 0 ? Math.round((officialCount / totalSources) * 100) : 0;
+
+  const days = Math.max(1, Math.ceil((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / (1000 * 60 * 60 * 24)));
+  const { riskScore, riskLevel } = calculateRiskScore(byCategory, totalCrimes, days);
+
   return {
     totalCrimes,
     byCrimeType,
@@ -125,6 +162,9 @@ export async function getCrimeSummary(
       ? Math.round((sumConfianca / countConfianca) * 100) / 100
       : 0,
     sourceCounts: { official: officialCount, media: mediaCount },
+    credibilityPercent,
+    riskScore,
+    riskLevel,
     estatisticas: estatisticas.slice(0, 10),
   };
 }

@@ -202,10 +202,15 @@ router.post(
           ? {
               totalCrimes: searchReport.totalResults,
               byCrimeType: searchReport.byCrimeType,
+              byCategory: [] as Array<{ category: string; count: number; percentage: number }>,
               topBairros: searchReport.topBairros,
               avgConfianca: 0,
+              sourceCounts: { official: 0, media: 0 },
+              credibilityPercent: 0,
+              riskScore: 0,
+              riskLevel: 'baixo' as const,
             }
-          : { totalCrimes: 0, byCrimeType: [], topBairros: [], avgConfianca: 0 };
+          : { totalCrimes: 0, byCrimeType: [], byCategory: [], topBairros: [], avgConfianca: 0, sourceCounts: { official: 0, media: 0 }, credibilityPercent: 0, riskScore: 0, riskLevel: 'baixo' as const };
 
       const mergedSources = sources && sources.length > 0
         ? sources
@@ -235,7 +240,11 @@ router.post(
           topCrimeType: mergedSummary.byCrimeType[0]?.tipo_crime || 'N/A',
           comparisonDelta: comparison?.overallDelta || 'N/A',
         },
+        riskScore: mergedSummary.riskScore,
+        riskLevel: mergedSummary.riskLevel,
+        credibilityPercent: mergedSummary.credibilityPercent,
         byCrimeType: mergedSummary.byCrimeType,
+        byCategory: mergedSummary.byCategory,
         trend: trend?.dataPoints || (searchReport?.byDate.map(d => ({
           period: d.date,
           label: formatDateLabel(d.date),
@@ -247,6 +256,7 @@ router.post(
         sources: mergedSources,
         sourcesOficial,
         sourcesMedia,
+        sourceCounts: mergedSummary.sourceCounts,
         heatmapData,
       };
 
