@@ -230,9 +230,13 @@ export async function runFilter2WithEmbedding(
       }
     }
 
-    // Gerar embedding
+    // Gerar embedding com prefixo de metadata (tipo/estado/cidade/bairro/data)
+    // Ancora os campos estruturados no vetor — mesma ocorrencia coberta por varios
+    // veiculos com angulos editoriais diferentes fica com score alto (testado: raw
+    // 0.63-0.77 → enriched 0.82-0.90 em caso real do homicidio Florianopolis 2026-04-17).
+    const embeddingText = buildEmbeddingText(extracted);
     const embeddingResult = await rateLimiter.schedule('openai', () =>
-      embeddingProvider.generate(extracted.resumo)
+      embeddingProvider.generate(embeddingText)
     );
     embeddingTokens += embeddingResult.tokensUsed;
 
@@ -246,6 +250,29 @@ export async function runFilter2WithEmbedding(
 
   logger.info(`${logPrefix} filter2: ${contents.length} → ${extractions.length} (${contents.length - extractions.length} rejeitadas) [filter2: ${filter2Tokens} tokens, embedding: ${embeddingTokens} tokens]`);
   return { extractions, tokensUsed: { filter2: filter2Tokens, embedding: embeddingTokens } };
+}
+
+/**
+ * Monta o texto que vai pro embedding, com prefixo de metadata.
+ * Formato: "{tipo} {estado} {cidade} {bairro} {data}\n{resumo}"
+ * Exportado pra ser reusado no script de re-embed de noticias existentes.
+ */
+export function buildEmbeddingText(extracted: {
+  tipo_crime: string;
+  estado?: string;
+  cidade: string;
+  bairro?: string;
+  data_ocorrencia: string;
+  resumo: string;
+}): string {
+  const parts = [
+    extracted.tipo_crime,
+    extracted.estado || '',
+    extracted.cidade,
+    extracted.bairro || '',
+    extracted.data_ocorrencia,
+  ].filter((p) => p && p.trim().length > 0);
+  return `${parts.join(' ')}\n${extracted.resumo}`;
 }
 
 // ============================================
