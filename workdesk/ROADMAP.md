@@ -20,6 +20,23 @@ Fase 2 foca em **refinar, testar e estabilizar** — sem features grandes por en
 
 ---
 
+## 🔄 Sessão 2026-04-17 — em curso
+
+Fixes de dedup e feed (ver DEV_LOG):
+- **Bug feed mistura cidades:** validateQuery(pagination) stripava `cidade`/`cidades`/`estado`. Fix: novo schema `feedQuery` com filtros opcionais. Confirmed working em staging pelo João.
+- **Bug dedup não agrupa notícias do mesmo evento:** embedding raw tinha scores 0.63-0.77 entre narrativas editoriais diferentes. Fix: prefixar embedding com metadata (tipo/estado/cidade/bairro/data) → scores sobem pra 0.82-0.90.
+- Script `reembed-all-news.ts` executado em prod: 24/24 notícias atualizadas.
+- Novos scripts de regressão em `backend/scripts/`: `test-dedup-similarity.ts` + `reembed-all-news.ts`.
+
+**Pendências imediatas:**
+1. 🔴 Admin panel: mudar `dedup_similarity_threshold` de `0.85` pra `0.80`
+2. 🔴 Rodar migration 010 (reset data) pra testar do zero
+3. 🟡 Merge staging → main quando staging ok
+4. 🟡 Reativar produção no Render
+5. 🟡 APK prod rebuild
+
+---
+
 ## ✅ Sessão 2026-04-16 (primeira com Opus 4.7) — FECHADA
 
 Todos os combos executados e commitados em `develop + staging` (ver DEV_LOG):

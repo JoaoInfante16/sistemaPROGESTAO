@@ -11,6 +11,51 @@
 
 ## 2026-04-17
 
+### Fix dedup — embedding enriched com metadata
+
+**Sintoma:** depois do fix do feed, João viu que dedup não estava agrupando notícias. Screenshot mostrou 4 cards para o MESMO homicídio em Florianópolis (Armação do Pântano do Sul, 17/04, vítima Marcos A.S., autor irmão preso, testemunha mãe). Deveria ter virado 1 card com várias fontes.
+
+**Diagnóstico:** script novo [`test-dedup-similarity.ts`](../backend/scripts/test-dedup-similarity.ts) mediu cosine similarity entre os 4 resumos:
+
+| Par | Score RAW | @0.85 |
+|---|---|---|
+| R1 (encomenda/foragido) vs R2 (Marcos/irmão preso) | 0.77 | separou |
+| R1 vs R3 (local/horário) | 0.63 | separou |
+| R1 vs R4 (frente da mãe/discussão) | 0.69 | separou |
+| R2 vs R3 | 0.64 | separou |
+| R2 vs R4 | 0.68 | separou |
+| R3 vs R4 | 0.74 | separou |
+
+**Nenhum par alcançou 0.85.** O threshold era inatingível pra variação editorial típica de cobertura jornalística — veículos diferentes focam ângulos diferentes (vítima/autor/local/testemunha), embedding cru não consegue ancorar.
+
+**Fix:** prefixar o texto com metadata estrutural antes de gerar embedding:
+
+```
+"homicidio Florianópolis Armação do Pântano do Sul 2026-04-17
+ Um homem foi morto a pauladas em Florianópolis..."
+```
+
+**Resultado no teste:** scores subiram +0.15 média (0.63-0.77 → **0.82-0.90**). Todos os 6 pares passam @0.80.
+
+**Implementação:**
+- [pipelineCore.ts](../backend/src/jobs/pipeline/pipelineCore.ts) — nova função `buildEmbeddingText()` exportada. Stage 4 usa antes de chamar embedding provider.
+- [scripts/reembed-all-news.ts](../backend/scripts/reembed-all-news.ts) — migra embeddings das notícias existentes pro novo formato. Auto-contido (dotenv + supabase + openai). Dry-run por padrão, `--apply` pra executar.
+- Script executado em prod 2026-04-17: 24/24 notícias atualizadas, 0 falhas, custo real $0.00004.
+
+**Pendências pelo João:**
+- Admin panel: mudar `dedup_similarity_threshold` de 0.85 pra 0.80 (sweet spot testado).
+- Reset do banco (migration 010_reset_data) pra testar do zero — decisão do João ao ver que os 4 cards antigos não mergeiam retroativamente com só o re-embed.
+- Deploy prod (merge staging → main) quando testar staging ok.
+
+**Arquivos alterados:**
+- `backend/src/jobs/pipeline/pipelineCore.ts`
+- `backend/scripts/reembed-all-news.ts` (novo)
+- `backend/scripts/test-dedup-similarity.ts` (novo)
+
+**Typecheck:** limpo. **Commit `ba6c5dd`**, pushed para develop + staging.
+
+---
+
 ### Bug de mistura de cidades persistindo — ACHADO e fix em 1 linha
 
 **Sintoma:** mesmo depois do combo de cidades de ontem, ao clicar em "Porto Alegre" no dashboard, feed aparecia só notícias de SP e MS (cidades homônimas? não). Relatório da mesma cidade funcionava certo.
