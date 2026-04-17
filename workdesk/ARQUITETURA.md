@@ -135,48 +135,167 @@
 
 ## PIPELINE CORE (pipelineCore.ts)
 
-```
-  Stages compartilhados entre AUTO-SCAN e BUSCA MANUAL.
-  Cada pipeline chama essas funcoes e customiza via parametros.
+> Atualizado em **2026-04-16** apos sessao de fixes (Fase 2).
+> Stages compartilhados entre AUTO-SCAN e BUSCA MANUAL — cada pipeline chama essas
+> funcoes e customiza via parametros. Setas laterais [X->] indicam rejeicoes.
 
-  +==================================================================+
-  |  STAGE 1: FILTER0 (Regex, local, $0)                             |
-  |  Bloqueia: redes sociais, paginas de categoria, lixo             |
-  |  Toggle: filter0_regex_enabled                                    |
-  +==================================================================+
-                         |
-                         v
-  +==================================================================+
-  |  STAGE 2: FILTER1 (GPT Batch, ~$0.0002/lote)                    |
-  |  Manda todos os titulos de uma vez pro GPT                        |
-  |  Resposta: [true, false, true, ...]                               |
-  |  Retry 1x antes de fallback "all true"                            |
-  +==================================================================+
-                         |
-                         v
-  +==================================================================+
-  |  STAGE 3: CONTENT FETCH (Jina, $0.002/artigo)                   |
-  |  Le cada URL, extrai texto limpo                                  |
-  |  Descarta <100 chars antes do GPT                                 |
-  |  Concorrencia: 5 paralelos (configuravel)                        |
-  +==================================================================+
-                         |
-                         v
-  +==================================================================+
-  |  STAGE 4: FILTER2 + EMBEDDING (GPT + OpenAI, ~$0.0005/artigo)   |
-  |  Extrai: tipo_crime, cidade, bairro, data, resumo, confianca     |
-  |  Gera embedding 1536-dim do resumo                                |
-  |  Post-filters opcionais: data fora do periodo, cidade fora        |
-  +==================================================================+
-                         |
-                         v
-  +==================================================================+
-  |  STAGE 5: DEDUP INTRA-BATCH (Embedding clustering, $0)           |
-  |  Compara todos os resultados entre si (cosine >= 0.85)            |
-  |  Consolida: melhor confianca como lead, todas as fontes           |
-  |  Ex: 34 resultados -> 28 (6 consolidadas)                        |
-  +==================================================================+
+### Funil de filtros — mapa detalhado
+
 ```
+                +--------------------------------------+
+                |  SEARCH PROVIDER (BrightData/Brave)  |
+                |  Auto-scan: dateRestrict='d1'        |
+                |  Manual:    searchMode web + news    |
+                +--------------------------------------+
+                                 |
+                                 v
+                    +--------------------------+
+                    |  URL DEDUP               |  [X->] URL ja vista neste batch
+                    |  (urlDeduplicator.ts)    |
+                    +--------------------------+
+                                 |
+                                 v
+    +----------------------------------------------------------------+
+    |  STAGE 1  FILTER 0 (regex, local, $0)                          |
+    |  -------------------------------------------------             |
+    |  Bloqueia URL se:                                              |
+    |  - dominio de rede social / video (11 dominios)                |
+    |    facebook, twitter/x, tiktok, linkedin, pinterest,           |  [X->] dominio bloqueado
+    |    reddit, whatsapp, INSTAGRAM, YOUTUBE/youtu.be, globoplay   |
+    |  - URL de categoria/listagem (18 padroes regex)                |  [X->] pagina de categoria
+    |    /tag/, /category/, /editorias/, /policia/, etc              |
+    |  - snippet contem keyword nao-crime (17 palavras)              |  [X->] keyword nao-crime
+    |    novela, futebol, receita, jogo, tempo, musica...            |
+    |                                                                 |
+    |  Toggle: filter0_regex_enabled (admin panel)                   |
+    +----------------------------------------------------------------+
+                                 |
+                                 v
+    +----------------------------------------------------------------+
+    |  STAGE 2  FILTER 1 (GPT-4o-mini batch, ~$0.0002/lote de 30)   |
+    |  -------------------------------------------------             |
+    |  1 chamada pra cada lote de ate 30 snippets                    |
+    |  Pergunta: "each is public safety? YES/NO"                     |
+    |  Resposta: array boolean na ordem dos snippets                 |  [X->] GPT diz "nao e crime"
+    |                                                                 |
+    |  Robustez:                                                      |
+    |  - Retry 1x em erro                                             |
+    |  - Parse JSON invalido/length mismatch: padding true (safe)    |
+    |  - API exception pos retry: THROW (BullMQ retry 5x ate 31min)  |
+    |    Nao faz fallback "all true" (explodiria budget downstream)  |
+    +----------------------------------------------------------------+
+                                 |
+                                 v
+    +----------------------------------------------------------------+
+    |  STAGE 3  CONTENT FETCH (Jina Reader, ~$0.002/artigo)         |
+    |  -------------------------------------------------             |
+    |  Baixa e extrai texto limpo de cada URL aprovada               |
+    |  Concorrencia: content_fetch_concurrency (5 default)           |
+    |  Cache Redis 24h (so se >100 chars)                             |
+    |                                                                 |  [X->] fetch falhou
+    |  Rejeita:                                                       |  [X->] conteudo <100 chars
+    |  - fetch falhou (timeout, 404, etc)                             |
+    |  - conteudo < 100 chars (pagina vazia ou categoria)             |
+    +----------------------------------------------------------------+
+                                 |
+                                 v
+    +----------------------------------------------------------------+
+    |  STAGE 4  FILTER 2 (GPT-4o-mini full, ~$0.0005/artigo)        |
+    |  -------------------------------------------------             |
+    |  Envia ate 8000 chars do conteudo (config filter2_max_*)       |
+    |  GPT extrai JSON estruturado:                                   |
+    |  - is_crime, tipo_crime (15 cats + aliases)                    |
+    |  - natureza (ocorrencia | estatistica)                         |  [X->] is_crime=false
+    |  - cidade, estado, bairro, rua                                  |  [X->] confianca < 0.7
+    |  - data_ocorrencia (YYYY-MM-DD, nao pode ser futura)           |  [X->] tipo_crime invalido
+    |  - resumo (1-2 frases PT-BR)                                    |  [X->] data invalida/futura
+    |  - confianca (>= filter2_confidence_min, 0.7 default)           |
+    |                                                                 |
+    |  Aliases aceitos (mapeamento feito no filter2GPT.ts):          |
+    |  feminicidio->homicidio, estupro/tortura->lesao_corporal,      |
+    |  sequestro->outros, corrupcao/extorsao->estelionato,           |
+    |  incendio->vandalismo, porte_arma->operacao_policial           |
+    +----------------------------------------------------------------+
+                                 |
+                                 v
+    +----------------------------------------------------------------+
+    |  STAGE 4.5  POST-FILTER em memoria                             |
+    |  -------------------------------------------------             |
+    |  (a) Data:                                                      |  [X->] data_ocorrencia antiga
+    |      rejeita se data_ocorrencia < hoje - periodoDias            |
+    |      auto-scan: 2 dias / manual: periodoDias do user            |
+    |                                                                 |
+    |  (b) Cidade + Estado:   [FIX 2026-04-16]                       |
+    |      (cidadeExata || cidadeParcial) && estadoBate              |  [X->] cidade/estado fora
+    |      Sempre exige estado — evita homonimas (SJ/SC vs SJ/SP).   |
+    +----------------------------------------------------------------+
+                                 |
+                                 v
+    +----------------------------------------------------------------+
+    |  STAGE 5  EMBEDDING 1536-dim (OpenAI text-embedding-3-small)   |
+    |  -------------------------------------------------             |
+    |  Gera embedding do resumo so das noticias aprovadas            |
+    |  Cache Redis 30 dias                                            |
+    +----------------------------------------------------------------+
+                                 |
+                                 v
+    +----------------------------------------------------------------+
+    |  STAGE 6  DEDUP INTRA-BATCH (embedding clustering, $0)         |
+    |  -------------------------------------------------             |
+    |  Compara todos do batch atual entre si                          |
+    |  Threshold: dedup_similarity_threshold (0.85 default, config)  |
+    |  [FIX 2026-04-16: era hardcoded, agora usa mesma config da L2] |
+    |                                                                 |
+    |  Clusteriza: lead = maior confianca, outros viram sources[]    |
+    |  Ex: 34 noticias -> 28 cards (6 mergeadas)                    |
+    +----------------------------------------------------------------+
+                                 |
+                                 v
+              +------------------+------------------+
+              |                                     |
+          AUTO-SCAN                             BUSCA MANUAL
+          (STAGE 7 abaixo)                      (salva direto em search_results)
+```
+
+### STAGE 7: DEDUP CONTRA DB (so auto-scan, 3 camadas)
+
+```
+  +-----------------------------------------------------------------+
+  |  LAYER 1  Geo-temporal (SQL, $0)                                |
+  |  Busca em `news`: mesma cidade + estado + tipo + data+-1d       |
+  |  + bairro tolerante a NULL  [FIX 2026-04-16]                    |
+  |  Limit 200 [FIX 2026-04-16: era 50 — cortava cidades grandes]   |
+  |  Sem candidatos -> NEW, insert.                                 |
+  +-----------------------------------------------------------------+
+                            |
+                            v
+  +-----------------------------------------------------------------+
+  |  LAYER 2  Embedding similarity (cosine, <200ms, $0)             |
+  |  Filtra candidatos com embedding dim=1536 valido                |
+  |  Calcula cosine contra todos, pega top match                    |
+  |  Se score < threshold (0.85, config) -> NEW, insert.            |
+  +-----------------------------------------------------------------+
+                            |
+                            v
+  +-----------------------------------------------------------------+
+  |  LAYER 3  GPT confirma (so ~5% chegam aqui, ~$0.001)            |
+  |  "These two summaries describe the SAME criminal event? YES/NO" |
+  |  Prompt validado com scripts/test-dedup-prompt.ts (9/10).       |
+  |                                                                  |
+  |  Se DUPLICATE:                                                   |
+  |  - insere sourceUrl + extraSourceUrls[] como fontes alternativas |
+  |    [FIX 2026-04-16: antes perdia extras do cluster intra-batch] |
+  |  Se NEW:                                                         |
+  |  - insert news + sources + push notification por categoria      |
+  +-----------------------------------------------------------------+
+```
+
+### Trocas de prompt testadas (e descartadas)
+
+Durante a sessao 2026-04-16 tentei reescrever o prompt da Layer 3 pra reduzir um
+suposto vies pro "YES". Teste com 10 pares (script acima) mostrou **regressao**:
+prompt novo rigoroso demais, dava NO em casos de mesmo evento com escritas
+diferentes (valor core do sistema). Revertido. Prompt antigo validado como base.
 
 ---
 

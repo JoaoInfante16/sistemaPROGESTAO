@@ -32,7 +32,7 @@ const DEFAULTS: Record<string, string> = {
   worker_concurrency: '3',
   worker_max_per_minute: '10',
   scan_lock_ttl_minutes: '30',
-  filter2_max_content_chars: '4000',
+  filter2_max_content_chars: '8000',
   push_enabled: 'true',
   auth_required: 'true',
   search_permission: 'authorized',

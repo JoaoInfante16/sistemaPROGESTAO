@@ -4,6 +4,8 @@
 // Filtragem rápida sem custo de API.
 // Bloqueia redes sociais, páginas de categoria e conteúdo claramente não-crime.
 
+// Bloqueados: redes sociais (reels/stories/posts sem texto util) + YouTube (sem texto).
+// Instagram vinha entregando muito reel e pouca noticia. YouTube idem (sem transcript).
 const BLOCKED_DOMAINS = [
   'facebook.com',
   'twitter.com',
@@ -13,6 +15,9 @@ const BLOCKED_DOMAINS = [
   'pinterest.com',
   'reddit.com',
   'whatsapp.com',
+  'instagram.com',
+  'youtube.com',
+  'youtu.be',
   'globoplay.globo.com',
 ];
 

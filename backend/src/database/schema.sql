@@ -210,7 +210,7 @@ INSERT INTO system_config (key, value, description, category, value_type) VALUES
   ('filter2_confidence_min', '0.7', 'Confiança mínima da extração GPT para aceitar notícia', 'pipeline', 'number'),
   ('content_fetch_concurrency', '5', 'Máximo de fetches simultâneos por pipeline run', 'pipeline', 'number'),
   ('search_max_results', '15', 'URLs por query no monitoramento automatico', 'pipeline', 'number'),
-  ('filter2_max_content_chars', '4000', 'Máximo de caracteres enviados ao GPT no filter2', 'pipeline', 'number'),
+  ('filter2_max_content_chars', '8000', 'Máximo de caracteres enviados ao GPT no filter2', 'pipeline', 'number'),
   ('monthly_budget_usd', '100', 'Limite mensal de gastos em USD', 'budget', 'number'),
   ('budget_warning_threshold', '0.9', 'Threshold de alerta de orçamento (0.0 a 1.0)', 'budget', 'number'),
   ('scan_cron_schedule', '*/5 * * * *', 'Expressão CRON para scans automáticos (requer restart)', 'scheduler', 'string'),

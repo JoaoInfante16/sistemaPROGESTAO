@@ -72,6 +72,7 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       filter2ConfidenceMin: await configManager.getNumber('filter2_confidence_min'),
       filter2MaxContentChars: await configManager.getNumber('filter2_max_content_chars'),
       filter0RegexEnabled: await configManager.getBoolean('filter0_regex_enabled'),
+      dedupSimilarityThreshold: await configManager.getNumber('dedup_similarity_threshold'),
     };
 
     // STAGE 1: Collect URLs
@@ -157,7 +158,7 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     // STAGE 6: Dedup intra-batch
     if (await isCancelled(searchId)) { logger.info(`${LOG_PREFIX} cancelled before stage 6`); return; }
     await db.updateSearchProgress(searchId, { stage: 'dedup', stage_num: 6, total_stages: 7, details: `Consolidando ${extractions.length} resultados` });
-    const { consolidated } = runIntraBatchDedup(extractions, LOG_PREFIX);
+    const { consolidated } = runIntraBatchDedup(extractions, LOG_PREFIX, pipelineConfig.dedupSimilarityThreshold);
 
     // Build final results with sources array
     const finalResults = consolidated.map(news => ({

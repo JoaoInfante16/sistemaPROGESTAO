@@ -59,10 +59,10 @@ export function startScheduler(): void {
             'scan',
             { locationId: location.id },
             {
-              attempts: 3,
+              attempts: 5,
               backoff: {
                 type: 'exponential',
-                delay: 2000,
+                delay: 60000, // 1min -> 2min -> 4min -> 8min -> 16min (~31min de tolerancia pra OpenAI voltar)
               },
             }
           );
@@ -95,10 +95,10 @@ export async function enqueueScan(locationId: string): Promise<string> {
     'scan',
     { locationId },
     {
-      attempts: 3,
+      attempts: 5,
       backoff: {
         type: 'exponential',
-        delay: 2000,
+        delay: 60000, // 1min -> 2min -> 4min -> 8min -> 16min (~31min de tolerancia pra OpenAI voltar)
       },
     }
   );

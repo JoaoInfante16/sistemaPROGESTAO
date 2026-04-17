@@ -26,17 +26,23 @@ export interface DedupResult {
 /**
  * Verifica se uma notícia é duplicata usando 3 camadas progressivas.
  * Mais barato primeiro, mais preciso por último.
+ *
+ * Se for duplicata, TODAS as URLs extras do cluster intra-batch também viram sources
+ * da notícia existente (evita perda de agregação de veículos quando um crime ja estava no DB).
  */
 export async function deduplicateNews(
   newsData: NewsExtraction & { embedding: number[] },
   sourceUrl: string,
-  similarityThreshold: number = DEFAULT_SIMILARITY_THRESHOLD
+  similarityThreshold: number = DEFAULT_SIMILARITY_THRESHOLD,
+  extraSourceUrls: string[] = [],
 ): Promise<DedupResult> {
   // CAMADA 1: Busca Geo-Temporal (SQL, instantâneo, grátis)
   const candidates = await db.findGeoTemporalCandidates(
     newsData.cidade,
     newsData.tipo_crime,
-    newsData.data_ocorrencia
+    newsData.data_ocorrencia,
+    newsData.estado,
+    newsData.bairro,
   );
 
   if (candidates.length === 0) {
@@ -74,9 +80,12 @@ export async function deduplicateNews(
   const { isDupe, tokensUsed } = await confirmDuplicateWithGPT(newsData.resumo, topMatch.resumo);
 
   if (isDupe) {
-    // Adicionar URL como fonte alternativa do artigo existente
+    // Adicionar URL principal + extras do cluster intra-batch como fontes alternativas
     await db.insertNewsSource(topMatch.id, sourceUrl);
-    logger.info(`[Dedup] Duplicate confirmed (score=${topMatch.score.toFixed(3)}), source added to ${topMatch.id} (${tokensUsed} tokens)`);
+    for (const extraUrl of extraSourceUrls) {
+      await db.insertNewsSource(topMatch.id, extraUrl);
+    }
+    logger.info(`[Dedup] Duplicate confirmed (score=${topMatch.score.toFixed(3)}), ${1 + extraSourceUrls.length} source(s) added to ${topMatch.id} (${tokensUsed} tokens)`);
     return { isDuplicate: true, existingId: topMatch.id, layer: 3, tokensUsed };
   }
 
@@ -87,6 +96,10 @@ export async function deduplicateNews(
 /**
  * Confirmação via GPT: compara dois resumos para determinar se descrevem o mesmo evento.
  * Só chamada quando cosine similarity >= 0.85 (~5% dos casos).
+ *
+ * Nota: o prompt foi validado com script `scripts/test-dedup-prompt.ts` (10 pares, 9/10
+ * acertos incluindo borderlines). Tentativa de reescrita com viés "quando em duvida, NO"
+ * regrediu em casos YES claros (veiculos diferentes cobrindo mesmo evento). Revertido.
  */
 async function confirmDuplicateWithGPT(resumo1: string, resumo2: string): Promise<{ isDupe: boolean; tokensUsed: number }> {
   const prompt = `Do these two summaries describe the SAME criminal event?

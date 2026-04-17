@@ -215,12 +215,13 @@ export async function runFilter2WithEmbedding(
       const estadoEsperado = normalizeText(postFilter.estado);
       const cidadesLower = postFilter.cidades.map(normalizeText);
 
-      // Match exato de cidade, ou parcial se estado bater
+      // Match de cidade (exato ou parcial), SEMPRE validando estado
+      // (sem estado não há como distinguir cidades homônimas: São José/SC vs São José/SP)
       const cidadeExata = cidadesLower.some(c => cidadeExtraida === c);
       const cidadeParcial = cidadesLower.some(c => cidadeExtraida.includes(c) || c.includes(cidadeExtraida));
       const estadoBate = estadoExtraido.length > 0 && estadoExtraido.includes(estadoEsperado);
 
-      const aceitar = cidadeExata || (cidadeParcial && estadoBate);
+      const aceitar = (cidadeExata || cidadeParcial) && estadoBate;
 
       if (!aceitar) {
         rejectedUrls.push({ url: fetched.url, stage: 'filter2_location', reason: `Local errado: ${extracted.cidade}/${extracted.estado || '?'} (esperado: ${postFilter.estado})` });
@@ -251,11 +252,12 @@ export async function runFilter2WithEmbedding(
 // Stage 5: Dedup intra-batch (embedding clustering)
 // ============================================
 
-const INTRA_SIMILARITY_THRESHOLD = 0.85;
+const INTRA_SIMILARITY_THRESHOLD_DEFAULT = 0.85;
 
 export function runIntraBatchDedup(
   extractions: ExtractedNews[],
   logPrefix: string,
+  similarityThreshold: number = INTRA_SIMILARITY_THRESHOLD_DEFAULT,
 ): { consolidated: ConsolidatedNews[]; intraMerged: number } {
   if (extractions.length === 0) return { consolidated: [], intraMerged: 0 };
 
@@ -270,7 +272,7 @@ export function runIntraBatchDedup(
     for (let j = i + 1; j < extractions.length; j++) {
       if (assigned.has(j)) continue;
       const score = cosineSimilarity(extractions[i].embedding, extractions[j].embedding);
-      if (score >= INTRA_SIMILARITY_THRESHOLD) {
+      if (score >= similarityThreshold) {
         cluster.members.push(j);
         assigned.add(j);
         logger.debug(`${logPrefix} intra-batch merge: #${j} into #${i} (score=${score.toFixed(3)})`);

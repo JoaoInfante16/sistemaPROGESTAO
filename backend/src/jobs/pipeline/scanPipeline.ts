@@ -210,8 +210,8 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
     details: { stage: 'filter2+embedding', analyzed: validContents.length, extracted: extractions.length, tokensUsed: f2tokens },
   });
 
-  // STAGE 5.5: Intra-batch dedup
-  const { consolidated, intraMerged } = runIntraBatchDedup(extractions, LOG_PREFIX);
+  // STAGE 5.5: Intra-batch dedup (usa mesmo threshold configurável que dedup DB camada 2)
+  const { consolidated, intraMerged } = runIntraBatchDedup(extractions, LOG_PREFIX, pipelineConfig.dedupSimilarityThreshold);
 
   // STAGE 6: Dedup contra DB + Save
   let newsSaved = 0;
@@ -220,7 +220,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
 
   for (const news of consolidated) {
     try {
-      const dedupResult = await deduplicateNews(news, news.sourceUrl, pipelineConfig.dedupSimilarityThreshold);
+      const dedupResult = await deduplicateNews(news, news.sourceUrl, pipelineConfig.dedupSimilarityThreshold, news.extraSourceUrls);
 
       if (dedupResult.layer === 1) dedupLayerStats.layer1++;
       else if (dedupResult.layer === 2) dedupLayerStats.layer2++;
@@ -235,7 +235,8 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
       const newsId = await db.insertNews({
         tipo_crime: news.tipo_crime, natureza: news.natureza,
         categoria_grupo: news.categoria_grupo,
-        cidade: news.cidade, bairro: news.bairro, rua: news.rua,
+        cidade: news.cidade, estado: news.estado || parentState?.name || null,
+        bairro: news.bairro, rua: news.rua,
         data_ocorrencia: news.data_ocorrencia, resumo: news.resumo,
         embedding: news.embedding, confianca: news.confianca,
       });

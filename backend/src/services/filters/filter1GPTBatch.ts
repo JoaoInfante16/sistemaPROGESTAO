@@ -117,11 +117,15 @@ RULES:
     Sentry.captureException(error, { tags: { provider: 'openai', stage: 'filter1' } });
     logger.error(`[Filter1Batch] Attempt ${attempt} GPT error:`, error);
     if (attempt < 2) continue;
-    return { results: snippets.map(() => true), tokensUsed: 0 };
+    // API exception apos retry: NAO fallback "all true" (explodiria budget em Jina+Filter2).
+    // Throw para BullMQ re-enfileirar com backoff. Sentry ja capturou -> alerta por email.
+    // Quando OpenAI voltar, job sai da fila e pipeline continua.
+    throw new Error(`[Filter1Batch] OpenAI falhou apos 2 tentativas: ${(error as Error).message}`);
   }
   } // end for
 
-  return { results: snippets.map(() => true), tokensUsed: 0 };
+  // Unreachable — loop acima sempre retorna ou lanca.
+  throw new Error('[Filter1Batch] estado inesperado apos loop de retry');
 }
 
 /**

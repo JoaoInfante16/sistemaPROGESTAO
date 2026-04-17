@@ -51,6 +51,7 @@ interface InsertNewsParams {
   natureza?: string;
   categoria_grupo?: string | null;
   cidade: string;
+  estado?: string | null;
   bairro?: string;
   rua?: string;
   data_ocorrencia: string;
@@ -67,6 +68,7 @@ export async function insertNews(params: InsertNewsParams): Promise<string> {
       natureza: params.natureza || 'ocorrencia',
       categoria_grupo: params.categoria_grupo || null,
       cidade: params.cidade,
+      estado: params.estado || null,
       bairro: params.bairro || null,
       rua: params.rua || null,
       data_ocorrencia: params.data_ocorrencia,
@@ -112,14 +114,18 @@ export interface DedupCandidate {
 export async function findGeoTemporalCandidates(
   cidade: string,
   tipoCrime: string,
-  dataOcorrencia: string
+  dataOcorrencia: string,
+  estado?: string | null,
+  bairro?: string | null,
 ): Promise<DedupCandidate[]> {
-  // Buscar candidatos: mesma cidade + mesmo tipo de crime + ±1 dia
+  // Buscar candidatos: mesma cidade + (mesmo estado) + (mesmo bairro ou algum NULL) + mesmo tipo + ±1 dia
+  // Bairro: tolerante a NULL — se ambos têm bairro e diferem, filtra. Se um for NULL, deixa passar
+  // pra camadas 2/3 decidirem (evita falso negativo de eventos com bairro ausente).
   const date = new Date(dataOcorrencia);
   const dateFrom = new Date(date.getTime() - 86400000).toISOString().split('T')[0];
   const dateTo = new Date(date.getTime() + 86400000).toISOString().split('T')[0];
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('news')
     .select('id, resumo, embedding')
     .eq('cidade', cidade)
@@ -127,7 +133,18 @@ export async function findGeoTemporalCandidates(
     .gte('data_ocorrencia', dateFrom)
     .lte('data_ocorrencia', dateTo)
     .eq('active', true)
-    .limit(50);
+    .limit(200);
+
+  if (estado) {
+    query = query.eq('estado', estado);
+  }
+
+  if (bairro && bairro.trim().length > 0) {
+    // Aceita: mesmo bairro OU bairro NULL no DB (tolerante)
+    query = query.or(`bairro.eq.${bairro},bairro.is.null`);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     throw new Error(`Failed to find dedup candidates: ${error.message}`);
@@ -210,6 +227,7 @@ export async function getCurrentMonthCost(): Promise<number> {
 interface NewsFeedParams {
   cidade?: string;
   cidades?: string[];
+  estado?: string;
   offset: number;
   limit: number;
 }
@@ -218,6 +236,7 @@ interface NewsFeedItem {
   id: string;
   tipo_crime: string;
   cidade: string;
+  estado: string | null;
   bairro: string | null;
   rua: string | null;
   data_ocorrencia: string;
@@ -230,7 +249,7 @@ interface NewsFeedItem {
 export async function getNewsFeed(params: NewsFeedParams): Promise<{ news: NewsFeedItem[]; hasMore: boolean }> {
   let query = supabase
     .from('news')
-    .select('id, tipo_crime, natureza, cidade, bairro, rua, data_ocorrencia, resumo, confianca, created_at, news_sources(url, source_name)')
+    .select('id, tipo_crime, natureza, cidade, estado, bairro, rua, data_ocorrencia, resumo, confianca, created_at, news_sources(url, source_name)')
     .eq('active', true)
     .order('created_at', { ascending: false })
     .range(params.offset, params.offset + params.limit - 1);
@@ -239,6 +258,9 @@ export async function getNewsFeed(params: NewsFeedParams): Promise<{ news: NewsF
     query = query.in('cidade', params.cidades);
   } else if (params.cidade) {
     query = query.eq('cidade', params.cidade);
+  }
+  if (params.estado) {
+    query = query.eq('estado', params.estado);
   }
 
   const { data, error } = await query;
@@ -258,6 +280,7 @@ export async function getNewsFeed(params: NewsFeedParams): Promise<{ news: NewsF
 interface SearchNewsParams {
   query: string;
   cidade?: string;
+  estado?: string;
   tipoCrime?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -268,7 +291,7 @@ interface SearchNewsParams {
 export async function searchNews(params: SearchNewsParams): Promise<{ news: NewsFeedItem[]; hasMore: boolean }> {
   let query = supabase
     .from('news')
-    .select('id, tipo_crime, natureza, cidade, bairro, rua, data_ocorrencia, resumo, confianca, created_at, news_sources(url, source_name)')
+    .select('id, tipo_crime, natureza, cidade, estado, bairro, rua, data_ocorrencia, resumo, confianca, created_at, news_sources(url, source_name)')
     .eq('active', true)
     .ilike('resumo', `%${params.query}%`)
     .order('created_at', { ascending: false })
@@ -276,6 +299,9 @@ export async function searchNews(params: SearchNewsParams): Promise<{ news: News
 
   if (params.cidade) {
     query = query.eq('cidade', params.cidade);
+  }
+  if (params.estado) {
+    query = query.eq('estado', params.estado);
   }
   if (params.tipoCrime) {
     query = query.ilike('tipo_crime', params.tipoCrime);
@@ -758,10 +784,10 @@ export async function removeUserDevices(userId: string): Promise<void> {
 // User Feed (with read/favorite status)
 // ============================================
 
-export async function getUserNewsFeed(userId: string, params: { offset: number; limit: number; cidade?: string; cidades?: string[] }) {
+export async function getUserNewsFeed(userId: string, params: { offset: number; limit: number; cidade?: string; cidades?: string[]; estado?: string }) {
   let query = supabase
     .from('news')
-    .select('id, tipo_crime, natureza, cidade, bairro, rua, data_ocorrencia, resumo, resumo_agregado, confianca, created_at, news_sources(url, source_name)')
+    .select('id, tipo_crime, natureza, cidade, estado, bairro, rua, data_ocorrencia, resumo, resumo_agregado, confianca, created_at, news_sources(url, source_name)')
     .eq('active', true)
     .order('created_at', { ascending: false })
     .range(params.offset, params.offset + params.limit - 1);
@@ -770,6 +796,9 @@ export async function getUserNewsFeed(userId: string, params: { offset: number; 
     query = query.in('cidade', params.cidades);
   } else if (params.cidade) {
     query = query.eq('cidade', params.cidade);
+  }
+  if (params.estado) {
+    query = query.eq('estado', params.estado);
   }
 
   const { data: news, error } = await query;

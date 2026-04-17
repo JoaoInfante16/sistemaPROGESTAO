@@ -134,6 +134,15 @@ const AI_FILTER_THRESHOLDS: ThresholdConfig[] = [
     max: 1.0,
     step: 0.05,
   },
+  {
+    key: 'filter2_max_content_chars',
+    label: 'Tamanho máximo do conteúdo analisado',
+    description: 'Quantos caracteres da matéria o AI lê para extrair dados (cidade, data, tipo de crime, etc).',
+    tooltip: 'Valores baixos cortam o final de matérias longas (pode perder data/cidade que aparecem no fim). Valores altos analisam mais mas custam mais tokens. Recomendado: 6000-10000.',
+    min: 2000,
+    max: 16000,
+    step: 500,
+  },
 ];
 
 export default function SettingsPage() {

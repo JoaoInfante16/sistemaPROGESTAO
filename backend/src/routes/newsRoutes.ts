@@ -37,8 +37,9 @@ router.get(
     try {
       const { offset, limit } = req.query as unknown as { offset: number; limit: number };
       const cidade = req.query.cidade as string | undefined;
+      const estado = req.query.estado as string | undefined;
 
-      const result = await db.getNewsFeed({ cidade, offset, limit });
+      const result = await db.getNewsFeed({ cidade, estado, offset, limit });
       const cityToUF = await db.getCityToUFMap();
       res.json({ ...result, news: enrichFeedItems(result.news, cityToUF) });
     } catch (error) {
@@ -58,9 +59,10 @@ router.post(
   validateBody(schemas.manualSearch),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { query, cidade, tipoCrime, dateFrom, dateTo } = req.body as {
+      const { query, cidade, estado, tipoCrime, dateFrom, dateTo } = req.body as {
         query: string;
         cidade?: string;
+        estado?: string;
         tipoCrime?: string;
         dateFrom?: string;
         dateTo?: string;
@@ -69,7 +71,7 @@ router.post(
       const offset = parseInt(req.query.offset as string) || 0;
       const limit = parseInt(req.query.limit as string) || 20;
 
-      const result = await db.searchNews({ query, cidade, tipoCrime, dateFrom, dateTo, offset, limit });
+      const result = await db.searchNews({ query, cidade, estado, tipoCrime, dateFrom, dateTo, offset, limit });
       res.json(result);
     } catch (error) {
       logger.error('[News] Search error:', error);
@@ -93,17 +95,18 @@ router.get(
       const limit = parseInt(req.query.limit as string) || 20;
       const cidade = req.query.cidade as string | undefined;
       const cidades = req.query.cidades ? String(req.query.cidades).split(',').map(c => c.trim()).filter(Boolean) : undefined;
+      const estado = req.query.estado as string | undefined;
 
       const cityToUF = await db.getCityToUFMap();
 
       // Usuario anonimo → feed basico (sem read/favorite status)
       if (!userId) {
-        const result = await db.getNewsFeed({ cidade, cidades, offset, limit });
+        const result = await db.getNewsFeed({ cidade, cidades, estado, offset, limit });
         res.json({ ...result, news: enrichFeedItems(result.news, cityToUF) });
         return;
       }
 
-      const result = await db.getUserNewsFeed(userId, { offset, limit, cidade, cidades });
+      const result = await db.getUserNewsFeed(userId, { offset, limit, cidade, cidades, estado });
       res.json({ ...result, news: enrichFeedItems(result.news, cityToUF) });
     } catch (error) {
       logger.error('[News] User feed error:', error);
