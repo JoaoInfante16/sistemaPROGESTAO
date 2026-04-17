@@ -10,25 +10,12 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/city_overview.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/utils/state_utils.dart';
 import '../../../core/utils/type_helpers.dart';
 import '../../../core/widgets/grid_background.dart';
 import '../../../main.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../feed/screens/feed_screen.dart';
-
-const _stateAbbr = <String, String>{
-  'Acre': 'AC', 'Alagoas': 'AL', 'Amapá': 'AP', 'Amazonas': 'AM',
-  'Bahia': 'BA', 'Ceará': 'CE', 'Distrito Federal': 'DF',
-  'Espírito Santo': 'ES', 'Goiás': 'GO', 'Maranhão': 'MA',
-  'Mato Grosso': 'MT', 'Mato Grosso do Sul': 'MS', 'Minas Gerais': 'MG',
-  'Pará': 'PA', 'Paraíba': 'PB', 'Paraná': 'PR', 'Pernambuco': 'PE',
-  'Piauí': 'PI', 'Rio de Janeiro': 'RJ', 'Rio Grande do Norte': 'RN',
-  'Rio Grande do Sul': 'RS', 'Rondônia': 'RO', 'Roraima': 'RR',
-  'Santa Catarina': 'SC', 'São Paulo': 'SP', 'Sergipe': 'SE',
-  'Tocantins': 'TO',
-};
-
-String _abbrState(String name) => _stateAbbr[name] ?? name;
 
 class CityDetailScreen extends StatefulWidget {
   final CityOverview city;
@@ -253,7 +240,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  _abbrState(widget.city.parentState!),
+                  abbrState(widget.city.parentState!),
                   style: TextStyle(fontSize: 11, color: SIMEopsColors.teal),
                 ),
               ),
@@ -329,6 +316,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     }
 
     final types = (_summary?['byCrimeType'] as List<dynamic>?) ?? [];
+    final categories = (_summary?['byCategory'] as List<dynamic>?) ?? [];
     final bairros = (_summary?['topBairros'] as List<dynamic>?) ?? [];
 
     final estatisticas = (_summary?['estatisticas'] as List<dynamic>?) ?? [];
@@ -347,10 +335,10 @@ class _CityDetailScreenState extends State<CityDetailScreen>
             _sectionTitle('Resumo'),
             _buildResumoCard(totalCrimes, totalBairros, totalTipos, estatisticas.length),
 
-            // Donut chart por CATEGORIA
-            if (types.isNotEmpty) ...[
+            // Donut chart por CATEGORIA (backend ja agrupa — nao recalcula aqui)
+            if (categories.isNotEmpty) ...[
               _sectionTitle('Distribuição por Categoria'),
-              _buildCategoryDonut(types, totalCrimes),
+              _buildCategoryDonut(categories, totalCrimes),
             ],
 
             // Mapa de calor
@@ -441,24 +429,12 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     'institucional': 'Institucional',
   };
 
-  static const _tipoToCategory = <String, String>{
-    'roubo_furto': 'patrimonial', 'vandalismo': 'patrimonial', 'invasao': 'patrimonial',
-    'homicidio': 'seguranca', 'latrocinio': 'seguranca', 'lesao_corporal': 'seguranca',
-    'trafico': 'operacional', 'operacao_policial': 'operacional', 'manifestacao': 'operacional', 'bloqueio_via': 'operacional',
-    'estelionato': 'fraude', 'receptacao': 'fraude',
-    'crime_ambiental': 'institucional', 'trabalho_irregular': 'institucional', 'estatistica': 'institucional', 'outros': 'institucional',
-  };
-
-  Widget _buildCategoryDonut(List<dynamic> types, int total) {
-    // Agrupar por categoria
-    final catMap = <String, int>{};
-    for (final t in types) {
-      final tipo = t['tipo_crime'] as String? ?? 'outros';
-      final count = safeInt(t['count']);
-      final cat = _tipoToCategory[tipo] ?? 'institucional';
-      catMap[cat] = (catMap[cat] ?? 0) + count;
-    }
-    final sorted = catMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+  Widget _buildCategoryDonut(List<dynamic> categories, int total) {
+    // Backend ja manda {category, count, percentage} agrupado.
+    final sorted = categories
+        .map((c) => MapEntry(c['category'] as String? ?? 'institucional', safeInt(c['count'])))
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
 
     return _rCard(
       child: Row(

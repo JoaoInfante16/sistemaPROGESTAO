@@ -17,13 +17,13 @@ class NewsSource {
 class NewsItem {
   final String id;
   final String tipoCrime;
+  final String? categoriaGrupo; // 'patrimonial' | 'seguranca' | 'operacional' | 'fraude' | 'institucional'
   final String natureza; // 'ocorrencia' ou 'estatistica'
   final String cidade;
   final String? bairro;
   final String? rua;
   final DateTime dataOcorrencia;
   final String resumo;
-  final String? resumoAgregado;
   final double? confianca;
   final DateTime createdAt;
   final List<NewsSource> sources;
@@ -35,13 +35,13 @@ class NewsItem {
   NewsItem({
     required this.id,
     required this.tipoCrime,
+    this.categoriaGrupo,
     this.natureza = 'ocorrencia',
     required this.cidade,
     this.bairro,
     this.rua,
     required this.dataOcorrencia,
     required this.resumo,
-    this.resumoAgregado,
     this.confianca,
     required this.createdAt,
     this.sources = const [],
@@ -55,13 +55,13 @@ class NewsItem {
     return NewsItem(
       id: json['id'] as String,
       tipoCrime: json['tipo_crime'] as String,
+      categoriaGrupo: json['categoria_grupo'] as String?,
       natureza: json['natureza'] as String? ?? 'ocorrencia',
       cidade: json['cidade'] as String,
       bairro: json['bairro'] as String?,
       rua: json['rua'] as String?,
       dataOcorrencia: DateTime.parse(json['data_ocorrencia'] as String),
       resumo: json['resumo'] as String,
-      resumoAgregado: json['resumo_agregado'] as String?,
       confianca: safeDoubleOrNull(json['confianca']),
       createdAt: DateTime.parse(json['created_at'] as String),
       sources: (json['news_sources'] as List<dynamic>?)
@@ -99,6 +99,7 @@ class NewsItem {
     return NewsItem(
       id: json['id'] as String? ?? 'search-${json.hashCode}',
       tipoCrime: json['tipo_crime'] as String? ?? 'outros',
+      categoriaGrupo: json['categoria_grupo'] as String?,
       natureza: json['natureza'] as String? ?? 'ocorrencia',
       cidade: json['cidade'] as String? ?? '',
       bairro: json['bairro'] as String?,
@@ -113,8 +114,13 @@ class NewsItem {
     );
   }
 
+  /// Local formatado: "São José/SC - Kobrasol - Rua X"
+  /// (UF junto da cidade quando disponivel; bairro e rua separados por " - ")
   String get localFormatted {
-    final parts = [cidade];
+    final primeiro = estadoUf != null && estadoUf!.isNotEmpty
+        ? '$cidade/$estadoUf'
+        : cidade;
+    final parts = [primeiro];
     if (bairro != null) parts.add(bairro!);
     if (rua != null) parts.add(rua!);
     return parts.join(' - ');

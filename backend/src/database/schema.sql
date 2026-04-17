@@ -234,8 +234,7 @@ INSERT INTO system_config (key, value, description, category, value_type) VALUES
 -- 11. UX: Notícias lidas + Favoritos (FASE 8.5)
 -- ============================================
 
--- Resumo agregado de múltiplas fontes
-ALTER TABLE news ADD COLUMN IF NOT EXISTS resumo_agregado TEXT;
+-- (Coluna `resumo_agregado` removida em 2026-04-16 — ver migrations/020. Feature nunca foi populada.)
 
 -- Sistema de notícias lidas por usuário
 CREATE TABLE IF NOT EXISTS user_news_read (

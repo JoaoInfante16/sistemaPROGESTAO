@@ -273,3 +273,125 @@ Mantive formato ASCII consistente com o resto do arquivo.
 - Menciona "Brave News" como principal — na prática é BrightData via `config.searchBackend`.
 
 Anoto como pendência: revisão completa do ARQUITETURA.md depois que a Camada 5 estiver mapeada também, pra fazer uma varredura única.
+
+---
+
+### Camada 5 — Cards e feed: 3 findings fechados
+
+Continuei na Camada 5 mapeando como os cards do dashboard e do feed são montados. João confirmou 3 mudanças:
+
+**Fix A — UF visível no dashboard e no card de notícia**
+
+Antes: UF (SC/SP) só aparecia no header da tela de detalhe (quando usuário já tinha clicado no card). Cards na tela principal e cards individuais do feed não mostravam UF.
+
+- **Dashboard CityCard** ([city_card.dart](../mobile-app/lib/features/dashboard/widgets/city_card.dart)): badge teal UF ao lado do nome da cidade (só para cidade individual, não para grupos — grupos podem misturar estados).
+- **Card de notícia no feed** ([news_item.dart:localFormatted](../mobile-app/lib/core/models/news_item.dart)): formato `"São José/SC - Kobrasol - Rua X"` quando `estadoUf` está disponível. Fallback pro comportamento antigo se for null.
+- **Detail screen** mantido como estava (não removeu UF do header — reforço não atrapalha, protege deep link/screenshot).
+- **Novo helper** [state_utils.dart](../mobile-app/lib/core/utils/state_utils.dart) com função `abbrState()` — centraliza o mapa de nome→UF que estava duplicado no detail_screen. Detail_screen passa a usar o helper; mapa local `_stateAbbr` e função `_abbrState` removidos.
+
+**Fix B — Remove duplicação `tipo_crime → categoria_grupo`**
+
+Antes: mapa de 15 entries (roubo_furto→patrimonial, homicidio→seguranca, etc) existia em 2 lugares: backend ([types.ts](../backend/src/utils/types.ts)) E Flutter ([news_card.dart](../mobile-app/lib/features/feed/widgets/news_card.dart)). Faltava entry `estatistica` no Flutter (funcionava por sorte via default).
+
+- **Backend** ([queries.ts](../backend/src/database/queries.ts)): `NewsFeedItem` type ganhou `categoria_grupo: string | null`; queries `getNewsFeed`, `getUserNewsFeed`, `searchNews`, `getUserFavorites` passaram a selecionar a coluna.
+- **Flutter** ([news_item.dart](../mobile-app/lib/core/models/news_item.dart)): model ganhou `categoriaGrupo: String?`; factories `fromJson` e `fromSearchResult` parseiam.
+- **Flutter** ([news_card.dart](../mobile-app/lib/features/feed/widgets/news_card.dart)): `_CrimeBadge` passou a receber `categoriaGrupo` direto; mapa hardcoded de 15 entries removido; mantidos apenas `_grupoCores` e `_grupoLabels` (5 entries, puro UI). Fallback `?? 'institucional'` pra casos edge.
+
+Benefício: se amanhã mudar categorização no backend (ex: mover `manifestacao` pra outra categoria), Flutter reflete automaticamente sem precisar sincronizar mapa manualmente.
+
+**Fix C — Limpa dead code do `resumo_agregado`**
+
+Confirmado na investigação: `resumo_agregado` era feature planejada mas **nunca implementada**. Coluna existia no DB, backend selecionava, Flutter fazia fallback `resumoAgregado ?? resumo` — mas nenhum INSERT/UPDATE populava o campo. Sempre NULL, sempre caía no `resumo`.
+
+João aprovou limpeza. Mudanças:
+- **Backend** ([queries.ts](../backend/src/database/queries.ts)): removido `resumo_agregado` dos SELECTs de `getUserNewsFeed` e `getUserFavorites`.
+- **Backend** ([schema.sql:237-238](../backend/src/database/schema.sql)): linha `ALTER TABLE news ADD COLUMN resumo_agregado` removida, substituída por comentário histórico.
+- **Migration nova** ([020_news_drop_resumo_agregado.sql](SQL/migrations/020_news_drop_resumo_agregado.sql)): `ALTER TABLE news DROP COLUMN IF EXISTS resumo_agregado`. **Pendente — rodar APÓS deploy do backend** (se rodar antes, código em prod quebra ao pedir coluna inexistente).
+- **Flutter** ([news_item.dart](../mobile-app/lib/core/models/news_item.dart)): campo `resumoAgregado` removido do model, do fromJson e do fromSearchResult.
+- **Flutter** ([news_card.dart](../mobile-app/lib/features/feed/widgets/news_card.dart)): `news.resumoAgregado ?? news.resumo` → `news.resumo`.
+- **Flutter** ([news_detail_sheet.dart](../mobile-app/lib/features/feed/widgets/news_detail_sheet.dart)): mesmo.
+
+Comportamento real não muda (sempre era `resumo` na prática). Só limpou peso morto.
+
+**Validação:**
+- `npx tsc --noEmit` backend: limpo.
+- `flutter analyze` nos 6 arquivos mobile alterados: `No issues found!`
+
+**Arquivos alterados nesta rodada:**
+- `backend/src/database/queries.ts`
+- `backend/src/database/schema.sql`
+- `workdesk/SQL/migrations/020_news_drop_resumo_agregado.sql` (novo)
+- `workdesk/SQL/MIGRATIONS_LOG.md`
+- `mobile-app/lib/core/utils/state_utils.dart` (novo)
+- `mobile-app/lib/core/models/news_item.dart`
+- `mobile-app/lib/features/feed/widgets/news_card.dart`
+- `mobile-app/lib/features/feed/widgets/news_detail_sheet.dart`
+- `mobile-app/lib/features/dashboard/widgets/city_card.dart`
+- `mobile-app/lib/features/dashboard/screens/city_detail_screen.dart`
+
+**Pendências acumuladas pelo João:**
+- Deploy backend + Flutter APK novo (com UF e sem resumo_agregado).
+- Rodar migration 019 (adicionar coluna estado) — do combo anterior.
+- Rodar migration de limpeza dos dados ruins — do combo anterior.
+- **APÓS deploy**: rodar migration 020 (DROP coluna resumo_agregado).
+- Ajustar `filter2_max_content_chars` pra 8000 no admin panel.
+- Configurar Sentry alert de email pra tag `provider:openai stage:filter1`.
+
+---
+
+### Relatórios — bug de contagem + limpeza pesada de dead code
+
+João aprovou execução dos Blocos A + C + D (B descartado — top 10 fica).
+
+**Bloco A — Fix bug de contagem de estatísticas**
+
+Problema: [getCrimeSummary](../backend/src/database/analyticsQueries.ts) e [getSearchResultsAnalytics](../backend/src/database/analyticsQueries.ts) contavam notícias de natureza `estatistica` como ocorrências. Cidade com 30 ocorrências + 5 indicadores mostrava "35 Ocorrências" + "5 Indicadores" (inflado).
+
+Fix: `continue;` no topo do loop quando `natureza === 'estatistica'`. Estatísticas vão só pro array separado `estatisticas[]`. `totalCrimes`/`byCrimeType`/`byCategory`/`topBairros` contam apenas ocorrências reais agora.
+
+Flutter report_screen já fazia certo — só o backend estava inflando.
+
+**Bloco C — Delete dead code (backend)**
+
+Removido de [analyticsQueries.ts](../backend/src/database/analyticsQueries.ts):
+- Constante `CATEGORY_RISK_WEIGHT` + função `calculateRiskScore` (25 linhas)
+- Campos `riskScore`, `riskLevel`, `avgConfianca`, `sourceCounts`, `credibilityPercent` do type `CrimeSummaryResult`
+- Cálculos correspondentes em `getCrimeSummary`
+- Função `getCrimeComparison` inteira + type `CrimeComparison` + helpers `countByType`, `formatDate` (~85 linhas)
+
+Removido de [analyticsRoutes.ts](../backend/src/routes/analyticsRoutes.ts):
+- Rota `GET /analytics/crime-comparison`
+- Rota `GET /analytics/search-report/:searchId` (endpoint externo nunca consumido; a função interna `getSearchResultsAnalytics` permanece pois é usada pelo POST /report)
+- Import de `getCrimeComparison`
+- Cálculo de período anterior + chamada a `getCrimeComparison` no POST /report
+- Campos `riskScore`, `riskLevel`, `credibilityPercent`, `avgConfianca`, `sourceCounts`, `comparison`, `comparisonDelta` do `reportData` salvo em `reports`
+
+Removido de [validation.ts](../backend/src/middleware/validation.ts):
+- Schema `analyticsComparison` (18 linhas)
+
+**Motivo:** nem Flutter (auto-scan tab relatório) nem web (/report/[id]) renderizavam esses campos. Dead data ocupando payload desde que features foram retiradas da UI.
+
+**Impacto em relatórios antigos:** reports já salvos no banco têm esses campos no JSON — o código novo apenas ignora. Sem migration necessária.
+
+**Bloco D — Consolidar categoria (fonte única)**
+
+Antes: mapa `tipo_crime → categoria_grupo` duplicado em 4 lugares (backend `types.ts`, backend `analyticsQueries.ts`, Flutter `news_card.dart`, Flutter `city_detail_screen.dart`, Flutter `report_screen.dart`). news_card já tinha sido limpo em rodada anterior.
+
+Depois: coluna `news.categoria_grupo` (populada pelo pipeline) é fonte única.
+
+- [analyticsQueries.ts](../backend/src/database/analyticsQueries.ts) `getCrimeSummary`: select agora inclui `categoria_grupo`; usa `row.categoria_grupo ?? 'institucional'` em vez de lookup. Constante `TIPO_CATEGORIA` deletada.
+- [city_detail_screen.dart](../mobile-app/lib/features/dashboard/screens/city_detail_screen.dart): usa `byCategory` do backend direto (sem reagrupar client-side). Constante `_tipoToCategory` removida. `_buildCategoryDonut` recebe `categories` (já agrupado) em vez de `types`.
+- [report_screen.dart](../mobile-app/lib/features/search/screens/report_screen.dart): `_categoryCounts` agora é campo `late final` atribuído no `_computeAnalytics` usando `r['categoria_grupo']` direto dos resultados. Getter antigo + constante `_tipoToCategory` removidos.
+
+**Validação:**
+- `npx tsc --noEmit` backend: limpo.
+- `flutter analyze` nos 2 arquivos Flutter: `No issues found!`
+
+**Arquivos alterados:**
+- `backend/src/database/analyticsQueries.ts` (~130 linhas removidas, getCrimeSummary reescrito)
+- `backend/src/routes/analyticsRoutes.ts` (2 rotas removidas, POST /report simplificado)
+- `backend/src/middleware/validation.ts` (schema analyticsComparison removido)
+- `mobile-app/lib/features/dashboard/screens/city_detail_screen.dart` (mapa categoria removido, donut simplificado)
+- `mobile-app/lib/features/search/screens/report_screen.dart` (mapa categoria removido, getter vira field, _computeAnalytics popula direto)
+
+**Finding aberto** (não mexido): [admin-panel/.../crime-pie-chart.tsx](../admin-panel/src/components/analytics/crime-pie-chart.tsx) — não investigado se usa `byCategory` direto ou recalcula a partir de `byCrimeType`. Se recalcular, é a última duplicação restante do mapa categoria. Anotar no ROADMAP.

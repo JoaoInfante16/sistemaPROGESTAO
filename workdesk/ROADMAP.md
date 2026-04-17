@@ -51,6 +51,7 @@ Plano sugerido pra Claude conhecer o app sem gastar turnos demais:
 
 - ~~**Embeddings/Dedup**~~ → 5 fixes aplicados em 2026-04-16 (perda de sources, prompt GPT camada 3, bairro na camada 1, threshold configurável, limit 200). Ver DEV_LOG.
 - **Filter0 keywords broad (pendente)**: `"jogo"`, `"tempo"`, `"música"`, `"esporte"` geram falsos negativos (bloqueiam "jogo do bicho", "tempo de prisão", etc). Discutir estratégia: word boundaries? keywords mais específicas? abolir e confiar no Filter1?
+- **Admin web `crime-pie-chart.tsx`**: não investigado se usa `byCategory` direto ou recalcula a partir de `byCrimeType`. Se recalcular, é a última duplicação da tabela categoria (já limpa em Flutter + analyticsQueries na sessão 2026-04-16).
 - **`dateRestrict: 'd1'` da query vs cadência do CRON** (Finding #2 registrado mas não corrigido): se cadência agendada > 24h, perde notícia na query do search. Verificar quando chegarmos nessa parte.
 - **Outros bugs da fase final** — João vai listar conforme forem surgindo.
 

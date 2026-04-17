@@ -142,20 +142,6 @@ export const schemas = {
     { message: 'Date range cannot exceed 365 days', path: ['dateTo'] }
   ),
 
-  analyticsComparison: z.object({
-    cidade: z.string().min(2).max(100),
-    period1Start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    period1End: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    period2Start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    period2End: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  }).refine(
-    (d) => new Date(d.period1Start) <= new Date(d.period1End),
-    { message: 'period1Start must be before or equal to period1End', path: ['period1Start'] }
-  ).refine(
-    (d) => new Date(d.period2Start) <= new Date(d.period2End),
-    { message: 'period2Start must be before or equal to period2End', path: ['period2Start'] }
-  ),
-
   generateReport: z.object({
     cidade: z.string().min(2).max(100),
     estado: z.string().min(2).max(100),

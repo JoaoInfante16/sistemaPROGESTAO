@@ -119,7 +119,7 @@ class NewsDetailSheet extends StatelessWidget {
 
               // Full summary
               Text(
-                news.resumoAgregado ?? news.resumo,
+                news.resumo,
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
 

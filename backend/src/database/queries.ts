@@ -235,6 +235,7 @@ interface NewsFeedParams {
 interface NewsFeedItem {
   id: string;
   tipo_crime: string;
+  categoria_grupo: string | null;
   cidade: string;
   estado: string | null;
   bairro: string | null;
@@ -249,7 +250,7 @@ interface NewsFeedItem {
 export async function getNewsFeed(params: NewsFeedParams): Promise<{ news: NewsFeedItem[]; hasMore: boolean }> {
   let query = supabase
     .from('news')
-    .select('id, tipo_crime, natureza, cidade, estado, bairro, rua, data_ocorrencia, resumo, confianca, created_at, news_sources(url, source_name)')
+    .select('id, tipo_crime, categoria_grupo, natureza, cidade, estado, bairro, rua, data_ocorrencia, resumo, confianca, created_at, news_sources(url, source_name)')
     .eq('active', true)
     .order('created_at', { ascending: false })
     .range(params.offset, params.offset + params.limit - 1);
@@ -291,7 +292,7 @@ interface SearchNewsParams {
 export async function searchNews(params: SearchNewsParams): Promise<{ news: NewsFeedItem[]; hasMore: boolean }> {
   let query = supabase
     .from('news')
-    .select('id, tipo_crime, natureza, cidade, estado, bairro, rua, data_ocorrencia, resumo, confianca, created_at, news_sources(url, source_name)')
+    .select('id, tipo_crime, categoria_grupo, natureza, cidade, estado, bairro, rua, data_ocorrencia, resumo, confianca, created_at, news_sources(url, source_name)')
     .eq('active', true)
     .ilike('resumo', `%${params.query}%`)
     .order('created_at', { ascending: false })
@@ -787,7 +788,7 @@ export async function removeUserDevices(userId: string): Promise<void> {
 export async function getUserNewsFeed(userId: string, params: { offset: number; limit: number; cidade?: string; cidades?: string[]; estado?: string }) {
   let query = supabase
     .from('news')
-    .select('id, tipo_crime, natureza, cidade, estado, bairro, rua, data_ocorrencia, resumo, resumo_agregado, confianca, created_at, news_sources(url, source_name)')
+    .select('id, tipo_crime, categoria_grupo, natureza, cidade, estado, bairro, rua, data_ocorrencia, resumo, confianca, created_at, news_sources(url, source_name)')
     .eq('active', true)
     .order('created_at', { ascending: false })
     .range(params.offset, params.offset + params.limit - 1);
@@ -945,7 +946,7 @@ export async function getUserFavorites(userId: string, params: { offset: number;
 
   const { data: news, error } = await supabase
     .from('news')
-    .select('id, tipo_crime, natureza, cidade, bairro, rua, data_ocorrencia, resumo, resumo_agregado, confianca, created_at, news_sources(url, source_name)')
+    .select('id, tipo_crime, categoria_grupo, natureza, cidade, estado, bairro, rua, data_ocorrencia, resumo, confianca, created_at, news_sources(url, source_name)')
     .in('id', ids);
 
   if (error) throw new Error(`Failed to fetch favorites: ${error.message}`);

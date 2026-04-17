@@ -39,6 +39,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
   // Computed
   late final Map<String, int> _crimeTypeCounts;
+  late final Map<String, int> _categoryCounts;
   late final Map<String, int> _bairroCounts;
   late final List<Map<String, dynamic>> _byDate;
   late final int _totalOcorrencias;
@@ -142,6 +143,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
   void _computeAnalytics() {
     _crimeTypeCounts = {};
+    _categoryCounts = {};
     _bairroCounts = {};
     final dateCounts = <String, int>{};
     final estatisticas = <Map<String, dynamic>>[];
@@ -158,6 +160,10 @@ class _ReportScreenState extends State<ReportScreen> {
       ocorrencias++;
       final tipo = r['tipo_crime'] as String? ?? 'outros';
       _crimeTypeCounts[tipo] = (_crimeTypeCounts[tipo] ?? 0) + 1;
+
+      // Categoria vem direto do backend (populada no pipeline). Fallback 'institucional'.
+      final categoria = r['categoria_grupo'] as String? ?? 'institucional';
+      _categoryCounts[categoria] = (_categoryCounts[categoria] ?? 0) + 1;
 
       final bairro = r['bairro'] as String?;
       if (bairro != null && bairro.isNotEmpty) {
@@ -208,14 +214,6 @@ class _ReportScreenState extends State<ReportScreen> {
     _sourcesMedia = media;
   }
 
-  static const _tipoToCategory = {
-    'roubo_furto': 'patrimonial', 'vandalismo': 'patrimonial', 'invasao': 'patrimonial',
-    'homicidio': 'seguranca', 'latrocinio': 'seguranca', 'lesao_corporal': 'seguranca',
-    'trafico': 'operacional', 'operacao_policial': 'operacional', 'manifestacao': 'operacional', 'bloqueio_via': 'operacional',
-    'estelionato': 'fraude', 'receptacao': 'fraude',
-    'crime_ambiental': 'institucional', 'trabalho_irregular': 'institucional', 'estatistica': 'institucional', 'outros': 'institucional',
-  };
-
   static const _categoryColors = <String, Color>{
     'patrimonial': Color(0xFFF97316),
     'seguranca': Color(0xFFEF4444),
@@ -231,15 +229,6 @@ class _ReportScreenState extends State<ReportScreen> {
     'fraude': 'Fraude',
     'institucional': 'Institucional',
   };
-
-  Map<String, int> get _categoryCounts {
-    final map = <String, int>{};
-    for (final e in _crimeTypeCounts.entries) {
-      final cat = _tipoToCategory[e.key] ?? 'institucional';
-      map[cat] = (map[cat] ?? 0) + e.value;
-    }
-    return map;
-  }
 
   Widget _buildCategoryDonut() {
     final cats = _categoryCounts;

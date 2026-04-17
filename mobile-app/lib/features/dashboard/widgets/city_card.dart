@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/models/city_overview.dart';
+import '../../../core/utils/state_utils.dart';
 import '../../../main.dart';
 
 const crimeLabels = {
@@ -61,6 +62,25 @@ class CityCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // UF badge (so para cidade individual — grupos nao tem UF unica)
+                  if (!city.isGroup && city.parentState != null) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: SIMEopsColors.teal.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        abbrState(city.parentState!),
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: SIMEopsColors.teal,
+                        ),
+                      ),
+                    ),
+                  ],
                   // Unread badge
                   if (city.hasUnread)
                     Container(

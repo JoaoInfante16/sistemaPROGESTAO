@@ -62,7 +62,7 @@ class NewsCard extends StatelessWidget {
                 Row(
                   children: [
                     Flexible(
-                      child: _CrimeBadge(tipoCrime: news.tipoCrime),
+                      child: _CrimeBadge(categoriaGrupo: news.categoriaGrupo),
                     ),
                     if (news.natureza == 'estatistica') ...[
                       const SizedBox(width: 6),
@@ -145,7 +145,7 @@ class NewsCard extends StatelessWidget {
 
                 // Resumo
                 Text(
-                  news.resumoAgregado ?? news.resumo,
+                  news.resumo,
                   style: Theme.of(context).textTheme.bodyMedium,
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
@@ -190,28 +190,12 @@ class NewsCard extends StatelessWidget {
 }
 
 class _CrimeBadge extends StatelessWidget {
-  final String tipoCrime;
+  final String? categoriaGrupo;
 
-  const _CrimeBadge({required this.tipoCrime});
+  const _CrimeBadge({required this.categoriaGrupo});
 
-  static const _categoriaGrupo = {
-    'roubo_furto': 'patrimonial',
-    'vandalismo': 'patrimonial',
-    'invasao': 'patrimonial',
-    'homicidio': 'seguranca',
-    'latrocinio': 'seguranca',
-    'lesao_corporal': 'seguranca',
-    'trafico': 'operacional',
-    'operacao_policial': 'operacional',
-    'manifestacao': 'operacional',
-    'bloqueio_via': 'operacional',
-    'estelionato': 'fraude',
-    'receptacao': 'fraude',
-    'crime_ambiental': 'institucional',
-    'trabalho_irregular': 'institucional',
-    'outros': 'institucional',
-  };
-
+  // Cores e labels por grupo. O mapeamento tipo_crime -> grupo vive no backend
+  // (fonte unica de verdade). Aqui so cuidamos de UI.
   static const _grupoCores = {
     'patrimonial': Colors.orange,
     'seguranca': Colors.red,
@@ -228,17 +212,9 @@ class _CrimeBadge extends StatelessWidget {
     'institucional': 'Institucional',
   };
 
-  Color get _color {
-    final key = tipoCrime.toLowerCase().replaceAll(' ', '_');
-    final grupo = _categoriaGrupo[key];
-    return _grupoCores[grupo] ?? Colors.blueGrey;
-  }
-
-  String get _label {
-    final key = tipoCrime.toLowerCase().replaceAll(' ', '_');
-    final grupo = _categoriaGrupo[key] ?? 'institucional';
-    return _grupoLabels[grupo] ?? grupo;
-  }
+  String get _grupo => categoriaGrupo ?? 'institucional';
+  Color get _color => _grupoCores[_grupo] ?? Colors.blueGrey;
+  String get _label => _grupoLabels[_grupo] ?? _grupo;
 
   @override
   Widget build(BuildContext context) {
