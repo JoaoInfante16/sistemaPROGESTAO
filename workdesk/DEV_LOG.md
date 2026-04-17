@@ -9,6 +9,48 @@
 
 ---
 
+## 2026-04-17
+
+### Bug de mistura de cidades persistindo — ACHADO e fix em 1 linha
+
+**Sintoma:** mesmo depois do combo de cidades de ontem, ao clicar em "Porto Alegre" no dashboard, feed aparecia só notícias de SP e MS (cidades homônimas? não). Relatório da mesma cidade funcionava certo.
+
+**Investigação:**
+1. João confirmou que banco tem notícias de Porto Alegre e relatório contabiliza certo.
+2. Auditoria SQL completa (queries + colunas + migrations): schema OK, todos filtros `.eq('cidade', ...)` corretos. **Zero divergência** entre código e banco.
+3. Diferença crítica encontrada entre relatório (funciona) e feed (não funciona): o middleware `validateQuery` em [validation.ts:37-54](../backend/src/middleware/validation.ts).
+
+**Causa raiz:**
+
+```ts
+// middleware validation.ts
+req.query = result.data;  // Zod sem passthrough STRIPA campos nao declarados
+```
+
+O schema `pagination` declarava só `offset` e `limit`. Ao validar `/news/feed?cidade=Porto+Alegre&limit=20`, Zod mantinha só `{offset, limit}`. O `req.query = result.data` substituía a query inteira, e o handler lia `req.query.cidade` → **undefined**. Backend chamava `getNewsFeed` sem filtro de cidade → retornava 20 notícias aleatórias de qualquer cidade.
+
+**Por que o relatório funcionava:** `analyticsQuery` schema TEM `cidade`, passa pelo Zod. `analyticsTrend` TEM `cidade` também. Tudo que lê `cidade` via query e tem no schema — funciona.
+
+**Por que passou despercebido até agora:** por bom tempo o sistema só tinha Florianópolis/grupo dela cadastrado. Sem filtro, o feed retornava tudo — mas tudo era Florianópolis mesmo, então parecia filtrar. Com Porto Alegre + SP + MS + outras cadastradas, mistura virou visível.
+
+**Fix:**
+
+Novo schema `feedQuery` em [validation.ts](../backend/src/middleware/validation.ts) com `cidade`/`cidades`/`estado` opcionais + paginação. Trocado `validateQuery(schemas.pagination)` → `validateQuery(schemas.feedQuery)` em 3 rotas de [newsRoutes.ts](../backend/src/routes/newsRoutes.ts): `/news`, `/news/feed`, `/news/favorites`.
+
+**Auditoria dos outros `validateQuery` do projeto:** tudo OK. Analytics schemas já tinham `cidade` declarado. Bug era exclusivo do `pagination` reusado em rotas que leem filtros extras.
+
+**Arquivos alterados:**
+- `backend/src/middleware/validation.ts` (novo schema)
+- `backend/src/routes/newsRoutes.ts` (3 rotas atualizadas)
+
+**Typecheck:** limpo.
+
+**Validação pendente:** deploy staging + abrir APK (já buildado ontem apontando pra staging) + clicar em Porto Alegre → deve mostrar só Porto Alegre.
+
+**Lição:** Zod `safeParse` sem `.passthrough()` é destrutivo. Schema precisa listar TODOS os campos que o handler vai ler. `req.query = result.data` depois é double-edged — garante tipos mas mata qualquer coisa não declarada.
+
+---
+
 ## 2026-04-16
 
 ### Início da Fase 2 — Refino do workflow de colaboração
@@ -395,3 +437,33 @@ Depois: coluna `news.categoria_grupo` (populada pelo pipeline) é fonte única.
 - `mobile-app/lib/features/search/screens/report_screen.dart` (mapa categoria removido, getter vira field, _computeAnalytics popula direto)
 
 **Finding aberto** (não mexido): [admin-panel/.../crime-pie-chart.tsx](../admin-panel/src/components/analytics/crime-pie-chart.tsx) — não investigado se usa `byCategory` direto ou recalcula a partir de `byCrimeType`. Se recalcular, é a última duplicação restante do mapa categoria. Anotar no ROADMAP.
+
+---
+
+### Fechamento da sessão 2026-04-16
+
+**Avaliação final do relatório pelo João:** 6/10 (meu juízo). Base técnica sólida, falta polimento pra soar "profissa" a cliente executivo. João concordou em descartar `riskScore` (pesos arbitrários) e `comparison` (redundante com trend). Oportunidades futuras acordadas:
+- Resumo executivo gerado por GPT (2 parágrafos no topo)
+- Breakdown de tendência por categoria (não só total)
+- Rua no mapa (Opção C da discussão: geocode mais preciso + fallback tolerante)
+
+**Deploy + build:**
+- Merge `develop` → `staging` + push (commit `bc92d5d`). Render free tier vai rebuilder sozinho (~3-5min cold start).
+- Produção suspensa pelo João enquanto testa staging.
+- `flutter clean` + `flutter build apk --dart-define=API_URL=https://simeops-backend.onrender.com` rodando em background.
+
+**Memória atualizada:**
+- Novo `project_fase2_refinement.md` com resumo dos combos desta sessão (cidades/dedup/filtros/cards/relatórios/limpeza dead code).
+- `project_overview.md` atualizado pra refletir Fase 2 em andamento.
+- `MEMORY.md` indexado.
+
+**Checklist de pendências pro João amanhã (produção):**
+1. Rodar migration 019 (coluna `estado`) no Supabase production
+2. Rodar migration de limpeza (dados ruins)
+3. Testar tudo em staging via APK
+4. Se OK: merge staging → main, reativar produção, APK prod rebuild
+5. **APÓS backend prod rodar novo:** migration 020 (DROP `resumo_agregado`)
+6. Ajustar `filter2_max_content_chars` pra 8000 no admin panel
+7. Configurar Sentry alert de email pra tag `provider:openai stage:filter1`
+
+**Primeira sessão com Opus 4.7 encerrada.**

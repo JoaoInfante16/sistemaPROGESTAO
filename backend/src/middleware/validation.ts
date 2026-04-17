@@ -65,6 +65,17 @@ export const schemas = {
     limit: z.coerce.number().int().min(1).max(100).default(20),
   }),
 
+  // Feed com paginacao + filtros opcionais de cidade/estado.
+  // Zod por padrao descarta campos nao listados no req.query. Sem este schema,
+  // `cidade`/`cidades`/`estado` sumiam antes de chegar no handler (bug 2026-04-17).
+  feedQuery: z.object({
+    offset: z.coerce.number().int().min(0).default(0),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    cidade: z.string().optional(),
+    cidades: z.string().optional(),
+    estado: z.string().optional(),
+  }),
+
   // Criar/atualizar localização
   createLocation: z.object({
     type: z.enum(['state', 'city']),

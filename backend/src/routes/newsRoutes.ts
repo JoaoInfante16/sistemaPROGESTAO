@@ -32,7 +32,7 @@ const router = Router();
 router.get(
   '/news',
   conditionalAuth,
-  validateQuery(schemas.pagination),
+  validateQuery(schemas.feedQuery),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const { offset, limit } = req.query as unknown as { offset: number; limit: number };
@@ -87,7 +87,7 @@ router.post(
 router.get(
   '/news/feed',
   conditionalAuth,
-  validateQuery(schemas.pagination),
+  validateQuery(schemas.feedQuery),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const userId = req.user?.id;
@@ -217,7 +217,7 @@ router.get(
 router.get(
   '/news/favorites',
   requireAuth,
-  validateQuery(schemas.pagination),
+  validateQuery(schemas.feedQuery),
   async (req: Request, res: Response): Promise<void> => {
     try {
       const userId = req.user!.id;
