@@ -12,6 +12,7 @@ import '../../../core/widgets/crime_radar_map.dart';
 import '../../../core/widgets/executive_indicators.dart';
 import '../../../core/widgets/fontes_analisadas.dart';
 import '../../../core/widgets/grid_background.dart';
+import '../../../core/widgets/weekly_trend_bars.dart';
 import '../../../main.dart';
 import '../../feed/screens/feed_screen.dart';
 
@@ -142,7 +143,9 @@ class _CityDetailScreenState extends State<CityDetailScreen>
           .catchError((_) => <String, dynamic>{});
       if (mounted) {
         setState(() {
-          _trend = trendData['trend'] as List<dynamic>? ?? [];
+          // Backend retorna { dataPoints: [...] } via getCrimeTrend.
+          // Antes lia 'trend' (campo inexistente) — chart ficava sempre vazio.
+          _trend = trendData['dataPoints'] as List<dynamic>? ?? [];
         });
       }
     } catch (e) {
@@ -582,49 +585,12 @@ class _CityDetailScreenState extends State<CityDetailScreen>
             )).toList(),
           ),
           const SizedBox(height: 14),
-          // Chart
-          if (_trend != null && _trend!.isNotEmpty)
-            SizedBox(
-              height: 100,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: _trend!.map((t) {
-                  final total = safeInt(t['total']);
-                  final label = (t['label'] as String?) ?? '';
-                  final maxVal = _trend!.fold<int>(1, (m, e) => safeInt(e['total']) > m ? safeInt(e['total']) : m);
-                  final height = maxVal > 0 ? (total / maxVal) * 80 : 0.0;
-                  return Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 2),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text('$total', style: TextStyle(fontSize: 9, color: SIMEopsColors.muted)),
-                          const SizedBox(height: 2),
-                          Container(
-                            height: height.clamp(4.0, 80.0),
-                            decoration: BoxDecoration(
-                              color: SIMEopsColors.teal.withValues(alpha: 0.7),
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            label.length > 5 ? label.substring(0, 5) : label,
-                            style: TextStyle(fontSize: 8, color: SIMEopsColors.muted.withValues(alpha: 0.6)),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            )
-          else
-            SizedBox(
-              height: 80,
-              child: Center(child: Text('Sem dados de tendência', style: GoogleFonts.exo2(fontSize: 12, color: SIMEopsColors.muted))),
-            ),
+          // Bar chart semanal (widget compartilhado com report_screen)
+          WeeklyTrendBars(
+            data: (_trend ?? const [])
+                .map((e) => e as Map<String, dynamic>)
+                .toList(),
+          ),
         ],
       ),
     );

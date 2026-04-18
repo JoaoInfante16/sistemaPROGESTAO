@@ -9,8 +9,8 @@ import '../../../core/services/api_service.dart';
 import '../../../core/widgets/crime_radar_map.dart';
 import '../../../core/widgets/executive_indicators.dart';
 import '../../../core/widgets/fontes_analisadas.dart';
+import '../../../core/widgets/weekly_trend_bars.dart';
 import '../../../main.dart';
-import '../widgets/mini_trend_chart.dart';
 
 class ReportScreen extends StatefulWidget {
   final String? searchId;
@@ -316,8 +316,13 @@ class _ReportScreenState extends State<ReportScreen> {
         searchId: widget.searchId,
       );
 
-      final url = (response['reportUrl'] as String?) ??
-          'https://sistemaprogestao.onrender.com/report/${response['reportId']}';
+      // reportUrl vem 100% do backend (baseado em ADMIN_PANEL_URL por ambiente).
+      // Antes tinha fallback hardcoded pra staging admin, que causava misdirect
+      // silencioso quando env var faltava no backend.
+      final url = response['reportUrl'] as String?;
+      if (url == null || url.isEmpty) {
+        throw Exception('Backend não retornou reportUrl. Verifique ADMIN_PANEL_URL no servidor.');
+      }
 
       if (mounted) {
         await Share.share(
@@ -584,9 +589,8 @@ class _ReportScreenState extends State<ReportScreen> {
                 ),
                 if (_byDate.length > 1)
                   _card(
-                    child: SizedBox(
-                      height: 180,
-                      child: MiniTrendChart(data: _byDate),
+                    child: WeeklyTrendBars(
+                      data: aggregateByWeek(_byDate),
                     ),
                   ),
               ],

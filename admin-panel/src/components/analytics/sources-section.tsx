@@ -1,7 +1,5 @@
 'use client';
 
-import { ExternalLink, Shield, Newspaper } from 'lucide-react';
-
 interface SourceEntry {
   name: string;
   count: number;
@@ -15,63 +13,10 @@ interface SourcesSectionProps {
   sourcesMedia?: SourceEntry[];
 }
 
-function SourceList({ sources, label, icon, borderColor }: {
-  sources: SourceEntry[];
-  label: string;
-  icon: React.ReactNode;
-  borderColor: string;
-}) {
-  if (sources.length === 0) return null;
-  const total = sources.reduce((sum, s) => sum + s.count, 0);
-
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-3">
-        {icon}
-        <h4 className="font-medium text-sm">{label}</h4>
-        <span className="text-xs text-muted-foreground">
-          ({total} {total === 1 ? 'referencia' : 'referencias'})
-        </span>
-      </div>
-      <div className="space-y-3">
-        {sources.map((source, i) => (
-          <div key={i} className={`rounded-lg border ${borderColor} p-3`}>
-            <div className="flex items-center justify-between mb-1">
-              <span className="font-medium text-sm">{source.name}</span>
-              <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                {source.count} {source.count === 1 ? 'referencia' : 'referencias'}
-              </span>
-            </div>
-            {source.urls && source.urls.length > 0 && (
-              <div className="space-y-1 mt-2">
-                {source.urls.slice(0, 3).map((url, j) => (
-                  <a
-                    key={j}
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs text-blue-600 hover:underline truncate"
-                  >
-                    <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                    <span className="truncate">{url}</span>
-                  </a>
-                ))}
-                {source.urls.length > 3 && (
-                  <p className="text-xs text-muted-foreground">
-                    +{source.urls.length - 3} mais
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
+// Estilo uniforme com o Flutter FontesAnalisadas: lista numerada [idx] hostname
+// + count "Nx" à direita. Sem preview text, sem icons, sem URLs clicáveis —
+// limpeza visual solicitada pelo João.
 export function SourcesSection({ sources, sourcesOficial, sourcesMedia }: SourcesSectionProps) {
-  // Se tiver fontes categorizadas, mostra separado
   const oficial = sourcesOficial || sources.filter(s => s.type === 'oficial');
   const midia = sourcesMedia || sources.filter(s => s.type === 'midia' || !s.type);
 
@@ -84,19 +29,44 @@ export function SourcesSection({ sources, sourcesOficial, sourcesMedia }: Source
   }
 
   return (
-    <div className="space-y-6">
-      <SourceList
-        sources={oficial}
-        label="Fontes Oficiais (SSP/Gov)"
-        icon={<Shield className="h-4 w-4 text-green-600" />}
-        borderColor="border-green-200"
-      />
-      <SourceList
-        sources={midia}
-        label="Fontes Jornalisticas"
-        icon={<Newspaper className="h-4 w-4 text-blue-600" />}
-        borderColor="border-blue-200"
-      />
+    <div>
+      {/* Header com contador oficiais · mídias (sobrescreve o <h2> externo se pai usar) */}
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
+        <span className="font-mono">
+          {oficial.length} oficiais · {midia.length} mídias
+        </span>
+      </div>
+
+      <div className="space-y-1.5">
+        {oficial.map((s, i) => (
+          <SourceRow key={`of-${i}`} index={i + 1} source={s} isOfficial />
+        ))}
+        {midia.map((s, i) => (
+          <SourceRow
+            key={`md-${i}`}
+            index={oficial.length + i + 1}
+            source={s}
+            isOfficial={false}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SourceRow({ index, source, isOfficial }: { index: number; source: SourceEntry; isOfficial: boolean }) {
+  const color = isOfficial ? 'text-teal-700' : 'text-slate-600';
+  return (
+    <div className="flex items-center gap-3 py-0.5">
+      <span className="text-xs text-muted-foreground/60 font-mono w-7">
+        [{index}]
+      </span>
+      <span className={`flex-1 text-sm ${color} truncate`}>{source.name}</span>
+      {source.count > 1 && (
+        <span className="text-xs text-muted-foreground font-mono">
+          {source.count}x
+        </span>
+      )}
     </div>
   );
 }

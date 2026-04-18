@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { Download, AlertTriangle, Clock, MapPin } from 'lucide-react';
 import { api, type ReportData } from '@/lib/api';
 import { CrimePieChart } from '@/components/analytics/crime-pie-chart';
-import { CrimeTrendChart } from '@/components/analytics/crime-trend-chart';
+import { CrimeTrendBars } from '@/components/analytics/crime-trend-bars';
 import { CrimeRadarMap } from '@/components/analytics/crime-radar-map';
 import { ExecutiveSection } from '@/components/analytics/executive-section';
 import { SourcesSection, SourceNote } from '@/components/analytics/sources-section';
@@ -196,7 +196,7 @@ export default function PublicReportPage() {
             {rd.trend && rd.trend.length > 0 && (
               <div>
                 <h3 className="text-sm font-semibold mb-3 text-slate-700">Tendência Temporal</h3>
-                <CrimeTrendChart data={rd.trend} sourceNote={sourceNoteText} />
+                <CrimeTrendBars data={rd.trend} sourceNote={sourceNoteText} />
               </div>
             )}
           </div>
@@ -204,7 +204,7 @@ export default function PublicReportPage() {
 
         {/* 6. Fontes */}
         <div className="rounded-xl border p-6">
-          <h2 className="text-lg font-semibold mb-4">Fontes dos Dados</h2>
+          <h2 className="text-lg font-semibold mb-4">Fontes Analisadas</h2>
           <SourcesSection sources={sources} sourcesOficial={sourcesOficial} sourcesMedia={sourcesMedia} />
         </div>
 

@@ -363,7 +363,16 @@ router.post(
         sources: mergedSources as Array<Record<string, unknown>>,
       });
 
-      const adminUrl = process.env.ADMIN_PANEL_URL || 'https://sistemaprogestao.onrender.com';
+      // ADMIN_PANEL_URL é obrigatória — sem ela, não faz sentido compartilhar
+      // (o link apontaria pra lugar nenhum). Antes tinha fallback hardcoded
+      // pro staging, que causava prod misdirecting silencioso quando a var
+      // não estava setada.
+      const adminUrl = process.env.ADMIN_PANEL_URL;
+      if (!adminUrl) {
+        logger.error('[Analytics] ADMIN_PANEL_URL not configured — cannot share report');
+        res.status(500).json({ error: 'Report sharing not configured (ADMIN_PANEL_URL missing)' });
+        return;
+      }
       res.json({ reportId, reportUrl: `${adminUrl}/report/${reportId}` });
     } catch (error) {
       logger.error('[Analytics] Generate report error:', error);

@@ -63,8 +63,13 @@ REGRAS PRA INDICADORES:
 
 REGRAS PRA RESUMO_COMPLEMENTAR:
 - Use SÓ pra estatísticas que NÃO viraram card (anúncios, programas, reforço de contingente, narrativas sem número autoexplicativo).
+- **Tom de transição**: comece conectando com os indicadores visuais dos cards. Ex: "Além das reduções nos homicídios,...", "Complementando os indicadores acima,...", "Fora os números de apreensão,...". Isso deixa claro pro leitor que o parágrafo COMPLEMENTA os cards, não duplica.
+- Escrita executiva: reflexiva, fluida, direta. Evite bullet points. Evite "também" solto sem contexto. Conecte causas e efeitos quando possível ("refletindo o sucesso das políticas de prevenção", "como resultado da integração institucional").
 - 1 parágrafo curto (50-80 palavras).
 - Se TUDO virou card, retorne null.
+
+EXEMPLO DE BOM RESUMO_COMPLEMENTAR:
+"Além das reduções significativas nos homicídios, Vitória alcançou 621 dias sem registrar casos de feminicídio, refletindo o sucesso das políticas de prevenção e acolhimento especializado."
 
 REGRAS PRA FONTES:
 - Array único com todos os hostnames distintos que apareceram nos indicadores + resumo.
