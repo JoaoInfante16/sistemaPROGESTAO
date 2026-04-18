@@ -4,21 +4,25 @@
 
 // 15 categorias padronizadas de crime (gerenciamento de risco corporativo)
 export type TipoCrime =
-  | 'roubo_furto' | 'vandalismo' | 'invasao'           // patrimonial
+  | 'roubo_furto' | 'vandalismo' | 'invasao' | 'receptacao'  // patrimonial
   | 'homicidio' | 'latrocinio' | 'lesao_corporal'      // seguranca
   | 'trafico' | 'operacao_policial' | 'manifestacao' | 'bloqueio_via' // operacional
-  | 'estelionato' | 'receptacao'                        // fraude
+  | 'estelionato'                                       // fraude
   | 'crime_ambiental' | 'trabalho_irregular' | 'estatistica' | 'outros'; // institucional
 
 export type CategoriaGrupo = 'patrimonial' | 'seguranca' | 'operacional' | 'fraude' | 'institucional';
 export type Natureza = 'ocorrencia' | 'estatistica';
 
-// Mapa tipo_crime → categoria_grupo (usado pra validacao)
+// Mapa tipo_crime → categoria_grupo (usado pra validacao).
+// Nota: receptação (Art. 180 CP) é patrimonial juridicamente E funcionalmente —
+// indica cadeia de crime patrimonial ativa (produto roubado sendo vendido).
+// Latrocínio mantido em seguranca (tecnicamente patrimonial qualificado, mas
+// pro cliente de varejo é risco à vida — pragmático sobre jurídico puro).
 export const TIPO_CRIME_GRUPO: Record<TipoCrime, CategoriaGrupo> = {
-  roubo_furto: 'patrimonial', vandalismo: 'patrimonial', invasao: 'patrimonial',
+  roubo_furto: 'patrimonial', vandalismo: 'patrimonial', invasao: 'patrimonial', receptacao: 'patrimonial',
   homicidio: 'seguranca', latrocinio: 'seguranca', lesao_corporal: 'seguranca',
   trafico: 'operacional', operacao_policial: 'operacional', manifestacao: 'operacional', bloqueio_via: 'operacional',
-  estelionato: 'fraude', receptacao: 'fraude',
+  estelionato: 'fraude',
   crime_ambiental: 'institucional', trabalho_irregular: 'institucional', estatistica: 'institucional', outros: 'institucional',
 };
 

@@ -40,10 +40,16 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   Timer? _elapsedTimer;
   String _elapsedText = '0s';
   final Map<int, String> _stageDetails = {};
+  // Timestamp de quando cada stage começou — usado pra mostrar
+  // [HH:MM:SS] + duração por stage na progress view.
+  final Map<int, DateTime> _stageStartTimes = {};
   int _pollCount = 0;
   int _consecutiveErrors = 0;
   static const _maxPolls = 200; // ~10 min at 3s intervals
-  static const _maxConsecutiveErrors = 5;
+  // 20 erros * 3s = 60s de tolerância — cobre cold-start do Render e flaps
+  // de rede transitórios. Antes era 5 (~15s) → dava "Erro de conexão" falso
+  // quando user retomava busca via histórico durante warm-up do backend.
+  static const _maxConsecutiveErrors = 20;
 
   static const _periodos = {
     30: 'Ultimos 30 dias',
@@ -99,8 +105,16 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       } else if (s == 'failed') {
         if (mounted) setState(() => _searchStatus = 'failed');
       } else {
-        // Realmente ainda processando — mostra pipeline + iniciar timer
-        if (mounted) setState(() => _searchStatus = 'processing');
+        // Realmente ainda processando — reconstrói cronologia dos stages
+        // anteriores a partir do history persistido, depois inicia polling.
+        final progress = status['progress'] as Map<String, dynamic>?;
+        if (progress != null) _ingestProgressHistory(progress);
+        if (mounted) {
+          setState(() {
+            _searchStatus = 'processing';
+            _progress = progress;
+          });
+        }
         _startElapsedTimer();
         _startPolling();
       }
@@ -122,7 +136,9 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   }
 
   void _startElapsedTimer() {
-    _searchStartTime = DateTime.now();
+    // Preserva _searchStartTime se já foi setado por _ingestProgressHistory
+    // (caso do resume — cronômetro precisa refletir o início real, não agora).
+    _searchStartTime ??= DateTime.now();
     _elapsedTimer?.cancel();
     _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted || _searchStartTime == null) return;
@@ -176,6 +192,36 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     }
   }
 
+  // Popula _stageStartTimes + _stageDetails do `history` persistido no backend.
+  // Roda tanto no polling normal quanto no _resumeSearch — quando user volta
+  // via histórico, reconstrói a cronologia completa dos stages anteriores.
+  void _ingestProgressHistory(Map<String, dynamic> progress) {
+    final history = progress['history'] as List<dynamic>?;
+    if (history == null) return;
+
+    for (final raw in history) {
+      if (raw is! Map) continue;
+      final n = (raw['stage_num'] as num?)?.toInt();
+      if (n == null) continue;
+
+      final startedStr = raw['started_at'] as String?;
+      if (startedStr != null && !_stageStartTimes.containsKey(n)) {
+        final parsed = DateTime.tryParse(startedStr);
+        if (parsed != null) _stageStartTimes[n] = parsed.toLocal();
+      }
+
+      final d = raw['details'] as String?;
+      if (d != null) _stageDetails[n] = d;
+    }
+
+    // Se ainda não temos _searchStartTime (user retomou via histórico),
+    // adota o timestamp do stage 1 pra cronômetro bater com o real.
+    final s1 = _stageStartTimes[1];
+    if (s1 != null && _searchStartTime == null) {
+      _searchStartTime = s1;
+    }
+  }
+
   void _startPolling() {
     _pollTimer?.cancel();
     _pollCount = 0;
@@ -206,18 +252,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         // Atualizar progresso da pipeline
         final progress = status['progress'] as Map<String, dynamic>?;
         if (mounted && progress != null) {
-          final stageNum = progress['stage_num'] as int? ?? 0;
-          final details = progress['details'] as String?;
-          if (_progress != null) {
-            final prevStage = _progress!['stage_num'] as int? ?? 0;
-            final prevDetails = _progress!['details'] as String?;
-            if (prevStage > 0 && prevStage < stageNum && prevDetails != null) {
-              _stageDetails[prevStage] = prevDetails;
-            }
-          }
-          if (details != null) {
-            _stageDetails[stageNum] = details;
-          }
+          _ingestProgressHistory(progress);
           setState(() => _progress = progress);
         }
 
@@ -241,12 +276,15 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         _consecutiveErrors++;
         debugPrint('[ManualSearch] Poll error #$_consecutiveErrors: $e');
         if (_consecutiveErrors >= _maxConsecutiveErrors) {
+          // Sem sucesso após 60s — provavelmente o backend tá fora do ar.
+          // Pausa polling mas NÃO marca como failed (a busca pode estar
+          // rodando bem no backend; só a conexão client→server tá ruim).
+          // Mensagem orienta user a voltar depois pelo histórico.
           _pollTimer?.cancel();
           _elapsedTimer?.cancel();
           if (mounted) {
-            setState(() => _searchStatus = 'failed');
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Erro de conexão. Verifique o histórico.')),
+              const SnackBar(content: Text('Sem conexão com o servidor. Volte ao histórico quando terminar.')),
             );
           }
         }
@@ -305,6 +343,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       _searchStartTime = null;
       _elapsedText = '0s';
       _stageDetails.clear();
+      _stageStartTimes.clear();
       _pollCount = 0;
       _consecutiveErrors = 0;
     });
@@ -466,130 +505,253 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     ('saving', 'Salvando', Icons.check_circle),
   ];
 
-  Widget _buildProgressStepper() {
-    final currentStageNum = (_progress?['stage_num'] as int?) ?? 0;
-    final details = _progress?['details'] as String?;
-    final progressValue = currentStageNum / _pipelineStages.length;
+  // Formata Duration como "2.3s", "1m 12s", "0.4s"
+  String _fmtDuration(Duration d) {
+    if (d.inSeconds < 60) {
+      final seconds = d.inMilliseconds / 1000;
+      return '${seconds.toStringAsFixed(seconds < 10 ? 1 : 0)}s';
+    }
+    final m = d.inMinutes;
+    final s = d.inSeconds - m * 60;
+    return s > 0 ? '${m}m ${s}s' : '${m}m';
+  }
 
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+  // "[14:47:15]" — formato monospace estilo log
+  String _fmtTimestamp(DateTime t) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '[${two(t.hour)}:${two(t.minute)}:${two(t.second)}]';
+  }
+
+  // Duração de cada stage concluído (tempo até próximo começar).
+  // Stage corrente: agora - início. Pendente: null.
+  Duration? _stageDuration(int stageNum, int currentStageNum) {
+    final start = _stageStartTimes[stageNum];
+    if (start == null) return null;
+    if (stageNum < currentStageNum) {
+      final nextStart = _stageStartTimes[stageNum + 1];
+      if (nextStart != null) return nextStart.difference(start);
+    }
+    if (stageNum == currentStageNum) {
+      return DateTime.now().difference(start);
+    }
+    return null;
+  }
+
+  Widget _metadataCard(String label, String value) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        decoration: BoxDecoration(
+          color: SIMEopsColors.navyLight.withValues(alpha: 0.6),
+          border: Border.all(color: SIMEopsColors.teal.withValues(alpha: 0.15)),
+          borderRadius: BorderRadius.circular(6),
+        ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Processando busca...',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+              label,
+              style: GoogleFonts.rajdhani(
+                fontSize: 10,
+                color: SIMEopsColors.muted.withValues(alpha: 0.7),
+                letterSpacing: 1.5,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
-              _elapsedText,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey[500],
+              value,
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 14,
+                color: SIMEopsColors.tealLight,
+                fontWeight: FontWeight.w700,
               ),
-            ),
-            const SizedBox(height: 16),
-            // Progress bar geral
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0, end: progressValue),
-                duration: const Duration(milliseconds: 500),
-                builder: (_, value, __) => LinearProgressIndicator(
-                  value: value,
-                  minHeight: 6,
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            ...List.generate(_pipelineStages.length, (index) {
-              final (_, label, icon) = _pipelineStages[index];
-              final stageNum = index + 1;
-              final isCompleted = stageNum < currentStageNum;
-              final isCurrent = stageNum == currentStageNum;
-              final isPending = stageNum > currentStageNum;
-              final stageDetail = _stageDetails[stageNum];
-
-              final color = isCompleted
-                  ? Colors.green
-                  : isCurrent
-                      ? Theme.of(context).colorScheme.primary
-                      : Colors.grey[400]!;
-
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                child: Row(
-                  children: [
-                    if (isCompleted)
-                      AnimatedScale(
-                        scale: 1.0,
-                        duration: const Duration(milliseconds: 300),
-                        child: Icon(Icons.check_circle, color: color, size: 28),
-                      )
-                    else if (isCurrent)
-                      SizedBox(
-                        width: 28,
-                        height: 28,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: color,
-                        ),
-                      )
-                    else
-                      Icon(Icons.circle_outlined, color: color, size: 28),
-                    const SizedBox(width: 12),
-                    Icon(icon, color: color, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            label,
-                            style: TextStyle(
-                              color: isPending ? Colors.grey[500] : null,
-                              fontWeight: isCurrent ? FontWeight.bold : null,
-                            ),
-                          ),
-                          if (isCurrent && details != null)
-                            AnimatedOpacity(
-                              opacity: 1.0,
-                              duration: const Duration(milliseconds: 200),
-                              child: Text(
-                                details,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Theme.of(context).colorScheme.primary,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          if (isCompleted && stageDetail != null)
-                            Text(
-                              stageDetail,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey[500],
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
-            const SizedBox(height: 24),
-            OutlinedButton(
-              onPressed: _resetSearch,
-              child: const Text('Cancelar'),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _stageIndicator({required bool done, required bool current}) {
+    final color = done
+        ? SIMEopsColors.teal
+        : current
+            ? SIMEopsColors.tealLight
+            : SIMEopsColors.muted.withValues(alpha: 0.3);
+    if (done) {
+      return Container(
+        width: 14,
+        height: 14,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      );
+    }
+    if (current) {
+      return SizedBox(
+        width: 14,
+        height: 14,
+        child: CircularProgressIndicator(strokeWidth: 2, color: color),
+      );
+    }
+    return Container(
+      width: 14,
+      height: 14,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: color, width: 1.5),
+      ),
+    );
+  }
+
+  Widget _buildProgressStepper() {
+    final currentStageNum = (_progress?['stage_num'] as int?) ?? 0;
+    final totalStages = _pipelineStages.length;
+    final progressValue = currentStageNum / totalStages;
+    final stageCounter = currentStageNum > 0 ? '$currentStageNum/$totalStages' : '—';
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header com metadata
+          Row(
+            children: [
+              _metadataCard('ETAPA', stageCounter),
+              const SizedBox(width: 8),
+              _metadataCard('TEMPO', _elapsedText),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Progress bar central
+          ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: progressValue),
+              duration: const Duration(milliseconds: 500),
+              builder: (_, value, __) => LinearProgressIndicator(
+                value: value,
+                minHeight: 4,
+                backgroundColor: SIMEopsColors.navyLight.withValues(alpha: 0.6),
+                valueColor: AlwaysStoppedAnimation(SIMEopsColors.teal),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Lista de stages
+          ...List.generate(totalStages, (index) {
+            final (_, label, _) = _pipelineStages[index];
+            final stageNum = index + 1;
+            final isCompleted = stageNum < currentStageNum;
+            final isCurrent = stageNum == currentStageNum;
+            final startTime = _stageStartTimes[stageNum];
+            final duration = _stageDuration(stageNum, currentStageNum);
+            final detail = _stageDetails[stageNum];
+
+            // Cor do texto principal por estado
+            final labelColor = isCompleted
+                ? SIMEopsColors.white
+                : isCurrent
+                    ? SIMEopsColors.tealLight
+                    : SIMEopsColors.muted.withValues(alpha: 0.45);
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Timestamp monospace (só quando stage já aconteceu)
+                  SizedBox(
+                    width: 72,
+                    child: startTime != null
+                        ? Text(
+                            _fmtTimestamp(startTime),
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: 10,
+                              color: SIMEopsColors.muted.withValues(alpha: 0.6),
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                  const SizedBox(width: 10),
+                  // Status indicator (círculo)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: _stageIndicator(done: isCompleted, current: isCurrent),
+                  ),
+                  const SizedBox(width: 10),
+                  // Label + detail
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                label,
+                                style: GoogleFonts.exo2(
+                                  fontSize: 13,
+                                  color: labelColor,
+                                  fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                            if (duration != null)
+                              Text(
+                                _fmtDuration(duration),
+                                style: GoogleFonts.jetBrainsMono(
+                                  fontSize: 10,
+                                  color: isCompleted
+                                      ? SIMEopsColors.muted.withValues(alpha: 0.7)
+                                      : SIMEopsColors.tealLight.withValues(alpha: 0.8),
+                                ),
+                              ),
+                          ],
+                        ),
+                        if (detail != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              detail,
+                              style: GoogleFonts.exo2(
+                                fontSize: 11,
+                                color: SIMEopsColors.muted.withValues(alpha: isCompleted ? 0.7 : 0.9),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+
+          const SizedBox(height: 24),
+
+          // Botão cancelar (estilo tático — borda teal, texto caps, letter-spacing)
+          Center(
+            child: OutlinedButton(
+              onPressed: _resetSearch,
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: SIMEopsColors.teal.withValues(alpha: 0.6)),
+                padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+              ),
+              child: Text(
+                'CANCELAR',
+                style: GoogleFonts.rajdhani(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 3,
+                  color: SIMEopsColors.teal,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

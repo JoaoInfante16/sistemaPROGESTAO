@@ -28,6 +28,10 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    // Limpa credentials salvas junto — senão o _tryAutoLogin da LoginScreen
+    // relogava o user automaticamente (bug "não consigo sair" quando
+    // "lembrar senha" tá marcado).
+    await clearSavedCredentials();
     await _client.auth.signOut();
   }
 

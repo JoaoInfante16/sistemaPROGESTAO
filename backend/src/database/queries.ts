@@ -1041,13 +1041,44 @@ export async function insertSearchResults(
   if (error) throw new Error(`Failed to insert search results: ${error.message}`);
 }
 
+interface StageHistoryEntry {
+  stage_num: number;
+  details?: string;
+  started_at: string; // ISO
+}
+
+// Atualiza o progresso e **acumula** um history de stages com timestamp.
+// Permite que o Flutter (quando user retoma busca via histórico) reconstrua
+// a cronologia completa — [HH:MM:SS] + duração por stage, igual se tivesse
+// ficado na tela. Sem migration: só expande o shape do JSONB `progress`.
 export async function updateSearchProgress(
   searchId: string,
   progress: { stage: string; stage_num: number; total_stages: number; details?: string }
 ): Promise<void> {
+  const { data: current } = await supabase
+    .from('search_cache')
+    .select('progress')
+    .eq('search_id', searchId)
+    .maybeSingle();
+
+  const existingHistory = (((current?.progress as Record<string, unknown> | null)?.history as StageHistoryEntry[] | undefined) || []);
+
+  // Append só se stage_num novo (worker é sequencial, mas cinto + suspensório).
+  const alreadyLogged = existingHistory.some((h) => h.stage_num === progress.stage_num);
+  const history: StageHistoryEntry[] = alreadyLogged
+    ? existingHistory
+    : [
+        ...existingHistory,
+        {
+          stage_num: progress.stage_num,
+          details: progress.details,
+          started_at: new Date().toISOString(),
+        },
+      ];
+
   const { error } = await supabase
     .from('search_cache')
-    .update({ progress })
+    .update({ progress: { ...progress, history } })
     .eq('search_id', searchId);
 
   // Non-fatal: progress update failure should never abort the pipeline
