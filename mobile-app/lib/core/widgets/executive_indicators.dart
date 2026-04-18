@@ -8,8 +8,15 @@ import '../../main.dart';
 // Não renderiza se data.isEmpty (sem estatísticas no período).
 class ExecutiveIndicators extends StatelessWidget {
   final ExecutiveData data;
+  // Quando `showHeader=false`, o widget é usado DENTRO de uma seção que já
+  // tem título — evita duplicar "Indicadores da Região".
+  final bool showHeader;
 
-  const ExecutiveIndicators({super.key, required this.data});
+  const ExecutiveIndicators({
+    super.key,
+    required this.data,
+    this.showHeader = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -26,22 +33,24 @@ class ExecutiveIndicators extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Cabeçalho da seção
-          Text(
-            'INDICADORES DA REGIÃO',
-            style: GoogleFonts.rajdhani(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 2,
-              color: SIMEopsColors.teal,
+          // Cabeçalho interno (só quando não estiver dentro de uma seção já titulada)
+          if (showHeader) ...[
+            Text(
+              'INDICADORES DA REGIÃO',
+              style: GoogleFonts.rajdhani(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 2,
+                color: SIMEopsColors.teal,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
+            const SizedBox(height: 12),
+          ],
 
           // Cards horizontais scrolláveis
           if (data.indicadores.isNotEmpty)
             SizedBox(
-              height: 108,
+              height: 124,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: data.indicadores.length,
@@ -150,7 +159,7 @@ class _IndicatorCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 140,
+      width: 180,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: SIMEopsColors.navy.withValues(alpha: 0.7),
@@ -200,7 +209,7 @@ class _IndicatorCard extends StatelessWidget {
                   color: Colors.white.withValues(alpha: 0.9),
                   height: 1.2,
                 ),
-                maxLines: 2,
+                maxLines: 3,
                 overflow: TextOverflow.ellipsis,
               ),
               if (indicator.contexto.isNotEmpty) ...[

@@ -13,7 +13,6 @@ import '../../../core/widgets/crime_radar_map.dart';
 import '../../../core/widgets/executive_indicators.dart';
 import '../../../core/widgets/grid_background.dart';
 import '../../../main.dart';
-import 'package:share_plus/share_plus.dart';
 import '../../feed/screens/feed_screen.dart';
 
 class CityDetailScreen extends StatefulWidget {
@@ -212,19 +211,6 @@ class _CityDetailScreenState extends State<CityDetailScreen>
             ],
           ],
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Compartilhar relatório',
-            onPressed: _sharing ? null : _shareReport,
-            icon: _sharing
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
-                : const Icon(Icons.share),
-          ),
-        ],
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(_isGroup ? 88 : 44),
           child: Column(
@@ -309,9 +295,6 @@ class _CityDetailScreenState extends State<CityDetailScreen>
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           children: [
-            // Indicadores da região (só renderiza se tem dado; aparece ANTES do resumo)
-            ExecutiveIndicators(data: _executive),
-
             // Resumo numerico
             _sectionTitle('Resumo'),
             _buildResumoCard(totalCrimes, totalBairros, totalTipos, estatisticas.length),
@@ -351,11 +334,16 @@ class _CityDetailScreenState extends State<CityDetailScreen>
               _buildBairrosRanking(bairros),
             ],
 
-            // Tendencia temporal (com filtros de periodo)
+            // Indicadores da Região — agrupa: cards visuais (Executive) +
+            // tendência temporal + estatísticas brutas. Tudo que é "métrica da
+            // região" no mesmo lugar.
             _sectionTitle('Indicadores da Região'),
+            // Cards de indicadores + resumo complementar + fontes (via GPT das estatísticas)
+            ExecutiveIndicators(data: _executive, showHeader: false),
+            // Gráfico de tendência temporal com filtros
             _buildTrendWithFilters(),
 
-            // Indicadores regionais (estatisticas da internet)
+            // Estatísticas brutas (quando houver — texto completo + fonte)
             if (estatisticas.isNotEmpty) ...[
               _sectionTitle('Estatísticas de Segurança'),
               _buildIndicadores(estatisticas),
@@ -466,45 +454,6 @@ class _CityDetailScreenState extends State<CityDetailScreen>
         ],
       ),
     );
-  }
-
-  // ── Compartilhar relatorio (acionado pelo icone no AppBar) ──
-
-  bool _sharing = false;
-
-  Future<void> _shareReport() async {
-    setState(() => _sharing = true);
-    try {
-      final api = context.read<ApiService>();
-      final now = DateTime.now();
-      final from = now.subtract(const Duration(days: 30));
-      String fmt(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
-      final estado = widget.city.parentState ?? '';
-      final response = await api.generateReport(
-        cidade: _activeCidade,
-        estado: estado,
-        dateFrom: fmt(from),
-        dateTo: fmt(now),
-      );
-
-      final url = (response['reportUrl'] as String?) ??
-          'https://sistemaprogestao.onrender.com/report/${response['reportId']}';
-
-      if (mounted) {
-        await Share.share(
-          'SIMEops - Relatório de Risco\n$_activeCidade/$estado\n\n$url',
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao gerar relatório: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _sharing = false);
-    }
   }
 
   // ── Bairros com mais incidencias (identico ao report_screen) ──

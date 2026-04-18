@@ -35,7 +35,6 @@ class ReportScreen extends StatefulWidget {
 
 class _ReportScreenState extends State<ReportScreen> {
   bool _generatingLink = false;
-  String? _reportUrl;
 
   // Computed
   late final Map<String, int> _crimeTypeCounts;
@@ -307,7 +306,6 @@ class _ReportScreenState extends State<ReportScreen> {
 
       final url = (response['reportUrl'] as String?) ??
           'https://sistemaprogestao.onrender.com/report/${response['reportId']}';
-      setState(() => _reportUrl = url);
 
       if (mounted) {
         await Share.share(
@@ -400,12 +398,6 @@ class _ReportScreenState extends State<ReportScreen> {
                   )
                 : const Icon(Icons.share),
           ),
-          if (_reportUrl != null)
-            IconButton(
-              tooltip: 'Abrir no navegador',
-              icon: const Icon(Icons.open_in_browser),
-              onPressed: () => _openUrl(_reportUrl!),
-            ),
         ],
       ),
       body: ListView(
@@ -461,9 +453,6 @@ class _ReportScreenState extends State<ReportScreen> {
                   ],
                 ),
               ),
-
-              // Indicadores da região (aparece ANTES do resumo se tiver dado)
-              ExecutiveIndicators(data: _executive),
 
               // Resumo numerico
               _sectionTitle('Resumo'),
@@ -578,9 +567,11 @@ class _ReportScreenState extends State<ReportScreen> {
                 ),
               ],
 
-              // Indicadores da Regiao (estatisticas + tendencia)
-              if (_estatisticas.isNotEmpty || _byDate.length > 1) ...[
+              // Indicadores da Regiao (cards Executive + tendencia + estatisticas)
+              if (!_executive.isEmpty || _estatisticas.isNotEmpty || _byDate.length > 1) ...[
                 _sectionTitle('Indicadores da Região'),
+                // Cards de indicadores (Executive) + resumo complementar + fontes
+                ExecutiveIndicators(data: _executive, showHeader: false),
                 if (_byDate.length > 1)
                   _card(
                     child: SizedBox(

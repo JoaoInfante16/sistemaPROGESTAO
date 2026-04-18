@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import Image from 'next/image';
 import { Download, AlertTriangle, Clock, MapPin } from 'lucide-react';
 import { api, type ReportData } from '@/lib/api';
 import { CrimePieChart } from '@/components/analytics/crime-pie-chart';
@@ -94,10 +93,11 @@ export default function PublicReportPage() {
       {/* Top bar */}
       <div className="flex items-center justify-between mb-8 print:hidden">
         <div className="flex items-center gap-3">
-          <Image src="/logo.png" alt="SIMEops" width={36} height={36} priority />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="SIMEops" width={40} height={40} className="object-contain" />
           <div className="flex flex-col leading-tight">
             <span className="text-lg font-bold tracking-widest text-teal-700">SIMEops</span>
-            <span className="text-[10px] text-slate-500 tracking-wider">PROGESTÃO · Monitoramento de Ocorrências</span>
+            <span className="text-[10px] text-slate-500 tracking-wider">Sistema de Monitoramento de Ocorrências</span>
           </div>
         </div>
         <button
@@ -145,9 +145,13 @@ export default function PublicReportPage() {
           </div>
         </div>
 
-        {/* 4. Radar de Ocorrências (pontos por categoria + filtros) */}
+        {/* 4. Radar de Ocorrências (pontos por categoria + filtros)
+            data-pdf-hide: html2canvas pula esta seção. Tiles de mapa rasterizados
+            em PDF estático têm valor baixo + react-leaflet pode tainting o canvas
+            antes do crossOrigin pegar. Cliente que abrir o link web vê o mapa
+            interativo normalmente. */}
         {mapPoints.length > 0 && (
-          <div className="mb-8">
+          <div className="mb-8" data-pdf-hide>
             <h2 className="text-lg font-semibold mb-4">Mapa de Ocorrências</h2>
             <CrimeRadarMap points={mapPoints} cidade={rd.cidade} />
           </div>
