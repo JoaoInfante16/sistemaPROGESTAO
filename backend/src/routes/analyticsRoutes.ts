@@ -24,6 +24,7 @@ import {
   MapPointRaw,
 } from '../database/analyticsQueries';
 import { CrimePoint } from '../utils/types';
+import { getOrGenerateExecutive, generateExecutiveFromStatistics } from '../services/executive';
 import { logger } from '../middleware/logger';
 
 const router = Router();
@@ -99,6 +100,39 @@ router.get(
     } catch (error) {
       logger.error('[Analytics] Crime trend error:', error);
       res.status(500).json({ error: 'Failed to fetch crime trend' });
+    }
+  }
+);
+
+// ============================================
+// Executive (resumo + indicadores visuais via GPT, cacheado)
+// ============================================
+// Dashboard chama pra ver cards + parágrafo dos indicadores estatísticos do período.
+// Lê cache primeiro; só chama GPT se cache miss/expirado. Custo rastreado em budget.
+router.get(
+  '/analytics/executive',
+  requireAuth,
+  validateQuery(schemas.executiveQuery),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { cidade, estado, rangeDays } = req.query as unknown as {
+        cidade: string;
+        estado: string;
+        rangeDays: number;
+      };
+
+      const now = new Date();
+      const from = new Date(now.getTime() - rangeDays * 24 * 60 * 60 * 1000);
+      const dateFrom = from.toISOString().split('T')[0];
+      const dateTo = now.toISOString().split('T')[0];
+
+      const summary = await getCrimeSummary(cidade, dateFrom, dateTo).catch(() => null);
+      const stats = summary?.estatisticas || [];
+      const executive = await getOrGenerateExecutive(cidade, estado, rangeDays, stats);
+      res.json(executive);
+    } catch (error) {
+      logger.error('[Analytics] Executive error:', error);
+      res.status(500).json({ error: 'Failed to fetch executive' });
     }
   }
 );
@@ -207,6 +241,24 @@ router.post(
         : await getMapPointsRaw(cidade, dateFrom, dateTo).catch(() => []);
       const mapPoints = await buildMapPoints(rawPoints, cidade, estado);
 
+      // Executive section — gerada aqui e embutida no report (snapshot imutável).
+      // Pra busca manual usa as estatísticas do searchReport; pra dashboard usa
+      // do summary do news table. Custo rastreado como source=manual_search ou auto_scan.
+      const statsForExecutive = (summary?.estatisticas || []).map((s) => ({
+        resumo: s.resumo,
+        data_ocorrencia: s.data_ocorrencia,
+        source_url: s.source_url,
+      }));
+      const rangeDays = Math.max(
+        1,
+        Math.round((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / (1000 * 60 * 60 * 24)),
+      );
+      const executive = await generateExecutiveFromStatistics(
+        statsForExecutive,
+        searchId ? 'manual_search' : 'auto_scan',
+        { cidade, estado, rangeDays },
+      );
+
       const reportData = {
         cidade,
         estado,
@@ -230,6 +282,7 @@ router.post(
         sourcesOficial,
         sourcesMedia,
         mapPoints,
+        executive,
       };
 
       const reportId = await createReport({

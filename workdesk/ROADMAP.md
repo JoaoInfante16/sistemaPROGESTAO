@@ -28,6 +28,12 @@ Fase 2 foca em **refinar, testar e estabilizar** — sem features grandes por en
 - Busca manual: filtro de palavra-chave removido (gastava recurso sem valor)
 - **Sentry em tudo (prod-only)** — mobile (sentry_flutter) + admin (@sentry/nextjs) com inicialização condicional por DSN. Projetos criados: `simeops-flutter`, `simeops-backend`, `simeops-admin`.
 - Envs por ambiente no mobile: `env/{dev,staging,prod}.json` + scripts `.bat` (fim de `--dart-define` inline)
+- Receptação reclassificada `fraude → patrimonial` (juridicamente correto + funcionalmente — indica cadeia patrimonial ativa)
+- Fix "não consigo sair" quando `lembrar senha` tá marcado (signOut agora limpa credentials)
+- Fix falso "Erro de conexão" ao retomar busca em cold-start (tolerância 5 → 20 erros, não marca failed, mensagem gentil)
+- **Redesign progress tela** (tático sem jargão): header com cards (ETAPA/TEMPO), timestamps monospace, duração por stage, ícones de status, chips de filtro no radar
+- **Persistência history de stages** no backend (JSONB) — user retoma busca via histórico e vê cronologia completa
+- **Executive Section** (resumo + indicadores visuais via GPT) — cards estruturados por tipo (percentual/absoluto/monetário), cor por sentido (positivo/negativo), cache com invalidação por evento, TTL 24h fallback. Custo rastreado no billing como `stage='executive'`. Migration 021 adicionada.
 - CLAUDE.md atualizado
 
 **Pendências pré-sessão, ainda abertas:**
@@ -103,9 +109,9 @@ Todos os combos executados e commitados em `develop + staging` (ver DEV_LOG):
 
 Conversa sobre avaliação do relatório (6/10 honesto, na opinião de Claude). Pra virar "profissa" pro cliente executivo:
 
-- **Resumo executivo GPT** — 2 parágrafos gerados a partir do `reportData`. Prioridade alta, ~2h de sessão. Eleva percepção em 80% do trabalho.
-- **Tendência por categoria** — breakdown no trend (hoje só total). ~1h, dado já existe no `getCrimeTrend.breakdown`.
-- **Rua no mapa** — Opção C ou B da discussão (geocode mais preciso quando rua extraída + fallback tolerante em vez de jitter aleatório). ~1-2h.
+- ~~**Resumo executivo GPT**~~ — feito em 2026-04-18 como "Executive Section" com cards + resumo complementar, muito melhor que o plano original (2 parágrafos de texto).
+- ~~**Tendência por categoria**~~ — descartado por João ("é muito complexo").
+- **Rua no mapa** — backend já persiste `precisao` do geocode no CrimePoint. Flutter pode usar isso pra renderizar pontos mais destacados quando `precisao='rua'`. ~1h.
 
 **Fora de escopo curto prazo:**
 - Horário (exige extrair hora no Filter2 + UI nova)

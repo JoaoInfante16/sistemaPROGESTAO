@@ -1114,6 +1114,88 @@ export async function getSearchStatus(searchId: string): Promise<{
   };
 }
 
+// ============================================
+// Executive Cache — resumo + indicadores visuais gerados via GPT a partir
+// das estatísticas (natureza='estatistica') do período. Chave: cidade+estado+range_days.
+// Invalidação: pipeline dispara delete quando salva nova estatística. TTL 24h
+// como fallback pra capturar saída de estatísticas antigas pela janela móvel.
+// ============================================
+
+export interface ExecutiveData {
+  indicadores: Array<{
+    valor: number;
+    unidade: string | null; // '%' | null
+    tipo: 'percentual' | 'absoluto' | 'monetario';
+    sentido: 'positivo' | 'negativo' | 'neutro';
+    label: string;
+    contexto: string;
+    fonte: string;
+  }>;
+  resumo_complementar: string | null;
+  fontes: string[];
+}
+
+export async function getExecutiveCache(
+  cidade: string,
+  estado: string,
+  rangeDays: number,
+): Promise<{ data: ExecutiveData; generated_at: string } | null> {
+  const { data, error } = await supabase
+    .from('executive_cache')
+    .select('data, generated_at, expires_at')
+    .eq('cidade', cidade)
+    .eq('estado', estado)
+    .eq('range_days', rangeDays)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  // Expirou? trata como miss.
+  if (new Date(data.expires_at as string).getTime() < Date.now()) return null;
+
+  return {
+    data: data.data as ExecutiveData,
+    generated_at: data.generated_at as string,
+  };
+}
+
+export async function upsertExecutiveCache(
+  cidade: string,
+  estado: string,
+  rangeDays: number,
+  data: ExecutiveData,
+): Promise<void> {
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // +24h
+
+  const { error } = await supabase
+    .from('executive_cache')
+    .upsert(
+      {
+        cidade,
+        estado,
+        range_days: rangeDays,
+        data,
+        generated_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+      },
+      { onConflict: 'cidade,estado,range_days' },
+    );
+
+  if (error) logger.warn(`[ExecutiveCache] Upsert failed: ${error.message}`);
+}
+
+// Invalida todos os caches de uma cidade (qualquer estado, qualquer range).
+// Chamado pelo pipeline quando salva nova notícia natureza='estatistica'.
+export async function invalidateExecutiveCacheByCity(cidade: string): Promise<void> {
+  const { error } = await supabase
+    .from('executive_cache')
+    .delete()
+    .eq('cidade', cidade);
+
+  if (error) logger.warn(`[ExecutiveCache] Invalidate failed for ${cidade}: ${error.message}`);
+}
+
 export async function getSearchResults(searchId: string): Promise<unknown[]> {
   const { data, error } = await supabase
     .from('search_results')
@@ -1194,6 +1276,9 @@ export const db = {
   getUserSearchHistory,
   getCityToUFMap,
   bulkInsertLocations,
+  getExecutiveCache,
+  upsertExecutiveCache,
+  invalidateExecutiveCacheByCity,
   insertRejectedUrls,
   getRecentRejectedUrls,
   cleanupOldRejectedUrls,

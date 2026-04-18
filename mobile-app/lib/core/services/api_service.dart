@@ -287,6 +287,23 @@ class ApiService {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  // Resumo executivo (cards de indicadores + parágrafo + fontes) pro dashboard.
+  // Backend cacheia por cidade+estado+range — regenera quando chega estatística nova.
+  Future<Map<String, dynamic>> getExecutive({
+    required String cidade,
+    required String estado,
+    int rangeDays = 30,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/analytics/executive').replace(queryParameters: {
+      'cidade': cidade,
+      'estado': estado,
+      'rangeDays': rangeDays.toString(),
+    });
+    final res = await _client.get(uri, headers: _headers).timeout(_timeout);
+    _checkResponse(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   Future<List<Map<String, dynamic>>> getMapPoints({
     required String cidade,
     required String estado,

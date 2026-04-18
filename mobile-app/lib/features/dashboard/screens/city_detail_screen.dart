@@ -5,10 +5,12 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/city_overview.dart';
 import '../../../core/models/crime_point.dart';
+import '../../../core/models/executive_data.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/utils/state_utils.dart';
 import '../../../core/utils/type_helpers.dart';
 import '../../../core/widgets/crime_radar_map.dart';
+import '../../../core/widgets/executive_indicators.dart';
 import '../../../core/widgets/grid_background.dart';
 import '../../../main.dart';
 import 'package:share_plus/share_plus.dart';
@@ -36,6 +38,9 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   // Radar de ocorrências — pontos vem do backend já geocodados
   List<CrimePoint> _mapPoints = [];
   bool _mapLoading = false;
+
+  // Executive (indicadores + resumo) — cacheado no backend
+  ExecutiveData _executive = ExecutiveData.empty();
 
   // For groups: selected sub-city filter
   String? _selectedSubCity;
@@ -97,10 +102,29 @@ class _CityDetailScreenState extends State<CityDetailScreen>
         });
         _loadMapPoints();
         _loadTrend();
+        _loadExecutive();
       }
     } catch (e) {
       debugPrint('[CityDetail] Relatorio error: $e');
       if (mounted) setState(() => _loadingOverview = false);
+    }
+  }
+
+  Future<void> _loadExecutive() async {
+    final estado = widget.city.parentState ?? '';
+    if (estado.isEmpty) return;
+    try {
+      final api = context.read<ApiService>();
+      final raw = await api.getExecutive(
+        cidade: _activeCidade,
+        estado: estado,
+        rangeDays: 30,
+      );
+      if (!mounted) return;
+      setState(() => _executive = ExecutiveData.fromJson(raw));
+    } catch (e) {
+      debugPrint('[CityDetail] Executive error: $e');
+      // Fail silent — seção some, não atrapalha o resto do relatório.
     }
   }
 
@@ -272,6 +296,9 @@ class _CityDetailScreenState extends State<CityDetailScreen>
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           children: [
+            // Indicadores da região (só renderiza se tem dado; aparece ANTES do resumo)
+            ExecutiveIndicators(data: _executive),
+
             // Resumo numerico
             _sectionTitle('Resumo'),
             _buildResumoCard(totalCrimes, totalBairros, totalTipos, estatisticas.length),

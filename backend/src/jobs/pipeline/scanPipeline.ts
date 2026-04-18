@@ -246,6 +246,12 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
         await db.insertNewsSource(newsId, extraUrl);
       }
 
+      // Invalida executive_cache da cidade se a nova notícia é estatística —
+      // o resumo executivo usa as estatísticas como input, então precisa regerar.
+      if (news.natureza === 'estatistica') {
+        await db.invalidateExecutiveCacheByCity(news.cidade);
+      }
+
       // Push notification
       try {
         const pushResult = await sendPushNotification({

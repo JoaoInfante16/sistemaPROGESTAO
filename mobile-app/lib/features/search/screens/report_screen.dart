@@ -6,8 +6,10 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/crime_point.dart';
+import '../../../core/models/executive_data.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/widgets/crime_radar_map.dart';
+import '../../../core/widgets/executive_indicators.dart';
 import '../../../main.dart';
 import '../widgets/mini_trend_chart.dart';
 
@@ -50,11 +52,32 @@ class _ReportScreenState extends State<ReportScreen> {
   List<CrimePoint> _mapPoints = [];
   bool _mapLoading = true;
 
+  // Executive (indicadores + resumo) — backend cacheia por cidade+estado+range
+  ExecutiveData _executive = ExecutiveData.empty();
+
   @override
   void initState() {
     super.initState();
     _computeAnalytics();
     _loadMapPoints();
+    _loadExecutive();
+  }
+
+  Future<void> _loadExecutive() async {
+    if (widget.cidades.isEmpty || widget.estado.isEmpty) return;
+    try {
+      final api = context.read<ApiService>();
+      final raw = await api.getExecutive(
+        cidade: widget.cidades.first,
+        estado: widget.estado,
+        rangeDays: widget.periodoDias,
+      );
+      if (!mounted) return;
+      setState(() => _executive = ExecutiveData.fromJson(raw));
+    } catch (e) {
+      debugPrint('[Report] Executive error: $e');
+      // Fail silent — seção some, não atrapalha relatório.
+    }
   }
 
   String _dateStr(DateTime d) =>
@@ -414,6 +437,9 @@ class _ReportScreenState extends State<ReportScreen> {
                   ],
                 ),
               ),
+
+              // Indicadores da região (aparece ANTES do resumo se tiver dado)
+              ExecutiveIndicators(data: _executive),
 
               // Resumo numerico
               _sectionTitle('Resumo'),

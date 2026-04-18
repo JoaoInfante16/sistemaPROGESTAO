@@ -164,6 +164,12 @@ export const schemas = {
     { message: 'dateFrom must be before or equal to dateTo', path: ['dateFrom'] }
   ),
 
+  executiveQuery: z.object({
+    cidade: z.string().min(2).max(100),
+    estado: z.string().min(2).max(100),
+    rangeDays: z.coerce.number().int().min(7).max(365).default(30),
+  }),
+
   mapPointsQuery: z.object({
     cidade: z.string().min(2).max(100),
     estado: z.string().min(2).max(100),

@@ -11,6 +11,50 @@
 
 ## 2026-04-18
 
+### Executive Section — resumo + indicadores visuais via GPT
+
+Conceito nasceu da conversa "o relatório é 6/10, como subir pra profissa". Depois de pivotar algumas vezes (resumo geral era chato de manter em auto-scan), chegamos em: **cards visuais de indicadores (percentuais, absolutos, monetários)** no topo do relatório + **parágrafo curto** com o que não couber em card + fontes consolidadas.
+
+**Input:** estatísticas do período (notícias `natureza='estatistica'` — dados oficiais tipo "Ceará reduziu 31,6% mortes em janeiro"). GPT classifica cada uma: vira card se tem número autoexplicativo, vira texto narrativo caso contrário.
+
+**Output estruturado** em [executive/index.ts](../backend/src/services/executive/index.ts):
+```json
+{
+  "indicadores": [{ "valor": -31.6, "unidade": "%", "tipo": "percentual",
+                    "sentido": "positivo", "label": "Mortes violentas",
+                    "contexto": "CE/Jan 2026", "fonte": "ceara.gov.br" }],
+  "resumo_complementar": "Destaque também para...",
+  "fontes": ["ceara.gov.br", "sspds.ce.gov.br"]
+}
+```
+
+**Cache inteligente** ([migration 021](./SQL/migrations/021_executive_cache.sql)):
+- Tabela `executive_cache (cidade, estado, range_days, data, expires_at)`
+- Invalidação por evento: `scanPipeline` dispara `invalidateExecutiveCacheByCity` quando salva estatística nova
+- TTL 24h como fallback pra capturar saída de estatísticas antigas pela janela móvel
+- Dashboard dá cache hit instantâneo na maioria dos acessos
+
+**Custo rastreado no billing** ([trackCost](../backend/src/database/queries.ts)) com `details.stage='executive'`, `source='auto_scan'` ou `'manual_search'`. Aparece no painel admin distinguível dos outros custos OpenAI.
+
+**Flutter:**
+- [executive_data.dart](../mobile-app/lib/core/models/executive_data.dart): modelo
+- [executive_indicators.dart](../mobile-app/lib/core/widgets/executive_indicators.dart): widget com cards scrolláveis (cor por `sentido`: verde positivo, vermelho negativo), seta pra percentuais, formatação monetário/absoluto, resumo + fontes
+- Renderiza condicionalmente (se `isEmpty`, seção inteira some)
+- Integrado em [city_detail_screen](../mobile-app/lib/features/dashboard/screens/city_detail_screen.dart) e [report_screen](../mobile-app/lib/features/search/screens/report_screen.dart), antes do resumo numérico
+
+**Endpoints:**
+- `GET /analytics/executive?cidade=X&estado=Y&rangeDays=30` (dashboard, cacheado)
+- `POST /analytics/report` agora embute `executive` no `reportData` (busca manual, snapshot)
+
+**Decisões descartadas na conversa:**
+- Resumo executivo geral (texto único sobre todo o relatório) — chato de manter em auto-scan, dado muda a toda hora
+- Só percentuais como cards — perde indicadores tipo "47 presos", "R$ 4,2 Mi apreendidos"
+- Incluir estatísticas em período em cards separados por data — cortado pro prompt agrupar por métrica + período (agrupa mesmo assunto no mesmo período mesclando fontes, mantém períodos diferentes separados).
+
+**Anti-hallucination:** prompt com 3 regras hard: "use APENAS números explícitos nos resumos", "nunca invente/estime/extrapole", "agrupe mesma métrica-mesmo período mesclando fontes". Fail-open: se GPT falhar, retorna vazio em vez de quebrar o relatório.
+
+**Temperature deprecation check:** João levantou que "temperature não é mais aceito". Confirmei via docs: GPT-5 family e reasoning models (o1/o3) rejeitam, mas gpt-4o-mini (que usamos) ainda aceita. Anotado como backlog pra quando migrar de modelo.
+
 ### Dashboard card — remoção da sigla UF duplicada + UF do grupo
 
 **Problema** (screenshot João): card de cidade individual mostrava sigla UF (`SP`) no header E nome do estado inteiro (`São Paulo`) no footer = duplicação. Pior: badge "NOVA" empurrava a sigla pro lado (layout instável). Grupo (Grande Florianópolis) não exibia estado em lugar nenhum.
