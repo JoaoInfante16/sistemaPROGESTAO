@@ -6,6 +6,74 @@
 
 import { supabase } from '../config/database';
 import { logger } from '../middleware/logger';
+import { CategoriaGrupo, TipoCrime } from '../utils/types';
+
+// Raw pra montar CrimePoint no endpoint (antes do geocode).
+export interface MapPointRaw {
+  id: string;
+  tipo_crime: TipoCrime;
+  categoria: CategoriaGrupo;
+  bairro: string | null;
+  rua: string | null;
+  data: string;
+}
+
+// Pega notícias individuais do período pra alimentar mapa (radar de pontos).
+// Só ocorrências (natureza='ocorrencia'); estatísticas não vão pro mapa.
+export async function getMapPointsRaw(
+  cidade: string,
+  dateFrom: string,
+  dateTo: string,
+): Promise<MapPointRaw[]> {
+  const { data, error } = await supabase
+    .from('news')
+    .select('id, tipo_crime, categoria_grupo, bairro, rua, data_ocorrencia, natureza')
+    .eq('cidade', cidade)
+    .eq('active', true)
+    .gte('data_ocorrencia', dateFrom)
+    .lte('data_ocorrencia', dateTo);
+
+  if (error) throw new Error(`Map points query failed: ${error.message}`);
+
+  return (data || [])
+    .filter((r) => (r.natureza as string) !== 'estatistica')
+    .map((r) => ({
+      id: r.id as string,
+      tipo_crime: r.tipo_crime as TipoCrime,
+      categoria: (r.categoria_grupo as CategoriaGrupo) || 'institucional',
+      bairro: (r.bairro as string | null) || null,
+      rua: (r.rua as string | null) || null,
+      data: r.data_ocorrencia as string,
+    }));
+}
+
+// Mesma ideia pra busca manual — lê dos search_results.
+export async function getSearchMapPointsRaw(searchId: string): Promise<MapPointRaw[]> {
+  const { data: resultRows, error } = await supabase
+    .from('search_results')
+    .select('results')
+    .eq('search_id', searchId)
+    .order('offset_num');
+
+  if (error) throw new Error(`Search results query failed: ${error.message}`);
+
+  const points: MapPointRaw[] = [];
+  for (const row of resultRows || []) {
+    const items = (row.results as Array<Record<string, unknown>> | null) || [];
+    for (const r of items) {
+      if ((r.natureza as string) === 'estatistica') continue;
+      points.push({
+        id: (r.id as string) || (r.url as string) || `${points.length}`,
+        tipo_crime: r.tipo_crime as TipoCrime,
+        categoria: (r.categoria_grupo as CategoriaGrupo) || 'institucional',
+        bairro: (r.bairro as string | null) || null,
+        rua: (r.rua as string | null) || null,
+        data: r.data_ocorrencia as string,
+      });
+    }
+  }
+  return points;
+}
 
 // ============================================
 // Crime Summary

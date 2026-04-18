@@ -10,7 +10,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { validateQuery, validateBody, schemas } from '../middleware/validation';
-import { geocodeBairros } from '../services/geocoding/nominatim';
+import { geocodePoint } from '../services/geocoding/nominatim';
 import {
   getCrimeSummary,
   getCrimeTrend,
@@ -19,10 +19,40 @@ import {
   createReport,
   getReport,
   getCitiesOverview,
+  getMapPointsRaw,
+  getSearchMapPointsRaw,
+  MapPointRaw,
 } from '../database/analyticsQueries';
+import { CrimePoint } from '../utils/types';
 import { logger } from '../middleware/logger';
 
 const router = Router();
+
+// Monta CrimePoint[] a partir de raws + geocode. Usado por /analytics/map-points
+// (leve, on-demand) E por /analytics/report (persiste no relatório).
+async function buildMapPoints(
+  rawPoints: MapPointRaw[],
+  cidade: string,
+  estado: string,
+): Promise<CrimePoint[]> {
+  const out: CrimePoint[] = [];
+  for (const p of rawPoints) {
+    const geo = await geocodePoint(p.rua, p.bairro, cidade, estado);
+    if (!geo) continue;
+    out.push({
+      id: p.id,
+      lat: geo.lat,
+      lng: geo.lng,
+      categoria: p.categoria,
+      tipo_crime: p.tipo_crime,
+      data: p.data,
+      bairro: p.bairro,
+      rua: p.rua,
+      precisao: geo.precisao,
+    });
+  }
+  return out;
+}
 
 // ============================================
 // Crime Summary
@@ -69,6 +99,37 @@ router.get(
     } catch (error) {
       logger.error('[Analytics] Crime trend error:', error);
       res.status(500).json({ error: 'Failed to fetch crime trend' });
+    }
+  }
+);
+
+// ============================================
+// Map Points (leve, on-demand — pro radar do app)
+// ============================================
+// Dashboard chama sem searchId → lê de news. Busca manual chama com searchId → lê de search_results.
+// Backend geocoda no servidor (cache em memória) e devolve CrimePoint[] pronto.
+router.post(
+  '/analytics/map-points',
+  requireAuth,
+  validateBody(schemas.mapPointsQuery),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { cidade, estado, dateFrom, dateTo, searchId } = req.body as {
+        cidade: string;
+        estado: string;
+        dateFrom: string;
+        dateTo: string;
+        searchId?: string;
+      };
+
+      const rawPoints: MapPointRaw[] = searchId
+        ? await getSearchMapPointsRaw(searchId).catch(() => [])
+        : await getMapPointsRaw(cidade, dateFrom, dateTo).catch(() => []);
+      const mapPoints = await buildMapPoints(rawPoints, cidade, estado);
+      res.json({ mapPoints });
+    } catch (error) {
+      logger.error('[Analytics] Map points error:', error);
+      res.status(500).json({ error: 'Failed to fetch map points' });
     }
   }
 );
@@ -141,11 +202,10 @@ router.post(
       const sourcesOficial = mergedSources.filter(s => s.type === 'oficial');
       const sourcesMedia = mergedSources.filter(s => s.type === 'midia');
 
-      // Geocodificar bairros pra heatmap
-      const bairrosToGeocode = (mergedSummary.topBairros || [])
-        .slice(0, 15)
-        .map((b: { bairro: string; count: number }) => ({ bairro: b.bairro, count: b.count }));
-      const heatmapData = await geocodeBairros(bairrosToGeocode, cidade, estado);
+      const rawPoints: MapPointRaw[] = searchId
+        ? await getSearchMapPointsRaw(searchId).catch(() => [])
+        : await getMapPointsRaw(cidade, dateFrom, dateTo).catch(() => []);
+      const mapPoints = await buildMapPoints(rawPoints, cidade, estado);
 
       const reportData = {
         cidade,
@@ -169,7 +229,7 @@ router.post(
         sources: mergedSources,
         sourcesOficial,
         sourcesMedia,
-        heatmapData,
+        mapPoints,
       };
 
       const reportId = await createReport({

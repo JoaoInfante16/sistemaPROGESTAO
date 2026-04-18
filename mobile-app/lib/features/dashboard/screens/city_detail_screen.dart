@@ -1,17 +1,14 @@
-import 'dart:convert';
-import 'dart:math';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
-import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/city_overview.dart';
+import '../../../core/models/crime_point.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/utils/state_utils.dart';
 import '../../../core/utils/type_helpers.dart';
+import '../../../core/widgets/crime_radar_map.dart';
 import '../../../core/widgets/grid_background.dart';
 import '../../../main.dart';
 import 'package:share_plus/share_plus.dart';
@@ -36,10 +33,9 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   bool _loadingOverview = true;
   String _trendPeriod = '30d';
 
-  // Mapa de calor
-  List<_HeatPoint> _heatPoints = [];
+  // Radar de ocorrências — pontos vem do backend já geocodados
+  List<CrimePoint> _mapPoints = [];
   bool _mapLoading = false;
-  final Map<String, LatLng?> _geoCache = {};
 
   // For groups: selected sub-city filter
   String? _selectedSubCity;
@@ -99,7 +95,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
           _summary = summary;
           _loadingOverview = false;
         });
-        _geocodeBairros();
+        _loadMapPoints();
         _loadTrend();
       }
     } catch (e) {
@@ -130,88 +126,33 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     _loadTrend();
   }
 
-  // ── Geocoding pra mapa de calor ──
-
-  Future<void> _geocodeBairros() async {
-    final bairros = (_summary?['topBairros'] as List<dynamic>?) ?? [];
-    if (bairros.isEmpty) return;
-    setState(() => _mapLoading = true);
-
+  // Radar: backend geocoda + devolve lista pronta (CrimePoint).
+  // Período: últimos 30 dias (coerente com _loadOverview).
+  Future<void> _loadMapPoints() async {
     final cidade = _activeCidade;
     final estado = widget.city.parentState ?? '';
-    final points = <_HeatPoint>[];
+    if (estado.isEmpty) return;
 
-    for (final b in bairros) {
-      final name = b['bairro'] as String? ?? '';
-      final count = safeInt(b['count']);
-      if (name.isEmpty) continue;
-
-      final coords = await _geocode(name, cidade, estado);
-      if (coords != null) {
-        points.add(_HeatPoint(name, count, coords));
-      }
-    }
-
-    if (mounted) {
+    setState(() => _mapLoading = true);
+    try {
+      final api = context.read<ApiService>();
+      final now = DateTime.now();
+      final d30 = now.subtract(const Duration(days: 30));
+      final raw = await api.getMapPoints(
+        cidade: cidade,
+        estado: estado,
+        dateFrom: _dateStr(d30),
+        dateTo: _dateStr(now),
+      );
+      if (!mounted) return;
       setState(() {
-        _heatPoints = points;
+        _mapPoints = raw.map(CrimePoint.fromJson).toList();
         _mapLoading = false;
       });
-    }
-  }
-
-  Future<LatLng?> _geocode(String bairro, String cidade, String estado) async {
-    final key = '$bairro|$cidade|$estado'.toLowerCase();
-    if (_geoCache.containsKey(key)) return _geoCache[key];
-
-    try {
-      final q = Uri.encodeComponent('$bairro, $cidade, $estado, Brasil');
-      final res = await http.get(
-        Uri.parse('https://nominatim.openstreetmap.org/search?q=$q&format=json&limit=1&countrycodes=br'),
-        headers: {'User-Agent': 'SIMEops/1.0'},
-      );
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body) as List;
-        if (data.isNotEmpty) {
-          final result = LatLng(double.parse(data[0]['lat']), double.parse(data[0]['lon']));
-          _geoCache[key] = result;
-          return result;
-        }
-      }
     } catch (e) {
-      debugPrint('[CityDetail] Geocode error: $e');
+      debugPrint('[CityDetail] Map points error: $e');
+      if (mounted) setState(() => _mapLoading = false);
     }
-
-    // Fallback: cidade inteira com jitter
-    final cityKey = '_city|$cidade|$estado'.toLowerCase();
-    if (!_geoCache.containsKey(cityKey)) {
-      try {
-        final q = Uri.encodeComponent('$cidade, $estado, Brasil');
-        final res = await http.get(
-          Uri.parse('https://nominatim.openstreetmap.org/search?q=$q&format=json&limit=1&countrycodes=br'),
-          headers: {'User-Agent': 'SIMEops/1.0'},
-        );
-        if (res.statusCode == 200) {
-          final data = jsonDecode(res.body) as List;
-          if (data.isNotEmpty) {
-            _geoCache[cityKey] = LatLng(double.parse(data[0]['lat']), double.parse(data[0]['lon']));
-          }
-        }
-      } catch (_) {}
-    }
-
-    final cityCoord = _geoCache[cityKey];
-    if (cityCoord != null) {
-      final jittered = LatLng(
-        cityCoord.latitude + (Random().nextDouble() - 0.5) * 0.02,
-        cityCoord.longitude + (Random().nextDouble() - 0.5) * 0.02,
-      );
-      _geoCache[key] = jittered;
-      return jittered;
-    }
-
-    _geoCache[key] = null;
-    return null;
   }
 
   void _onSubCityChanged(String? city) {
@@ -341,11 +282,11 @@ class _CityDetailScreenState extends State<CityDetailScreen>
               _buildCategoryDonut(categories, totalCrimes),
             ],
 
-            // Mapa de calor
-            if (_heatPoints.isNotEmpty) ...[
+            // Radar de ocorrências
+            if (_mapPoints.isNotEmpty) ...[
               _sectionTitle('Mapa de Ocorrências'),
-              _buildHeatMap(),
-            ] else if (_mapLoading && bairros.isNotEmpty) ...[
+              _rCard(child: CrimeRadarMap(points: _mapPoints)),
+            ] else if (_mapLoading) ...[
               _sectionTitle('Mapa de Ocorrências'),
               _rCard(
                 child: SizedBox(
@@ -356,7 +297,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
                       children: [
                         CircularProgressIndicator(color: SIMEopsColors.teal),
                         const SizedBox(height: 12),
-                        Text('Geocodificando bairros...', style: GoogleFonts.exo2(fontSize: 12, color: SIMEopsColors.muted)),
+                        Text('Carregando mapa...', style: GoogleFonts.exo2(fontSize: 12, color: SIMEopsColors.muted)),
                       ],
                     ),
                   ),
@@ -550,48 +491,6 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     } finally {
       if (mounted) setState(() => _sharing = false);
     }
-  }
-
-  // ── Mapa de calor (identico ao report_screen) ──
-
-  Widget _buildHeatMap() {
-    return _rCard(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: SizedBox(
-          height: 280,
-          child: FlutterMap(
-            options: MapOptions(
-              initialCenter: _heatPoints.first.coords,
-              initialZoom: 12,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
-              ),
-            ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-                subdomains: const ['a', 'b', 'c', 'd'],
-                userAgentPackageName: 'com.progestao.simeops',
-              ),
-              CircleLayer(
-                circles: _heatPoints.map((p) {
-                  final radius = min(30.0, 8.0 + p.count * 3.0);
-                  final intensity = min(1.0, p.count / 5.0);
-                  return CircleMarker(
-                    point: p.coords,
-                    radius: radius,
-                    color: Color.lerp(const Color(0xFF22B5C4), const Color(0xFFE05252), intensity)!.withValues(alpha: 0.35),
-                    borderColor: Color.lerp(const Color(0xFF22B5C4), const Color(0xFFE05252), intensity)!.withValues(alpha: 0.8),
-                    borderStrokeWidth: 1.5,
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   // ── Bairros com mais incidencias (identico ao report_screen) ──
@@ -854,12 +753,5 @@ class _SubCityChip extends StatelessWidget {
       ),
     );
   }
-}
-
-class _HeatPoint {
-  final String bairro;
-  final int count;
-  final LatLng coords;
-  const _HeatPoint(this.bairro, this.count, this.coords);
 }
 

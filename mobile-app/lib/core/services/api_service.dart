@@ -287,6 +287,33 @@ class ApiService {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  Future<List<Map<String, dynamic>>> getMapPoints({
+    required String cidade,
+    required String estado,
+    required String dateFrom,
+    required String dateTo,
+    String? searchId,
+  }) async {
+    final bodyMap = <String, dynamic>{
+      'cidade': cidade,
+      'estado': estado,
+      'dateFrom': dateFrom,
+      'dateTo': dateTo,
+    };
+    if (searchId != null) bodyMap['searchId'] = searchId;
+
+    final res = await _client.post(
+      Uri.parse('$_baseUrl/analytics/map-points'),
+      headers: _headers,
+      body: jsonEncode(bodyMap),
+    ).timeout(_timeout);
+    _checkResponse(res);
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return (data['mapPoints'] as List<dynamic>? ?? [])
+        .map((e) => e as Map<String, dynamic>)
+        .toList();
+  }
+
   Future<Map<String, dynamic>> getSearchAnalytics(String searchId) async {
     final res = await _client.get(
       Uri.parse('$_baseUrl/analytics/search-report/$searchId'),

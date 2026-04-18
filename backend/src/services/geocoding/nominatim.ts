@@ -112,9 +112,81 @@ export async function geocodeBairro(
   }
 }
 
+// Geocode ponto-a-ponto com fallback hierárquico rua→bairro→cidade.
+// `precisao` indica qual nível ancorou — consumidor aplica jitter visual quando
+// cair em bairro/cidade pra evitar empilhamento num único pixel.
+export interface GeoPointResult {
+  lat: number;
+  lng: number;
+  precisao: 'rua' | 'bairro' | 'cidade';
+}
+
+async function nominatimQuery(q: string): Promise<GeoResult | null> {
+  await rateLimitWait();
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&countrycodes=br`;
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'SIMEops/1.0 (contact@progestao.com.br)' },
+    });
+    if (!response.ok) return null;
+    const data = await response.json() as Array<{ lat: string; lon: string }>;
+    if (!data || data.length === 0) return null;
+    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+  } catch {
+    return null;
+  }
+}
+
+export async function geocodePoint(
+  rua: string | null | undefined,
+  bairro: string | null | undefined,
+  cidade: string,
+  estado: string,
+): Promise<GeoPointResult | null> {
+  // 1. rua + bairro + cidade + estado
+  if (rua && rua.trim().length > 0) {
+    const key = `rua:${rua.toLowerCase()}|${(bairro || '').toLowerCase()}|${cidade.toLowerCase()}|${estado.toLowerCase()}`;
+    if (cache.has(key)) {
+      const hit = cache.get(key);
+      if (hit) return { ...hit, precisao: 'rua' };
+    } else {
+      const q = bairro
+        ? `${rua}, ${bairro}, ${cidade}, ${estado}, Brasil`
+        : `${rua}, ${cidade}, ${estado}, Brasil`;
+      const result = await nominatimQuery(q);
+      cache.set(key, result);
+      if (result) return { ...result, precisao: 'rua' };
+    }
+  }
+
+  // 2. bairro + cidade + estado
+  if (bairro && bairro.trim().length > 0) {
+    const key = cacheKey(bairro, cidade, estado);
+    if (cache.has(key)) {
+      const hit = cache.get(key);
+      if (hit) return { ...hit, precisao: 'bairro' };
+    } else {
+      const result = await nominatimQuery(`${bairro}, ${cidade}, ${estado}, Brasil`);
+      cache.set(key, result);
+      if (result) return { ...result, precisao: 'bairro' };
+    }
+  }
+
+  // 3. só cidade (último recurso)
+  const cityKey = cacheKey('_city_', cidade, estado);
+  if (cache.has(cityKey)) {
+    const hit = cache.get(cityKey);
+    return hit ? { ...hit, precisao: 'cidade' } : null;
+  }
+  const cityResult = await nominatimQuery(`${cidade}, ${estado}, Brasil`);
+  cache.set(cityKey, cityResult);
+  return cityResult ? { ...cityResult, precisao: 'cidade' } : null;
+}
+
 /**
  * Geocodifica uma lista de bairros em batch.
  * Retorna array com {bairro, count, lat, lng} (sem os que nao encontrou).
+ * @deprecated Use geocodePoint pra lista de pontos individuais (formato novo CrimePoint).
  */
 export async function geocodeBairros(
   bairros: Array<{ bairro: string; count: number }>,

@@ -100,6 +100,21 @@ export interface BudgetEntry {
   created_at: Date;
 }
 
+// Ponto individual de ocorrência pro mapa (radar).
+// `precisao` indica o nível de ancoragem do geocode — útil pra aplicar jitter só
+// quando cai no centro do bairro ou cidade (evita empilhar pontos em 1 pixel).
+export interface CrimePoint {
+  id: string;
+  lat: number;
+  lng: number;
+  categoria: CategoriaGrupo;
+  tipo_crime: TipoCrime;
+  data: string; // YYYY-MM-DD
+  bairro: string | null;
+  rua: string | null;
+  precisao: 'rua' | 'bairro' | 'cidade';
+}
+
 export interface PipelineResult {
   locationId: string;
   locationName: string;

@@ -27,8 +27,6 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   String? _selectedEstado;
   Set<String> _selectedCidades = {};
   int _periodoDias = 30;
-  bool _useKeyword = false;
-  final _keywordCtrl = TextEditingController();
   bool _loadingLocations = true;
 
   // Search state
@@ -120,7 +118,6 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   void dispose() {
     _pollTimer?.cancel();
     _elapsedTimer?.cancel();
-    _keywordCtrl.dispose();
     super.dispose();
   }
 
@@ -164,9 +161,6 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         estado: _selectedEstado!,
         cidades: _selectedCidades.toList(),
         periodoDias: _periodoDias,
-        tipoCrime: (_useKeyword && _keywordCtrl.text.trim().length >= 2)
-            ? _keywordCtrl.text.trim()
-            : null,
       );
 
       setState(() => _searchId = searchId);
@@ -419,96 +413,6 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
               backgroundColor: SIMEopsColors.navyLight.withValues(alpha: 0.8),
             );
           }).toList(),
-        ),
-        const SizedBox(height: 18),
-
-
-        // OPCIONAL — divider
-        Row(
-          children: [
-            Expanded(
-                child: Container(
-                    height: 1,
-                    color: SIMEopsColors.teal.withValues(alpha: 0.1))),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Text(
-                'OPCIONAL',
-                style: GoogleFonts.rajdhani(
-                  fontSize: 10,
-                  color: SIMEopsColors.muted.withValues(alpha: 0.5),
-                  letterSpacing: 1,
-                ),
-              ),
-            ),
-            Expanded(
-                child: Container(
-                    height: 1,
-                    color: SIMEopsColors.teal.withValues(alpha: 0.1))),
-          ],
-        ),
-        const SizedBox(height: 16),
-
-        // KEYWORD — toggle switch
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: SIMEopsColors.navyLight.withValues(alpha: 0.8),
-            border: Border.all(
-                color: SIMEopsColors.teal.withValues(alpha: 0.15)),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              Switch(
-                value: _useKeyword,
-                onChanged: (v) => setState(() => _useKeyword = v),
-                activeThumbColor: SIMEopsColors.tealLight,
-                activeTrackColor: SIMEopsColors.teal.withValues(alpha: 0.3),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Filtrar por palavra-chave',
-                        style: GoogleFonts.exo2(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: SIMEopsColors.white)),
-                    Text('Ex: tráfico, roubo, operação policial',
-                        style: GoogleFonts.exo2(
-                            fontSize: 11,
-                            color: SIMEopsColors.muted.withValues(alpha: 0.6))),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // Keyword input (animated)
-        AnimatedSize(
-          duration: const Duration(milliseconds: 200),
-          child: _useKeyword
-              ? Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: TextField(
-                    controller: _keywordCtrl,
-                    maxLength: 50,
-                    style: const TextStyle(color: SIMEopsColors.white),
-                    decoration: InputDecoration(
-                      hintText: 'Ex: roubo, furto, homicidio...',
-                      prefixIcon: Icon(Icons.search,
-                          color: SIMEopsColors.teal.withValues(alpha: 0.6),
-                          size: 20),
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      counterText: '',
-                    ),
-                  ),
-                )
-              : const SizedBox.shrink(),
         ),
         const SizedBox(height: 28),
 

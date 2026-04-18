@@ -1,15 +1,13 @@
-import 'dart:convert';
 import 'dart:math';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
-import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/models/crime_point.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/widgets/crime_radar_map.dart';
 import '../../../main.dart';
 import '../widgets/mini_trend_chart.dart';
 
@@ -48,97 +46,48 @@ class _ReportScreenState extends State<ReportScreen> {
   late final List<Map<String, String>> _sourcesOficial;
   late final List<Map<String, String>> _sourcesMedia;
 
-  // Heatmap
-  List<_HeatPoint> _heatPoints = [];
+  // Radar — pontos vêm do backend já geocodados
+  List<CrimePoint> _mapPoints = [];
   bool _mapLoading = true;
 
   @override
   void initState() {
     super.initState();
     _computeAnalytics();
-    _loadHeatmap();
+    _loadMapPoints();
   }
 
-  Future<void> _loadHeatmap() async {
-    if (widget.cidades.isEmpty || _bairroCounts.isEmpty) {
+  String _dateStr(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  Future<void> _loadMapPoints() async {
+    if (widget.cidades.isEmpty) {
       if (mounted) setState(() => _mapLoading = false);
       return;
     }
-
     try {
-      final cidade = widget.cidades.first;
-      final estado = widget.estado;
-      final bairros = (_bairroCounts.entries.toList()
-            ..sort((a, b) => b.value.compareTo(a.value)))
-          .take(15)
-          .toList();
+      final api = context.read<ApiService>();
+      final now = DateTime.now();
+      final from = now.subtract(Duration(days: widget.periodoDias));
 
-      final points = <_HeatPoint>[];
-      for (final b in bairros) {
-        if (!mounted) return;
-        final coords = await _geocode(b.key, cidade, estado);
-        if (coords != null) {
-          points.add(_HeatPoint(b.key, b.value, coords));
-        }
-      }
-      if (mounted) setState(() { _heatPoints = points; _mapLoading = false; });
+      // Busca manual com searchId → backend lê de search_results.
+      // Sem searchId (caso manual ad-hoc) → lê de news pelo período.
+      final raw = await api.getMapPoints(
+        cidade: widget.cidades.first,
+        estado: widget.estado,
+        dateFrom: _dateStr(from),
+        dateTo: _dateStr(now),
+        searchId: widget.searchId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _mapPoints = raw.map(CrimePoint.fromJson).toList();
+        _mapLoading = false;
+      });
     } catch (e) {
-      debugPrint('[Report] Heat map error: $e');
+      debugPrint('[Report] Map points error: $e');
       if (mounted) setState(() => _mapLoading = false);
     }
-  }
-
-  final _geoCache = <String, LatLng?>{};
-
-  Future<LatLng?> _geocode(String bairro, String cidade, String estado) async {
-    if (_geoCache.length > 100) _geoCache.clear();
-    final key = '$bairro|$cidade|$estado'.toLowerCase();
-    if (_geoCache.containsKey(key)) return _geoCache[key];
-
-    try {
-      final query = Uri.encodeComponent('$bairro, $cidade, $estado, Brasil');
-      final url = 'https://nominatim.openstreetmap.org/search?q=$query&format=json&limit=1&countrycodes=br';
-      final res = await http.get(Uri.parse(url), headers: {'User-Agent': 'SIMEops/1.0'});
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body) as List;
-        if (data.isNotEmpty) {
-          final result = LatLng(double.parse(data[0]['lat']), double.parse(data[0]['lon']));
-          _geoCache[key] = result;
-          return result;
-        }
-      }
-    } catch (e) { debugPrint('[Report] Geocode error: $e'); }
-
-    // Fallback: geocodificar so a cidade
-    final cityKey = '_city|$cidade|$estado'.toLowerCase();
-    if (!_geoCache.containsKey(cityKey)) {
-      try {
-        final q = Uri.encodeComponent('$cidade, $estado, Brasil');
-        final res = await http.get(
-          Uri.parse('https://nominatim.openstreetmap.org/search?q=$q&format=json&limit=1&countrycodes=br'),
-          headers: {'User-Agent': 'SIMEops/1.0'},
-        );
-        if (res.statusCode == 200) {
-          final data = jsonDecode(res.body) as List;
-          if (data.isNotEmpty) {
-            _geoCache[cityKey] = LatLng(double.parse(data[0]['lat']), double.parse(data[0]['lon']));
-          }
-        }
-      } catch (e) { debugPrint('[Report] City geocode error: $e'); }
-    }
-
-    final cityCoord = _geoCache[cityKey];
-    if (cityCoord != null) {
-      final jittered = LatLng(
-        cityCoord.latitude + (Random().nextDouble() - 0.5) * 0.02,
-        cityCoord.longitude + (Random().nextDouble() - 0.5) * 0.02,
-      );
-      _geoCache[key] = jittered;
-      return jittered;
-    }
-
-    _geoCache[key] = null;
-    return null;
   }
 
   void _computeAnalytics() {
@@ -490,57 +439,11 @@ class _ReportScreenState extends State<ReportScreen> {
                 _buildCategoryDonut(),
               ],
 
-              // Mapa de calor
-              if (_heatPoints.isNotEmpty) ...[
+              // Radar de ocorrências
+              if (_mapPoints.isNotEmpty) ...[
                 _sectionTitle('Mapa de Ocorrências'),
-                _card(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: SizedBox(
-                      height: 280,
-                      child: FlutterMap(
-                        options: MapOptions(
-                          initialCenter: _heatPoints.first.coords,
-                          initialZoom: 12,
-                          interactionOptions: const InteractionOptions(
-                            flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
-                          ),
-                        ),
-                        children: [
-                          TileLayer(
-                            urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-                            subdomains: const ['a', 'b', 'c', 'd'],
-                            userAgentPackageName: 'com.progestao.simeops',
-                          ),
-                          CircleLayer(
-                            circles: _heatPoints.map((p) {
-                              // Raio baseado no count absoluto: 8px base + 3px por ocorrencia (max 30px)
-                              final radius = min(30.0, 8.0 + p.count * 3.0);
-                              // Cor: teal (baixo) → vermelho (alto, 5+)
-                              final intensity = min(1.0, p.count / 5.0);
-                              return CircleMarker(
-                                point: p.coords,
-                                radius: radius,
-                                color: Color.lerp(
-                                  const Color(0xFF22B5C4),
-                                  const Color(0xFFE05252),
-                                  intensity,
-                                )!.withValues(alpha: 0.35),
-                                borderColor: Color.lerp(
-                                  const Color(0xFF22B5C4),
-                                  const Color(0xFFE05252),
-                                  intensity,
-                                )!.withValues(alpha: 0.8),
-                                borderStrokeWidth: 1.5,
-                              );
-                            }).toList(),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ] else if (_mapLoading && _bairroCounts.isNotEmpty) ...[
+                _card(child: CrimeRadarMap(points: _mapPoints)),
+              ] else if (_mapLoading) ...[
                 _sectionTitle('Mapa de Ocorrências'),
                 _card(
                   child: SizedBox(
@@ -551,7 +454,7 @@ class _ReportScreenState extends State<ReportScreen> {
                         children: [
                           CircularProgressIndicator(color: SIMEopsColors.teal),
                           const SizedBox(height: 12),
-                          Text('Geocodificando bairros...',
+                          Text('Carregando mapa...',
                               style: GoogleFonts.exo2(
                                   fontSize: 12, color: SIMEopsColors.muted)),
                         ],
@@ -811,9 +714,3 @@ class _ReportScreenState extends State<ReportScreen> {
   }
 }
 
-class _HeatPoint {
-  final String bairro;
-  final int count;
-  final LatLng coords;
-  const _HeatPoint(this.bairro, this.count, this.coords);
-}

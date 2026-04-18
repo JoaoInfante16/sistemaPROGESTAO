@@ -163,4 +163,15 @@ export const schemas = {
     (d) => new Date(d.dateFrom) <= new Date(d.dateTo),
     { message: 'dateFrom must be before or equal to dateTo', path: ['dateFrom'] }
   ),
+
+  mapPointsQuery: z.object({
+    cidade: z.string().min(2).max(100),
+    estado: z.string().min(2).max(100),
+    dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    searchId: z.string().uuid().optional(),
+  }).refine(
+    (d) => new Date(d.dateFrom) <= new Date(d.dateTo),
+    { message: 'dateFrom must be before or equal to dateTo', path: ['dateFrom'] }
+  ),
 };
