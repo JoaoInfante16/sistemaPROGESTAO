@@ -9,6 +9,91 @@
 
 ---
 
+## 2026-04-18
+
+### Dashboard card — remoção da sigla UF duplicada + UF do grupo
+
+**Problema** (screenshot João): card de cidade individual mostrava sigla UF (`SP`) no header E nome do estado inteiro (`São Paulo`) no footer = duplicação. Pior: badge "NOVA" empurrava a sigla pro lado (layout instável). Grupo (Grande Florianópolis) não exibia estado em lugar nenhum.
+
+**Reorganização** ([city_card.dart](../mobile-app/lib/features/dashboard/widgets/city_card.dart)): removida a sigla UF do header. Footer agora tem regra única:
+- Cidade individual → `{Estado}` (como antes)
+- Grupo UF única → `{Estado} · N cidades` (evita overflow da lista de nomes)
+- Grupo multi-UF → `N estados · M cidades`
+- NOVA não conflita mais com UF (UF saiu)
+
+**Backend** ([analyticsQueries.ts](../backend/src/database/analyticsQueries.ts)): grupo passou a calcular `parentState` (quando todas cidades da mesma UF) + `stateCount`. Join no `monitored_locations` expandido pra pegar `parent_id` junto com `name`.
+
+**Mobile model** ([city_overview.dart](../mobile-app/lib/core/models/city_overview.dart)): novo campo `stateCount`.
+
+### Consolidação do mapa — CrimePoint + radar (single source of truth)
+
+**Motivação do João:** "arrumar mapa em um lugar ia me obrigar a arrumar no outro tbm" — dashboard (city_detail) e busca manual (report_screen) **duplicavam inteira a lógica de geocode client-side** (~150 linhas cada), cada um com cache, fallback e jitter próprios.
+
+**Discussão (tréplica):** considerei consolidar o relatório INTEIRO (CityReport), mas trouxe contraproposta — consolidar só o mapa agora (5h, baixo risco) + regra de "toda feature nova de relatório = widget compartilhado" pra não criar dívida nova. João aceitou.
+
+**Implementação:**
+
+Backend:
+- Tipo `CrimePoint` em [types.ts](../backend/src/utils/types.ts) com campos `lat/lng/categoria/tipo_crime/data/bairro/rua/precisao`
+- `geocodePoint(rua?, bairro?, cidade, estado)` em [nominatim.ts](../backend/src/services/geocoding/nominatim.ts) — fallback hierárquico rua → bairro → cidade, retorna `precisao` indicando o nível ancorado
+- `getMapPointsRaw(cidade, dateFrom, dateTo)` + `getSearchMapPointsRaw(searchId)` — puxam notícias individuais (não agregadas)
+- Novo endpoint `POST /analytics/map-points` leve pra dashboard E busca manual (escolhe source pelo `searchId` opcional)
+- Helper `buildMapPoints` reutilizável no `/analytics/report` e no novo endpoint
+
+Mobile:
+- [crime_point.dart](../mobile-app/lib/core/models/crime_point.dart) — modelo espelhado
+- [category_colors.dart](../mobile-app/lib/core/utils/category_colors.dart) — **single source** de cor/label por categoria (substitui `_grupoCores`/`_grupoLabels` que vivia em `news_card.dart`; o news_card fica com mapa próprio por ora, consolidação dele vira commit separado)
+- [crime_radar_map.dart](../mobile-app/lib/core/widgets/crime_radar_map.dart) — widget compartilhado:
+  - Pontinhos brilhantes individuais (glow halo + ponto sólido), cor por categoria
+  - Chips de filtro por categoria embutidos (toggle independente)
+  - Jitter determinístico (seed = id) quando `precisao != 'rua'` — preserva precisão onde tem, espalha onde não tem
+- `ApiService.getMapPoints()` novo método POST
+- `city_detail_screen` e `report_screen` perderam ~300 linhas combinadas (geocode, cache, `_HeatPoint`) — usam `CrimeRadarMap(points: ...)` direto
+
+**Descoberta inesperada:** o `heatmapData` que o backend já gerava no `/analytics/report` era **ignorado pelo Flutter** — as 2 telas geocodavam por conta própria via Nominatim. Migração agora centraliza geocode no servidor (onde deve ficar) e elimina requests diretos do client pro OSM.
+
+### Busca manual — remoção do filtro de palavra-chave
+
+**Argumento do João:** "de qualquer forma vai buscar tudo, filtrar por palavra-chave só gasta recurso — se usuário quiser, filtra dentro do relatório". Removido toggle + input + state + param da chamada API. Backend continua aceitando `tipoCrime` opcional (sem breaking change), só não é mais enviado.
+
+Arquivo: [manual_search_screen.dart](../mobile-app/lib/features/search/screens/manual_search_screen.dart) — removidas ~95 linhas do UI opcional + `_useKeyword`/`_keywordCtrl` do state.
+
+### Sentry — mobile + admin (prod-only)
+
+**Motivação:** crashes no device e erros server-side do admin hoje são invisíveis. Backend já tinha Sentry condicional; mobile e admin não tinham SDK.
+
+**Estratégia prod-only:** SDK instalado em 3 lugares, **inicialização condicional** — só liga se DSN setada. Render injeta DSN só em prod → zero envio em dev/staging → quota da conta Sentry Team ($29) preservada.
+
+**Mobile:**
+- `sentry_flutter ^8.13.0` no pubspec
+- [env.dart](../mobile-app/lib/core/config/env.dart) ganhou `sentryDsn` + `environment` via `dart-define`
+- [main.dart](../mobile-app/lib/main.dart) — `SentryFlutter.init` só se `Env.sentryDsn.isNotEmpty`, senão `runApp` direto
+- Arquivos `env/dev.json`, `env/staging.json`, `env/prod.json` (+ `prod.json.example`) com URLs + DSN por ambiente
+- `prod.json` **gitignored** (contém DSN)
+- Scripts Windows: `run-dev.bat`, `build-staging.bat`, `build-prod.bat` usando `--dart-define-from-file`
+
+**Admin:**
+- `@sentry/nextjs ^10.49.0`
+- [sentry.server.config.ts](../admin-panel/sentry.server.config.ts) + [sentry.edge.config.ts](../admin-panel/sentry.edge.config.ts) + [instrumentation.ts](../admin-panel/instrumentation.ts) + [instrumentation-client.ts](../admin-panel/instrumentation-client.ts) — todos condicionais por DSN
+- `next.config.ts` envolvido em `withSentryConfig` (org `joao-mw`, project `simeops-admin`)
+- Build local OK (`npm run build` sem DSN = runtime SDK inativo, build normal)
+
+**Projetos criados no Sentry** (org `joao-mw`):
+- `simeops-flutter` (Flutter, Mobile) — DSN preenchida em `env/prod.json`
+- `simeops-backend` (Node/Express, Backend) — DSN setada no env do Render prod
+- `simeops-admin` (Next.js, Frontend) — criar quando for usar (config já pronta)
+
+**Render — limpeza de quota:**
+- Backend staging: `SENTRY_DSN` removida (evita queimar quota em bugs conhecidos de dev)
+- Backend prod: `SENTRY_DSN` setada
+- Admin: idem (staging vazio, prod com DSN quando criar o projeto Sentry)
+
+**CLAUDE.md atualizado** com comandos novos pro mobile build.
+
+**Primeira configuração Sentry-em-tudo feita junto com João** (ele criou os projetos no site; eu fiz os arquivos/configs locais).
+
+---
+
 ## 2026-04-17
 
 ### Fix dedup — embedding enriched com metadata

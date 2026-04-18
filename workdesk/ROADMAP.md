@@ -20,20 +20,38 @@ Fase 2 foca em **refinar, testar e estabilizar** — sem features grandes por en
 
 ---
 
-## 🔄 Sessão 2026-04-17 — em curso
+## 🔄 Sessão 2026-04-18 — em curso (refino visual + observabilidade)
+
+**Escopo executado** (ver DEV_LOG):
+- Dashboard cards: sigla UF removida do header + grupo ganhou estado/cidades no footer (sem overflow de nomes)
+- **Consolidação do mapa** — single source of truth: tipo `CrimePoint` no backend, widget `CrimeRadarMap` no Flutter (radar de pontos brilhantes, filtro por categoria embutido, geocode server-side com fallback hierárquico rua→bairro→cidade). Elimina ~300 linhas de duplicação client.
+- Busca manual: filtro de palavra-chave removido (gastava recurso sem valor)
+- **Sentry em tudo (prod-only)** — mobile (sentry_flutter) + admin (@sentry/nextjs) com inicialização condicional por DSN. Projetos criados: `simeops-flutter`, `simeops-backend`, `simeops-admin`.
+- Envs por ambiente no mobile: `env/{dev,staging,prod}.json` + scripts `.bat` (fim de `--dart-define` inline)
+- CLAUDE.md atualizado
+
+**Pendências pré-sessão, ainda abertas:**
+1. 🔴 Admin panel: mudar `dedup_similarity_threshold` de `0.85` pra `0.80` (validar que foi aplicado)
+2. 🟡 Rodar migration 010 (reset) e testar dedup com novo radar
+3. 🟡 `filter2_max_content_chars` 4000 → 8000 no admin
+4. 🟡 Sentry alert email pra tag `provider:openai stage:filter1`
+
+**Pendências desta sessão:**
+5. 🟢 Commit develop + push staging (em curso)
+6. 🟢 Merge staging → main após validar (em curso)
+7. 🟢 APK prod com `build-prod.bat` + Sentry ativo (em curso)
+8. 🟡 Criar projeto `simeops-admin` no Sentry + setar DSN no Render quando for ativar
+9. 🟡 Consolidar `_grupoCores`/`_grupoLabels` do `news_card.dart` → usar `category_colors.dart` (deixado duplicado pra não mexer em código funcional)
+
+---
+
+## ✅ Sessão 2026-04-17 — FECHADA
 
 Fixes de dedup e feed (ver DEV_LOG):
-- **Bug feed mistura cidades:** validateQuery(pagination) stripava `cidade`/`cidades`/`estado`. Fix: novo schema `feedQuery` com filtros opcionais. Confirmed working em staging pelo João.
+- **Bug feed mistura cidades:** validateQuery(pagination) stripava `cidade`/`cidades`/`estado`. Fix: novo schema `feedQuery` com filtros opcionais.
 - **Bug dedup não agrupa notícias do mesmo evento:** embedding raw tinha scores 0.63-0.77 entre narrativas editoriais diferentes. Fix: prefixar embedding com metadata (tipo/estado/cidade/bairro/data) → scores sobem pra 0.82-0.90.
 - Script `reembed-all-news.ts` executado em prod: 24/24 notícias atualizadas.
-- Novos scripts de regressão em `backend/scripts/`: `test-dedup-similarity.ts` + `reembed-all-news.ts`.
-
-**Pendências imediatas:**
-1. 🔴 Admin panel: mudar `dedup_similarity_threshold` de `0.85` pra `0.80`
-2. 🔴 Rodar migration 010 (reset data) pra testar do zero
-3. 🟡 Merge staging → main quando staging ok
-4. 🟡 Reativar produção no Render
-5. 🟡 APK prod rebuild
+- Novos scripts de regressão em `backend/scripts/`: `test-dedup-similarity.ts` + `reembed-all-news.ts` + `debug-dedup-case.ts`.
 
 ---
 

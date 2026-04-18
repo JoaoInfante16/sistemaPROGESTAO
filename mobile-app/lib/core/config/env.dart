@@ -17,4 +17,11 @@ abstract class Env {
     'API_URL',
     defaultValue: 'http://192.168.1.5:3000',
   );
+
+  // Sentry DSN — só preenchida em prod (via env/prod.json).
+  // Dev e staging ficam vazias; Sentry nem inicializa (zero overhead, zero quota).
+  static const sentryDsn = String.fromEnvironment('SENTRY_DSN', defaultValue: '');
+
+  // Ambiente pra rotular eventos no Sentry ('development' | 'staging' | 'production').
+  static const environment = String.fromEnvironment('ENVIRONMENT', defaultValue: 'development');
 }

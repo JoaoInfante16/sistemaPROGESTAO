@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'firebase_options.dart';
@@ -48,7 +49,20 @@ void main() async {
     anonKey: Env.supabaseAnonKey,
   );
 
-  runApp(const SIMEopsApp());
+  // Sentry só inicializa se DSN foi injetada via --dart-define (prod).
+  // Staging/dev: DSN vazia → runApp direto, zero overhead, zero quota consumida.
+  if (Env.sentryDsn.isNotEmpty) {
+    await SentryFlutter.init(
+      (options) {
+        options.dsn = Env.sentryDsn;
+        options.environment = Env.environment;
+        options.tracesSampleRate = 0.2;
+      },
+      appRunner: () => runApp(const SIMEopsApp()),
+    );
+  } else {
+    runApp(const SIMEopsApp());
+  }
 }
 
 // Cores do design SIMEops

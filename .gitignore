@@ -11,6 +11,10 @@ yarn.lock
 .env.local
 .env.*.local
 
+# Flutter env JSON de producao contém SENTRY_DSN (secret).
+# dev/staging ficam checados pra time compartilhar URLs.
+mobile-app/env/prod.json
+
 # IDE
 .vscode/
 .idea/

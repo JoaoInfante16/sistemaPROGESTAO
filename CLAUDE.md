@@ -55,11 +55,15 @@ npm run dev              # localhost:3001
 **Mobile** (Flutter/Android)
 ```bash
 cd mobile-app
-flutter clean            # OBRIGATÓRIO antes de build pra mudança visual
-flutter build apk --dart-define=API_URL=https://sistemaprogestao-7fzs.onrender.com
+# URLs + DSN por ambiente vem de env/{dev,staging,prod}.json (dart-define-from-file).
+run-dev.bat              # dev local (ajustar IP em env/dev.json)
+build-staging.bat        # APK staging (Sentry OFF)
+build-prod.bat           # APK producao (Sentry ON via env/prod.json — git-ignored)
 ```
 
-Testar APK em **device físico via LAN IP**, nunca emulador.
+- `env/prod.json` NÃO é versionado (contém SENTRY_DSN). Use `env/prod.json.example` como template.
+- Sentry só ativa se `SENTRY_DSN` não-vazia — dev/staging ficam sem envio (zero quota).
+- Testar APK em **device físico via LAN IP**, nunca emulador.
 
 **Branches**: `develop` (local) → `staging` (Render free) → `main` (Render prod).
 
