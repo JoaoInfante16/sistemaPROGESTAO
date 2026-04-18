@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Download, AlertTriangle, Clock, MapPin, Shield } from 'lucide-react';
+import Image from 'next/image';
+import { Download, AlertTriangle, Clock, MapPin } from 'lucide-react';
 import { api, type ReportData } from '@/lib/api';
 import { CrimePieChart } from '@/components/analytics/crime-pie-chart';
 import { CrimeTrendChart } from '@/components/analytics/crime-trend-chart';
-import { ReportHeatMap } from '@/components/analytics/report-heat-map';
+import { CrimeRadarMap } from '@/components/analytics/crime-radar-map';
+import { ExecutiveSection } from '@/components/analytics/executive-section';
 import { SourcesSection, SourceNote } from '@/components/analytics/sources-section';
 import { exportDashboardPDF } from '@/lib/pdf-export';
 
@@ -49,6 +51,7 @@ export default function PublicReportPage() {
       });
     } catch (err) {
       console.error('PDF export failed:', err);
+      alert('Não foi possível gerar o PDF. Tente novamente ou entre em contato com o suporte.');
     } finally {
       setExporting(false);
     }
@@ -57,7 +60,7 @@ export default function PublicReportPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600" />
       </div>
     );
   }
@@ -83,20 +86,24 @@ export default function PublicReportPage() {
     : undefined;
 
   const byCategory = rd.byCategory || [];
-  const heatmapData = rd.heatmapData || [];
+  const mapPoints = rd.mapPoints || [];
+  const executive = rd.executive;
 
   return (
     <div className="max-w-6xl mx-auto p-6 lg:p-10">
       {/* Top bar */}
       <div className="flex items-center justify-between mb-8 print:hidden">
         <div className="flex items-center gap-3">
-          <Shield className="h-8 w-8 text-blue-600" />
-          <span className="text-lg font-bold text-blue-600">SIMEops</span>
+          <Image src="/logo.png" alt="SIMEops" width={36} height={36} priority />
+          <div className="flex flex-col leading-tight">
+            <span className="text-lg font-bold tracking-widest text-teal-700">SIMEops</span>
+            <span className="text-[10px] text-slate-500 tracking-wider">PROGESTÃO · Monitoramento de Ocorrências</span>
+          </div>
         </div>
         <button
           onClick={handleExportPDF}
           disabled={exporting}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 transition-colors font-medium"
         >
           <Download className="h-4 w-4" />
           {exporting ? 'Gerando PDF...' : 'Baixar PDF'}
@@ -120,26 +127,29 @@ export default function PublicReportPage() {
           </div>
         </div>
 
-        {/* 1. Resumo - 3 cards */}
+        {/* 1. Executive Section — cards de indicadores + resumo + fontes */}
+        {executive && <ExecutiveSection data={executive} />}
+
+        {/* 2. Resumo - 3 cards */}
         <div className="grid grid-cols-3 gap-4 mb-6">
           <SummaryCard label="Total de Ocorrências" value={String(rd.summary.totalCrimes)} />
           <SummaryCard label="Bairros Afetados" value={String(rd.topBairros?.length || 0)} />
           <SummaryCard label="Tipos de Crime" value={String(rd.byCrimeType?.length || 0)} />
         </div>
 
-        {/* 2. Donut por CATEGORIA */}
+        {/* 3. Donut por CATEGORIA */}
         <div className="grid lg:grid-cols-2 gap-6 mb-8">
           <div className="rounded-xl border p-6">
             <h2 className="text-lg font-semibold mb-4">Distribuição por Categoria</h2>
-            <CrimePieChart data={rd.byCrimeType} byCategory={byCategory} sourceNote={sourceNoteText} />
+            <CrimePieChart byCategory={byCategory} sourceNote={sourceNoteText} />
           </div>
         </div>
 
-        {/* 5. Mapa de Calor */}
-        {heatmapData.length > 0 && (
+        {/* 4. Radar de Ocorrências (pontos por categoria + filtros) */}
+        {mapPoints.length > 0 && (
           <div className="mb-8">
             <h2 className="text-lg font-semibold mb-4">Mapa de Ocorrências</h2>
-            <ReportHeatMap data={heatmapData} cidade={rd.cidade} />
+            <CrimeRadarMap points={mapPoints} cidade={rd.cidade} />
           </div>
         )}
 
@@ -158,7 +168,7 @@ export default function PublicReportPage() {
                     </div>
                     <div className="h-2 rounded-full bg-muted overflow-hidden">
                       <div
-                        className="h-full rounded-full bg-blue-500"
+                        className="h-full rounded-full bg-teal-600"
                         style={{ width: `${(b.count / rd.topBairros[0].count) * 100}%` }}
                       />
                     </div>
@@ -192,7 +202,7 @@ export default function PublicReportPage() {
               day: '2-digit', month: '2-digit', year: 'numeric',
               hour: '2-digit', minute: '2-digit',
             })}
-            {' '}por SIMEops - Sistema de Monitoramento de Ocorrências Policiais
+            {' '}por PROGESTÃO TECNOLOGIA - SIMEops
           </p>
         </div>
       </div>

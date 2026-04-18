@@ -212,6 +212,19 @@ class _CityDetailScreenState extends State<CityDetailScreen>
             ],
           ],
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Compartilhar relatório',
+            onPressed: _sharing ? null : _shareReport,
+            icon: _sharing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(Icons.share),
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: Size.fromHeight(_isGroup ? 88 : 44),
           child: Column(
@@ -348,11 +361,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
               _buildIndicadores(estatisticas),
             ],
 
-            // Botao compartilhar
-            if (totalCrimes > 0)
-              _buildShareButton(),
-
-            const SizedBox(height: 60),
+            const SizedBox(height: 24),
           ],
         ),
       ),
@@ -459,31 +468,9 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     );
   }
 
-  // ── Botao compartilhar relatorio ──
+  // ── Compartilhar relatorio (acionado pelo icone no AppBar) ──
 
   bool _sharing = false;
-
-  Widget _buildShareButton() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: _sharing ? null : _shareReport,
-          icon: _sharing
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Icon(Icons.share),
-          label: Text(_sharing ? 'Gerando...' : 'Compartilhar Relatório'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: SIMEopsColors.teal,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-      ),
-    );
-  }
 
   Future<void> _shareReport() async {
     setState(() => _sharing = true);

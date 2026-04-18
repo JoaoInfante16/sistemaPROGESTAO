@@ -65,12 +65,26 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Future<void> _loadExecutive() async {
     if (widget.cidades.isEmpty || widget.estado.isEmpty) return;
+    if (_estatisticas.isEmpty) return; // sem estatísticas no período → seção some
+
     try {
       final api = context.read<ApiService>();
-      final raw = await api.getExecutive(
+      final stats = _estatisticas
+          .map((s) => <String, dynamic>{
+                'resumo': s['resumo'] ?? '',
+                'data_ocorrencia': s['data_ocorrencia'] ?? '',
+                'source_url': s['source_url'] ?? s['url'],
+              })
+          .where((s) => (s['resumo'] as String).isNotEmpty)
+          .toList();
+
+      if (stats.isEmpty) return;
+
+      final raw = await api.getExecutiveFromStats(
         cidade: widget.cidades.first,
         estado: widget.estado,
         rangeDays: widget.periodoDias,
+        estatisticas: stats,
       );
       if (!mounted) return;
       setState(() => _executive = ExecutiveData.fromJson(raw));
@@ -375,19 +389,29 @@ class _ReportScreenState extends State<ReportScreen> {
             style: GoogleFonts.rajdhani(
                 fontWeight: FontWeight.w700, letterSpacing: 1.5, fontSize: 16)),
         actions: [
+          IconButton(
+            tooltip: 'Compartilhar relatório',
+            onPressed: _generatingLink ? null : _generateAndShareLink,
+            icon: _generatingLink
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(Icons.share),
+          ),
           if (_reportUrl != null)
             IconButton(
+              tooltip: 'Abrir no navegador',
               icon: const Icon(Icons.open_in_browser),
               onPressed: () => _openUrl(_reportUrl!),
             ),
         ],
       ),
-      body: Stack(
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
-          ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-            children: [
-              // Cidade / Periodo card
+          // Cidade / Periodo card
               _card(
                 child: Row(
                   children: [
@@ -633,47 +657,6 @@ class _ReportScreenState extends State<ReportScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 60),
-            ],
-          ),
-
-          // Botao fixo no bottom
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 24,
-            child: SizedBox(
-              height: 52,
-              child: FilledButton(
-                onPressed: _generatingLink ? null : _generateAndShareLink,
-                style: FilledButton.styleFrom(
-                  backgroundColor: SIMEopsColors.green,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                child: _generatingLink
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.arrow_upward,
-                              size: 18, color: Colors.white),
-                          const SizedBox(width: 8),
-                          Text('COMPARTILHAR RELATORIO',
-                              style: GoogleFonts.rajdhani(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 2,
-                                  color: Colors.white)),
-                        ],
-                      ),
-              ),
-            ),
-          ),
         ],
       ),
     );

@@ -9,7 +9,70 @@
 
 ---
 
-## 2026-04-18
+## 2026-04-18 (sessão 2 — refino cirúrgico em tudo)
+
+Sessão focada em fechar dívida técnica acumulada + refino do fluxo de relatório + economia de custo. Ordem do atacado:
+
+### Fix Executive em busca manual
+
+Bug: na busca manual, `ExecutiveIndicators` nunca renderizava mesmo com estatísticas. Causa: endpoint `GET /analytics/executive` puxa estatísticas de `news` via `getCrimeSummary`, ignorando `search_results`. Fix cirúrgico: novo endpoint `POST /analytics/executive/from-stats` que aceita estatísticas já filtradas no client (`report_screen` já tem em memória via `_computeAnalytics`). Sem cache (one-shot). Dashboard mantém GET cacheado.
+
+### Rua no mapa (radar visual por precisão)
+
+Backend já persistia `precisao: 'rua'|'bairro'|'cidade'` no CrimePoint, Flutter só usava pra jitter. Agora também destaca visualmente: rua = raio 5.5 + glow 14 + borda branca 1.2 + alpha cheio. Bairro = atual. Cidade = raio 3 + alpha 0.6 + glow difuso (sinaliza baixa confiança). Aplicado tanto no mobile `crime_radar_map.dart` quanto no novo widget web.
+
+### Dívida técnica — duplicações eliminadas
+
+- **`news_card.dart`**: removidos `_grupoCores`/`_grupoLabels` (24 linhas) — agora usa `category_colors.dart` como fonte única.
+- **`crime-pie-chart.tsx`**: removido `TIPO_TO_CATEGORY` duplicado (tinha `receptacao: 'fraude'` desatualizado — reclassificamos pra `patrimonial` ontem). Componente agora exige `byCategory` do backend; se vier vazio mostra empty state. Também corrigido `CrimeSummary` type que não declarava `byCategory` (backend mandava, admin ignorava).
+
+### Janela de operação do auto-scan (config no admin)
+
+6 configs novas em `system_config`: `scan_weekday_start/end`, `scan_weekend_enabled/start/end`, `scan_period_days`. Defaults: seg-sex 6h-18h, sáb-dom OFF, período 4 dias. `cronScheduler` usa TZ `America/Sao_Paulo` (Render é UTC) — fora da janela, pula o tick inteiro, nada enfileira. `scanPipeline` lê `scan_period_days` (antes hardcoded 2). UI nova em Settings → Auto-Scan com 2 inputs de hora seg-sex, switch master + 2 inputs sáb-dom, input período.
+
+**Economia estimada**: 168h/semana → 60h/semana ativo = **~64% menos custo** Bright Data + Jina + OpenAI recorrente.
+
+### Filter0 refinado — tirando keywords que causavam falso negativo
+
+Keywords do `filter0Regex` faziam substring match sem contexto. Removidas 11 problemáticas: `futebol`, `receita`, `cinema`, `música`, `jogo`, `filme`, `esporte`, `campeonato`, `tempo`, `bolsa`, `dólar`. Batiam em casos reais: "Receita Federal apreende 50kg", "torcedor morto no estádio", "US$500 mil levados", "jogo do bicho", "roubaram a bolsa". Mantidas só as inequívocas: `novela`, `horóscopo`, `fofoca`, `celebridade`, `entretenimento`, `previsão do tempo` (com contexto explícito), `cotação`. Trade-off: +10-15% snippets vão pro Filter1, mas Filter1 sabe discernir com contexto.
+
+### Filter1 em pt-BR + few-shot
+
+Prompt antes em inglês analisando texto em português. Novo prompt em pt-BR com 7 exemplos cobrindo casos de borda (torcedor morto = true, Receita apreende drogas = true, jogo do bicho = true, assalto em show = true, jogo de futebol puro = false, concurso da Receita = false, horóscopo = false). Regra explícita: crime em ambiente de entretenimento/esporte CONTA. Mesmo tratamento no `filter1Single`. Aceita `SIM` ou `YES` (robustez).
+
+### UX: ícone de compartilhar no AppBar (em vez de CTA button)
+
+Padronização entre `city_detail` (auto-scan) e `report_screen` (busca manual). Antes: botão `ElevatedButton teal` inline vs `FilledButton green Rajdhani uppercase` fixo no bottom. Agora: **ícone `Icons.share` no AppBar em ambas**, com loading spinner, tooltip "Compartilhar relatório". Share é ação secundária — não precisava de CTA berrante. Stack/Positioned removido, layout mais limpo.
+
+### Relatório público — paridade com in-app + identidade SIMEops
+
+Público estava bem atrás: renderizava só resumo, donut, heatmap legado, bairros, trend, fontes. Faltava Executive, mapa novo, e visual era genérico (Shield lucide, azul).
+
+**Parity de conteúdo:**
+- `<ExecutiveSection>`: cards de indicadores coloridos por sentido (positivo/negativo/neutro) + resumo_complementar + fontes consolidadas. Light theme espelhando `ExecutiveIndicators` do Flutter.
+- `<CrimeRadarMap>`: substitui `<ReportHeatMap>`. Tiles CartoDB light, pontos coloridos por categoria, chips de filtro (toggle independente), precisão rua/bairro/cidade diferenciada igual ao mobile.
+- Types `ReportData` atualizados com `executive` e `mapPoints`.
+
+**Identidade visual:**
+- Logo oficial PROGESTÃO/SIMEops (copiado `mobile-app/assets/images/logo.png` → `admin-panel/public/logo.png`) substituiu Shield genérico no header
+- Subtítulo "PROGESTÃO · Monitoramento de Ocorrências"
+- Footer: "Gerado por PROGESTÃO TECNOLOGIA - SIMEops" (antes tinha "Sistema de Monitoramento de Ocorrências Policiais")
+- Cores azul-600 → teal-600 SIMEops em botão, loader, barras
+
+### Fix PDF
+
+Causa do "Baixar PDF" travar em "Gerando..." eternamente: tiles OpenStreetMap sem `crossOrigin="anonymous"` marcavam o canvas como tainted → `toDataURL()` do html2canvas lançava `SecurityError` silencioso. `allowTaint: true` default mascarava.
+
+Fix:
+- Migrado pra tiles CartoDB que têm CORS confirmado (`basemaps.cartocdn.com` manda `Access-Control-Allow-Origin: *`)
+- `crossOrigin="anonymous"` no TileLayer
+- `allowTaint: false` no html2canvas → falha ALTO se outra coisa quebrar, não silencioso
+- `alert()` visível no catch — user vê o erro
+- `ignoreElements` via atributo `data-pdf-hide` como fallback pra widgets futuros problemáticos
+
+---
+
+## 2026-04-18 (sessão 1 — manhã)
 
 ### Executive Section — resumo + indicadores visuais via GPT
 

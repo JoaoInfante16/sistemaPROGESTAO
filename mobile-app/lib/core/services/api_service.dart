@@ -304,6 +304,29 @@ class ApiService {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  // Executive pra busca manual: Flutter já tem as estatísticas em memória
+  // (natureza='estatistica' vindo da busca). Backend só roda GPT e devolve.
+  // Sem cache — busca manual é one-shot.
+  Future<Map<String, dynamic>> getExecutiveFromStats({
+    required String cidade,
+    required String estado,
+    required int rangeDays,
+    required List<Map<String, dynamic>> estatisticas,
+  }) async {
+    final res = await _client.post(
+      Uri.parse('$_baseUrl/analytics/executive/from-stats'),
+      headers: _headers,
+      body: jsonEncode({
+        'cidade': cidade,
+        'estado': estado,
+        'rangeDays': rangeDays,
+        'estatisticas': estatisticas,
+      }),
+    ).timeout(_timeout);
+    _checkResponse(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   Future<List<Map<String, dynamic>>> getMapPoints({
     required String cidade,
     required String estado,

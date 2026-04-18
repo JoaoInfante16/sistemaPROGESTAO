@@ -170,6 +170,21 @@ export const schemas = {
     rangeDays: z.coerce.number().int().min(7).max(365).default(30),
   }),
 
+  // Busca manual: estatísticas já filtradas no client, backend só gera executive
+  // (sem cache — busca manual é one-shot, diferente do dashboard).
+  executiveFromStats: z.object({
+    cidade: z.string().min(2).max(100),
+    estado: z.string().min(2).max(100),
+    rangeDays: z.number().int().min(1).max(365).default(30),
+    estatisticas: z.array(
+      z.object({
+        resumo: z.string().min(1),
+        data_ocorrencia: z.string(),
+        source_url: z.string().nullable().optional(),
+      }),
+    ).max(50),
+  }),
+
   mapPointsQuery: z.object({
     cidade: z.string().min(2).max(100),
     estado: z.string().min(2).max(100),

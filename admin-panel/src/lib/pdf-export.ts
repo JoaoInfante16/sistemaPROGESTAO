@@ -19,8 +19,11 @@ export async function exportDashboardPDF(
   const canvas = await html2canvas(element, {
     scale: 2,
     useCORS: true,
+    allowTaint: false, // falha rápido se algum tile não for CORS — melhor que PDF em branco silencioso
     logging: false,
     backgroundColor: '#ffffff',
+    // Esconde elementos marcados com data-pdf-hide (fallback se algum widget quebrar).
+    ignoreElements: (el) => el.hasAttribute('data-pdf-hide'),
   });
 
   // Create PDF (A4 landscape for charts)
@@ -103,7 +106,7 @@ export async function exportDashboardPDF(
   pdf.setFontSize(8);
   pdf.setTextColor(150);
   pdf.text(
-    'Gerado por SIMEops - Sistema de Monitoramento de Ocorrencias Policiais',
+    'Gerado por PROGESTAO TECNOLOGIA - SIMEops',
     pageWidth / 2,
     pageHeight - 8,
     { align: 'center' }

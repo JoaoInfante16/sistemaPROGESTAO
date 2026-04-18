@@ -20,34 +20,51 @@ Fase 2 foca em **refinar, testar e estabilizar** — sem features grandes por en
 
 ---
 
-## 🔄 Sessão 2026-04-18 — em curso (refino visual + observabilidade)
+## ✅ Sessão 2026-04-18 (sessão 2 — tarde) — FECHADA
 
 **Escopo executado** (ver DEV_LOG):
-- Dashboard cards: sigla UF removida do header + grupo ganhou estado/cidades no footer (sem overflow de nomes)
-- **Consolidação do mapa** — single source of truth: tipo `CrimePoint` no backend, widget `CrimeRadarMap` no Flutter (radar de pontos brilhantes, filtro por categoria embutido, geocode server-side com fallback hierárquico rua→bairro→cidade). Elimina ~300 linhas de duplicação client.
-- Busca manual: filtro de palavra-chave removido (gastava recurso sem valor)
-- **Sentry em tudo (prod-only)** — mobile (sentry_flutter) + admin (@sentry/nextjs) com inicialização condicional por DSN. Projetos criados: `simeops-flutter`, `simeops-backend`, `simeops-admin`.
-- Envs por ambiente no mobile: `env/{dev,staging,prod}.json` + scripts `.bat` (fim de `--dart-define` inline)
-- Receptação reclassificada `fraude → patrimonial` (juridicamente correto + funcionalmente — indica cadeia patrimonial ativa)
-- Fix "não consigo sair" quando `lembrar senha` tá marcado (signOut agora limpa credentials)
-- Fix falso "Erro de conexão" ao retomar busca em cold-start (tolerância 5 → 20 erros, não marca failed, mensagem gentil)
-- **Redesign progress tela** (tático sem jargão): header com cards (ETAPA/TEMPO), timestamps monospace, duração por stage, ícones de status, chips de filtro no radar
-- **Persistência history de stages** no backend (JSONB) — user retoma busca via histórico e vê cronologia completa
-- **Executive Section** (resumo + indicadores visuais via GPT) — cards estruturados por tipo (percentual/absoluto/monetário), cor por sentido (positivo/negativo), cache com invalidação por evento, TTL 24h fallback. Custo rastreado no billing como `stage='executive'`. Migration 021 adicionada.
-- CLAUDE.md atualizado
+- Fix **Executive em busca manual** (endpoint POST `/analytics/executive/from-stats` aceita estatísticas do client)
+- **Rua no mapa**: precisão `rua` destaca visualmente (raio maior, glow forte, borda branca), `cidade` esbatido (baixa confiança)
+- **Dívida técnica duplicações**: `news_card.dart` → `category_colors.dart` (fonte única); `crime-pie-chart.tsx` sem fallback `TIPO_TO_CATEGORY` desatualizado; `CrimeSummary` type ganhou `byCategory`.
+- **Janela de operação auto-scan**: 6 configs novas, seg-sex 6-18h default, sáb-dom OFF, período 4 dias. Economia ~64% recorrente. UI nova no admin settings.
+- **Filter0 refinado**: removidas 11 keywords problemáticas (`tempo`, `bolsa`, `receita`, `dólar`, `futebol`, `jogo`, etc.) que disparavam false negative silencioso.
+- **Filter1 em pt-BR + 7 exemplos few-shot** cobrindo casos de borda (torcedor morto = crime, Receita apreende drogas = crime, etc.).
+- **UX share icon no AppBar** (`city_detail` e `report_screen` padronizados) em vez de CTA button inline/fixo.
+- **Relatório público com parity total do in-app**:
+  - `<ExecutiveSection>` (light theme espelhando Flutter)
+  - `<CrimeRadarMap>` (tiles CartoDB, filtros de categoria, precisão diferenciada) substituiu heatmap legado
+  - Logo PROGESTÃO/SIMEops substituiu Shield genérico
+  - Cores teal (antes azul) + footer "PROGESTÃO TECNOLOGIA - SIMEops"
+- **Fix PDF**: `crossOrigin="anonymous"` + tiles CartoDB com CORS + `allowTaint: false` + alert visível (antes travava silencioso em "Gerando...").
 
-**Pendências pré-sessão, ainda abertas:**
-1. 🔴 Admin panel: mudar `dedup_similarity_threshold` de `0.85` pra `0.80` (validar que foi aplicado)
-2. 🟡 Rodar migration 010 (reset) e testar dedup com novo radar
-3. 🟡 `filter2_max_content_chars` 4000 → 8000 no admin
-4. 🟡 Sentry alert email pra tag `provider:openai stage:filter1`
+**Removido do ROADMAP como obsoleto:**
+- ~~Sentry alert pra `provider:openai stage:filter1`~~ — redundante, Sentry já manda email default pra nova issue
+- ~~Consolidar `_grupoCores`~~ — feito nesta sessão
+- ~~`crime-pie-chart.tsx` pendência de investigação~~ — investigado + fixado
 
-**Pendências desta sessão:**
-5. 🟢 Commit develop + push staging (em curso)
-6. 🟢 Merge staging → main após validar (em curso)
-7. 🟢 APK prod com `build-prod.bat` + Sentry ativo (em curso)
-8. 🟡 Criar projeto `simeops-admin` no Sentry + setar DSN no Render quando for ativar
-9. 🟡 Consolidar `_grupoCores`/`_grupoLabels` do `news_card.dart` → usar `category_colors.dart` (deixado duplicado pra não mexer em código funcional)
+---
+
+## ✅ Sessão 2026-04-18 (sessão 1 — manhã) — FECHADA
+
+**Escopo executado** (ver DEV_LOG):
+- Dashboard cards: sigla UF removida do header + grupo ganhou estado/cidades no footer
+- **Consolidação do mapa** — single source of truth: `CrimePoint` backend, `CrimeRadarMap` Flutter, geocode server-side com fallback rua→bairro→cidade
+- Busca manual: filtro de palavra-chave removido
+- **Sentry em tudo (prod-only)** — mobile + admin + backend com inicialização condicional por DSN
+- Envs por ambiente no mobile: `env/{dev,staging,prod}.json` + `.bat`
+- Receptação reclassificada `fraude → patrimonial`
+- Fix "não consigo sair" (signOut limpa credentials)
+- Fix falso "Erro de conexão" em cold-start (tolerância 5 → 20)
+- **Redesign progress tela** + persistência history de stages (JSONB)
+- **Executive Section** com cache + invalidação por evento (migration 021)
+
+**Pendências administrativas suas (não-código):**
+1. 🔴 Admin: validar `dedup_similarity_threshold` 0.85 → 0.80
+2. 🟡 Migration 010 (reset) + testar dedup com novo radar
+3. 🟡 Criar projeto `simeops-admin` no Sentry + setar DSN no Render (quando ativar)
+4. 🟡 Validar nova janela de operação no admin settings (seg-sex 6-18, sáb-dom off, período 4 dias)
+5. 🟢 Commit develop → staging → main (em curso)
+6. 🟢 APK prod com `build-prod.bat` + Sentry ativo (em curso)
 
 ---
 

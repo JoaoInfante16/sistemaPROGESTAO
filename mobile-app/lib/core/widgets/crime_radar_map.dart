@@ -120,28 +120,55 @@ class _CrimeRadarMapState extends State<CrimeRadarMap> {
                   subdomains: const ['a', 'b', 'c', 'd'],
                   userAgentPackageName: 'com.progestao.simeops',
                 ),
-                // Glow halo (pontos maiores, alpha baixo) — cria efeito "brilhante"
+                // Glow halo — precisão rua fica maior e mais brilhante,
+                // cidade fica menor e mais apagado (sinaliza baixa confiança).
                 CircleLayer(
                   circles: visible.map((p) {
                     final color = categoryColor(p.categoria);
+                    final glowRadius = switch (p.precisao) {
+                      'rua' => 14.0,
+                      'bairro' => 10.0,
+                      _ => 8.0,
+                    };
+                    final glowAlpha = switch (p.precisao) {
+                      'rua' => 0.28,
+                      'bairro' => 0.18,
+                      _ => 0.10,
+                    };
                     return CircleMarker(
                       point: _jitter(p),
-                      radius: 10,
-                      color: color.withValues(alpha: 0.18),
+                      radius: glowRadius,
+                      color: color.withValues(alpha: glowAlpha),
                       borderStrokeWidth: 0,
                     );
                   }).toList(),
                 ),
-                // Ponto sólido central
+                // Ponto sólido — rua destaca (raio maior + borda branca forte),
+                // cidade diminui (raio menor + alpha 0.6) pra diferenciar confiança.
                 CircleLayer(
                   circles: visible.map((p) {
                     final color = categoryColor(p.categoria);
+                    final radius = switch (p.precisao) {
+                      'rua' => 5.5,
+                      'bairro' => 4.0,
+                      _ => 3.0,
+                    };
+                    final coreAlpha = switch (p.precisao) {
+                      'rua' => 1.0,
+                      'bairro' => 0.9,
+                      _ => 0.6,
+                    };
+                    final borderAlpha = switch (p.precisao) {
+                      'rua' => 0.9,
+                      'bairro' => 0.6,
+                      _ => 0.3,
+                    };
                     return CircleMarker(
                       point: _jitter(p),
-                      radius: 4,
-                      color: color.withValues(alpha: 0.9),
-                      borderColor: Colors.white.withValues(alpha: 0.6),
-                      borderStrokeWidth: 0.8,
+                      radius: radius,
+                      color: color.withValues(alpha: coreAlpha),
+                      borderColor: Colors.white.withValues(alpha: borderAlpha),
+                      borderStrokeWidth: p.precisao == 'rua' ? 1.2 : 0.8,
                     );
                   }).toList(),
                 ),

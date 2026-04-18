@@ -21,24 +21,21 @@ const BLOCKED_DOMAINS = [
   'globoplay.globo.com',
 ];
 
+// Keywords de entretenimento/não-crime inequívocas. Removidas as ambíguas
+// que disparavam falso negativo (match substring no snippet inteiro, sem
+// contexto): `tempo` batia em "há muito tempo", `bolsa` em "roubaram a
+// bolsa", `receita` em "Receita Federal apreendeu", `dólar` em "US$500 mil
+// levados", `futebol`/`campeonato`/`jogo`/`esporte` em "torcedor morto",
+// `cinema` em "atirador no cinema", `música` em "show interrompido por
+// tiroteio", `filme` em "filmou o assalto". Esses casos passam agora pro
+// Filter1 decidir com contexto.
 const NON_CRIME_KEYWORDS = [
   'novela',
-  'futebol',
-  'receita',
   'horóscopo',
   'fofoca',
   'celebridade',
-  'cinema',
-  'música',
-  'jogo',
-  'filme',
   'entretenimento',
-  'esporte',
-  'campeonato',
-  'tempo',
-  'previsão',
-  'bolsa',
-  'dólar',
+  'previsão do tempo',
   'cotação',
 ];
 

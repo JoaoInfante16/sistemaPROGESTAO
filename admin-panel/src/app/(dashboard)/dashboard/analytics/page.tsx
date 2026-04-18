@@ -235,7 +235,7 @@ export default function AnalyticsPage() {
             </div>
             <div className="rounded-xl border p-6">
               <h2 className="text-lg font-semibold mb-4">Distribuicao</h2>
-              <CrimePieChart data={summary.byCrimeType} />
+              <CrimePieChart byCategory={summary.byCategory} />
             </div>
           </div>
 

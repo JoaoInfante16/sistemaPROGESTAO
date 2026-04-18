@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
 import '../../../core/models/news_item.dart';
+import '../../../core/utils/category_colors.dart';
 
 class NewsCard extends StatelessWidget {
   final NewsItem news;
@@ -194,27 +195,8 @@ class _CrimeBadge extends StatelessWidget {
 
   const _CrimeBadge({required this.categoriaGrupo});
 
-  // Cores e labels por grupo. O mapeamento tipo_crime -> grupo vive no backend
-  // (fonte unica de verdade). Aqui so cuidamos de UI.
-  static const _grupoCores = {
-    'patrimonial': Colors.orange,
-    'seguranca': Colors.red,
-    'operacional': Colors.blue,
-    'fraude': Colors.purple,
-    'institucional': Colors.blueGrey,
-  };
-
-  static const _grupoLabels = {
-    'patrimonial': 'Patrimonial',
-    'seguranca': 'Segurança',
-    'operacional': 'Operacional',
-    'fraude': 'Fraude',
-    'institucional': 'Institucional',
-  };
-
-  String get _grupo => categoriaGrupo ?? 'institucional';
-  Color get _color => _grupoCores[_grupo] ?? Colors.blueGrey;
-  String get _label => _grupoLabels[_grupo] ?? _grupo;
+  Color get _color => categoryColor(categoriaGrupo);
+  String get _label => categoryLabel(categoriaGrupo);
 
   @override
   Widget build(BuildContext context) {

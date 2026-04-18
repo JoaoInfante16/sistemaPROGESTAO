@@ -180,10 +180,11 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   });
 
   // STAGE 5: Filter2 + Embedding (com filtro de cidade/estado)
+  const scanPeriodDays = await configManager.getNumber('scan_period_days');
   const locationPostFilter = parentState ? {
     estado: parentState.name,
     cidades: [location.name],
-    periodoDias: 2,
+    periodoDias: scanPeriodDays,
   } : undefined;
 
   const filter2Result = await runFilter2WithEmbedding(

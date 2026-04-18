@@ -138,6 +138,44 @@ router.get(
 );
 
 // ============================================
+// Executive (busca manual) — POST com estatísticas já filtradas no client
+// ============================================
+// Diferente do GET acima: o dashboard lê de `news`, mas a busca manual guarda
+// resultados em `search_results`. Em vez de duplicar a query, o Flutter já tem
+// as estatísticas em memória e manda pra cá. Sem cache (busca é one-shot).
+router.post(
+  '/analytics/executive/from-stats',
+  requireAuth,
+  validateBody(schemas.executiveFromStats),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { cidade, estado, rangeDays, estatisticas } = req.body as {
+        cidade: string;
+        estado: string;
+        rangeDays: number;
+        estatisticas: Array<{ resumo: string; data_ocorrencia: string; source_url?: string | null }>;
+      };
+
+      const stats = estatisticas.map((s) => ({
+        resumo: s.resumo,
+        data_ocorrencia: s.data_ocorrencia,
+        source_url: s.source_url ?? null,
+      }));
+
+      const executive = await generateExecutiveFromStatistics(
+        stats,
+        'manual_search',
+        { cidade, estado, rangeDays },
+      );
+      res.json(executive);
+    } catch (error) {
+      logger.error('[Analytics] Executive from-stats error:', error);
+      res.status(500).json({ error: 'Failed to generate executive' });
+    }
+  }
+);
+
+// ============================================
 // Map Points (leve, on-demand — pro radar do app)
 // ============================================
 // Dashboard chama sem searchId → lê de news. Busca manual chama com searchId → lê de search_results.

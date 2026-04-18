@@ -52,19 +52,47 @@ export async function filter1GPTBatch(snippets: string[]): Promise<Filter1Result
 }
 
 async function filter1GPTBatchSingle(snippets: string[]): Promise<Filter1Result> {
-  const prompt = `Analyze the following ${snippets.length} news snippets.
-For each one, determine if it relates to PUBLIC SAFETY (crime, police, security).
+  // Prompt em pt-BR (mesma lingua dos snippets) + exemplos few-shot cobrindo
+  // casos de borda onde o modelo tende a errar sem contexto: crimes em
+  // ambiente esportivo/cultural, apreensoes pela Receita, jogo do bicho,
+  // estatisticas oficiais. Reduz falso negativo em comparacao ao prompt
+  // anterior em ingles sem exemplos.
+  const prompt = `Analise os ${snippets.length} trechos de noticia abaixo. Para cada um, decida se ele é sobre SEGURANÇA PÚBLICA (crime, polícia, violência, operação policial, apreensão, estatística de criminalidade).
 
-SNIPPETS:
-${snippets.map((snippet, index) => `${index}. "${snippet}"`).join('\n')}
-
-Return JSON with boolean array:
+Retorne JSON com array de booleanos na ordem dos trechos:
 {"results": [true, false, true, ...]}
 
-RULES:
-- Return EXACTLY ${snippets.length} boolean values
-- true = ANY public safety content: robbery, theft, murder, drug trafficking, arrest, police operation, seizure, fraud, protest, road blockade, crime statistics, violence indicators
-- false = NOT public safety: soap opera, sports, recipe, horoscope, celebrity gossip, entertainment, academic theory with no real data`;
+REGRAS:
+- Retorne EXATAMENTE ${snippets.length} valores.
+- true = conteudo de segurança pública: roubo, furto, homicidio, latrocinio, lesao, trafico, receptacao, estelionato, operacao policial, apreensao, prisao, protesto violento, bloqueio, tiroteio, estatistica de crimes, contravencao (ex: jogo do bicho).
+- false = NAO eh seguranca publica: esporte (jogo, resultado, transferencia), novela, fofoca, horoscopo, resenha de filme/show, cotacao financeira, previsao do tempo, concurso publico, nota tecnica sem dado, entretenimento em geral.
+- Crimes em ambiente de entretenimento/esporte CONTAM: "torcedor morto em briga" = true, "assalto interrompe show" = true, "Receita Federal apreende drogas" = true, "jogo do bicho movimenta milhoes" = true.
+- Se for operacao/apreensao mesmo sem mencionar suspeito preso, CONTA = true.
+
+EXEMPLOS:
+Trecho: "Torcedor do Flamengo morre apos briga em estadio"
+Resposta: true (homicidio, mesmo em contexto esportivo)
+
+Trecho: "Receita Federal apreende 50kg de cocaina em Foz do Iguacu"
+Resposta: true (apreensao de drogas)
+
+Trecho: "Jogo do bicho movimenta R$ 2 milhoes por mes em Curitiba"
+Resposta: true (contravencao)
+
+Trecho: "Assalto interrompe show de Anitta em Sao Paulo"
+Resposta: true (crime)
+
+Trecho: "Corinthians vence Palmeiras por 2x0 no classico"
+Resposta: false (esporte puro)
+
+Trecho: "Receita Federal abre concurso com 400 vagas"
+Resposta: false (administrativo, sem crime)
+
+Trecho: "Horoscopo da semana: Aries tera sorte no trabalho"
+Resposta: false (entretenimento)
+
+TRECHOS A ANALISAR:
+${snippets.map((snippet, index) => `${index}. "${snippet}"`).join('\n')}`;
 
   // Retry 1x antes de fallback "all true"
   for (let attempt = 1; attempt <= 2; attempt++) {
@@ -132,11 +160,16 @@ RULES:
  * Fallback para snippet único (evita overhead do batch com 1 item).
  */
 async function filter1Single(snippet: string): Promise<{ result: boolean; tokensUsed: number }> {
-  const prompt = `Is this news snippet about a real public safety event or crime statistic?
+  const prompt = `O trecho abaixo é sobre SEGURANÇA PÚBLICA (crime, polícia, operação, apreensão, estatistica de criminalidade, contravencao)?
 
-Snippet: "${snippet}"
+REGRAS:
+- Crime em ambiente de entretenimento/esporte CONTA (ex: "torcedor morto" = SIM, "assalto em show" = SIM).
+- Apreensao/operacao da Receita Federal ou PF CONTA.
+- Esporte puro, novela, fofoca, horoscopo, cotacao, previsao do tempo, concurso publico = NAO.
 
-Answer ONLY "YES" or "NO":`;
+Trecho: "${snippet}"
+
+Responda APENAS "SIM" ou "NAO":`;
 
   try {
     const response = await openai.chat.completions.create({
@@ -146,9 +179,9 @@ Answer ONLY "YES" or "NO":`;
       temperature: 0,
     });
 
-    const answer = response.choices[0].message.content?.trim().toUpperCase();
+    const answer = response.choices[0].message.content?.trim().toUpperCase().replace(/[^A-Z]/g, '');
     const tokensUsed = response.usage?.total_tokens || 0;
-    return { result: answer === 'YES', tokensUsed };
+    return { result: answer === 'SIM' || answer === 'YES', tokensUsed };
   } catch (error) {
     logger.error('[Filter1Single] GPT error:', error);
     return { result: false, tokensUsed: 0 };

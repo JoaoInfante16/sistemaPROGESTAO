@@ -442,6 +442,150 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
+                {/* Janela de Operação: dias + horários semana/fim de semana */}
+                <div className="rounded-lg border p-4 space-y-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Label className="font-medium">Janela de operação</Label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-[320px]">
+                          <p className="text-sm">
+                            Fora do horário (horário de Brasília), o CRON pula o tick sem buscar —
+                            economia direta de Bright Data, Jina e OpenAI. Cidades em execução continuam até terminar.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Horários em formato 24h (0-23). Ex: 6 a 18 = das 6h às 18h.
+                    </p>
+                  </div>
+
+                  {/* Seg-Sex */}
+                  <div className="flex items-center justify-between gap-4">
+                    <Label className="text-sm font-medium w-32">Seg–Sex</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={23}
+                        className="w-20 text-center"
+                        value={getConfigValue('scan_weekday_start')}
+                        onChange={(e) => handleConfigChange('scan_weekday_start', e.target.value)}
+                        onBlur={(e) => {
+                          const v = e.target.value;
+                          if (v !== '' && editingConfig['scan_weekday_start'] !== undefined) {
+                            saveNumericConfig('scan_weekday_start', v);
+                          }
+                        }}
+                      />
+                      <span className="text-muted-foreground">h →</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={24}
+                        className="w-20 text-center"
+                        value={getConfigValue('scan_weekday_end')}
+                        onChange={(e) => handleConfigChange('scan_weekday_end', e.target.value)}
+                        onBlur={(e) => {
+                          const v = e.target.value;
+                          if (v !== '' && editingConfig['scan_weekday_end'] !== undefined) {
+                            saveNumericConfig('scan_weekday_end', v);
+                          }
+                        }}
+                      />
+                      <span className="text-muted-foreground">h</span>
+                      {(savingConfig.has('scan_weekday_start') || savingConfig.has('scan_weekday_end')) && (
+                        <Loader2 className="h-4 w-4 animate-spin ml-1" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Fim de semana: switch master + horários */}
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <Label className="text-sm font-medium w-32">Sáb–Dom</Label>
+                      <Switch
+                        checked={isConfigEnabled('scan_weekend_enabled')}
+                        onCheckedChange={() => toggleConfig('scan_weekend_enabled', isConfigEnabled('scan_weekend_enabled'))}
+                        disabled={savingConfig.has('scan_weekend_enabled')}
+                      />
+                      {!isConfigEnabled('scan_weekend_enabled') && (
+                        <span className="text-sm text-muted-foreground">Desligado</span>
+                      )}
+                    </div>
+                    {isConfigEnabled('scan_weekend_enabled') && (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min={0}
+                          max={23}
+                          className="w-20 text-center"
+                          value={getConfigValue('scan_weekend_start')}
+                          onChange={(e) => handleConfigChange('scan_weekend_start', e.target.value)}
+                          onBlur={(e) => {
+                            const v = e.target.value;
+                            if (v !== '' && editingConfig['scan_weekend_start'] !== undefined) {
+                              saveNumericConfig('scan_weekend_start', v);
+                            }
+                          }}
+                        />
+                        <span className="text-muted-foreground">h →</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={24}
+                          className="w-20 text-center"
+                          value={getConfigValue('scan_weekend_end')}
+                          onChange={(e) => handleConfigChange('scan_weekend_end', e.target.value)}
+                          onBlur={(e) => {
+                            const v = e.target.value;
+                            if (v !== '' && editingConfig['scan_weekend_end'] !== undefined) {
+                              saveNumericConfig('scan_weekend_end', v);
+                            }
+                          }}
+                        />
+                        <span className="text-muted-foreground">h</span>
+                        {(savingConfig.has('scan_weekend_start') || savingConfig.has('scan_weekend_end')) && (
+                          <Loader2 className="h-4 w-4 animate-spin ml-1" />
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Período em dias */}
+                  <div className="flex items-center justify-between gap-4 pt-2 border-t">
+                    <div>
+                      <Label className="text-sm font-medium">Período da busca (dias)</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Janela que o scan cobre por cidade. Aumentar recupera notícias de dias desligados.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={14}
+                        className="w-20 text-center"
+                        value={getConfigValue('scan_period_days')}
+                        onChange={(e) => handleConfigChange('scan_period_days', e.target.value)}
+                        onBlur={(e) => {
+                          const v = e.target.value;
+                          if (v !== '' && editingConfig['scan_period_days'] !== undefined) {
+                            saveNumericConfig('scan_period_days', v);
+                          }
+                        }}
+                      />
+                      {savingConfig.has('scan_period_days') && (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 {/* Toggles: RSS e Filtro Regex */}
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="rounded-lg border p-4 flex items-center justify-between">

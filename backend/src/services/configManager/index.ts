@@ -43,6 +43,14 @@ const DEFAULTS: Record<string, string> = {
   filter0_regex_enabled: 'true',
   // Billing
   billing_close_day: '1',
+  // Janela de operação do auto-scan (horário de Brasília).
+  // Fora da janela: CRON pula o tick sem enfileirar jobs — economiza Bright/Jina/OpenAI.
+  scan_weekday_start: '6',       // seg-sex começa às 6h
+  scan_weekday_end: '18',        // seg-sex para às 18h
+  scan_weekend_enabled: 'false', // sáb+dom desligado por default
+  scan_weekend_start: '6',
+  scan_weekend_end: '18',
+  scan_period_days: '4',         // janela do BrightData (era 2; 4 permite recuperar sáb/dom na segunda)
 };
 
 class ConfigManager {

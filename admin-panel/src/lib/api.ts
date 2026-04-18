@@ -148,6 +148,7 @@ export interface RejectedUrlEntry {
 export interface CrimeSummary {
   totalCrimes: number;
   byCrimeType: Array<{ tipo_crime: string; count: number; percentage: number }>;
+  byCategory: Array<{ category: string; count: number; percentage: number }>;
   topBairros: Array<{ bairro: string; count: number }>;
   avgConfianca: number;
 }
@@ -204,6 +205,32 @@ export interface ReportData {
     sourcesOficial?: Array<{ name: string; count: number; urls?: string[] }>;
     sourcesMedia?: Array<{ name: string; count: number; urls?: string[] }>;
     heatmapData?: Array<{ bairro: string; count: number; lat: number; lng: number }>;
+    // Radar de ocorrências (substitui heatmapData legado)
+    mapPoints?: Array<{
+      id: string;
+      lat: number;
+      lng: number;
+      categoria: string;
+      tipo_crime: string;
+      data: string;
+      bairro: string | null;
+      rua: string | null;
+      precisao: 'rua' | 'bairro' | 'cidade';
+    }>;
+    // Executive Section (cards de indicadores + resumo + fontes)
+    executive?: {
+      indicadores: Array<{
+        valor: number;
+        unidade: string | null;
+        tipo: 'percentual' | 'absoluto' | 'monetario';
+        sentido: 'positivo' | 'negativo' | 'neutro';
+        label: string;
+        contexto: string;
+        fonte: string;
+      }>;
+      resumo_complementar: string | null;
+      fontes: string[];
+    };
   };
   sources: Array<{ name: string; count: number; urls?: string[]; type?: 'oficial' | 'midia' }>;
   created_at: string;
