@@ -393,7 +393,7 @@ class _ReportScreenState extends State<ReportScreen> {
     return Scaffold(
       backgroundColor: SIMEopsColors.navy,
       appBar: AppBar(
-        title: Text('RELATORIO DE RISCO',
+        title: Text('RELATÓRIO DE RISCO',
             style: GoogleFonts.rajdhani(
                 fontWeight: FontWeight.w700, letterSpacing: 1.5, fontSize: 16)),
         actions: [

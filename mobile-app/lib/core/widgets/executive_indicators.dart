@@ -30,7 +30,9 @@ class ExecutiveIndicators extends StatelessWidget {
     if (loading && data.isEmpty) return _buildSkeleton();
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      // Sem margin horizontal — o parent (ListView/card) já cuida do espaçamento.
+      // Antes tinha `horizontal: 16` que causava padding duplo e widget estreito.
+      margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: SIMEopsColors.navyLight.withValues(alpha: 0.6),
@@ -122,7 +124,9 @@ class ExecutiveIndicators extends StatelessWidget {
   // Evita flash de seção vazia → aparecendo de repente.
   Widget _buildSkeleton() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      // Sem margin horizontal — o parent (ListView/card) já cuida do espaçamento.
+      // Antes tinha `horizontal: 16` que causava padding duplo e widget estreito.
+      margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: SIMEopsColors.navyLight.withValues(alpha: 0.6),
