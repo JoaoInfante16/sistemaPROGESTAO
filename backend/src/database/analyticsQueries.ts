@@ -439,6 +439,7 @@ export interface CityOverviewItem {
   type: 'city' | 'group';
   parentState: string | null;
   cityCount?: number;
+  stateCount?: number;
   cityNames?: string[];
   totalCrimes: number;
   totalCrimes30d: number;
@@ -587,15 +588,25 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
   if (groups && groups.length > 0) {
     const { data: members } = await supabase
       .from('city_group_members')
-      .select('group_id, monitored_locations(name)');
+      .select('group_id, monitored_locations(name, parent_id)');
 
     const membersByGroup = new Map<string, string[]>();
+    const statesByGroup = new Map<string, Set<string>>();
     for (const m of members || []) {
-      const loc = m.monitored_locations as unknown as { name: string } | null;
+      const loc = m.monitored_locations as unknown as { name: string; parent_id: string | null } | null;
       if (!loc) continue;
       const list = membersByGroup.get(m.group_id) || [];
       list.push(loc.name);
       membersByGroup.set(m.group_id, list);
+
+      if (loc.parent_id) {
+        const stateName = stateMap.get(loc.parent_id);
+        if (stateName) {
+          const set = statesByGroup.get(m.group_id) || new Set<string>();
+          set.add(stateName);
+          statesByGroup.set(m.group_id, set);
+        }
+      }
     }
 
     for (const g of groups) {
@@ -626,12 +637,17 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
 
       const trend = total30d > 0 ? 0 : 0; // trend removed for now
 
+      const groupStates = statesByGroup.get(g.id) || new Set<string>();
+      const groupStateList = Array.from(groupStates);
+      const groupParentState = groupStateList.length === 1 ? groupStateList[0] : null;
+
       items.push({
         id: g.id,
         name: g.name,
         type: 'group',
-        parentState: null,
+        parentState: groupParentState,
         cityCount: groupCities.length,
+        stateCount: groupStateList.length,
         cityNames: groupCities,
         totalCrimes: totalAll,
         totalCrimes30d: total30d,

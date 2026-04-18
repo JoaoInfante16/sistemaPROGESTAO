@@ -4,6 +4,7 @@ class CityOverview {
   final String type; // 'city' or 'group'
   final String? parentState;
   final int? cityCount;
+  final int? stateCount;
   final List<String>? cityNames;
   final int totalCrimes;
   final int totalCrimes30d;
@@ -19,6 +20,7 @@ class CityOverview {
     required this.type,
     this.parentState,
     this.cityCount,
+    this.stateCount,
     this.cityNames,
     required this.totalCrimes,
     required this.totalCrimes30d,
@@ -55,6 +57,7 @@ class CityOverview {
       type: json['type'] as String? ?? 'city',
       parentState: json['parentState'] as String?,
       cityCount: json['cityCount'] != null ? _toInt(json['cityCount']) : null,
+      stateCount: json['stateCount'] != null ? _toInt(json['stateCount']) : null,
       cityNames: (json['cityNames'] as List<dynamic>?)
           ?.map((e) => e.toString())
           .toList(),

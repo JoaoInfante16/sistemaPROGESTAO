@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../../core/models/city_overview.dart';
-import '../../../core/utils/state_utils.dart';
 import '../../../main.dart';
 
 const crimeLabels = {
@@ -28,6 +27,25 @@ class CityCard extends StatelessWidget {
   final VoidCallback onTap;
 
   const CityCard({super.key, required this.city, required this.onTap});
+
+  String _footerText(CityOverview c) {
+    if (!c.isGroup) return c.parentState ?? '';
+
+    final n = c.cityCount ?? 0;
+    final cityWord = n == 1 ? 'cidade' : 'cidades';
+
+    if (c.parentState != null) {
+      return '${c.parentState} · $n $cityWord';
+    }
+
+    final s = c.stateCount ?? 0;
+    if (s > 1) {
+      final stateWord = s == 1 ? 'estado' : 'estados';
+      return '$s $stateWord · $n $cityWord';
+    }
+
+    return '$n $cityWord';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -62,25 +80,6 @@ class CityCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // UF badge (so para cidade individual — grupos nao tem UF unica)
-                  if (!city.isGroup && city.parentState != null) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: SIMEopsColors.teal.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        abbrState(city.parentState!),
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: SIMEopsColors.teal,
-                        ),
-                      ),
-                    ),
-                  ],
                   // Unread badge
                   if (city.hasUnread)
                     Container(
@@ -120,9 +119,7 @@ class CityCard extends StatelessWidget {
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      city.isGroup
-                          ? '${city.cityCount} cidades · ${city.cityNames?.join(', ') ?? ''}'
-                          : city.parentState ?? '',
+                      _footerText(city),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Colors.grey[500],
                           ),

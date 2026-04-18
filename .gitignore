@@ -74,3 +74,5 @@ google-credentials.json
 
 # Claude Code local settings (pode conter API keys em bash commands)
 .claude/settings.local.json
+mobile-app/android/.kotlin/sessions/kotlin-compiler-6064962222666055068.salive
+C:\Projetos\Netrios News\mobile-app\android\.kotlin
