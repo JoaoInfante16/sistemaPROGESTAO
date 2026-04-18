@@ -49,26 +49,34 @@ export function CrimePieChart({ byCategory, sourceNote }: CrimePieChartProps) {
 
   return (
     <div>
-      <ResponsiveContainer width="100%" height={300}>
+      <ResponsiveContainer width="100%" height={280}>
         <PieChart>
           <Pie
             data={chartData}
             cx="50%"
             cy="50%"
-            outerRadius={100}
-            innerRadius={50}
+            // Percentual dentro do donut (label externo estourava em mobile).
+            // Labels dos nomes ficam na Legend abaixo.
+            outerRadius="75%"
+            innerRadius="45%"
             dataKey="value"
-            label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
-            labelLine={true}
+            label={({ percent }) => `${((percent ?? 0) * 100).toFixed(0)}%`}
+            labelLine={false}
+            fontSize={11}
           >
             {chartData.map((entry, index) => (
               <Cell key={index} fill={entry.color} />
             ))}
           </Pie>
           <Tooltip
-            formatter={(value) => [`${value} ocorrencias`, 'Total']}
+            formatter={(value) => [`${value} ocorrências`, 'Total']}
+            contentStyle={{ fontSize: 12, borderRadius: 6 }}
           />
-          <Legend />
+          <Legend
+            verticalAlign="bottom"
+            iconSize={10}
+            wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+          />
         </PieChart>
       </ResponsiveContainer>
       {sourceNote && (

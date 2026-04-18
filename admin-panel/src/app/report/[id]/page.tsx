@@ -9,7 +9,6 @@ import { CrimeTrendBars } from '@/components/analytics/crime-trend-bars';
 import { CrimeRadarMap } from '@/components/analytics/crime-radar-map';
 import { ExecutiveSection } from '@/components/analytics/executive-section';
 import { SourcesSection, SourceNote } from '@/components/analytics/sources-section';
-import { exportDashboardPDF } from '@/lib/pdf-export';
 
 export default function PublicReportPage() {
   const params = useParams();
@@ -18,7 +17,6 @@ export default function PublicReportPage() {
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     async function loadReport() {
@@ -34,26 +32,12 @@ export default function PublicReportPage() {
     loadReport();
   }, [reportId]);
 
-  async function handleExportPDF() {
-    if (!report) return;
-    setExporting(true);
-    try {
-      const rd = report.report_data;
-      await exportDashboardPDF('report-content', {
-        cidade: rd.cidade,
-        estado: rd.estado,
-        dateRange: `${formatDate(rd.dateFrom)} a ${formatDate(rd.dateTo)}`,
-        generatedAt: new Date(rd.generatedAt).toLocaleDateString('pt-BR', {
-          day: '2-digit', month: '2-digit', year: 'numeric',
-          hour: '2-digit', minute: '2-digit',
-        }),
-      });
-    } catch (err) {
-      console.error('PDF export failed:', err);
-      alert('Não foi possível gerar o PDF. Tente novamente ou entre em contato com o suporte.');
-    } finally {
-      setExporting(false);
-    }
+  // window.print() usa o "Salvar como PDF" nativo do browser — 100% confiavel,
+  // sem as armadilhas do html2canvas (canvas tainted por tiles de mapa, fontes
+  // externas, SVG quirks, etc.). CSS @media print no globals/layout cuida de
+  // esconder top-bar. User seleciona "Salvar como PDF" como destino.
+  function handleExportPDF() {
+    window.print();
   }
 
   if (loading) {
@@ -92,24 +76,23 @@ export default function PublicReportPage() {
     (rd.trend && rd.trend.length > 0);
 
   return (
-    <div className="max-w-6xl mx-auto p-6 lg:p-10">
-      {/* Top bar */}
-      <div className="flex items-center justify-between mb-8 print:hidden">
+    <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-10">
+      {/* Top bar — stack em mobile, lado a lado em desktop */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-8 print:hidden">
         <div className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="SIMEops" width={40} height={40} className="object-contain" />
-          <div className="flex flex-col leading-tight">
+          <img src="/logo.png" alt="PROGESTÃO" width={44} height={44} className="object-contain flex-shrink-0" />
+          <div className="flex flex-col leading-tight min-w-0">
             <span className="text-lg font-bold tracking-widest text-teal-700">SIMEops</span>
-            <span className="text-[10px] text-slate-500 tracking-wider">Sistema de Monitoramento de Ocorrências</span>
+            <span className="text-[10px] text-slate-500 tracking-wider truncate">Sistema de Monitoramento de Ocorrências</span>
           </div>
         </div>
         <button
           onClick={handleExportPDF}
-          disabled={exporting}
-          className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 transition-colors font-medium"
+          className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium"
         >
           <Download className="h-4 w-4" />
-          {exporting ? 'Gerando PDF...' : 'Baixar PDF'}
+          Baixar PDF
         </button>
       </div>
 
@@ -131,7 +114,7 @@ export default function PublicReportPage() {
         </div>
 
         {/* 1. Resumo - 3 cards */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6">
           <SummaryCard label="Total de Ocorrências" value={String(rd.summary.totalCrimes)} />
           <SummaryCard label="Bairros Afetados" value={String(rd.topBairros?.length || 0)} />
           <SummaryCard label="Tipos de Crime" value={String(rd.byCrimeType?.length || 0)} />
@@ -139,19 +122,16 @@ export default function PublicReportPage() {
 
         {/* 2. Donut por CATEGORIA */}
         <div className="grid lg:grid-cols-2 gap-6 mb-8">
-          <div className="rounded-xl border p-6">
+          <div className="rounded-xl border p-4 sm:p-6">
             <h2 className="text-lg font-semibold mb-4">Distribuição por Categoria</h2>
             <CrimePieChart byCategory={byCategory} sourceNote={sourceNoteText} />
           </div>
         </div>
 
-        {/* 3. Radar de Ocorrências (pontos por categoria + filtros)
-            data-pdf-hide: html2canvas pula esta seção. Tiles de mapa rasterizados
-            em PDF estático têm valor baixo + react-leaflet pode tainting o canvas
-            antes do crossOrigin pegar. Cliente que abrir o link web vê o mapa
-            interativo normalmente. */}
+        {/* 3. Radar de Ocorrências — print:hidden porque mapa interativo vira
+            imagem estática borrada no PDF. Quem abrir o link web vê normal. */}
         {mapPoints.length > 0 && (
-          <div className="mb-8" data-pdf-hide>
+          <div className="mb-8 print:hidden">
             <h2 className="text-lg font-semibold mb-4">Mapa de Ocorrências</h2>
             <CrimeRadarMap points={mapPoints} cidade={rd.cidade} />
           </div>
