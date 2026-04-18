@@ -259,9 +259,11 @@ interface SearchReportData {
   searchParams: Record<string, unknown>;
   totalResults: number;
   byCrimeType: Array<{ tipo_crime: string; count: number; percentage: number }>;
+  byCategory: Array<{ category: string; count: number; percentage: number }>;
   topBairros: Array<{ bairro: string; count: number }>;
   byDate: Array<{ date: string; count: number }>;
   sources: Array<{ url: string; name: string; type: 'oficial' | 'midia' }>;
+  estatisticas: Array<{ resumo: string; data_ocorrencia: string; source_url: string | null }>;
   results: Array<Record<string, unknown>>;
 }
 
@@ -293,9 +295,11 @@ export async function getSearchResultsAnalytics(searchId: string): Promise<Searc
 
   // Aggregate (estatisticas nao entram nos totais de ocorrencia — sao indicadores separados)
   const typeMap = new Map<string, number>();
+  const categoryMap = new Map<string, number>();
   const bairroMap = new Map<string, number>();
   const dateMap = new Map<string, number>();
   const sources: Array<{ url: string; name: string; type: 'oficial' | 'midia' }> = [];
+  const estatisticas: Array<{ resumo: string; data_ocorrencia: string; source_url: string | null }> = [];
   let totalOcorrencias = 0;
 
   for (const r of allResults) {
@@ -307,13 +311,24 @@ export async function getSearchResultsAnalytics(searchId: string): Promise<Searc
       sources.push({ url, name: hostname, type: sourceType });
     }
 
-    // Pula estatisticas do conteo de ocorrencias
-    if ((r.natureza as string) === 'estatistica') continue;
+    // Estatisticas: não entram em ocorrência; são coletadas separadas pro Executive + seção própria
+    if ((r.natureza as string) === 'estatistica') {
+      estatisticas.push({
+        resumo: (r.resumo as string) || '',
+        data_ocorrencia: (r.data_ocorrencia as string) || '',
+        source_url: (r.source_url as string | null) ?? null,
+      });
+      continue;
+    }
 
     totalOcorrencias++;
 
     const tipo = r.tipo_crime as string;
     if (tipo) typeMap.set(tipo, (typeMap.get(tipo) || 0) + 1);
+
+    // Categoria (fonte única: categoria_grupo populado pelo pipeline; fallback institucional)
+    const cat = (r.categoria_grupo as string | null) || 'institucional';
+    categoryMap.set(cat, (categoryMap.get(cat) || 0) + 1);
 
     const bairro = r.bairro as string | null;
     if (bairro) bairroMap.set(bairro, (bairroMap.get(bairro) || 0) + 1);
@@ -334,6 +349,13 @@ export async function getSearchResultsAnalytics(searchId: string): Promise<Searc
         percentage: total > 0 ? Math.round((count / total) * 1000) / 10 : 0,
       }))
       .sort((a, b) => b.count - a.count),
+    byCategory: Array.from(categoryMap.entries())
+      .map(([category, count]) => ({
+        category,
+        count,
+        percentage: total > 0 ? Math.round((count / total) * 1000) / 10 : 0,
+      }))
+      .sort((a, b) => b.count - a.count),
     topBairros: Array.from(bairroMap.entries())
       .map(([bairro, count]) => ({ bairro, count }))
       .sort((a, b) => b.count - a.count)
@@ -342,6 +364,7 @@ export async function getSearchResultsAnalytics(searchId: string): Promise<Searc
       .map(([date, count]) => ({ date, count }))
       .sort((a, b) => a.date.localeCompare(b.date)),
     sources: deduplicateSources(sources),
+    estatisticas: estatisticas.slice(0, 20),
     results: allResults,
   };
 }

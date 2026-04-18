@@ -1135,18 +1135,36 @@ export interface ExecutiveData {
   fontes: string[];
 }
 
+// TTL 30 dias pra ambos os modos.
+// - Dashboard: invalidado por evento quando chega stat nova (invalidateExecutiveCacheByCity),
+//   TTL 30d é só garantia contra "estatísticas fantasma" que caíram fora da janela móvel.
+// - Busca manual: busca é imutável, mas 30d mantém o DB limpo — depois disso provavelmente
+//   ninguém abre de novo.
+const EXECUTIVE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+// Busca cache. Se searchId é fornecido, usa ele como chave (modo busca manual).
+// Senão, usa cidade+estado+rangeDays (modo dashboard).
 export async function getExecutiveCache(
   cidade: string,
   estado: string,
   rangeDays: number,
+  searchId?: string | null,
 ): Promise<{ data: ExecutiveData; generated_at: string } | null> {
-  const { data, error } = await supabase
+  let query = supabase
     .from('executive_cache')
-    .select('data, generated_at, expires_at')
-    .eq('cidade', cidade)
-    .eq('estado', estado)
-    .eq('range_days', rangeDays)
-    .maybeSingle();
+    .select('data, generated_at, expires_at');
+
+  if (searchId) {
+    query = query.eq('search_id', searchId);
+  } else {
+    query = query
+      .eq('cidade', cidade)
+      .eq('estado', estado)
+      .eq('range_days', rangeDays)
+      .is('search_id', null);
+  }
+
+  const { data, error } = await query.maybeSingle();
 
   if (error || !data) return null;
 
@@ -1159,28 +1177,36 @@ export async function getExecutiveCache(
   };
 }
 
+// Salva/atualiza cache. Se searchId fornecido, salva no modo busca manual
+// (chave = search_id). Senão, salva no modo dashboard (cidade+estado+range_days).
 export async function upsertExecutiveCache(
   cidade: string,
   estado: string,
   rangeDays: number,
   data: ExecutiveData,
+  searchId?: string | null,
 ): Promise<void> {
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // +24h
+  const expiresAt = new Date(now.getTime() + EXECUTIVE_CACHE_TTL_MS);
+
+  const row = {
+    cidade,
+    estado,
+    range_days: rangeDays,
+    search_id: searchId ?? null,
+    data,
+    generated_at: now.toISOString(),
+    expires_at: expiresAt.toISOString(),
+  };
+
+  // Postgres trata NULL como != em unique constraints. Usamos 2 índices
+  // parciais distintos (migration 022): um quando search_id IS NULL, outro
+  // quando IS NOT NULL. O onConflict abaixo seleciona o constraint certo.
+  const onConflict = searchId ? 'search_id' : 'cidade,estado,range_days';
 
   const { error } = await supabase
     .from('executive_cache')
-    .upsert(
-      {
-        cidade,
-        estado,
-        range_days: rangeDays,
-        data,
-        generated_at: now.toISOString(),
-        expires_at: expiresAt.toISOString(),
-      },
-      { onConflict: 'cidade,estado,range_days' },
-    );
+    .upsert(row, { onConflict });
 
   if (error) logger.warn(`[ExecutiveCache] Upsert failed: ${error.message}`);
 }

@@ -87,6 +87,9 @@ export default function PublicReportPage() {
   const byCategory = rd.byCategory || [];
   const mapPoints = rd.mapPoints || [];
   const executive = rd.executive;
+  const hasIndicadoresRegiao =
+    (executive && (executive.indicadores.length > 0 || (executive.resumo_complementar && executive.resumo_complementar.trim().length > 0))) ||
+    (rd.trend && rd.trend.length > 0);
 
   return (
     <div className="max-w-6xl mx-auto p-6 lg:p-10">
@@ -127,17 +130,14 @@ export default function PublicReportPage() {
           </div>
         </div>
 
-        {/* 1. Executive Section — cards de indicadores + resumo + fontes */}
-        {executive && <ExecutiveSection data={executive} />}
-
-        {/* 2. Resumo - 3 cards */}
+        {/* 1. Resumo - 3 cards */}
         <div className="grid grid-cols-3 gap-4 mb-6">
           <SummaryCard label="Total de Ocorrências" value={String(rd.summary.totalCrimes)} />
           <SummaryCard label="Bairros Afetados" value={String(rd.topBairros?.length || 0)} />
           <SummaryCard label="Tipos de Crime" value={String(rd.byCrimeType?.length || 0)} />
         </div>
 
-        {/* 3. Donut por CATEGORIA */}
+        {/* 2. Donut por CATEGORIA */}
         <div className="grid lg:grid-cols-2 gap-6 mb-8">
           <div className="rounded-xl border p-6">
             <h2 className="text-lg font-semibold mb-4">Distribuição por Categoria</h2>
@@ -145,7 +145,7 @@ export default function PublicReportPage() {
           </div>
         </div>
 
-        {/* 4. Radar de Ocorrências (pontos por categoria + filtros)
+        {/* 3. Radar de Ocorrências (pontos por categoria + filtros)
             data-pdf-hide: html2canvas pula esta seção. Tiles de mapa rasterizados
             em PDF estático têm valor baixo + react-leaflet pode tainting o canvas
             antes do crossOrigin pegar. Cliente que abrir o link web vê o mapa
@@ -157,7 +157,7 @@ export default function PublicReportPage() {
           </div>
         )}
 
-        {/* 6. Bairros ranking */}
+        {/* 4. Bairros ranking */}
         {rd.topBairros && rd.topBairros.length > 0 && (
           <div className="rounded-xl border p-6 mb-8">
             <h2 className="text-lg font-semibold mb-4">Bairros com Maior Incidência</h2>
@@ -184,15 +184,25 @@ export default function PublicReportPage() {
           </div>
         )}
 
-        {/* 7. Tendencia temporal */}
-        {rd.trend && rd.trend.length > 0 && (
-          <div className="rounded-xl border p-6 mb-8">
-            <h2 className="text-lg font-semibold mb-4">Tendência Temporal</h2>
-            <CrimeTrendChart data={rd.trend} sourceNote={sourceNoteText} />
+        {/* 5. Indicadores da Região: Executive (cards + resumo + fontes) + trend.
+            Estatísticas individuais ficam condensadas no resumo_complementar do
+            Executive — evita poluir o relatório com cards longos de texto. */}
+        {hasIndicadoresRegiao && (
+          <div className="rounded-xl border p-6 mb-8 space-y-6">
+            <h2 className="text-lg font-semibold">Indicadores da Região</h2>
+
+            {executive && <ExecutiveSection data={executive} />}
+
+            {rd.trend && rd.trend.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold mb-3 text-slate-700">Tendência Temporal</h3>
+                <CrimeTrendChart data={rd.trend} sourceNote={sourceNoteText} />
+              </div>
+            )}
           </div>
         )}
 
-        {/* 8. Fontes */}
+        {/* 6. Fontes */}
         <div className="rounded-xl border p-6">
           <h2 className="text-lg font-semibold mb-4">Fontes dos Dados</h2>
           <SourcesSection sources={sources} sourcesOficial={sourcesOficial} sourcesMedia={sourcesMedia} />

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/executive_data.dart';
 import '../../main.dart';
 
@@ -11,16 +12,22 @@ class ExecutiveIndicators extends StatelessWidget {
   // Quando `showHeader=false`, o widget é usado DENTRO de uma seção que já
   // tem título — evita duplicar "Indicadores da Região".
   final bool showHeader;
+  // Loading state pra 1ª abertura da busca manual (GPT call ~1-2s).
+  // Mostra skeleton em vez de seção vazia → menos flicker visual.
+  final bool loading;
 
   const ExecutiveIndicators({
     super.key,
     required this.data,
     this.showHeader = true,
+    this.loading = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (data.isEmpty) return const SizedBox.shrink();
+    if (!loading && data.isEmpty) return const SizedBox.shrink();
+
+    if (loading && data.isEmpty) return _buildSkeleton();
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -88,16 +95,81 @@ class ExecutiveIndicators extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                ...data.fontes.map((f) => Text(
-                      f,
-                      style: GoogleFonts.jetBrainsMono(
-                        fontSize: 11,
-                        color: SIMEopsColors.tealLight.withValues(alpha: 0.9),
+                ...data.fontes.map((f) => InkWell(
+                      onTap: () => launchUrl(
+                        Uri.parse('https://$f'),
+                        mode: LaunchMode.externalApplication,
+                      ),
+                      child: Text(
+                        f,
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 11,
+                          color: SIMEopsColors.tealLight.withValues(alpha: 0.9),
+                          decoration: TextDecoration.underline,
+                          decorationColor: SIMEopsColors.tealLight.withValues(alpha: 0.5),
+                        ),
                       ),
                     )),
               ],
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  // Placeholder cards enquanto GPT gera o executive (1ª abertura busca manual).
+  // Evita flash de seção vazia → aparecendo de repente.
+  Widget _buildSkeleton() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: SIMEopsColors.navyLight.withValues(alpha: 0.6),
+        border: Border.all(color: SIMEopsColors.teal.withValues(alpha: 0.2)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (showHeader) ...[
+            Text(
+              'INDICADORES DA REGIÃO',
+              style: GoogleFonts.rajdhani(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 2,
+                color: SIMEopsColors.teal,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          SizedBox(
+            height: 124,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: 3,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (_, __) => Container(
+                width: 180,
+                decoration: BoxDecoration(
+                  color: SIMEopsColors.navy.withValues(alpha: 0.5),
+                  border: Border.all(color: SIMEopsColors.teal.withValues(alpha: 0.15)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Center(
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: SIMEopsColors.teal.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

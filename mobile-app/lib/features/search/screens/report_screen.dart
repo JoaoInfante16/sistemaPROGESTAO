@@ -1,15 +1,14 @@
-import 'dart:math';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/crime_point.dart';
 import '../../../core/models/executive_data.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/widgets/crime_radar_map.dart';
 import '../../../core/widgets/executive_indicators.dart';
+import '../../../core/widgets/fontes_analisadas.dart';
 import '../../../main.dart';
 import '../widgets/mini_trend_chart.dart';
 
@@ -53,6 +52,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
   // Executive (indicadores + resumo) — backend cacheia por cidade+estado+range
   ExecutiveData _executive = ExecutiveData.empty();
+  bool _executiveLoading = false;
 
   @override
   void initState() {
@@ -66,6 +66,7 @@ class _ReportScreenState extends State<ReportScreen> {
     if (widget.cidades.isEmpty || widget.estado.isEmpty) return;
     if (_estatisticas.isEmpty) return; // sem estatísticas no período → seção some
 
+    setState(() => _executiveLoading = true);
     try {
       final api = context.read<ApiService>();
       final stats = _estatisticas
@@ -77,18 +78,26 @@ class _ReportScreenState extends State<ReportScreen> {
           .where((s) => (s['resumo'] as String).isNotEmpty)
           .toList();
 
-      if (stats.isEmpty) return;
+      if (stats.isEmpty) {
+        if (mounted) setState(() => _executiveLoading = false);
+        return;
+      }
 
       final raw = await api.getExecutiveFromStats(
         cidade: widget.cidades.first,
         estado: widget.estado,
         rangeDays: widget.periodoDias,
         estatisticas: stats,
+        searchId: widget.searchId,
       );
       if (!mounted) return;
-      setState(() => _executive = ExecutiveData.fromJson(raw));
+      setState(() {
+        _executive = ExecutiveData.fromJson(raw);
+        _executiveLoading = false;
+      });
     } catch (e) {
       debugPrint('[Report] Executive error: $e');
+      if (mounted) setState(() => _executiveLoading = false);
       // Fail silent — seção some, não atrapalha relatório.
     }
   }
@@ -170,33 +179,36 @@ class _ReportScreenState extends State<ReportScreen> {
         .toList()
       ..sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
 
-    // Sources
+    // Fontes: agrupa por hostname (mesmo veiculo com N materias vira 1 linha com count).
     final officialPattern = RegExp(
         r'\.gov\.br|\.ssp\.|\.seguranca\.|\.sesp\.|\.sspds\.|\.sejusp\.|\.segup\.',
         caseSensitive: false);
-    final seenUrls = <String>{};
-    final oficial = <Map<String, String>>[];
-    final media = <Map<String, String>>[];
+    final hostCountOficial = <String, int>{};
+    final hostCountMedia = <String, int>{};
 
     for (final r in widget.results) {
       final url = r['source_url'] as String? ?? r['url'] as String? ?? '';
-      if (url.isEmpty || seenUrls.contains(url)) continue;
-      seenUrls.add(url);
-      String name;
+      if (url.isEmpty) continue;
+      String host;
       try {
-        name = Uri.parse(url).host;
+        host = Uri.parse(url).host;
       } catch (_) {
-        name = url;
+        host = url;
       }
-      final entry = {'url': url, 'name': name, 'title': (r['resumo'] as String? ?? '').split('.').first};
       if (officialPattern.hasMatch(url)) {
-        oficial.add(entry);
+        hostCountOficial[host] = (hostCountOficial[host] ?? 0) + 1;
       } else {
-        media.add(entry);
+        hostCountMedia[host] = (hostCountMedia[host] ?? 0) + 1;
       }
     }
-    _sourcesOficial = oficial;
-    _sourcesMedia = media;
+    _sourcesOficial = hostCountOficial.entries
+        .map((e) => {'name': e.key, 'count': e.value.toString()})
+        .toList()
+      ..sort((a, b) => int.parse(b['count']!).compareTo(int.parse(a['count']!)));
+    _sourcesMedia = hostCountMedia.entries
+        .map((e) => {'name': e.key, 'count': e.value.toString()})
+        .toList()
+      ..sort((a, b) => int.parse(b['count']!).compareTo(int.parse(a['count']!)));
   }
 
   static const _categoryColors = <String, Color>{
@@ -320,13 +332,6 @@ class _ReportScreenState extends State<ReportScreen> {
       }
     } finally {
       setState(() => _generatingLink = false);
-    }
-  }
-
-  Future<void> _openUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
 
@@ -567,11 +572,16 @@ class _ReportScreenState extends State<ReportScreen> {
                 ),
               ],
 
-              // Indicadores da Regiao (cards Executive + tendencia + estatisticas)
-              if (!_executive.isEmpty || _estatisticas.isNotEmpty || _byDate.length > 1) ...[
+              // Indicadores da Regiao: Executive (cards + resumo + fontes) + tendencia.
+              // Estatisticas brutas individuais ficam cobertas pelo resumo_complementar
+              // do Executive — evita duplicar info em cards de texto longos.
+              if (_executiveLoading || !_executive.isEmpty || _byDate.length > 1) ...[
                 _sectionTitle('Indicadores da Região'),
-                // Cards de indicadores (Executive) + resumo complementar + fontes
-                ExecutiveIndicators(data: _executive, showHeader: false),
+                ExecutiveIndicators(
+                  data: _executive,
+                  showHeader: false,
+                  loading: _executiveLoading,
+                ),
                 if (_byDate.length > 1)
                   _card(
                     child: SizedBox(
@@ -579,75 +589,10 @@ class _ReportScreenState extends State<ReportScreen> {
                       child: MiniTrendChart(data: _byDate),
                     ),
                   ),
-                if (_estatisticas.isNotEmpty) _card(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: _estatisticas.map((e) {
-                      final resumo = e['resumo'] as String? ?? '';
-                      final url = e['source_url'] as String? ?? '';
-                      String fonte;
-                      try {
-                        fonte = Uri.parse(url).host;
-                      } catch (_) {
-                        fonte = url;
-                      }
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(resumo,
-                                style: GoogleFonts.exo2(
-                                    fontSize: 13, color: SIMEopsColors.white)),
-                            if (url.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              InkWell(
-                                onTap: () => _openUrl(url),
-                                child: Text('Fonte: $fonte',
-                                    style: GoogleFonts.exo2(
-                                        fontSize: 11,
-                                        color: SIMEopsColors.tealLight,
-                                        decoration: TextDecoration.underline)),
-                              ),
-                            ],
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
               ],
 
-              // Fontes analisadas
-              _sectionTitle('Fontes Analisadas'),
-              _card(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (_sourcesOficial.isNotEmpty) ...[
-                      ...List.generate(
-                        min(_sourcesOficial.length, 5),
-                        (i) => _sourceRow(i + 1, _sourcesOficial[i], true),
-                      ),
-                    ],
-                    ...List.generate(
-                      min(_sourcesMedia.length, 8),
-                      (i) => _sourceRow(
-                          (_sourcesOficial.length + i + 1), _sourcesMedia[i], false),
-                    ),
-                    if (_sourcesMedia.length > 8)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text(
-                          '+ ${_sourcesMedia.length - 8} fontes adicionais',
-                          style: GoogleFonts.exo2(
-                              fontSize: 11,
-                              color: SIMEopsColors.muted.withValues(alpha: 0.5)),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
+              // Fontes analisadas (widget compartilhado com city_detail)
+              FontesAnalisadas(oficiais: _sourcesOficial, midias: _sourcesMedia),
         ],
       ),
     );
@@ -679,38 +624,5 @@ class _ReportScreenState extends State<ReportScreen> {
         color: SIMEopsColors.teal.withValues(alpha: 0.15));
   }
 
-  Widget _sourceRow(int index, Map<String, String> source, bool isOfficial) {
-    final color = isOfficial ? SIMEopsColors.tealLight : SIMEopsColors.muted;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: InkWell(
-        onTap: () => _openUrl(source['url']!),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('[$index]  ',
-                style: GoogleFonts.exo2(fontSize: 11, color: SIMEopsColors.muted.withValues(alpha: 0.5))),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(source['name']!,
-                      style: GoogleFonts.exo2(
-                          fontSize: 13, color: color, decoration: TextDecoration.underline)),
-                  if (source['title']?.isNotEmpty == true)
-                    Text(source['title']!,
-                        style: GoogleFonts.exo2(
-                            fontSize: 11,
-                            color: SIMEopsColors.muted.withValues(alpha: 0.6)),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 

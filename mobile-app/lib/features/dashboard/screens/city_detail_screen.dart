@@ -2,7 +2,6 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/city_overview.dart';
 import '../../../core/models/crime_point.dart';
 import '../../../core/models/executive_data.dart';
@@ -11,6 +10,7 @@ import '../../../core/utils/state_utils.dart';
 import '../../../core/utils/type_helpers.dart';
 import '../../../core/widgets/crime_radar_map.dart';
 import '../../../core/widgets/executive_indicators.dart';
+import '../../../core/widgets/fontes_analisadas.dart';
 import '../../../core/widgets/grid_background.dart';
 import '../../../main.dart';
 import '../../feed/screens/feed_screen.dart';
@@ -40,6 +40,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
 
   // Executive (indicadores + resumo) — cacheado no backend
   ExecutiveData _executive = ExecutiveData.empty();
+  bool _executiveLoading = false;
 
   // For groups: selected sub-city filter
   String? _selectedSubCity;
@@ -112,6 +113,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   Future<void> _loadExecutive() async {
     final estado = widget.city.parentState ?? '';
     if (estado.isEmpty) return;
+    setState(() => _executiveLoading = true);
     try {
       final api = context.read<ApiService>();
       final raw = await api.getExecutive(
@@ -120,9 +122,13 @@ class _CityDetailScreenState extends State<CityDetailScreen>
         rangeDays: 30,
       );
       if (!mounted) return;
-      setState(() => _executive = ExecutiveData.fromJson(raw));
+      setState(() {
+        _executive = ExecutiveData.fromJson(raw);
+        _executiveLoading = false;
+      });
     } catch (e) {
       debugPrint('[CityDetail] Executive error: $e');
+      if (mounted) setState(() => _executiveLoading = false);
       // Fail silent — seção some, não atrapalha o resto do relatório.
     }
   }
@@ -339,15 +345,16 @@ class _CityDetailScreenState extends State<CityDetailScreen>
             // região" no mesmo lugar.
             _sectionTitle('Indicadores da Região'),
             // Cards de indicadores + resumo complementar + fontes (via GPT das estatísticas)
-            ExecutiveIndicators(data: _executive, showHeader: false),
+            ExecutiveIndicators(data: _executive, showHeader: false, loading: _executiveLoading),
             // Gráfico de tendência temporal com filtros
             _buildTrendWithFilters(),
 
-            // Estatísticas brutas (quando houver — texto completo + fonte)
-            if (estatisticas.isNotEmpty) ...[
-              _sectionTitle('Estatísticas de Segurança'),
-              _buildIndicadores(estatisticas),
-            ],
+            // (Estatísticas brutas individuais foram removidas — informação fica
+            // condensada no resumo_complementar do Executive acima, sem poluir
+            // o relatório com cards longos de texto.)
+
+            // Fontes Analisadas (uniforme com report_screen da busca manual)
+            _buildFontesAnalisadas(),
 
             const SizedBox(height: 24),
           ],
@@ -454,6 +461,38 @@ class _CityDetailScreenState extends State<CityDetailScreen>
         ],
       ),
     );
+  }
+
+  // ── Fontes Analisadas (uniforme com report_screen) ──
+  // Backend retorna sources agrupados por hostname em /analytics/crime-summary:
+  // [{ name, count, urls, type: 'oficial'|'midia' }]. Aqui só separa oficiais
+  // de mídias, ordena por count, e joga no widget compartilhado.
+
+  Widget _buildFontesAnalisadas() {
+    final raw = (_summary?['sources'] as List<dynamic>?) ?? const [];
+    if (raw.isEmpty) return const SizedBox.shrink();
+
+    final oficiais = <Map<String, String>>[];
+    final midias = <Map<String, String>>[];
+    for (final s in raw) {
+      final m = s as Map<String, dynamic>;
+      final entry = <String, String>{
+        'name': (m['name'] as String?) ?? '',
+        'count': (m['count'] ?? 1).toString(),
+      };
+      if ((m['type'] as String?) == 'oficial') {
+        oficiais.add(entry);
+      } else {
+        midias.add(entry);
+      }
+    }
+
+    int cmp(Map<String, String> a, Map<String, String> b) =>
+        int.parse(b['count']!).compareTo(int.parse(a['count']!));
+    oficiais.sort(cmp);
+    midias.sort(cmp);
+
+    return FontesAnalisadas(oficiais: oficiais, midias: midias);
   }
 
   // ── Bairros com mais incidencias (identico ao report_screen) ──
@@ -587,55 +626,6 @@ class _CityDetailScreenState extends State<CityDetailScreen>
               child: Center(child: Text('Sem dados de tendência', style: GoogleFonts.exo2(fontSize: 12, color: SIMEopsColors.muted))),
             ),
         ],
-      ),
-    );
-  }
-
-  // ── Indicadores / Estatisticas de Seguranca ──
-
-  Widget _buildIndicadores(List<dynamic> estatisticas) {
-    return _rCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: estatisticas.take(5).map((e) {
-          final resumo = e['resumo'] as String? ?? '';
-          final data = e['data_ocorrencia'] as String? ?? '';
-          final sourceUrl = e['source_url'] as String?;
-          String? fonte;
-          if (sourceUrl != null && sourceUrl.isNotEmpty) {
-            try { fonte = Uri.parse(sourceUrl).host; } catch (_) { fonte = sourceUrl; }
-          }
-
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(resumo, style: GoogleFonts.exo2(fontSize: 13, color: SIMEopsColors.white)),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Text(data, style: GoogleFonts.exo2(fontSize: 11, color: SIMEopsColors.muted.withValues(alpha: 0.5))),
-                    if (fonte != null) ...[
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: () => launchUrl(Uri.parse(sourceUrl!), mode: LaunchMode.externalApplication),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.open_in_new, size: 11, color: SIMEopsColors.teal.withValues(alpha: 0.7)),
-                            const SizedBox(width: 3),
-                            Text(fonte, style: GoogleFonts.exo2(fontSize: 11, color: SIMEopsColors.teal.withValues(alpha: 0.7))),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          );
-        }).toList(),
       ),
     );
   }

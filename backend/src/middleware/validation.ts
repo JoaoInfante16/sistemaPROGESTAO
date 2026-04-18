@@ -170,12 +170,13 @@ export const schemas = {
     rangeDays: z.coerce.number().int().min(7).max(365).default(30),
   }),
 
-  // Busca manual: estatísticas já filtradas no client, backend só gera executive
-  // (sem cache — busca manual é one-shot, diferente do dashboard).
+  // Busca manual: estatísticas já filtradas no client, backend cacheia por
+  // searchId (busca é imutável, 1 GPT call por busca em vez de N por open).
   executiveFromStats: z.object({
     cidade: z.string().min(2).max(100),
     estado: z.string().min(2).max(100),
     rangeDays: z.number().int().min(1).max(365).default(30),
+    searchId: z.string().uuid().optional(),
     estatisticas: z.array(
       z.object({
         resumo: z.string().min(1),

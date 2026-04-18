@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../../core/data/brazilian_locations.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/widgets/grid_background.dart';
+import '../../../core/widgets/simeops_title.dart';
 import '../../../main.dart';
 import '../widgets/multi_city_search_field.dart';
 import '../../feed/widgets/news_card.dart';
@@ -351,14 +352,17 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Título contextual: "NOVA BUSCA" só quando o user está preenchendo o form
+    // (estado idle). Assim que a busca inicia ou ao ver resultados (inclusive de
+    // busca anterior via histórico), usa a marca SIMEops — padrão do main_screen.
+    final isFormView = _searchStatus == 'idle';
+
     return Scaffold(
       backgroundColor: SIMEopsColors.navy,
       appBar: AppBar(
-        title: Text('NOVA BUSCA',
-            style: GoogleFonts.rajdhani(
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.5,
-            )),
+        title: isFormView
+            ? const Text('NOVA BUSCA') // herda style do AppBarTheme (main.dart)
+            : const SimeopsTitle(),
       ),
       body: _searchStatus == 'idle'
           ? GridBackground(child: _buildForm())

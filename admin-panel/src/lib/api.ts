@@ -231,6 +231,12 @@ export interface ReportData {
       resumo_complementar: string | null;
       fontes: string[];
     };
+    // Estatísticas brutas (texto completo + fonte) — usado no público dentro de "Indicadores da Região"
+    estatisticas?: Array<{
+      resumo: string;
+      data_ocorrencia: string;
+      source_url: string | null;
+    }>;
   };
   sources: Array<{ name: string; count: number; urls?: string[]; type?: 'oficial' | 'midia' }>;
   created_at: string;

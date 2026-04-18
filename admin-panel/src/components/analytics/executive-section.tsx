@@ -54,9 +54,15 @@ export function ExecutiveSection({ data }: Props) {
         <div className="flex flex-wrap items-center gap-2 text-xs pt-3 border-t border-teal-100">
           <span className="font-semibold tracking-wider text-slate-500">FONTES:</span>
           {data.fontes.map((f, i) => (
-            <span key={i} className="font-mono text-teal-700">
+            <a
+              key={i}
+              href={`https://${f}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-teal-700 hover:underline"
+            >
               {f}
-            </span>
+            </a>
           ))}
         </div>
       )}

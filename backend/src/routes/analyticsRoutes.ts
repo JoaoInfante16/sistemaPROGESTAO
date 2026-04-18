@@ -25,6 +25,7 @@ import {
 } from '../database/analyticsQueries';
 import { CrimePoint } from '../utils/types';
 import { getOrGenerateExecutive, generateExecutiveFromStatistics } from '../services/executive';
+import { db } from '../database/queries';
 import { logger } from '../middleware/logger';
 
 const router = Router();
@@ -70,8 +71,14 @@ router.get(
         dateFrom: string;
         dateTo: string;
       };
-      const result = await getCrimeSummary(cidade, dateFrom, dateTo);
-      res.json(result);
+      const [result, sources] = await Promise.all([
+        getCrimeSummary(cidade, dateFrom, dateTo),
+        getNewsSources(cidade, dateFrom, dateTo).catch(() => []),
+      ]);
+      // Sources já vêm agrupados por hostname com count + type (oficial/midia).
+      // Expor pra city_detail renderizar "Fontes Analisadas" com mesma estrutura
+      // da busca manual.
+      res.json({ ...result, sources });
     } catch (error) {
       logger.error('[Analytics] Crime summary error:', error);
       res.status(500).json({ error: 'Failed to fetch crime summary' });
@@ -140,21 +147,32 @@ router.get(
 // ============================================
 // Executive (busca manual) — POST com estatísticas já filtradas no client
 // ============================================
-// Diferente do GET acima: o dashboard lê de `news`, mas a busca manual guarda
-// resultados em `search_results`. Em vez de duplicar a query, o Flutter já tem
-// as estatísticas em memória e manda pra cá. Sem cache (busca é one-shot).
+// Dashboard lê de `news`; busca manual guarda em `search_results`. Em vez de
+// duplicar a query, Flutter manda as estatísticas já em memória + searchId.
+// Com searchId, cacheamos por busca (imutável) — 1 GPT call por busca, não por open.
 router.post(
   '/analytics/executive/from-stats',
   requireAuth,
   validateBody(schemas.executiveFromStats),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { cidade, estado, rangeDays, estatisticas } = req.body as {
+      const { cidade, estado, rangeDays, searchId, estatisticas } = req.body as {
         cidade: string;
         estado: string;
         rangeDays: number;
+        searchId?: string;
         estatisticas: Array<{ resumo: string; data_ocorrencia: string; source_url?: string | null }>;
       };
+
+      // Cache hit: busca manual já gerou executive antes pra este searchId.
+      // Primeira abertura do relatório = GPT. Próximas = cache hit instantâneo.
+      if (searchId) {
+        const cached = await db.getExecutiveCache(cidade, estado, rangeDays, searchId);
+        if (cached) {
+          res.json(cached.data);
+          return;
+        }
+      }
 
       const stats = estatisticas.map((s) => ({
         resumo: s.resumo,
@@ -167,6 +185,12 @@ router.post(
         'manual_search',
         { cidade, estado, rangeDays },
       );
+
+      // Salva cache pro próximo open. Sem searchId (caso edge), pula cache.
+      if (searchId) {
+        await db.upsertExecutiveCache(cidade, estado, rangeDays, executive, searchId);
+      }
+
       res.json(executive);
     } catch (error) {
       logger.error('[Analytics] Executive from-stats error:', error);
@@ -257,7 +281,7 @@ router.post(
         ? {
             totalCrimes: searchReport.totalResults,
             byCrimeType: searchReport.byCrimeType,
-            byCategory: [] as Array<{ category: string; count: number; percentage: number }>,
+            byCategory: searchReport.byCategory,
             topBairros: searchReport.topBairros,
           }
         : summary && summary.totalCrimes > 0
@@ -280,9 +304,12 @@ router.post(
       const mapPoints = await buildMapPoints(rawPoints, cidade, estado);
 
       // Executive section — gerada aqui e embutida no report (snapshot imutável).
-      // Pra busca manual usa as estatísticas do searchReport; pra dashboard usa
-      // do summary do news table. Custo rastreado como source=manual_search ou auto_scan.
-      const statsForExecutive = (summary?.estatisticas || []).map((s) => ({
+      // Busca manual: estatísticas do searchReport (search_results table). Dashboard:
+      // de summary (news table). Custo rastreado como source=manual_search ou auto_scan.
+      const statsForExecutive = (searchReport
+        ? searchReport.estatisticas
+        : (summary?.estatisticas || [])
+      ).map((s) => ({
         resumo: s.resumo,
         data_ocorrencia: s.data_ocorrencia,
         source_url: s.source_url,
@@ -321,6 +348,9 @@ router.post(
         sourcesMedia,
         mapPoints,
         executive,
+        // Estatísticas brutas (texto completo + fonte) — pra renderizar no público
+        // similar ao in-app. Executive resume/curador; isso mostra o dado cru.
+        estatisticas: statsForExecutive,
       };
 
       const reportId = await createReport({
