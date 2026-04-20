@@ -42,13 +42,15 @@ class _LoginScreenState extends State<LoginScreen>
     final hasCredentials = await auth.hasDeviceAuthEnabled();
     if (!hasCredentials) return;
 
-    setState(() => _loading = true);
-    try {
-      await auth.signInWithDeviceAuth();
-    } catch (_) {
-      // Credenciais salvas invalidas, limpar e mostrar login normal
-      await auth.clearSavedCredentials();
-      if (mounted) setState(() => _loading = false);
+    final creds = await auth.getSavedCredentials();
+    if (creds == null) return;
+
+    if (mounted) {
+      setState(() {
+        _emailCtrl.text = creds.email;
+        _passwordCtrl.text = creds.password;
+        _rememberMe = true;
+      });
     }
   }
 

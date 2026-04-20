@@ -80,14 +80,19 @@ class AuthService extends ChangeNotifier {
     return flag == 'true';
   }
 
-  /// Faz login usando credenciais salvas (após confirmar com device auth)
-  Future<void> signInWithDeviceAuth() async {
+  /// Retorna credenciais salvas sem fazer login (para preencher o formulário)
+  Future<({String email, String password})?> getSavedCredentials() async {
     final email = await _secureStorage.read(key: _keyEmail);
     final password = await _secureStorage.read(key: _keyPassword);
-    if (email == null || password == null) {
-      throw Exception('Credenciais não encontradas. Faça login com senha.');
-    }
-    await signIn(email, password);
+    if (email == null || password == null) return null;
+    return (email: email, password: password);
+  }
+
+  /// Faz login usando credenciais salvas
+  Future<void> signInWithDeviceAuth() async {
+    final creds = await getSavedCredentials();
+    if (creds == null) throw Exception('Credenciais não encontradas. Faça login com senha.');
+    await signIn(creds.email, creds.password);
   }
 
   /// Limpa credenciais salvas (logout, troca de senha manual, etc)
