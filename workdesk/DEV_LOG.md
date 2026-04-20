@@ -9,6 +9,23 @@
 
 ---
 
+## 2026-04-25
+
+### Fix deduplicação cross-scan: Layer 3 GPT prompt reescrito
+
+**Diagnóstico (via script `backend/scripts/diagnose-dedup.ts`):**
+- Layer 1 (SQL geo-temporal) estava funcionando corretamente — encontrava candidatos em todos os casos suspeitos.
+- Layer 2 (cosine similarity) também ok — pares duplicatas reais tinham score 0.81–0.95, acima do threshold.
+- **Layer 3 (GPT)** era o bug: o prompt antigo incluía `"Victims/suspects mentioned are the same"` como critério. Quando um artigo focava na vítima e outro no suspeito do mesmo crime, GPT dizia NO — dois cards separados no app.
+
+**Fix:** Reescrita do prompt em `backend/src/services/deduplication/index.ts:confirmDuplicateWithGPT`. Critério antigo substituído por lógica de "ângulo diferente do mesmo evento ainda conta como duplicata" (vítima encontrada vs suspeito preso = mesmo incidente). Testado nos 8 pares que falhavam com o prompt antigo: 8/8 YES com o novo.
+
+**Também nesta sessão:**
+- Threshold de similarity baixado de 0.85 para 0.80 (via painel admin).
+- Script `diagnose-dedup.ts` criado em `backend/scripts/` para diagnóstico futuro: simula Layer 1, calcula scores reais de embedding e testa Layer 3 GPT para pares suspeitos no banco.
+
+---
+
 ## 2026-04-20
 
 ### Fix "lembrar senha" quebrava após 401

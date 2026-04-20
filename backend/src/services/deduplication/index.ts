@@ -102,15 +102,16 @@ export async function deduplicateNews(
  * regrediu em casos YES claros (veiculos diferentes cobrindo mesmo evento). Revertido.
  */
 async function confirmDuplicateWithGPT(resumo1: string, resumo2: string): Promise<{ isDupe: boolean; tokensUsed: number }> {
-  const prompt = `Do these two summaries describe the SAME criminal event?
+  const prompt = `Do these two news summaries describe the SAME criminal incident?
 
 Summary 1: "${resumo1}"
 Summary 2: "${resumo2}"
 
-Consider duplicate if:
-- Location, date and crime type are identical
-- Victims/suspects mentioned are the same
-- Key details match
+They describe the SAME incident if the core event matches: same approximate location, same time frame, same type of crime, and details do not contradict each other.
+
+They are DIFFERENT incidents if they clearly involve different victims/locations or contradictory facts.
+
+Note: articles may cover different angles of the same event (victim found vs suspect arrested, early report vs follow-up) — these still count as the SAME incident.
 
 Answer ONLY "YES" or "NO":`;
 
