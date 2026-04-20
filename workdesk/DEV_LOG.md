@@ -9,6 +9,79 @@
 
 ---
 
+## 2026-04-20
+
+### Fix "lembrar senha" quebrava após 401
+
+**Causa:** `onAuthExpired` (callback de token expirado) chamava `auth.signOut()`, que por design limpa credentials salvas. Isso era correto para logout manual, mas destrutivo no 401 — o usuário tinha "lembrar senha" ativo, o token expirou, o app voltava pra tela de login e as credentials tinham sumido. `_tryAutoLogin` não encontrava nada → tela vazia.
+
+**Fix cirúrgico:** `signOut({bool clearCredentials = true})` — flag nova. `onAuthExpired` passa `clearCredentials: false`. No 401, o app volta pra tela de login, `_tryAutoLogin` encontra as credentials salvas e re-autentica automaticamente (usuário nem precisa tocar na tela). Logout manual continua limpando tudo como antes.
+
+Arquivos: `auth_service.dart`, `main.dart`.
+
+### Fix FK violation `search_results_search_id_fkey`
+
+**Causa:** Race condition em `createSearchCache`. Quando o usuário disparava a mesma busca duas vezes (ou app mandava request duplicado), a segunda chamada batia em `duplicate key` no `params_hash`, **deletava a row de `search_cache` da busca em andamento** (cascade para `search_results`), e criava nova com novo `search_id`. O worker da busca original continuava rodando com o `search_id` morto → `insertSearchResults` lançava FK violation.
+
+**Fix:** antes de deletar no caminho de duplicate key, ler o `status` da row existente. Se for `processing`, retornar o `search_id` existente (a busca já está rodando — não interromper). Só deletar-e-recriar se estiver `completed/failed/cancelled`.
+
+Arquivo: `backend/src/database/queries.ts:createSearchCache`.
+
+---
+
+## 2026-04-18 (sessão 2 — continuação: widgets compartilhados, PDF final, cache search_id)
+
+Continuação da sessão 2 após feedback visual do João no APK. Escopo:
+
+### Widgets compartilhados Flutter (extraídos pra reutilização)
+
+**`weekly_trend_bars.dart`** — bar chart semanal com barras teal proporcionais ao máximo; barras zero viram traço cinza fino (sem apagar o eixo visual). Helper `aggregateByWeek()` agrupa dataPoints diários em semanas ISO. Substituiu `CrimeTrendChart` (line chart) em ambas as telas — bar chart comunica tendência mais claramente que linha com poucos pontos.
+
+**`fontes_analisadas.dart`** — widget com header "FONTES ANALISADAS" + "X oficiais · Y mídias", lista numerada `[idx] hostname · Nx` sem resumo/link. Agrupa por hostname (G1, folha, etc.) e conta quantas URLs de cada domínio. `FontesAgrupadas` helper class com `fromUrls()`.
+
+**`simeops_title.dart`** — widget `SIME` (branco) + `OPS` (greenLight) em Rajdhani 20/w700/letterSpacing 2. Usado em `main_screen.dart` (AppBar) e `manual_search_screen.dart` (quando exibe resultados).
+
+### ExecutiveIndicators — refinos visuais
+
+- `showHeader` flag pra controlar header "ANÁLISE EXECUTIVA" (dashboard mostra, busca manual usa header de seção próprio)
+- Estado de loading: 3 cards placeholder cinza com spinner (sem jank de layout ao carregar)
+- Card: largura 140 → 180, label maxLines 2 → 3, height 108 → 124
+- **Fix double padding:** `margin: horizontal: 16` interno removido — pai já tinha `horizontal: 16` e estava estreitando o card em relação ao resto
+- Fontes: clicáveis via `launchUrl` para `https://{hostname}`
+
+### Cache de executive por searchId (migration 022)
+
+Problema: toda vez que o usuário abria um relatório de busca manual, o app chamava GPT pra montar os indicadores executivos. Mesmo relatório → mesma chamada → custo desnecessário.
+
+Fix: `executive_cache` ganhou coluna `search_id UUID NULL` (migration 022) + dois partial unique indexes (`WHERE search_id IS NOT NULL` e `WHERE search_id IS NULL`). Endpoint `POST /analytics/executive/from-stats` usa `search_id` como chave de cache com TTL 30 dias (vs 24h do dashboard). Dashboard mantém cache por cidade+estado+range_days.
+
+### Fix byCategory sempre `[]` em busca manual
+
+`analyticsRoutes.ts` hardcodava `byCategory: []` no fluxo de busca manual. `SearchReportData` não tinha o campo. `getSearchResultsAnalytics` não o calculava. Três pontos corrigidos: interface + query (agrupa por `categoria_grupo`) + rota.
+
+### Fix trend chart nunca aparecia no dashboard
+
+`trendData['trend']` mas backend retorna `{ dataPoints: [...] }`. Fix: `trendData['dataPoints']`.
+
+### Fix PDF — migração pra window.print()
+
+A tentativa anterior (CartoDB + crossOrigin + allowTaint=false) ainda falhava intermitentemente. Causa raiz: html2canvas não suporta confiável canvas tainted de tiles externos. Solução definitiva: **`window.print()` nativo** — sem canvas, sem CORS, funciona em qualquer browser.
+
+- html2canvas + jsPDF removidos
+- Mapa recebe classe `print:hidden` (hidden via Tailwind print media query)
+- Layout responsivo: `p-4 sm:p-6 lg:p-10`, header `flex-col sm:flex-row` (logo não some em mobile)
+- `<img src="/logo.png">` substituiu Image do Next pra compatibilidade universal
+
+### Fix ADMIN_PANEL_URL obrigatória
+
+Variável apontava pra staging quando ausente (fallback hardcoded). Removido fallback — server lança erro de startup se não estiver setada. Evita relatório compartilhado abrindo URL errada em prod silenciosamente.
+
+### Relatório público — bar chart + acento
+
+`CrimeTrendBars` (React, mesmo design das barras teal) adicionado ao relatório público. Largura uniforme (`w-full`) alinhada com os outros cards. Título "RELATÓRIO DE RISCO" ganhou acento correto.
+
+---
+
 ## 2026-04-18 (sessão 2 — refino cirúrgico em tudo)
 
 Sessão focada em fechar dívida técnica acumulada + refino do fluxo de relatório + economia de custo. Ordem do atacado:

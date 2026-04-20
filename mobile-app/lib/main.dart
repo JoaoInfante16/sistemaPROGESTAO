@@ -237,8 +237,8 @@ class _AuthGateState extends State<AuthGate> {
 
     // Callback pra forçar logout quando API retorna 401
     api.onAuthExpired = () {
-      debugPrint('[AuthGate] Auth expired — signing out');
-      auth.signOut();
+      debugPrint('[AuthGate] Auth expired — signing out (keeping saved credentials)');
+      auth.signOut(clearCredentials: false);
     };
   }
 

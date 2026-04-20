@@ -985,7 +985,19 @@ export async function createSearchCache(p: CreateSearchCacheParams): Promise<str
     .single();
 
   if (error && error.message.includes('duplicate key')) {
-    // Busca com mesmos params já existe — deletar antiga e recriar
+    // Busca com mesmos params já existe — checar status antes de deletar.
+    // Se ainda está processing, retornar o search_id existente (não interromper o worker em curso).
+    // Deletar só se estiver finalizada (completed/failed/cancelled).
+    const { data: existing } = await supabase
+      .from('search_cache')
+      .select('search_id, status')
+      .eq('params_hash', paramsHash)
+      .maybeSingle();
+
+    if (existing?.status === 'processing') {
+      return (existing as { search_id: string }).search_id;
+    }
+
     await supabase
       .from('search_cache')
       .delete()

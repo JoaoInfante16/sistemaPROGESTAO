@@ -91,6 +91,21 @@ Todos os combos executados e commitados em `develop + staging` (ver DEV_LOG):
 - Deploy staging feito. Produção suspensa pelo João.
 - APK staging buildando.
 
+## ✅ Sessão 2026-04-20 — em curso
+
+**Fixes aplicados:**
+- **"Lembrar senha" quebrava após 401** — `signOut({clearCredentials: false})` no `onAuthExpired`. Antes: token expirava → signOut limpava credentials → tela de login vazia. Agora: `_tryAutoLogin` re-autentica automaticamente.
+- **FK violation `search_results_search_id_fkey`** — race condition em `createSearchCache`: segunda busca com mesmos params deletava o `search_cache` do worker em andamento. Fix: checar `status` antes de deletar; se `processing`, retornar o `search_id` existente.
+
+**Pendências suas (ações admin/infra):**
+1. 🔴 Commit + deploy do fix de search cache (backend)
+2. 🔴 Commit + deploy do fix de "lembrar senha" (mobile → APK)
+3. 🟡 Migration 022 rodar em prod (se ainda não rodou)
+4. 🟡 Criar projeto `simeops-admin` no Sentry + setar DSN no Render (quando ativar)
+5. 🟡 Validar janela de operação no admin settings
+
+---
+
 ## 🔥 Próxima sessão
 
 ---
@@ -116,9 +131,11 @@ Todos os combos executados e commitados em `develop + staging` (ver DEV_LOG):
 - ~~**Embeddings/Dedup**~~ → 5 fixes aplicados (perda sources, bairro, threshold config, limit 200, prompt layer 3 revertido por teste)
 - ~~**Bug contagem estatísticas**~~ → fix aplicado (continue no topo do loop em analyticsQueries)
 - ~~**`dateRestrict: 'd1'` vs cadência**~~ → não é problema; João confirmou que cadência nunca passa de 24h
-- **Filter0 keywords broad (aberto)**: `"jogo"`, `"tempo"`, `"música"`, `"esporte"` geram falsos negativos. Estratégia em aberto.
-- **Admin web `crime-pie-chart.tsx` (aberto)**: não investigado se usa `byCategory` direto ou recalcula. Última possível duplicação da tabela categoria.
-- **Outros bugs** — João testa em staging e reporta.
+- ~~**Filter0 keywords broad**~~ → 11 keywords problemáticas removidas (2026-04-18 sessão 2)
+- ~~**Admin web `crime-pie-chart.tsx`**~~ → investigado + fixado: usa `byCategory` do backend, `TIPO_TO_CATEGORY` duplicado removido
+- ~~**"Lembrar senha" quebrava após 401**~~ → fix 2026-04-20
+- ~~**FK violation search_results**~~ → fix 2026-04-20 (race condition createSearchCache)
+- **Outros bugs** — João testa em produção e reporta.
 
 ---
 
@@ -128,7 +145,7 @@ Conversa sobre avaliação do relatório (6/10 honesto, na opinião de Claude). 
 
 - ~~**Resumo executivo GPT**~~ — feito em 2026-04-18 como "Executive Section" com cards + resumo complementar, muito melhor que o plano original (2 parágrafos de texto).
 - ~~**Tendência por categoria**~~ — descartado por João ("é muito complexo").
-- **Rua no mapa** — backend já persiste `precisao` do geocode no CrimePoint. Flutter pode usar isso pra renderizar pontos mais destacados quando `precisao='rua'`. ~1h.
+- ~~**Rua no mapa**~~ → feito em 2026-04-18: precisão visual diferenciada (rua = glow forte/raio maior, cidade = alpha baixo).
 
 **Fora de escopo curto prazo:**
 - Horário (exige extrair hora no Filter2 + UI nova)
@@ -144,7 +161,7 @@ Conversa sobre avaliação do relatório (6/10 honesto, na opinião de Claude). 
 ## 📋 Backlog — ideias e pendências não urgentes
 
 - **Sentry + Grafana estão "zoados"** (palavras do João, 2026-04-16) — revisar configuração de ambos. Detalhes não levantados ainda; agendar sessão dedicada pra auditar alertas, projetos, dashboards e filtros. Pode incluir: revisar quais erros Sentry captura, setar email alerts pendentes (já listados em pendências), e confirmar se Grafana está monitorando algo útil ou só ligado sem uso.
-- **Janela de auto-scan (pausar madrugada)** — João notou que não sai notícia nova de madrugada, então cron rodando nessas horas é custo jogado fora (BrightData + Jina + OpenAI por nada). Proposta: adicionar config no **Dev Panel** (`c:/Projetos/dev-panel/`) com horário de início/fim do auto-scan. Implementação provável: check no `cronScheduler.ts` antes de enfileirar — se hora atual cai na janela "desligada", skip. Configurável via DB `system_config` (ex: `scan_active_hours_start=06` e `scan_active_hours_end=23`).
+- ~~**Janela de auto-scan**~~ → feito em 2026-04-18: 6 configs em `system_config`, seg-sex 6h-18h, sáb-dom OFF, período 4 dias. UI no admin Settings.
 - **Renomear tudo de "Netrios News" pra "SIMEops"** — diretório local (`c:/Projetos/Netrios News/`), repo GitHub (`sistemaPROGESTAO`?), qualquer referência remanescente em código/docs/metadata. Nome antigo, decidido abandonar. Ação grande (envolve rename de repo + possível redeploy), agendar com calma.
 - **Play Store**: conta dev $25, gerar `.aab` + keystore
 - **iOS**: precisa Mac + Apple Developer $99/ano
