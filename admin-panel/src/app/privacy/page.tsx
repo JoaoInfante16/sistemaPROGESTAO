@@ -4,7 +4,8 @@ export const metadata = {
 
 export default function PrivacyPage() {
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: '48px 24px', fontFamily: 'sans-serif', color: '#1a1a1a', lineHeight: 1.7 }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#ffffff' }}>
+    <div style={{ maxWidth: 720, margin: '0 auto', padding: '48px 24px', fontFamily: 'sans-serif', color: '#1a1a1a', lineHeight: 1.7, backgroundColor: '#ffffff' }}>
       <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Política de Privacidade</h1>
       <p style={{ color: '#666', marginBottom: 32 }}>SIMEops — Última atualização: 27 de abril de 2026</p>
 
@@ -68,6 +69,7 @@ export default function PrivacyPage() {
       <p style={{ marginTop: 48, color: '#888', fontSize: 14 }}>
         Progestão Tecnologia — SIMEops v1.0
       </p>
+    </div>
     </div>
   );
 }
