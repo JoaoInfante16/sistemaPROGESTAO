@@ -60,10 +60,25 @@ export default function PrivacyPage() {
         a menores de 18 anos e não coleta dados de crianças.
       </p>
 
-      <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 32, marginBottom: 8 }}>7. Contato</h2>
+      <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 32, marginBottom: 8 }}>7. Exclusão de conta e dados</h2>
       <p>
-        Dúvidas sobre esta política ou solicitações relacionadas aos seus dados podem ser enviadas para:<br />
-        <strong>contato@progestao.com.br</strong>
+        Você pode solicitar a exclusão da sua conta e de todos os dados associados a qualquer momento.
+        Acesse a página de solicitação abaixo ou envie um e-mail diretamente:
+      </p>
+      <p>
+        <a href="/delete-account" style={{ color: '#2563eb', fontWeight: 600 }}>
+          → Solicitar exclusão de conta
+        </a>
+      </p>
+      <p style={{ color: '#555', fontSize: 14 }}>
+        Ou envie para <strong>aplicacao.progestao@gmail.com</strong> com o assunto "Exclusão de conta SIMEops".
+        Processamos a solicitação em até 7 dias úteis.
+      </p>
+
+      <h2 style={{ fontSize: 20, fontWeight: 600, marginTop: 32, marginBottom: 8 }}>8. Contato</h2>
+      <p>
+        Dúvidas sobre esta política podem ser enviadas para:<br />
+        <strong>aplicacao.progestao@gmail.com</strong>
       </p>
 
       <p style={{ marginTop: 48, color: '#888', fontSize: 14 }}>
