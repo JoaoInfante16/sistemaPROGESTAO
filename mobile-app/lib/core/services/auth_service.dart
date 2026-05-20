@@ -32,7 +32,11 @@ class AuthService extends ChangeNotifier {
     // clearCredentials=false em expiração de token (401) — assim _tryAutoLogin
     // re-autentica automaticamente sem o usuário precisar redigitar a senha.
     if (clearCredentials) await clearSavedCredentials();
-    await _client.auth.signOut();
+    try {
+      await _client.auth.signOut();
+    } catch (_) {
+      // Falha de rede durante signout é ignorada — sessão local já foi limpa acima.
+    }
   }
 
   Future<void> resetPassword(String email) async {

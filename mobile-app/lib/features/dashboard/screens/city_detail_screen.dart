@@ -93,8 +93,23 @@ class _CityDetailScreenState extends State<CityDetailScreen>
       final now = DateTime.now();
       final d30 = now.subtract(const Duration(days: 30));
 
-      final summary = await api.getCrimeSummary(_activeCidade, _dateStr(d30), _dateStr(now))
-          .catchError((_) => <String, dynamic>{});
+      Map<String, dynamic> summary;
+      final citiesToLoad = (_isGroup && _selectedSubCity == null)
+          ? widget.city.cityNames!
+          : [_activeCidade];
+
+      if (citiesToLoad.length == 1) {
+        summary = await api
+            .getCrimeSummary(citiesToLoad.first, _dateStr(d30), _dateStr(now))
+            .catchError((_) => <String, dynamic>{});
+      } else {
+        final results = await Future.wait(
+          citiesToLoad.map((c) => api
+              .getCrimeSummary(c, _dateStr(d30), _dateStr(now))
+              .catchError((_) => <String, dynamic>{})),
+        );
+        summary = _mergeSummaries(results);
+      }
 
       if (mounted) {
         setState(() {
@@ -109,6 +124,43 @@ class _CityDetailScreenState extends State<CityDetailScreen>
       debugPrint('[CityDetail] Relatorio error: $e');
       if (mounted) setState(() => _loadingOverview = false);
     }
+  }
+
+  // Agrega summaries de múltiplas cidades em um único objeto para o caso "Todas".
+  Map<String, dynamic> _mergeSummaries(List<Map<String, dynamic>> summaries) {
+    final totalCrimes = summaries.fold<int>(0, (s, m) => s + (m['totalCrimes'] as int? ?? 0));
+
+    final typeMap = <String, int>{};
+    final catMap = <String, int>{};
+    final bairroMap = <String, int>{};
+    final estatisticas = <dynamic>[];
+
+    for (final m in summaries) {
+      for (final t in (m['byCrimeType'] as List? ?? [])) {
+        typeMap[t['tipo_crime'] as String] = (typeMap[t['tipo_crime']] ?? 0) + (t['count'] as int? ?? 0);
+      }
+      for (final c in (m['byCategory'] as List? ?? [])) {
+        catMap[c['category'] as String] = (catMap[c['category']] ?? 0) + (c['count'] as int? ?? 0);
+      }
+      for (final b in (m['topBairros'] as List? ?? [])) {
+        bairroMap[b['bairro'] as String] = (bairroMap[b['bairro']] ?? 0) + (b['count'] as int? ?? 0);
+      }
+      estatisticas.addAll(m['estatisticas'] as List? ?? []);
+    }
+
+    return {
+      'totalCrimes': totalCrimes,
+      'byCrimeType': typeMap.entries
+          .map((e) => {'tipo_crime': e.key, 'count': e.value, 'percentage': totalCrimes > 0 ? e.value / totalCrimes * 100 : 0})
+          .toList()..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int)),
+      'byCategory': catMap.entries
+          .map((e) => {'category': e.key, 'count': e.value, 'percentage': totalCrimes > 0 ? e.value / totalCrimes * 100 : 0})
+          .toList()..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int)),
+      'topBairros': bairroMap.entries
+          .map((e) => {'bairro': e.key, 'count': e.value})
+          .toList()..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int)),
+      'estatisticas': estatisticas,
+    };
   }
 
   Future<void> _loadExecutive() async {
@@ -160,8 +212,8 @@ class _CityDetailScreenState extends State<CityDetailScreen>
 
   // Radar: backend geocoda + devolve lista pronta (CrimePoint).
   // Período: últimos 30 dias (coerente com _loadOverview).
+  // Para grupos com "Todas": chamadas paralelas por cidade e merge dos pontos.
   Future<void> _loadMapPoints() async {
-    final cidade = _activeCidade;
     final estado = widget.city.parentState ?? '';
     if (estado.isEmpty) return;
 
@@ -170,12 +222,28 @@ class _CityDetailScreenState extends State<CityDetailScreen>
       final api = context.read<ApiService>();
       final now = DateTime.now();
       final d30 = now.subtract(const Duration(days: 30));
-      final raw = await api.getMapPoints(
-        cidade: cidade,
-        estado: estado,
-        dateFrom: _dateStr(d30),
-        dateTo: _dateStr(now),
-      );
+
+      final citiesToLoad = (_isGroup && _selectedSubCity == null)
+          ? widget.city.cityNames!
+          : [_activeCidade];
+
+      List<Map<String, dynamic>> raw;
+      if (citiesToLoad.length == 1) {
+        raw = await api.getMapPoints(
+          cidade: citiesToLoad.first,
+          estado: estado,
+          dateFrom: _dateStr(d30),
+          dateTo: _dateStr(now),
+        );
+      } else {
+        final results = await Future.wait(
+          citiesToLoad.map((c) => api
+              .getMapPoints(cidade: c, estado: estado, dateFrom: _dateStr(d30), dateTo: _dateStr(now))
+              .catchError((_) => <Map<String, dynamic>>[])),
+        );
+        raw = results.expand((r) => r).toList();
+      }
+
       if (!mounted) return;
       setState(() {
         _mapPoints = raw.map(CrimePoint.fromJson).toList();

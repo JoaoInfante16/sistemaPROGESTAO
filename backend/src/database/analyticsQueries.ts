@@ -16,6 +16,7 @@ export interface MapPointRaw {
   bairro: string | null;
   rua: string | null;
   data: string;
+  cidade: string;
 }
 
 // Pega notícias individuais do período pra alimentar mapa (radar de pontos).
@@ -27,7 +28,7 @@ export async function getMapPointsRaw(
 ): Promise<MapPointRaw[]> {
   const { data, error } = await supabase
     .from('news')
-    .select('id, tipo_crime, categoria_grupo, bairro, rua, data_ocorrencia, natureza')
+    .select('id, tipo_crime, categoria_grupo, bairro, rua, data_ocorrencia, natureza, cidade')
     .eq('cidade', cidade)
     .eq('active', true)
     .gte('data_ocorrencia', dateFrom)
@@ -44,6 +45,7 @@ export async function getMapPointsRaw(
       bairro: (r.bairro as string | null) || null,
       rua: (r.rua as string | null) || null,
       data: r.data_ocorrencia as string,
+      cidade: r.cidade as string,
     }));
 }
 
@@ -69,6 +71,7 @@ export async function getSearchMapPointsRaw(searchId: string): Promise<MapPointR
         bairro: (r.bairro as string | null) || null,
         rua: (r.rua as string | null) || null,
         data: r.data_ocorrencia as string,
+        cidade: (r.cidade as string) || '',
       });
     }
   }

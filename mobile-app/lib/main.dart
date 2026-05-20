@@ -57,6 +57,15 @@ void main() async {
         options.dsn = Env.sentryDsn;
         options.environment = Env.environment;
         options.tracesSampleRate = 0.2;
+        options.beforeSend = (event, hint) {
+          final msg = event.exceptions?.firstOrNull?.value ?? '';
+          if (msg.contains('AuthRetryableFetchException') ||
+              msg.contains('Failed host lookup') ||
+              msg.contains('SocketException')) {
+            return null; // descarta — ruído de conectividade, não bug
+          }
+          return event;
+        };
       },
       appRunner: () => runApp(const SIMEopsApp()),
     );

@@ -34,12 +34,12 @@ const router = Router();
 // (leve, on-demand) E por /analytics/report (persiste no relatório).
 async function buildMapPoints(
   rawPoints: MapPointRaw[],
-  cidade: string,
+  cidadeFallback: string,
   estado: string,
 ): Promise<CrimePoint[]> {
   const out: CrimePoint[] = [];
   for (const p of rawPoints) {
-    const geo = await geocodePoint(p.rua, p.bairro, cidade, estado);
+    const geo = await geocodePoint(p.rua, p.bairro, p.cidade || cidadeFallback, estado);
     if (!geo) continue;
     out.push({
       id: p.id,
