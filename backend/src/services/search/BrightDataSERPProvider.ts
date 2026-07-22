@@ -70,15 +70,16 @@ export class BrightDataSERPProvider implements SearchProvider {
     const totalWanted = options.maxResults || 20;
     const allResults: SearchResult[] = [];
     let requestsMade = 0;
-    const perPage = 20;
+    // Google deprecou `num` (set/2025) e retorna ~10 resultados/pagina.
+    // Paginacao correta: `start` em incrementos de 10 (doc Bright Data SERP API).
+    const perPage = 10;
     const maxPages = Math.ceil(totalWanted / perPage);
 
     for (let page = 0; page < maxPages; page++) {
       const start = page * perPage;
       const googleUrl = this.buildNewsUrl(query, {
-        start, num: perPage,
+        start,
         dateRestrict: options.dateRestrict,
-        location: options.location,
       });
 
       const response = await fetch(SYNC_API_URL, {
@@ -102,7 +103,15 @@ export class BrightDataSERPProvider implements SearchProvider {
       try {
         data = JSON.parse(rawText) as SERPResponse;
       } catch {
-        logger.warn(`[BrightData:News] Page ${page + 1} non-JSON`);
+        // Non-JSON na pagina 1 = provider quebrado (ex: brd_json ausente/zona
+        // errada devolvendo HTML) → alertar, senao a busca falha em silencio.
+        logger.warn(`[BrightData:News] Page ${page + 1} non-JSON: ${rawText.substring(0, 120).replace(/\n/g, ' ')}`);
+        if (page === 0) {
+          Sentry.captureException(new Error('[BrightData:News] resposta non-JSON na pagina 1 — 0 resultados'), {
+            tags: { provider: 'brightdata', mode: 'news' },
+            extra: { query: query.substring(0, 100), preview: rawText.substring(0, 300) },
+          });
+        }
         break;
       }
 
@@ -244,24 +253,24 @@ export class BrightDataSERPProvider implements SearchProvider {
   // ============================================
 
   private buildNewsUrl(query: string, opts: {
-    start: number; num: number;
-    dateRestrict?: string; location?: SearchOptions['location'];
+    start: number;
+    dateRestrict?: string;
   }): string {
+    // brd_json=1 OBRIGATORIO: sem ele o /request com format=raw devolve o HTML
+    // bruto da SERP e o JSON.parse falha ("non-JSON") → 0 resultados silenciosos.
+    // `num` deprecado pelo Google — paginacao so via `start` (10/pagina).
     const params = new URLSearchParams({
       q: query, tbm: 'nws',
-      num: String(opts.num), start: String(opts.start),
+      start: String(opts.start),
       gl: 'br', hl: 'pt-BR',
+      brd_json: '1',
     });
 
     const tbs = this.mapDateRestrict(opts.dateRestrict);
     if (tbs) params.set('tbs', tbs);
 
-    if (opts.location?.city) {
-      const uule = opts.location.state
-        ? `${opts.location.city},${opts.location.state},Brazil`
-        : `${opts.location.city},Brazil`;
-      params.set('uule', uule);
-    }
+    // uule removido: Google exige encoding canonico (base64), texto puro era
+    // ignorado. gl=br + cidade no texto da query ja cobrem a segmentacao.
 
     return `https://www.google.com/search?${params.toString()}`;
   }

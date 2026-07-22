@@ -9,6 +9,39 @@
 
 ---
 
+## 2026-07-22 (fix busca — Bright Data News retornava 0 resultados)
+
+Sessão de análise de qualidade + diagnóstico de "busca não funciona". Bright Data é o único provedor ativo (Brave/Perplexity só desativados via env, código mantido).
+
+### Causa raiz: `brd_json=1` ausente no modo News
+
+`BrightDataSERPProvider.buildNewsUrl()` montava a URL do Google sem `brd_json=1`. Pela doc oficial do Bright Data, `/request` com `format: 'raw'` devolve o **HTML bruto** da SERP — o JSON estruturado só vem com `brd_json=1` na URL. Efeito: `JSON.parse` falhava, log `non-JSON`, `break`, **0 resultados silenciosos** em todo scan e na fonte News da busca manual (que ficava só com o Web Top100).
+
+### Fixes aplicados (cirúrgicos, só no provider + env example)
+
+1. `brd_json: '1'` adicionado aos params do `buildNewsUrl`.
+2. Paginação News: `num=20` removido (Google deprecou `num` em set/2025), `perPage` 20→10 com `start` em incrementos de 10 (doc Bright Data). Antes pulava os resultados 10-19 de cada página.
+3. `uule` texto puro removido — Google exige encoding canônico (base64), valor raw era ignorado. `gl=br` + cidade na query cobrem a segmentação.
+4. `Sentry.captureException` quando página 1 vem non-JSON — provider quebrado nunca mais falha em silêncio.
+5. `.env.example`: `SEARCH_BACKEND=brave` → `brightdata` + `BRIGHTDATA_API_KEY`/`BRIGHTDATA_ZONE` documentados (quem montasse env novo pelo example ativava Brave sem key).
+
+### Validação
+
+- `npx tsc --noEmit` limpo.
+- `npm test`: 31 falhas **pré-existentes** (testes de filter0/queryTemplates/etc. esperam keywords antigas removidas de propósito; `deduplication.test.ts` tem erro de tipo). Nenhuma relacionada ao fix. Atualizar esses testes é dívida pra próxima sessão.
+- Verificação real pendente (precisa de credencial): conferir logs do Render por `[BrightData:News] ... non-JSON` e testar busca manual em staging pelo APK.
+
+### Achados da análise de qualidade (backlog, não corrigidos nesta sessão)
+
+- **Crítico**: `createSearchCache` deleta busca de OUTRO usuário no conflito de `params_hash` (delete sem `.eq('user_id')`).
+- **Crítico**: post-filter de estado no pipelineCore rejeita sigla UF ("SC" vs "Santa Catarina") — reusar `STATE_NAME_TO_UF`.
+- Médios: ownership ausente em status/results/cancel da busca manual; custo da busca manual superestimado ~67% (`lastRequestCount` não usado); scan-lock TTL 30min nunca liberado; `.or()` do dedup quebra com vírgula no bairro; templates multi-query em estilo Perplexity rendem mal em Google SERP.
+- Menores: CLAUDE.md seção 4 com paths desatualizados; `data_ocorrencia` guarda data de publicação (regra do prompt Filter2); dead code `ApiService.searchNews()`; comentário contradiz código no filter0.
+
+Commit **somente em `staging`** (pedido do João, pra testar via Render antes de propagar).
+
+---
+
 ## 2026-04-18 (sessão 2 — refino cirúrgico em tudo)
 
 Sessão focada em fechar dívida técnica acumulada + refino do fluxo de relatório + economia de custo. Ordem do atacado:
