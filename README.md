@@ -1,4 +1,4 @@
-# 🚨 Netrios News
+# 🚨 SIMEOPS
 
 Sistema de monitoramento de notícias de crime em tempo real para múltiplas cidades brasileiras.
 
