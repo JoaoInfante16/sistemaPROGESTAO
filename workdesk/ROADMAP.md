@@ -96,7 +96,33 @@ Todos os combos executados e commitados em `develop + staging` (ver DEV_LOG):
 > Vindo da auditoria de **2026-07-30** ([AUDITORIA_2026-07-30.md](AUDITORIA_2026-07-30.md)).
 > Nada foi codado — tudo abaixo aguarda decisão do João.
 
-### 🔴 Fixes críticos do bug do cliente (proposta: 1 commit único, ~1h)
+### 🚨 PRIORIDADE 1 — Produção está desatualizada
+
+`main` **não tem** o fix de 22/07 nem o de 30/07. Conferido: sem `brd_json`, `perPage = 20`, `uule` presente.
+
+Consequência medida: com a paginação errada produção pega **20 das 31** notícias disponíveis por cidade/mês — perde um terço. E a busca manual segue com o Top 100 assíncrono travado (6 min de espera, zero resultado).
+
+`staging` já está com tudo (commit `7274516`). Falta validar lá e propagar para `main`.
+
+**Este é o deploy que mais vale agora** — é o que o cliente sente.
+
+---
+
+### ✅ Feito em 2026-07-30 (em `develop` + `staging`)
+
+- Busca manual: Top 100 pelo endpoint **síncrono** (o assíncrono morreu entre 21 e 30/07)
+- Query do ramo web sem `allintext:` (a antiga retornava `results_cnt = 0` do Google)
+- Falha silenciosa fechada: checagem de `x-brd-err-code` (HTTP 200 + corpo vazio deixava a busca concluir com 0 resultados sem erro)
+- Teto de custo movido para **depois do Filter1** (custo virou previsível)
+- `profundidade` removido de ponta a ponta
+- Preservado no merge o fix de 22/07 do staging (`brd_json`, paginação 10/página, `uule` fora)
+- Novo `backend/scripts/test-search-providers.ts` — checa os dois ramos em 30s
+
+Medido depois: news **30 resultados em 12s** (era 20). Web segue oscilando (0 a 90) por bloqueio do Google no índice orgânico — tratado como bônus, **sem retry**.
+
+---
+
+### 🔴 Fixes críticos ainda não codados (proposta: 1 commit único, ~1h)
 
 O cliente relatou "busca manual fica carregando e não busca dados". Causa: a busca leva 10-25 min e o Flutter desiste em 10.
 
