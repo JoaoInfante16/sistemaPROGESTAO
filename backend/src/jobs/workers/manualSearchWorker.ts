@@ -26,6 +26,14 @@ import {
 
 export const manualSearchQueue = new Queue('manual-search-queue', { connection: redis });
 
+// Teto do ramo news por cidade — aqui o numero economiza de verdade, porque
+// controla quantas paginas a SERP pagina (20 por request).
+const MANUAL_NEWS_MAX_RESULTS = 30;
+
+// Ramo web: o scraper cobra o mesmo trazendo 20 ou 100, entao pedimos tudo.
+// Cortar aqui seria descartar dado ja pago.
+const MANUAL_WEB_MAX_RESULTS = 100;
+
 export interface ManualSearchJobData {
   searchId: string;
   userId: string;
@@ -33,7 +41,6 @@ export interface ManualSearchJobData {
   cidades: string[];
   periodoDias: number;
   tipoCrime?: string;
-  profundidade?: number;
 }
 
 async function isCancelled(searchId: string): Promise<boolean> {
@@ -46,7 +53,7 @@ async function isCancelled(searchId: string): Promise<boolean> {
 }
 
 async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void> {
-  const { searchId, estado, cidades, periodoDias, tipoCrime, profundidade = 1.0 } = job.data;
+  const { searchId, estado, cidades, periodoDias, tipoCrime } = job.data;
   const startTime = Date.now();
   const LOG_PREFIX = `[ManualSearch] ${searchId}`;
 
@@ -60,14 +67,24 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       return;
     }
 
-    // Max results por período — configurável no admin panel
+    // Teto de ARTIGOS ANALISADOS por busca — configuravel no admin por periodo.
+    //
+    // Ate 2026-07-30 este numero cortava no STAGE 1, antes de qualquer filtro:
+    // ficavam os N primeiros pela ordem do Google e o resto ia fora sem ninguem
+    // olhar se era relevante. Como Filter0 (regex, $0) e Filter1 (GPT em lote,
+    // ~$0.0000067/URL) custam ~370x menos que Jina + Filter2 (~$0.0025/artigo),
+    // cortar antes deles descartava dado de graca e escolhia mal.
+    //
+    // Agora o corte acontece DEPOIS do Filter1: entra tudo que a busca achou,
+    // os filtros baratos triam, e o teto se aplica a quem sobreviveu. Efeito
+    // colateral bom: o custo vira previsivel — o numero que chega no Jina e
+    // exatamente este teto, nao um resultado incerto das taxas de rejeicao.
     const maxResultsKey = periodoDias <= 30 ? 'manual_search_max_results_30d'
       : periodoDias <= 60 ? 'manual_search_max_results_60d'
       : 'manual_search_max_results_90d';
 
-    const baseMaxResults = await configManager.getNumber(maxResultsKey);
+    const maxArticlesToAnalyze = await configManager.getNumber(maxResultsKey);
     const pipelineConfig = {
-      searchMaxResults: Math.round(baseMaxResults * profundidade),
       contentFetchConcurrency: await configManager.getNumber('content_fetch_concurrency'),
       filter2ConfidenceMin: await configManager.getNumber('filter2_confidence_min'),
       filter2MaxContentChars: await configManager.getNumber('filter2_max_content_chars'),
@@ -81,14 +98,20 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
 
     const { searchResults, sourceTypeMap } = await collectManualSearchUrls(
       { estado, cidades, periodoDias, tipoCrime },
-      pipelineConfig,
       LOG_PREFIX,
     );
 
-    // Bright Data: $0.0015/request, com paginacao (20 results/page) por cidade
+    // Bright Data $0.0015/unidade. Por cidade:
+    //   web  = 1 chamada ao scraper "100 Results" (~100 organicos de uma vez)
+    //   news = SERP paginada, 20 por request
+    // ATENCAO: o scraper e cobrado por *record* ($1.50/1k), e nao confirmei se
+    // 1 record = 1 keyword ou 1 resultado organico. Se for por resultado, o ramo
+    // web custa ~100x isto. Conferir no painel de billing depois da 1a busca real.
     // Brave: $0.005/query (sem paginacao interna)
     const isBrightData = config.searchBackend === 'brightdata';
-    const requestsPerCity = isBrightData ? Math.ceil(pipelineConfig.searchMaxResults / 20) : 1;
+    const requestsPerCity = isBrightData
+      ? 1 + Math.ceil(MANUAL_NEWS_MAX_RESULTS / 20)
+      : 1;
     const costPerRequest = isBrightData ? 0.0015 : 0.005;
     const totalRequests = cidades.length * requestsPerCity;
     await db.trackCost({
@@ -124,10 +147,23 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       return;
     }
 
+    // Freio de custo — aplicado aqui, na fronteira entre o barato e o caro.
+    // Tudo acima deste ponto custa quase nada; tudo abaixo custa ~$0.0025/artigo.
+    // O teto e por busca (nao por cidade), entao busca multi-cidade nao multiplica
+    // a conta: 1 cidade e 5 cidades gastam o mesmo no Jina + Filter2.
+    const totalCap = maxArticlesToAnalyze * cidades.length;
+    const toAnalyze = afterFilter1.slice(0, totalCap);
+    if (afterFilter1.length > totalCap) {
+      for (const dropped of afterFilter1.slice(totalCap)) {
+        rejectedUrls.push({ url: dropped.url, stage: 'cap', reason: `acima do teto de ${totalCap} artigos` });
+      }
+      logger.info(`${LOG_PREFIX} teto de analise: ${afterFilter1.length} → ${totalCap} artigos (${afterFilter1.length - totalCap} cortados)`);
+    }
+
     // STAGE 4: Content Fetch
     if (await isCancelled(searchId)) { logger.info(`${LOG_PREFIX} cancelled before stage 4`); return; }
-    await db.updateSearchProgress(searchId, { stage: 'fetching', stage_num: 4, total_stages: 7, details: `${afterFilter1.length} artigos` });
-    const validContents = await runContentFetch(afterFilter1, pipelineConfig.contentFetchConcurrency, rejectedUrls, LOG_PREFIX);
+    await db.updateSearchProgress(searchId, { stage: 'fetching', stage_num: 4, total_stages: 7, details: `${toAnalyze.length} artigos` });
+    const validContents = await runContentFetch(toAnalyze, pipelineConfig.contentFetchConcurrency, rejectedUrls, LOG_PREFIX);
 
     const jinaTokensTotal = validContents.reduce((sum, c) => sum + (c.tokensUsed || 0), 0);
     await db.trackCost({
@@ -227,7 +263,6 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
 
 async function collectManualSearchUrls(
   params: { estado: string; cidades: string[]; periodoDias: number; tipoCrime?: string },
-  cfg: { searchMaxResults: number; filter0RegexEnabled: boolean },
   logPrefix: string,
 ): Promise<{ searchResults: Array<{ url: string; title: string; snippet: string }>; sourceTypeMap: Map<string, string> }> {
   const { estado, cidades, periodoDias, tipoCrime } = params;
@@ -245,18 +280,24 @@ async function collectManualSearchUrls(
   const cityPromises = cidades.map(async (cidade) => {
     const cityResults: Array<{ url: string; title: string; snippet: string; source: string }> = [];
 
-    // Web Top100
+    // Query do modo web: keywords simples, SEM operadores.
+    // A versao antiga usava allintext:"cidade" + grupo OR + -site:. Testado em
+    // 2026-07-30 contra a SERP: essa forma devolve results_cnt=0 do Google —
+    // ou seja, o ramo web nunca entregou nada. A forma abaixo devolveu 137
+    // resultados na mesma cidade. Nao reintroduzir operadores sem testar.
+    // Dominios de rede social ja sao barrados pelo Filter0.
     const webQuery = tipoCrime
-      ? `allintext:"${cidade}" ${tipoCrime} ocorrência policial -site:instagram.com -site:facebook.com -site:youtube.com`
-      : `allintext:"${cidade}" (ocorrência OR crime OR segurança OR policial OR estatística) -site:instagram.com -site:facebook.com -site:youtube.com`;
+      ? `${tipoCrime} ${cidade} ${estado}`
+      : `notícias policiais ocorrências crime ${cidade} ${estado}`;
 
     logger.info(`${logPrefix} [${cidade}] Web+News em paralelo | ${dateRestrict}`);
 
     const [webResults, newsResults] = await Promise.allSettled([
-      // Web Top100
+      // Web (organic) — mesmo texto do ramo news, mas no indice web do Google:
+      // pega portais e sites que nao aparecem no indice de noticias.
       rateLimiter.schedule(config.searchBackend, () =>
         searchProvider.search(webQuery, {
-          maxResults: cfg.searchMaxResults,
+          maxResults: MANUAL_WEB_MAX_RESULTS,
           dateRestrict,
           searchMode: 'web',
           location: { city: cidade, state: estado, country: 'BR' },
@@ -267,7 +308,7 @@ async function collectManualSearchUrls(
         searchProvider.search(
           tipoCrime ? `${tipoCrime} ${cidade} ${estado}` : `notícias policiais ocorrências crime ${cidade} ${estado}`,
           {
-            maxResults: 30,
+            maxResults: MANUAL_NEWS_MAX_RESULTS,
             dateRestrict,
             searchMode: 'news',
             location: { city: cidade, state: estado, country: 'BR' },
@@ -279,7 +320,7 @@ async function collectManualSearchUrls(
     if (webResults.status === 'fulfilled') {
       for (const r of webResults.value) cityResults.push({ ...r, source: 'web' });
     } else {
-      logger.warn(`${logPrefix} [${cidade}] Web Top100 failed: ${webResults.reason}`);
+      logger.warn(`${logPrefix} [${cidade}] Web failed: ${webResults.reason}`);
     }
 
     if (newsResults.status === 'fulfilled') {

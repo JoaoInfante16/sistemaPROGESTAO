@@ -9,6 +9,159 @@
 
 ---
 
+## 2026-07-30 (auditoria geral — sem alteração de código)
+
+Retomada após ~3,5 meses parado (último commit de código: 2026-04-18). João perdeu o notebook com os arquivos de memória local e pediu checkup geral + documentação para futuras instâncias, motivado por um relato do cliente: **"busca manual fica carregando e não busca dados"**.
+
+Investigação manual (Grep + Read) em backend, admin panel e Flutter. **Nenhuma linha de código foi alterada** — só documentação. Relatório completo em [AUDITORIA_2026-07-30.md](AUDITORIA_2026-07-30.md).
+
+### Bug do cliente — causa raiz encontrada
+
+Não é travamento: é **lentidão que estoura o timeout do app**. O worker termina a busca; o Flutter desiste antes.
+
+1. **Filter2 roda em série** (`pipelineCore.ts:183`) — `for` com 2 awaits OpenAI por artigo. O rate limiter permite 5 simultâneas e o loop nunca emite mais de 1. Roda a 20% da vazão disponível. 60 artigos ≈ 6 min; 250 ≈ 25 min. **Maior ofensor isolado.**
+2. **Validação aceita até 10 cidades** (`validation.ts:116`), cada uma trazendo até 80 URLs (50 web + 30 news) → até 800 URLs no funil.
+3. **Flutter desiste em 10 min** (`_maxPolls = 200` × 3s).
+4. **Zero timeouts** em Jina, Bright Data e OpenAI. O SDK da OpenAI usa default de 600s × 2 retries.
+5. **Contenção**: auto-scan (concurrency 3) e busca manual (2) sobem no mesmo processo e dividem o mesmo Bottleneck de OpenAI. A janela do auto-scan é seg-sex 6-18h — exatamente o horário em que o cliente usa.
+
+### Bugs de estado (podem travar usuário permanentemente)
+
+- **Busca fantasma → 409 eterno**: o check de `status === 'processing'` em `manualSearchRoutes.ts:41` não tem critério de idade. Deploy/restart no meio de um job deixa a linha `processing` para sempre e o usuário nunca mais consegue buscar.
+- **Linha órfã**: `createSearchCache` roda antes de `queue.add`. Se o enfileiramento falhar, sobra linha `processing` que ninguém processa → cai no bug acima.
+- **Perda de dados entre usuários**: o delete por `params_hash` em `queries.ts:989` **não filtra `user_id`**. Dois clientes buscando os mesmos parâmetros → o segundo apaga a busca e os resultados do primeiro (cascade).
+- **`userId = 'anonymous'` compartilhado** quando `search_permission='all'` — latente, default hoje é `authorized`.
+
+### Achados do checkup geral
+
+**Saudável:** `tsc --noEmit` limpo; guards `requireAuth + requireAdmin` corretos em todas as rotas admin; categorias com fonte única real (a consolidação de abril se sustentou); graceful shutdown; tracking de custo por estágio.
+
+**Configs mortas** (existem no schema, nada as lê): `scan_cron_schedule` (scheduler usa a env), `worker_concurrency`, `worker_max_per_minute`, `scan_lock_ttl_minutes`, `budget_warning_threshold`. As três primeiras estão na lista `restartRequired` do `settingsRoutes` — a mensagem "requer restart" é enganosa.
+
+**Configs sem UI** (lidas pelo código, só editáveis no Supabase): `content_fetch_concurrency`, `monthly_budget_usd`, `push_enabled`, `search_permission`.
+
+**Admin panel não verifica `is_admin`** em lugar nenhum do frontend. Usuário comum do app consegue logar na URL do admin e ver a casca do dashboard. Sem vazamento de dados (backend responde 403), mas ruim de confiança.
+
+**Dependências:** `openai ^4.24.1` está duas majors atrás (v6) — relevante porque as versões novas tratam timeout/retry melhor. Express 4→5, eslint 8→9. Flutter com `fl_chart` 0.70→1.x, `share_plus` 10→12, `flutter_map` 7→8, `sentry_flutter` 8→9. Admin panel está em dia.
+
+### ARQUITETURA.md corrigido
+
+Estava factualmente errado em pontos concretos: dizia **Brave** como provider principal (é Bright Data), CRON **de hora em hora** (é a cada 5 min via env), `filter2_max_content_chars` **4000** (é 8000). Faltavam por completo os serviços `executive`, `geocoding`, `billingScheduler` e `rateLimiter`. Corrigido in-place + adicionado bloco de performance da busca manual e lista de configs mortas.
+
+### Investigação ao vivo — o diagnóstico mudou duas vezes
+
+Com a chave do `.env`, testei a Bright Data direto. O que os dados mostraram:
+
+**Produção está viva.** Health com uptime de 27 dias, Redis e banco OK. Notícias do auto-scan entrando hoje (17:00, 15:01, 09:01). Não é infra caída.
+
+**O Top 100 (Dataset API) quebrou entre 21 e 30/07.** Histórico de snapshots da conta: 17-70s até 21/07, e o meu de 30/07 passou de **500s sem concluir**. Como o código espera 180s, tenta de novo e espera mais 180s, cada cidade gastava ~6 min de espera morta.
+
+**A query do modo web nunca funcionou.** Testado contra a SERP: `allintext:"Florianópolis" (ocorrência OR crime OR ...)` devolve `results_cnt: 0` do Google. A forma simples `notícias policiais ocorrências crime Florianópolis Santa Catarina` devolveu **137 resultados / 27 links em 14s**. O ramo web era peso morto mesmo quando o Top 100 estava rápido.
+
+**Buscas reais dos usuários confirmam:** São Paulo, Rio, Salvador, Curitiba, Porto Alegre e Brasília — todas `completed` com **0 resultados** em 30 dias. Guarujá 5, Santos 1. Nenhuma busca desde 21/07 (o cliente desistiu). **Nenhuma busca presa em `processing`** — o bug do 409 eterno não está afetando ninguém hoje, sai da urgência.
+
+**O achado que mais importa — falha silenciosa.** Depois de ~20 requests meus, tudo passou a voltar vazio. Achei que fosse quota; era o **IP do João (`177.99.58.0/24`) na lista de bloqueio da própria zone** — eu tinha visto esse campo na config da zone e descartado, erro meu. O modo de falha é o perigoso: a Bright Data responde **HTTP 200, corpo vazio, erro só no header `x-brd-err-code`**. O código via `response.ok` verdadeiro, `JSON.parse('')` estourava, caía no `break`, e a busca **concluía com 0 resultados sem erro nenhum**. Foi isso que mascarou o problema todo esse tempo.
+
+### Código alterado (aprovado pelo João)
+
+**O Top 100 foi mantido — descoberta a partir de pushback do João.** Ele questionou a remoção ("ele serve pra trazer quantidade alta de notícias locais") e mandou print do painel Bright Data. Na tela aparecia **"Escolha o modo de raspagem → Síncrono (Em tempo real)"** e, no code example, `datasets/v3/**scrape**`. O código usava `datasets/v3/**trigger**` — o modo assíncrono, com snapshot + polling. **O scraper sempre teve modo síncrono e ninguém usava.**
+
+Medição comparativa (mesma keyword, Florianópolis):
+
+| Caminho | Tempo | Resultados |
+|---|---|---|
+| `trigger` + polling (código antigo) | >500s, nunca completou | — |
+| SERP zone com `num=100` (minha 1ª substituição) | ~15s | 27 |
+| **`scrape` síncrono** | **25-36s** | **98-100** |
+
+João estava certo: o scraper rende ~4× mais. A substituição que eu tinha feito era uma perda real.
+
+**`uule` + `tbs` se anulam.** Testado isoladamente: só `uule` → 97 resultados; só `tbs=qdr:m` → 100; **juntos → 1**. Além disso o `uule` sempre foi montado como texto simples (`"Cidade,Estado,Brazil"`) quando o Google espera formato codificado próprio — provavelmente vinha sendo ignorado. No modo web ficou só `tbs`; cidade e estado já vão na keyword.
+
+`BrightDataSERPProvider.ts`:
+- Novo `searchWebScrape` — modo web via `datasets/v3/scrape`, 1 request, ~100 orgânicos, **com `AbortSignal.timeout` de 120s** (antes não havia timeout nenhum).
+- `searchNewsPaginated` → `searchSerpPaginated` (só news agora, `tbm=nws`, 20/página). `buildNewsUrl` → `buildSerpUrl`.
+- `searchWebTop100` (assíncrono), `buildDateRange` e `DatasetResult` removidos — substituídos pelo caminho síncrono.
+- **Checagem de `x-brd-err-code`**: agora lança em vez de retornar 0 silenciosamente.
+- Log de resposta não-JSON subiu pra `error` e inclui o tamanho do corpo, pra distinguir "vazio" de "não achou" nos logs do Render.
+
+`manualSearchWorker.ts`:
+- Query web trocada de `allintext:` + grupo `OR` + `-site:` para keywords simples. Comentário no código avisa pra não reintroduzir operadores sem testar.
+- `MANUAL_NEWS_MAX_RESULTS` extraído do `30` hardcoded.
+- Cálculo de custo corrigido: os dois ramos agora paginam, então soma web + news (antes o web era 1 request de dataset e a conta subestimava).
+
+`npx tsc --noEmit` passa limpo.
+
+### Bloqueado
+
+Não consigo validar a correção ponta a ponta: o IP do João está bloqueado na zone, então toda chamada local à Bright Data volta vazia. **João precisa remover `177.99.58.0/24` da Blocked IPs** em `brightdata.com/cp/zones/simeopss/access_params`. Depois disso, busca de teste em staging para gerar os logs de rejeição por stage — que é o que falta pra explicar por que o ramo *news* também rendia pouco.
+
+### O índice orgânico do Google é bloqueado — e isso não tem conserto do nosso lado
+
+Depois de restaurar o Top 100, medi repetidamente. O ramo web oscila absurdamente; o news não:
+
+| Rodada | Web (scraper) | News (zone) |
+|---|---|---|
+| 1ª | 85 | 20 |
+| 2ª | 10 | 20 |
+| 3ª | 1 | 20 |
+
+Requisição **idêntica** nas três (o `maxResults` só afeta o corte local, não o payload). João levantou a hipótese de ser o dedup do pipeline — testei e **descartei**: o JSON cru trazia 11 orgânicos, 11 com link, 11 únicos. Não há duplicata para remover. Também confirmei que não existe camada de cache no `createSearchProvider()`.
+
+Testei então trocar o transporte, pela zone em modo orgânico: **1, 1, 27**. Igualmente errático. Na mesma query, o Google respondeu `results_cnt: 1` duas vezes e `61500` na terceira.
+
+**Conclusão (corrigindo palavra minha):** não é "instabilidade". João rejeitou esse termo com razão — o Google não é uma empresa que oscila por acaso. É **detecção de robô deliberada**: ele identifica tráfego raspado no índice orgânico e devolve página vazia sem erro. O índice orgânico é o dado mais raspado da internet (toda ferramenta de SEO do planeta), então é o que ele mais defende. O índice de notícias não tem essa indústria em cima e passa limpo.
+
+Isso independe do transporte — scraper ou zone, mesma coisa. **Não é problema que a gente resolva codando**; é o serviço que a Bright Data vende, e no orgânico eles entregam mal.
+
+**Decisão:** ramo web fica como **bônus, sem retry**. O news carrega o piso (~20/cidade, previsível).
+
+### Retry: descartado, e o motivo bom
+
+Cheguei a propor retry por contagem baixa. João barrou. Meu argumento inicial ("repetir reforça o bloqueio") era **fraco** — a Bright Data rotaciona IP e identidade a cada request, então a segunda tentativa parece outro usuário.
+
+O motivo real é outro: **não dá para saber quando disparar**. Retry por contagem exige responder "quantos são poucos?", e isso varia radicalmente por cidade — Florianópolis ~26/mês, Santos 1, Águas da Prata 1. Gatilho apertado dispara sempre em cidade pequena e queima dinheiro reconfirmando resultado correto; gatilho frouxo não dispara quando precisa. **É chute com custo por tentativa.**
+
+Regra que fica: **repetir sobre sinal explícito, nunca sobre suspeita.** É o caso do `x-brd-err-code` implementado hoje — ali a Bright Data diz que recusou, e o BullMQ reprocessa.
+
+### O teto do produto é a matéria-prima, não o código
+
+Testei a profundidade real do índice de notícias (Florianópolis, 30 dias), paginando:
+
+| start | resultados |
+|---|---|
+| 0 | 13 |
+| 20 | 13 |
+| 40 | **4** |
+| 60 | **4** |
+| 80 | **4** |
+
+Seca depois de ~26 (os "4" repetidos são links de navegação, não notícia). O sistema já captura 20 deles. **Aumentar o teto renderia meia dúzia e depois nada.**
+
+Ou seja: uma capital de 500 mil habitantes tem ~26 notícias policiais publicadas por mês. Cidade pequena tem 1 a 5 — confirmado pelas buscas reais (Guarujá 5, Santos 1, Águas da Prata 1).
+
+Implicação de produto: o SIMEops não entrega "a criminalidade da cidade", entrega **"o que a imprensa publicou sobre criminalidade na cidade"**. Se o cliente espera a primeira, vai achar o sistema fraco por um motivo que não é do sistema. Vale alinhar isso comercialmente.
+
+Achado adjacente: o auto-scan usa **Google News RSS** como segunda fonte; a busca manual **não usa**. É código pronto e de graça — mas bebe do mesmo índice do `tbm=nws`, então o ganho é marginal, não dobra nada.
+
+### Redesenho do teto de custo (aprovado pelo João)
+
+O teto (`manual_search_max_results_*`) cortava no stage 1, **antes de qualquer filtro**: ficavam os N primeiros pela ordem do Google e o resto ia fora sem ninguém avaliar relevância.
+
+Custo medido por URL: Filter0 $0, Filter1 ~$0.0000067, **Jina ~$0.002**, **Filter2 ~$0.0005**. As etapas caras custam **~370×** as baratas — cortar antes das baratas descartava dado de graça e escolhia mal.
+
+Agora: ramo web pede tudo (o scraper cobra igual trazendo 20 ou 100), ramo news mantém o teto (lá o número controla páginas de verdade), e **o corte acontece depois do Filter1**, na fronteira do caro. Ganho colateral: o custo virou **previsível** — o número que chega ao Jina é exatamente o teto, não um resultado incerto das taxas de rejeição.
+
+`profundidade` **removido** de ponta a ponta (schema, rota, worker). João já tinha tirado da UI; multiplicava o teto e o app nunca enviava. Motivo dele: *"dá muita opção pro usuário e ele pode travar. É óbvio que ele vai querer o máximo de notícias dentro daquele período e local."*
+
+### Ainda em aberto (não codado)
+
+Paralelizar o Filter2 com `asyncPool` (agravante real, ~5× mais rápido — e mais relevante agora que o ramo web voltou a trazer volume), TTL na busca fantasma, try/catch no enqueue, `.eq('user_id')` no delete por hash.
+
+Fontes alternativas (Bing, portais oficiais de SSP/PM) foram levantadas mas **João informou que já testou todas** — não repetir sem falar com ele antes.
+
+---
+
 ## 2026-04-18 (sessão 2 — refino cirúrgico em tudo)
 
 Sessão focada em fechar dívida técnica acumulada + refino do fluxo de relatório + economia de custo. Ordem do atacado:

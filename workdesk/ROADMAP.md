@@ -93,6 +93,46 @@ Todos os combos executados e commitados em `develop + staging` (ver DEV_LOG):
 
 ## 🔥 Próxima sessão
 
+> Vindo da auditoria de **2026-07-30** ([AUDITORIA_2026-07-30.md](AUDITORIA_2026-07-30.md)).
+> Nada foi codado — tudo abaixo aguarda decisão do João.
+
+### 🔴 Fixes críticos do bug do cliente (proposta: 1 commit único, ~1h)
+
+O cliente relatou "busca manual fica carregando e não busca dados". Causa: a busca leva 10-25 min e o Flutter desiste em 10.
+
+1. **Paralelizar Filter2 com `asyncPool`** (`pipelineCore.ts`) — hoje é `for` sequencial usando 20% da vazão que o rate limiter permite. **−80% no tempo total.** Atenção: `asyncPool` derruba o pool inteiro se a função lançar; capturar erro por item.
+2. **TTL na busca fantasma** (`manualSearchRoutes.ts`) — busca `processing` há >20 min deve ser tratada como obsoleta, não bloquear com 409. Hoje um restart do Render trava o usuário para sempre.
+3. **`try/catch` no `queue.add`** (`manualSearchRoutes.ts`) — se o enfileiramento falhar, marcar `failed` em vez de deixar linha órfã.
+4. **`.eq('user_id')` no delete por hash** (`queries.ts:989`) — hoje um cliente apaga a busca de outro que usou os mesmos parâmetros.
+
+### 🟡 Segunda onda (depois de validar em staging)
+
+- Timeouts em Jina / Bright Data / OpenAI (hoje **nenhuma** chamada externa tem)
+- Subir `_maxPolls` no Flutter + backoff progressivo no polling
+- Baixar limite de cidades (10 → 5) ou avisar o custo em tempo na UI
+- Checar `is_admin` no middleware do admin panel (hoje só checa se há sessão)
+- Expor `content_fetch_concurrency` e `monthly_budget_usd` na UI do admin
+- Limpar as 5 configs mortas (`scan_cron_schedule`, `worker_concurrency`, `worker_max_per_minute`, `scan_lock_ttl_minutes`, `budget_warning_threshold`) — ou ligá-las de verdade
+
+### 🟢 Manutenção (commits separados, com build em device físico)
+
+- `openai` ^4.24.1 → v6 (duas majors atrás; ganho concreto em timeout/retry)
+- Flutter: `fl_chart` 0.70→1.x, `share_plus` 10→12, `flutter_map` 7→8, `sentry_flutter` 8→9
+- Express 4→5, eslint 8→9 no backend
+
+### 💡 Melhorias com melhor relação valor/esforço (da auditoria)
+
+- **Progresso real** ("analisando 34 de 112 artigos") em vez de "estágio 3 de 7" — muda a percepção de travamento, é o item mais barato do relatório
+- **Estimativa de tempo** antes de iniciar a busca
+- **Push abre o resultado** — o `search_id` já vai no payload, só falta o deep link
+
+### 💡 Ideias de feature levantadas por Claude (não acordadas)
+
+- **Alerta por área de interesse (geofence)** — o sistema já extrai bairro/rua e já geocodifica com precisão. Push só do que cai numa região escolhida. É o pulo de "jornal de crimes" para "monitoramento operacional".
+- **Relatório recorrente automático** (semanal/mensal, push + link público que já existe)
+- **Digest diário** em vez de push por ocorrência — evita que o usuário desative notificação
+- Com ressalva: comparação entre cidades (armadilha: volume de notícia ≠ volume de crime), export CSV
+
 ---
 
 ## 🎯 Onboarding do Claude — STATUS
