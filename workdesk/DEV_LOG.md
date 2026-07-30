@@ -3,7 +3,7 @@
 > Diário de bordo: o que foi feito, decisões tomadas, problemas encontrados.
 > Append-only, cronológico (mais recente no topo).
 >
-> Histórico da Fase 1 (6 sub-fases até produção) arquivado em [Fase 1/](./Fase%201/).
+> Histórico das Fases 1 a 6 (até a entrada em produção) arquivado em [Fases/](./Fases/).
 >
 > Rotação: quando passar de ~1500 linhas, mover conteúdo antigo pra `_archive/DEV_LOG_YYYY-MM.md`.
 
@@ -455,7 +455,7 @@ Novo schema `feedQuery` em [validation.ts](../backend/src/middleware/validation.
 - **Fim de sessão disciplinado** — Claude revisa ROADMAP + ARQUITETURA + confirma DEV_LOG antes de fechar.
 
 **Reorganização do workdesk:**
-- Tudo que era Fase 1-6 (sub-fases até produção) movido pra dentro de `workdesk/Fase 1/` — vira histórico.
+- Tudo que era Fase 1-6 (sub-fases até produção) movido pra dentro de `workdesk/Fases/` — vira histórico.
 - `workdesk/` raiz agora tem 3 arquivos ativos: `DEV_LOG.md` (este), `ROADMAP.md`, `ARQUITETURA.md`.
 - Novo `workdesk/WORKFLOW.md` criado como constituição da colaboração.
 - SQL mantido como estava.

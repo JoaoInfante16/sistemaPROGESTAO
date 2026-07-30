@@ -3,7 +3,7 @@
 > Planos, backlog e próximos passos.
 > Revisado no fim de cada sessão com João.
 >
-> Histórico da Fase 1 em [Fase 1/](./Fase%201/).
+> Histórico das Fases 1 a 6 em [Fases/](./Fases/).
 
 ---
 
