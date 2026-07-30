@@ -1,6 +1,11 @@
 
 # SIMEops / PROGESTAO - ARQUITETURA DO SISTEMA
-## Documento Tecnico Atualizado (Fase 3 — Sessao 012)
+## Documento Tecnico — revisado em 2026-07-30 (auditoria geral)
+
+> Correcoes desta revisao: provider principal e **Bright Data** (nao Brave); CRON roda
+> a cada 5 min (nao de hora em hora); `filter2_max_content_chars` e 8000 (nao 4000).
+> Adicionados os servicos que faltavam: executive, geocoding, billing, reports, groups.
+> Diagnostico de performance e bugs abertos: ver [AUDITORIA_2026-07-30.md](AUDITORIA_2026-07-30.md).
 
 ```
 +==============================================================================+
@@ -39,11 +44,12 @@
 +-------------------------------------------------------------------------+
 |                          INTERNET                                       |
 |                                                                         |
-|   [Brave News]    [Google News]                                         |
-|   Search API      RSS Feed                                              |
-|   (principal)     Gratis (complementar)                                 |
-|      |            |                                                     |
-+------+------------+----------------------------------------------------+
+|   [Bright Data]   [Google News]   [Brave News]                          |
+|   SERP API        RSS Feed        Search API                            |
+|   (PRINCIPAL)     Gratis          (legado/fallback)                     |
+|   news + web      complementar    so se SEARCH_BACKEND=brave            |
+|      |            |               |                                     |
++------+------------+---------------+-------------------------------------+
        |            |
        v            v
 +-------------------------------------------------------------------------+
@@ -105,20 +111,42 @@
 |                                                                     |
 +---------------------------------------------------------------------+
 |                                                                     |
-|  BRAVE NEWS SEARCH API (api.search.brave.com)                       |
-|  - Search provider PRINCIPAL                                        |
-|  - Ate 50 resultados/request, paginacao via offset                  |
-|  - Params: country=BR, safesearch=off, ui_lang=pt-BR                |
-|  - Custo: $0.005 por query                                         |
-|  - Prompt otimizado: "noticias policiais ocorrencias crimes         |
-|    assalto roubo homicidio prisao trafico operacao policial          |
-|    flagrante {cidade}, {estado}"                                     |
-|  - Config de max_results por periodo (admin panel):                  |
+|  BRIGHT DATA SERP API (api.brightdata.com)  — PROVIDER PRINCIPAL    |
+|  Selecionado por env SEARCH_BACKEND=brightdata                      |
+|                                                                     |
+|  Modo NEWS (auto-scan) — API sincrona:                              |
+|  - tbm=nws, qdr:d, ~20 resultados por pagina                        |
+|  - Rapido (segundos). Custo: $0.0015 por request                    |
+|                                                                     |
+|  Modo WEB (busca manual) — Dataset API "Top 100":                   |
+|  - trigger -> polling -> download de snapshot                       |
+|  - ATENCAO: polling de ate 60 x 3s = 180s, com retry 1x             |
+|    => ate ~6 MINUTOS por cidade no pior caso                        |
+|  - 1 request = ate 100 resultados                                   |
+|                                                                     |
+|  Tambem usado como fallback do Jina (Web Unlocker) quando o Jina    |
+|  falha com 403/422/503/SSL — ex: dominios .gov.br                   |
+|                                                                     |
+|  Config de max_results por periodo (admin panel):                    |
 |    auto-scan: 15 | manual 30d: 50 | 60d: 50 | 90d: 80              |
+|                                                                     |
++---------------------------------------------------------------------+
 |                                                                     |
 |  Google News RSS (complementar, gratis):                            |
 |  - Feed RSS sem API key, date pre-filter por pubDate                |
 |  - Agrega 1-5 URLs extras por busca                                |
+|                                                                     |
+|  Brave News Search (legado — so se SEARCH_BACKEND=brave):           |
+|  - Ate 50 resultados/request. Custo: $0.005 por query               |
+|  - Codigo mantido em BraveNewsProvider.ts, fora do caminho ativo    |
+|                                                                     |
++---------------------------------------------------------------------+
+|                                                                     |
+|  NOMINATIM / OpenStreetMap (geocoding)                              |
+|  - Converte bairro/rua em lat/lon pro CrimeRadarMap                 |
+|  - Fallback em cascata: rua -> bairro -> cidade                     |
+|  - Campo `precisao` persistido no CrimePoint (rua = ponto destacado)|
+|  - Gratis, sem API key                                              |
 |                                                                     |
 +---------------------------------------------------------------------+
 |                                                                     |
@@ -302,12 +330,19 @@ diferentes (valor core do sistema). Revertido. Prompt antigo validado como base.
 ## AUTO-SCAN (scanPipeline.ts)
 
 ```
-  Disparado por CRON (a cada hora).
+  Disparado por CRON — schedule vem da env SCAN_CRON_SCHEDULE (*/5 em prod).
+  ATENCAO: a config `scan_cron_schedule` no DB e IGNORADA pelo scheduler.
   Usa pipelineCore + dedup contra DB + push por noticia.
 
-  Fontes: Brave News + Google News RSS
+  JANELA DE OPERACAO (timezone America/Sao_Paulo, forcado via Intl):
+  - seg-sex 6h-18h ligado | sab-dom desligado por default
+  - Fora da janela o tick inteiro e pulado (nada enfileira, nada e marcado)
+  - Configs: scan_weekday_start/end, scan_weekend_enabled/start/end
+
+  Fontes: Bright Data (modo news) + Google News RSS
   Query: templates rotativos (queryTemplates.ts, round-robin)
   Multi-query: 2 queries por scan (configuravel)
+  Periodo de busca: scan_period_days (4 dias — cobre recuperacao de fim de semana)
 
   Apos pipelineCore:
   +==================================================================+
@@ -329,26 +364,82 @@ diferentes (valor core do sistema). Revertido. Prompt antigo validado como base.
   Usa pipelineCore + filtro cidade/estado + progress tracking.
 
   Diferencas do auto-scan:
-  - Filtro de cidade/estado pos-Filter2 (Brave traz noticias nacionais)
+  - Filtro de cidade/estado pos-Filter2 (a busca traz noticias nacionais)
   - Max results configuravel por periodo (30d/60d/90d no admin panel)
   - Resultados salvos em search_results (JSONB, com sources[])
   - Dedup intra-batch com embedding (consolida fontes no mesmo card)
   - SEM dedup contra DB (por enquanto)
   - Push "busca concluida" pro usuario
+  - Progress tracking persistido (JSONB `progress` com history de stages)
 
-  Query otimizada pro Brave:
-  - Default: "noticias policiais ocorrencias crimes assalto roubo
-    homicidio prisao trafico operacao policial flagrante {cidade}, {estado}"
-  - Com keyword: "{tipoCrime} {cidade}, {estado}"
+  DUAL-SOURCE por cidade, em PARALELO (Promise.allSettled):
+  - Web Top 100 (volume):   allintext:"{cidade}" (ocorrencia OR crime OR ...)
+  - News paginado (qualidade): "noticias policiais ... {cidade} {estado}"
+  Ate 80 URLs por cidade (50 web + 30 news no periodo de 30d).
 
   Pipeline: 7 stages
-  1. Search (Brave + RSS, 1 query por cidade)
+  1. Search (Bright Data web + news, 2 queries paralelas por cidade)
   2. Filter0 (regex)
   3. Filter1 (GPT batch)
   4. Fetch (Jina)
   5. Filter2 + Embedding (GPT + filtro cidade/data)
   6. Dedup intra-batch (embedding clustering)
   7. Save (search_results)
+
+  +==================================================================+
+  |  DUAS FONTES, CONFIABILIDADES DIFERENTES (medido em 2026-07-30)  |
+  |                                                                   |
+  |  NEWS (tbm=nws, via zone) = ALICERCE                              |
+  |    Estavel: 20 resultados por cidade em TODAS as medicoes.        |
+  |    E o que sustenta o auto-scan e o piso da busca manual.         |
+  |                                                                   |
+  |  WEB (organico, via scraper) = BONUS                              |
+  |    Erratico: 85, 10, 1, 11, 98... com requisicao IDENTICA.        |
+  |    NAO e instabilidade — e o Google BLOQUEANDO trafego raspado    |
+  |    (respondeu results_cnt=1 pra query com 61500 resultados).      |
+  |    O indice organico e o dado mais raspado da internet (SEO),     |
+  |    entao e o que o Google mais defende. Independe do transporte:  |
+  |    scraper e zone oscilam igual.                                  |
+  |                                                                   |
+  |  >>> NAO ADICIONAR RETRY POR CONTAGEM BAIXA <<<                   |
+  |  Nao da pra distinguir "fui bloqueado" de "essa cidade nao tem    |
+  |  noticia": Florianopolis ~26/mes, Santos 1, Aguas da Prata 1.     |
+  |  Gatilho apertado queima dinheiro em cidade pequena; frouxo nao   |
+  |  dispara quando precisa. Regra: repetir sobre SINAL explicito     |
+  |  (x-brd-err-code), nunca sobre suspeita.                          |
+  |                                                                   |
+  |  PAGINACAO DO NEWS: `num` foi deprecado pelo Google (set/2025) e  |
+  |  a SERP devolve ~10 por pagina. Paginar com `start` de 10 em 10.  |
+  |  Com incremento de 20 o codigo PULA as posicoes 10-19 de cada     |
+  |  pagina — perde ~1/3 do material. E `brd_json=1` e OBRIGATORIO    |
+  |  na URL, senao vem HTML bruto e o JSON.parse falha em silencio.   |
+  |                                                                   |
+  |  TETO DE MATERIA-PRIMA (medido com paginacao correta, Floripa,    |
+  |  30 dias): 10, 10, 10, 1, 0, 0 = **31 noticias unicas**.          |
+  |  Aumentar config alem disso nao cria noticia que nao existe.      |
+  |  O produto entrega "o que a imprensa publicou sobre criminalidade |
+  |  na cidade", NAO "a criminalidade da cidade". Sao coisas          |
+  |  diferentes, e a segunda e muito maior. Alinhar isso com cliente. |
+  +==================================================================+
+
+  +==================================================================+
+  |  PERFORMANCE — LEIA ANTES DE MEXER  (auditoria 2026-07-30)       |
+  |                                                                   |
+  |  A validacao aceita ATE 10 CIDADES por busca (validation.ts).     |
+  |  10 cidades = ate 800 URLs = 200+ artigos chegando ao Filter2.    |
+  |                                                                   |
+  |  O STAGE 5 RODA EM SERIE: o `for` em pipelineCore.ts faz 2 awaits |
+  |  OpenAI por artigo, um de cada vez. O rate limiter permite 5      |
+  |  simultaneas — a capacidade existe e NAO e usada.                 |
+  |    30 artigos ~3min | 60 ~6min | 150 ~15min | 250 ~25min          |
+  |                                                                   |
+  |  O Flutter desiste em 10 MIN (_maxPolls=200 x 3s). Busca          |
+  |  multi-cidade estoura isso => usuario ve "carregando" pra sempre. |
+  |  ESTE E O BUG REPORTADO PELO CLIENTE. Detalhes e plano de fix:    |
+  |  AUDITORIA_2026-07-30.md                                          |
+  |                                                                   |
+  |  Nenhuma chamada externa (Jina, Bright Data, OpenAI) tem timeout. |
+  +==================================================================+
 ```
 
 ---
@@ -367,7 +458,7 @@ diferentes (valor core do sistema). Revertido. Prompt antigo validado como base.
   |  - content_fetch_concurrency ...... 5                        |
   |  - filter0_regex_enabled .......... toggle                   |
   |  - filter2_confidence_min ......... 0.7                      |
-  |  - filter2_max_content_chars ...... 4000                     |
+  |  - filter2_max_content_chars ...... 8000                     |
   |  - dedup_similarity_threshold ..... 0.85                     |
   |                                                              |
   |  Fontes:                                                     |
@@ -375,13 +466,28 @@ diferentes (valor core do sistema). Revertido. Prompt antigo validado como base.
   |  - search_queries_per_scan ........ 2                        |
   |  - google_news_rss_enabled                                   |
   |                                                              |
-  |  Sistema:                                                    |
+  |  Janela do auto-scan (LIDAS, com UI no admin):               |
+  |  - scan_weekday_start / end ....... 6 / 18                   |
+  |  - scan_weekend_enabled ........... false                    |
+  |  - scan_weekend_start / end ....... 6 / 18                   |
+  |  - scan_period_days ............... 4                        |
+  |                                                              |
+  |  Sistema (LIDAS, mas SEM UI no admin — editar no Supabase):  |
   |  - monthly_budget_usd ............. 100                      |
-  |  - budget_warning_threshold ....... 0.9                      |
-  |  - scan_cron_schedule ............. 0 * * * *                |
-  |  - worker_concurrency ............. 3                        |
+  |  - content_fetch_concurrency ...... 5                        |
   |  - push_enabled ................... true                     |
-  |  - auth_required .................. true                     |
+  |  - search_permission .............. authorized               |
+  |  - auth_required .................. true  (tem UI)           |
+  |                                                              |
+  |  >>> CONFIGS MORTAS — existem no schema, NADA as le: <<<     |
+  |  - scan_cron_schedule ..... scheduler usa a ENV, nao o DB    |
+  |  - worker_concurrency ..... hardcoded 3 em scanWorker.ts     |
+  |  - worker_max_per_minute .. hardcoded 10 em scanWorker.ts    |
+  |  - scan_lock_ttl_minutes .. hardcoded 30min em cronScheduler |
+  |  - budget_warning_threshold ...... nada consome              |
+  |  (as 3 primeiras aparecem na lista `restartRequired` do      |
+  |   settingsRoutes — a mensagem "requer restart" e enganosa:   |
+  |   mesmo com restart, nao tem efeito nenhum)                  |
   |                                                              |
   +-------------------------------------------------------------+
 ```
@@ -400,9 +506,15 @@ diferentes (valor core do sistema). Revertido. Prompt antigo validado como base.
   |  Cache:    Redis (Upstash)                                   |
   |  Push:     Firebase Cloud Messaging                          |
   |  IA:       OpenAI GPT-4o-mini + text-embedding-3-small       |
-  |  Scraping: Jina AI Reader                                    |
-  |  Busca:    Brave News Search API (principal)                 |
+  |  Scraping: Jina AI Reader (+ Bright Data Unlocker fallback)  |
+  |  Busca:    Bright Data SERP API (PRINCIPAL — news + web)     |
   |            Google News RSS (complementar, gratis)            |
+  |            Brave News Search (legado, fora do caminho ativo) |
+  |  Geocode:  Nominatim / OpenStreetMap (gratis)                |
+  |  Erros:    Sentry (backend + admin + mobile, so producao)    |
+  |                                                              |
+  |  Deploy:   Render — backend e admin, Starter $7 cada         |
+  |            develop (local) -> staging (free) -> main (prod)  |
   |                                                              |
   +-------------------------------------------------------------+
 ```
@@ -447,12 +559,27 @@ diferentes (valor core do sistema). Revertido. Prompt antigo validado como base.
       scanPipeline.ts ......... Auto-scan (CRON + dedup DB + push)
     jobs/workers/
       manualSearchWorker.ts ... Busca manual (filtro cidade + progress)
+    jobs/scheduler/
+      cronScheduler.ts ........ CRON + janela de operacao + lock Redis
+      billingScheduler.ts ..... Fechamento mensal de custo
     services/
       search/
-        BraveNewsProvider.ts .. Brave News API (paginacao, safesearch=off)
+        BrightDataSERPProvider.ts  PRINCIPAL — dual mode (news sync / web Top100)
+        BraveNewsProvider.ts .. Legado (so se SEARCH_BACKEND=brave)
         GoogleNewsRSSProvider.ts  RSS gratis (date pre-filter)
         queryTemplates.ts ..... Templates de query (auto-scan)
         urlDeduplicator.ts .... Normaliza e dedup URLs
+      executive/
+        index.ts .............. Resumo executivo via GPT (cards + paragrafo)
+                                Cache por cidade+estado+range e por searchId
+      geocoding/
+        nominatim.ts .......... lat/lon com fallback rua->bairro->cidade
+      notifications/
+        pushService.ts ........ Firebase FCM, filtro por categoria
+      rateLimiter/
+        DynamicRateLimiter.ts . Bottleneck por provider, configs do DB
+                                ATENCAO: instancia unica compartilhada
+                                entre auto-scan e busca manual
       filters/
         filter0Regex.ts ....... Regex local (domains, categorias)
         filter1GPTBatch.ts .... GPT batch (titulos, toggle)
