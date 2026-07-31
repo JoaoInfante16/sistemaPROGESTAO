@@ -25,6 +25,11 @@ const SCRAPE_URL = `https://api.brightdata.com/datasets/v3/scrape?dataset_id=${D
 // Medido: 23-36s por keyword. Timeout com folga — antes NAO havia nenhum.
 const SCRAPE_TIMEOUT_MS = 120_000;
 
+// Medido: 5-20s por pagina. Sem isto uma pagina pendurada trava o stage 1 da
+// busca manual PARA SEMPRE — nao ha nada acima que corte. Com 3 paginas no
+// maximo, o pior caso do ramo news fica limitado a 3 min.
+const SERP_TIMEOUT_MS = 60_000;
+
 export class BrightDataSERPProvider implements SearchProvider {
   private apiKey: string;
   private zone: string;
@@ -151,6 +156,7 @@ export class BrightDataSERPProvider implements SearchProvider {
           'Authorization': `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify({ zone: this.zone, url: googleUrl, format: 'raw' }),
+        signal: AbortSignal.timeout(SERP_TIMEOUT_MS),
       });
 
       requestsMade++;
