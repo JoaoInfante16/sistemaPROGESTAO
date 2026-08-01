@@ -110,6 +110,20 @@ Templates diferentes também trazem matéria diferente: `polícia` trouxe 10 ite
 
 **NÃO ligar o RSS** — provado quebrado como fonte de conteúdo (achado 4).
 
+### 🎯 O CULPADO REAL: produção roubava os jobs de staging pela fila compartilhada
+
+Depois do fix da query, o João testou Salvador **duas vezes** no APK staging: 1 resultado. O mesmo código rodando local: **18 resultados**. Os sinais se contradiziam (stage 1 de 74s = novo, mas 20 URLs e `requestsPerCity: 3` = velho) e eu passei tempo demais suspeitando de deploy — o João me puxou de volta pra ingestão, com razão.
+
+A prova veio em dois passos:
+1. Enfileirei uma busca **direto na fila**, sem o app. Foi processada em segundos com assinatura de código velho (`requestsPerCity: 3`, sem o campo `commit` que o código novo sempre grava) — enquanto o `/health` do staging respondia `commit: 6933605`.
+2. `/health` da produção: **uptime de 29 dias** (`main` de um mês atrás), mesmo Upstash Redis, mesmo Supabase.
+
+**Staging, produção e dev local compartilham o mesmo Redis, e as filas BullMQ tinham nome fixo.** O worker da produção — `main` desatualizada, com a query longa ruim, paginação quebrada (`requestsPerCity: 3` = 2 páginas news + 1 Top 100) e Filter0 comendo o lixo do Top 100 — **competia com o staging pelos mesmos jobs e ganhava a maioria**. Toda busca "de teste" do João era, na verdade, processada pela produção velha. Também explica o histórico: as buscas de POA e Salvador do dia inteiro têm a mesma assinatura.
+
+**Fix:** `jobs/queueNames.ts` — filas ganham sufixo de ambiente (`manual-search-queue-staging`), exceto produção, que mantém o nome puro de propósito: quando `main` for atualizada, nada muda pro app do cliente. Dev local (`-development`) também para de roubar/ser roubado — o `.env` local aponta pro mesmo Redis, um `npm run dev` esquecido causava o mesmo efeito.
+
+**Consequência importante:** enquanto `main` não for atualizada, o cliente segue na busca velha (1 resultado). O fix da fila conserta os TESTES; o cliente só sente quando `main` subir — que já era prioridade 1.
+
 ### `package-lock.json` versionado + `npm ci` (autorizado pelo João)
 
 Feito: lock removido do `.gitignore` (raiz), `backend/` e `admin-panel/` commitados, `npm install` → `npm ci` no Dockerfile (2 estágios) e no `render.yaml`. `yarn.lock` **segue ignorado** — o projeto é npm e dois locks concorrentes divergem. Sem `.dockerignore` no repo, então o `COPY package*.json ./` que já existia leva o lock junto; nenhuma mudança de `COPY` foi necessária.

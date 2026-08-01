@@ -12,8 +12,9 @@ import { config } from '../../config';
 import { db } from '../../database/queries';
 import { logger } from '../../middleware/logger';
 import { configManager } from '../../services/configManager';
+import { queueName } from '../queueNames';
 
-const scanQueue = new Queue('scan-queue', { connection: redis });
+const scanQueue = new Queue(queueName('scan-queue'), { connection: redis });
 
 // TTL do lock = tempo estimado de um scan (30 min)
 const SCAN_LOCK_TTL_MS = 30 * 60 * 1000;

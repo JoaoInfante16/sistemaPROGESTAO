@@ -8,6 +8,7 @@ import { Worker, Job } from 'bullmq';
 import { redis } from '../../config/redis';
 import { executePipeline } from '../pipeline/scanPipeline';
 import { logger } from '../../middleware/logger';
+import { queueName } from '../queueNames';
 
 interface ScanJobData {
   locationId: string;
@@ -15,7 +16,7 @@ interface ScanJobData {
 
 export function createScanWorker(): Worker {
   const worker = new Worker<ScanJobData>(
-    'scan-queue',
+    queueName('scan-queue'),
     async (job: Job<ScanJobData>) => {
       const { locationId } = job.data;
 

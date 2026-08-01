@@ -14,6 +14,7 @@ import { rateLimiter } from '../../services/rateLimiter';
 import { configManager } from '../../services/configManager';
 import { sendPushToUser } from '../../services/notifications/pushService';
 import { buildManualSearchQueries } from '../../services/search/queryTemplates';
+import { queueName } from '../queueNames';
 import {
   runFilter0,
   runFilter1,
@@ -25,7 +26,7 @@ import {
   RejectedUrl,
 } from '../pipeline/pipelineCore';
 
-export const manualSearchQueue = new Queue('manual-search-queue', { connection: redis });
+export const manualSearchQueue = new Queue(queueName('manual-search-queue'), { connection: redis });
 
 // Teto do ramo news POR QUERY (nao por cidade). Desde 2026-08-01 a busca manual
 // dispara varias queries curtas em vez de uma longa — ver queryTemplates.ts.
@@ -396,7 +397,7 @@ async function collectManualSearchUrls(
 
 export function createManualSearchWorker(): Worker {
   const worker = new Worker<ManualSearchJobData>(
-    'manual-search-queue',
+    queueName('manual-search-queue'),
     processManualSearch,
     {
       connection: redis,
