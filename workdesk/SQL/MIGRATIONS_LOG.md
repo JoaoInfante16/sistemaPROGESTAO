@@ -24,6 +24,7 @@
 | 018 | 018_city_groups.sql | Tabelas city_groups + city_group_members (agrupamento de cidades no feed) | Sim (Fase 6, 2026-04-15) |
 | 019 | 019_news_add_estado.sql | ALTER news ADD COLUMN estado + index (cidade, estado). Fix de cidades homonimas | **Pendente** (Joao roda junto com migration de limpeza) |
 | 020 | 020_news_drop_resumo_agregado.sql | DROP coluna resumo_agregado (dead feature, nunca foi populada) | **Pendente — RODAR APOS deploy do backend** |
+| 021 | 021_manual_search_web_toggle.sql | Config `manual_search_web_enabled` (default false). Desliga o ramo web da busca manual — o scraper do indice organico saltou de 17-70s pra 660-978s depois de 21/07 e travava o stage 1 | **Pendente** |
 
 ## Alteracoes manuais (sem migration file)
 

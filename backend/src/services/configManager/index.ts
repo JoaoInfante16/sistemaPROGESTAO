@@ -23,6 +23,10 @@ const DEFAULTS: Record<string, string> = {
   filter2_confidence_min: '0.7',
   content_fetch_concurrency: '5',
   search_max_results: '15',
+  // Ramo web (indice organico) da busca manual. DESLIGADO desde 2026-08-01:
+  // o tempo de coleta do scraper saltou de 17-70s pra 660-978s depois de 21/07,
+  // travando a busca no stage 1. Ligar de volta se o cenario mudar.
+  manual_search_web_enabled: 'false',
   manual_search_max_results_30d: '50',
   manual_search_max_results_60d: '50',
   manual_search_max_results_90d: '80',

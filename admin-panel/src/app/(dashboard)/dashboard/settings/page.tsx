@@ -700,6 +700,27 @@ export default function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                {/* Toggle do ramo web (indice organico do Google) */}
+                <div className="rounded-lg border p-4 flex items-center justify-between">
+                  <div className="pr-4">
+                    <Label className="font-medium">Fonte Web (indice organico)</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Fonte extra alem das noticias. <strong>Desligada desde 01/08/2026</strong>: o Google
+                      passou a bloquear esse indice e a coleta saltou de ~20s para 11-16 minutos, travando a
+                      busca. Com ela desligada a busca roda so nas noticias — ~30 resultados em ~50s, estavel.
+                      Religue apenas para testar se o cenario melhorou.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {savingConfig.has('manual_search_web_enabled') && <Loader2 className="h-4 w-4 animate-spin" />}
+                    <Switch
+                      checked={isConfigEnabled('manual_search_web_enabled')}
+                      onCheckedChange={() => toggleConfig('manual_search_web_enabled', isConfigEnabled('manual_search_web_enabled'))}
+                      disabled={savingConfig.has('manual_search_web_enabled')}
+                    />
+                  </div>
+                </div>
+
                 {MANUAL_SEARCH_THRESHOLDS.map((threshold) => {
                   const currentVal = editingConfig[threshold.key] ?? getConfigValue(threshold.key);
                   const hasChange = editingConfig[threshold.key] !== undefined;

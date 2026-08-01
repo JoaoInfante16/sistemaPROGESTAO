@@ -96,9 +96,11 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     if (await isCancelled(searchId)) { logger.info(`${LOG_PREFIX} cancelled before stage 1`); return; }
     await db.updateSearchProgress(searchId, { stage: 'searching', stage_num: 1, total_stages: 7, details: `Pesquisando ${cidades.length} cidades` });
 
+    const webEnabled = await configManager.getBoolean('manual_search_web_enabled');
     const { searchResults, sourceTypeMap } = await collectManualSearchUrls(
       { estado, cidades, periodoDias, tipoCrime },
       LOG_PREFIX,
+      webEnabled,
     );
 
     // Bright Data $0.0015/unidade. Por cidade:
@@ -264,6 +266,7 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
 async function collectManualSearchUrls(
   params: { estado: string; cidades: string[]; periodoDias: number; tipoCrime?: string },
   logPrefix: string,
+  webEnabled: boolean,
 ): Promise<{ searchResults: Array<{ url: string; title: string; snippet: string }>; sourceTypeMap: Map<string, string> }> {
   const { estado, cidades, periodoDias, tipoCrime } = params;
   const sourceTypeMap = new Map<string, string>();
@@ -290,19 +293,30 @@ async function collectManualSearchUrls(
       ? `${tipoCrime} ${cidade} ${estado}`
       : `notícias policiais ocorrências crime ${cidade} ${estado}`;
 
-    logger.info(`${logPrefix} [${cidade}] Web+News em paralelo | ${dateRestrict}`);
+    logger.info(`${logPrefix} [${cidade}] ${webEnabled ? 'Web+News em paralelo' : 'News apenas (web desligado)'} | ${dateRestrict}`);
 
     const [webResults, newsResults] = await Promise.allSettled([
       // Web (organic) — mesmo texto do ramo news, mas no indice web do Google:
       // pega portais e sites que nao aparecem no indice de noticias.
-      rateLimiter.schedule(config.searchBackend, () =>
-        searchProvider.search(webQuery, {
-          maxResults: MANUAL_WEB_MAX_RESULTS,
-          dateRestrict,
-          searchMode: 'web',
-          location: { city: cidade, state: estado, country: 'BR' },
-        })
-      ),
+      //
+      // DESLIGADO por default desde 2026-08-01 (config manual_search_web_enabled).
+      // Motivo: o tempo de coleta do scraper explodiu apos 21/07 — snapshots da
+      // propria conta saltaram de 17-70s para 660-978s, com variancia enorme
+      // (mesma cidade, 10 min de diferenca: 22s vs 667s). Assinatura de scraper
+      // apanhando pra passar no SearchGuard do Google. Nao e incidente com data
+      // pra acabar; e o novo normal do indice organico. O ramo news (tbm=nws) nao
+      // sofre disso e entrega ~30 em 50s de forma estavel.
+      // Religar quando/se o cenario mudar — a medicao esta em AUDITORIA_2026-07-30.
+      webEnabled
+        ? rateLimiter.schedule(config.searchBackend, () =>
+            searchProvider.search(webQuery, {
+              maxResults: MANUAL_WEB_MAX_RESULTS,
+              dateRestrict,
+              searchMode: 'web',
+              location: { city: cidade, state: estado, country: 'BR' },
+            })
+          )
+        : Promise.resolve([]),
       // News paginado
       rateLimiter.schedule(config.searchBackend, () =>
         searchProvider.search(

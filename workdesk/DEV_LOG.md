@@ -9,6 +9,53 @@
 
 ---
 
+## 2026-08-01 (ramo web desligado — o Google fechou a porta)
+
+Continuação do dia anterior. O deploy do staging tinha falhado (Node 20 vs `@supabase/realtime-js` 2.111.0, que exige `node>=22`) — corrigido no Dockerfile. Com o código novo no ar, João testou a busca manual e **continuou travando no estágio 1**.
+
+### O que os dados mostraram
+
+Duração dos snapshots do scraper, na conta do próprio João:
+
+| Data | Duração |
+|---|---|
+| 14/07 | 17s, 20s, 21s, 39s |
+| 17/07 | 70s |
+| 21/07 | 34s |
+| 30-31/07 | **978s, 963s, 667s, 660s** |
+
+Degradação de ~20× a partir de 21/07, **sem nenhum commit nesse intervalo**. E variância enorme: mesma cidade (Campo Grande), 10 minutos de diferença, 22s no meu teste local contra 667s na busca dele.
+
+### Não é a Bright Data, e não é incidente
+
+João desconfiou da minha hipótese de "provedor degradado" com um argumento bom: a Bright Data é a número 1 do setor, um problema desse tamanho teria anúncio público. **Pesquisei e ele estava certo — não há anúncio nenhum**, nem deles nem do Google, com essa data.
+
+O que existe é contexto:
+- **20/07/2026**: juiz federal da Califórnia derrubou o processo do Google contra a SerpApi. O Google perdeu a via **jurídica** contra scrapers.
+- O Google vem endurecendo a via **técnica** com o **SearchGuard**.
+- A via oficial está fechada: a Custom Search JSON API virou busca por site desde jan/2026.
+
+A doc de rate limit da Bright Data **descarta** throttling como causa: ao estourar, eles devolvem **HTTP 429**, não latência.
+
+Leitura mais provável: o tempo de 660-978s é o **tempo de coleta** do scraper varrendo 10 páginas do Google. Se cada página exige mais tentativas e mais proxies pra passar no SearchGuard, o tempo explode — e a variância gigante é a assinatura de quem está apanhando pra entrar. **Não é incidente com data pra acabar; é o novo normal do índice orgânico**, que é a superfície mais raspada da internet (toda a indústria de SEO).
+
+*Correlação não é prova — não dá pra afirmar que o Google escalou por ter perdido no dia 20. Mas a data bate.*
+
+### Decisão: ramo web vira chave, desligada por padrão
+
+Nova config **`manual_search_web_enabled`** (default `false`), com toggle no admin em Configurações → Busca Manual. Migration `021`.
+
+Com ele desligado a busca roda só no ramo **news** (`tbm=nws`), que não sofre do problema: **~30 resultados em ~50s**, estável em todas as medições do dia anterior.
+
+Perde-se volume, ganha-se previsibilidade — que é justamente o que o João tinha antes e perdeu. E religar é um clique, se o cenário mudar.
+
+### Também nesta sessão
+
+- **Timeout no ramo news** (`SERP_TIMEOUT_MS = 60s`). Eu tinha posto timeout no scraper e **esquecido da SERP** — sem ele, uma página pendurada travava o estágio 1 para sempre, porque o `Promise.allSettled` espera os dois ramos. Era a peça que faltava pro sintoma.
+- **Node 20 → 22 no Dockerfile.** Fica registrado o risco de fundo: `package-lock.json` está no `.gitignore`, então o Render resolve os `^` do zero a cada build e instala o que estiver mais novo no dia. **Build não é reproduzível** — foi o que quebrou o deploy sem ninguém tocar em dependência, e **produção pode quebrar sozinha no próximo deploy pelo mesmo motivo**. Fix durável: versionar o lock e trocar `npm install` por `npm ci`. **Não feito — aguardando decisão do João.**
+
+---
+
 ## 2026-07-30 (auditoria geral — sem alteração de código)
 
 Retomada após ~3,5 meses parado (último commit de código: 2026-04-18). João perdeu o notebook com os arquivos de memória local e pediu checkup geral + documentação para futuras instâncias, motivado por um relato do cliente: **"busca manual fica carregando e não busca dados"**.
