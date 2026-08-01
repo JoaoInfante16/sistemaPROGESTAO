@@ -59,12 +59,23 @@ Isso também responde a pergunta dele sobre "colocar várias RSS": não precisa 
 
 **Achado 3 — os templates 1-4 devolvem 0 no Google.** `queryTemplates.ts` diz no header que foi escrito pra **Perplexity** (busca semântica). São frases longas em linguagem natural. No Google News RSS os 4 focados retornam **zero**; só o template 0 (`completo`) funciona. Com `multi_query_enabled=true` e `search_queries_per_scan=2`, o auto-scan gasta request do Bright Data em query desenhada pra um provedor que o projeto não usa mais.
 
-**Proposto, aguardando aprovação do João (nada codado):**
-1. Ligar o Google News RSS na **busca manual**, com `when:{periodoDias}d`. Grátis. POA sairia de 1 pra dezenas.
-2. Usar `when:` também no auto-scan, em vez de depender do `tbs` ignorado.
-3. Reescrever ou aposentar os templates 1-4.
+**Achado 4 — o RSS NÃO serve como fonte de conteúdo. Testado antes de propor.**
 
-**Incertezas honestas:** (a) o RSS devolve URL de redirect do Google — o comentário do provider diz que o Jina resolve, mas eu **não verifiquei**, e isso afeta custo e rendimento; (b) dos 36 únicos, 7 têm "Porto Alegre" no título — o resto é do estado ou de outra cidade, e o Filter2 tria pelo corpo, então o rendimento real fica entre 7 e 36 e só medindo o pipeline inteiro pra saber; (c) o teste rodou do IP do João — o Google pode limitar RSS vindo de datacenter, e o Render é datacenter. Precisa de teste em staging.
+Antes de recomendar, exercitei a suposição que sustentava o plano: o comentário do `GoogleNewsRSSProvider` afirma que "o pipeline resolve o redirect via Jina". **É falso.** O Jina devolve 98 caracteres de boilerplate — *"Comprehensive up-to-date news coverage, aggregated from sources all over the world by Google News"* — para todas as URLs testadas, gastando 15-17s cada. E o `runContentFetch` descarta conteúdo abaixo de 100 chars, então **as 37 matérias morreriam no stage 4, uma por uma**. Ligar o RSS hoje deixaria a busca mais lenta e mais cara, com rendimento zero.
+
+Tentei resolver o redirect na mão: `fetch` com `redirect: 'follow'` e User-Agent de navegador devolve **HTTP 200 na própria `news.google.com`**, sem sair do domínio, e o HTML não tem link do veículo (só imagem do `googleusercontent`). O formato novo (`CBMi...AU_yqL...`) é opaco e exige chamada ao `batchexecute` do Google — ou seja, raspar o Google de novo, exatamente o que vem quebrando.
+
+**Conclusão: o RSS é um bom ÍNDICE (título + data + veículo corretos, de graça) e uma fonte de conteúdo inútil.** Fica descartado por ora. Vale como pista futura se aparecer forma limpa de resolver URL.
+
+**Achado 5 — `sbd:1` pagina cronologicamente, com URL real.** É o único `tbs` obedecido, e funciona de verdade: `start=0` → 2 semanas a 01/jun; `start=10` → 01/jun a 22/mai; `start=20` → 22/mai a 15/abr. Caminhada limpa pra trás no tempo, com link do veículo (não redirect). Permite **parar de paginar ao sair da janela** em vez de puxar 3 páginas fixas.
+
+**O incômodo que sobra:** o RSS grátis enxerga 37 matérias dentro da janela (até 01/08); o SERP pago com `sbd:1` só começa em "2 semanas atrás" (~18/07). **A via raspada nos entrega uma visão pior do índice do próprio Google do que o RSS aberto.** Isso é argumento pra, no médio prazo, ir às fontes oficiais direto — não pra seguir ajustando parâmetro.
+
+**Proposto, aguardando aprovação (nada codado):**
+1. **`sbd:1` + paginação consciente da janela** na busca manual. Barato, certo, usa o que já se paga, URL real.
+2. **Testar tirar o estado da query** — o teste sem "Rio Grande do Sul" deu resultado visivelmente mais limpo que o da busca manual, que concatena o estado. Precisa de teste controlado.
+3. **Aposentar os templates 1-4** (medidos em zero).
+4. **NÃO ligar o RSS** — provado quebrado como fonte de conteúdo.
 
 ### `package-lock.json` versionado + `npm ci` (autorizado pelo João)
 
