@@ -122,7 +122,16 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       source: 'manual_search',
       provider: config.searchBackend as 'google' | 'perplexity' | 'brave' | 'brightdata',
       cost_usd: totalRequests * costPerRequest,
-      details: { searchId, cidadesCount: cidades.length, requestsPerCity, totalRequests, resultsCount: searchResults.length },
+      // `commit` identifica QUAL codigo processou o job. O /health so identifica
+      // o servico web; se um segundo processo (outro servico do Render, um `npm
+      // run dev` local esquecido) estiver ligado no mesmo Redis, e o worker dele
+      // que pega o job — e so isto aqui denuncia.
+      details: {
+        searchId, cidadesCount: cidades.length, requestsPerCity, totalRequests,
+        resultsCount: searchResults.length,
+        queries: buildManualSearchQueries(cidades[0], tipoCrime),
+        commit: (process.env.RENDER_GIT_COMMIT || 'local').substring(0, 7),
+      },
     });
 
     const rejectedUrls: RejectedUrl[] = [];

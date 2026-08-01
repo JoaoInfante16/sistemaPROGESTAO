@@ -7,12 +7,18 @@ const router = Router();
 
 const startedAt = Date.now();
 
+// O Render injeta isto sozinho na imagem. Sem ele, ja se gastou hora dupla
+// discutindo "o deploy subiu ou nao" — em 30/07 e de novo em 01/08. Agora o
+// proprio servico diz qual commit esta rodando.
+const COMMIT = process.env.RENDER_GIT_COMMIT || 'local';
+
 router.get('/health', async (_req: Request, res: Response) => {
   const checks: Record<string, string | number> = {
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime_seconds: Math.floor((Date.now() - startedAt) / 1000),
     environment: config.nodeEnv,
+    commit: COMMIT.substring(0, 7),
     database: 'unknown',
     redis: 'unknown',
   };
