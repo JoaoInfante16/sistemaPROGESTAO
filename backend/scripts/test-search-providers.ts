@@ -1,69 +1,96 @@
 // ============================================
-// Diagnostico dos providers de busca
+// Diagnostico das fontes de busca — pelo caminho REAL do app
 // ============================================
-// Roda os DOIS ramos da busca manual (web + news) exatamente como o
-// manualSearchWorker roda, e reporta tempo e volume de cada um.
+// Reproduz exatamente o que o manualSearchWorker.collectManualSearchUrls faz:
+// cidades em PARALELO, e dentro de cada cidade web+news em PARALELO, tudo
+// passando pelo rateLimiter (Bottleneck) — que e onde a concorrencia real
+// acontece.
 //
-// Existe por causa do incidente de 2026-07-30: os providers falhavam em
-// SILENCIO (HTTP 200 com corpo vazio, ou query que o Google zera), e a busca
-// concluia com 0 resultados sem erro nenhum. Este script torna isso visivel
-// em 30 segundos, sem precisar disparar uma busca real e ler log do Render.
+// IMPORTANTE: nao testar a API por fora (curl, fetch solto). Ja custou caro —
+// em 2026-08-01 os testes diretos davam 5/5 enquanto o app travava, porque o
+// app dispara varias requisicoes concorrentes e o teste disparava uma de cada
+// vez. Medir sempre pelo mesmo caminho que o worker usa.
 //
-// Uso: npx tsx scripts/test-search-providers.ts [cidade] [estado]
+// Uso:
+//   npx tsx scripts/test-search-providers.ts                      -> 1 cidade
+//   npx tsx scripts/test-search-providers.ts "Campo Grande,Cuiabá" "Mato Grosso do Sul"
 
 import { searchProvider } from '../src/jobs/pipeline/pipelineCore';
+import { rateLimiter } from '../src/services/rateLimiter';
+import { config } from '../src/config';
 
-const cidade = process.argv[2] || 'Florianópolis';
+const cidades = (process.argv[2] || 'Florianópolis').split(',').map((c) => c.trim());
 const estado = process.argv[3] || 'Santa Catarina';
 const dateRestrict = 'd30';
 
-async function run(
-  label: string,
-  query: string,
-  mode: 'web' | 'news',
-  maxResults: number,
-): Promise<void> {
+// Mesmos tetos do manualSearchWorker
+const NEWS_MAX = 30;
+const WEB_MAX = 30;
+
+interface Medicao {
+  cidade: string;
+  ramo: 'web' | 'news';
+  ok: boolean;
+  qtd: number;
+  ms: number;
+  erro?: string;
+}
+
+async function buscar(cidade: string, ramo: 'web' | 'news'): Promise<Medicao> {
+  const query = `notícias policiais ocorrências crime ${cidade} ${estado}`;
   const t0 = Date.now();
   try {
-    const results = await searchProvider.search(query, {
-      maxResults,
-      dateRestrict,
-      searchMode: mode,
-      location: { city: cidade, state: estado, country: 'BR' },
-    });
-    const ms = Date.now() - t0;
-
-    console.log(`\n[${label}] ${results.length} resultados em ${(ms / 1000).toFixed(1)}s`);
-    if (results.length === 0) {
-      console.log('  >>> ZERO. Provider vivo mas sem entregar — checar query ou bloqueio.');
-    }
-    for (const r of results.slice(0, 5)) {
-      console.log(`  - ${(r.title || '(sem titulo)').substring(0, 65)}`);
-      console.log(`    ${r.url.substring(0, 90)}`);
-    }
-    if (results.length > 5) console.log(`  ... mais ${results.length - 5}`);
+    // MESMA chamada do worker — via rateLimiter, nao direto no provider
+    const results = await rateLimiter.schedule(config.searchBackend, () =>
+      searchProvider.search(query, {
+        maxResults: ramo === 'web' ? WEB_MAX : NEWS_MAX,
+        dateRestrict,
+        searchMode: ramo,
+        location: { city: cidade, state: estado, country: 'BR' },
+      }),
+    );
+    return { cidade, ramo, ok: results.length > 0, qtd: results.length, ms: Date.now() - t0 };
   } catch (err) {
-    const ms = Date.now() - t0;
-    console.log(`\n[${label}] FALHOU em ${(ms / 1000).toFixed(1)}s`);
-    console.log(`  ${(err as Error).message.substring(0, 300)}`);
+    return { cidade, ramo, ok: false, qtd: 0, ms: Date.now() - t0, erro: (err as Error).message.substring(0, 120) };
   }
 }
 
 async function main(): Promise<void> {
-  console.log(`Cidade: ${cidade} / ${estado} | periodo: ${dateRestrict}`);
-  console.log('='.repeat(70));
+  console.log(`Cidades: ${cidades.join(', ')} | Estado: ${estado} | periodo: ${dateRestrict}`);
+  console.log(`Backend: ${config.searchBackend}`);
+  console.log('='.repeat(72));
 
-  // Mesmas queries do manualSearchWorker.collectManualSearchUrls
-  const q = `notícias policiais ocorrências crime ${cidade} ${estado}`;
+  const t0 = Date.now();
 
-  // Mesmos tetos do manualSearchWorker. Os dois ramos usam a MESMA SERP
-  // paginada (10 por request), mudando so o indice do Google.
-  // Obs: aqui o ramo web roda sempre, ignorando a config manual_search_web_enabled
-  // — a ideia e justamente medir se ele voltou a prestar.
-  await run('WEB (organico — portais locais)', q, 'web', 30);
-  await run('NEWS (tbm=nws)', q, 'news', 30);
+  // Igual ao worker: todas as cidades em paralelo, web+news em paralelo dentro
+  const porCidade = await Promise.all(
+    cidades.map(async (cidade) => {
+      const [web, news] = await Promise.all([buscar(cidade, 'web'), buscar(cidade, 'news')]);
+      return [web, news];
+    }),
+  );
 
-  console.log('\n' + '='.repeat(70));
+  const todas = porCidade.flat();
+  const totalMs = Date.now() - t0;
+
+  console.log('');
+  for (const m of todas) {
+    const status = m.ok ? 'OK    ' : 'FALHOU';
+    console.log(`  [${status}] ${m.ramo.padEnd(4)} ${m.cidade.padEnd(18)} ${String(m.qtd).padStart(3)} resultados  ${(m.ms / 1000).toFixed(1)}s`);
+    if (m.erro) console.log(`           erro: ${m.erro}`);
+  }
+
+  const ok = todas.filter((m) => m.ok).length;
+  const urls = todas.reduce((s, m) => s + m.qtd, 0);
+
+  console.log('');
+  console.log('='.repeat(72));
+  console.log(`  ${ok}/${todas.length} chamadas com resultado | ${urls} URLs no total | ${(totalMs / 1000).toFixed(1)}s de ponta a ponta`);
+  if (ok < todas.length) {
+    console.log('  >>> Alguma falhou. Se o padrao for "falha quando varias saem juntas",');
+    console.log('  >>> o suspeito e concorrencia: a zone SERP aceita ~1 por vez e o');
+    console.log('  >>> rate limiter (api_rate_limits.brightdata) permite mais.');
+  }
 }
 
 main()
