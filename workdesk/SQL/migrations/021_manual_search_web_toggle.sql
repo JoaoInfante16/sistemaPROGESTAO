@@ -1,27 +1,28 @@
 -- ============================================
 -- 021: toggle do ramo web da busca manual
 -- ============================================
--- Contexto (2026-08-01): o ramo web da busca manual usa o indice ORGANICO do
--- Google via scraper da Bright Data. O tempo de coleta desse scraper explodiu
--- depois de 21/07 — snapshots da propria conta saltaram de 17-70s para 660-978s,
--- com variancia enorme (mesma cidade, 10 min de diferenca: 22s vs 667s).
+-- O ramo web usa o indice ORGANICO do Google — portais locais, sites de
+-- prefeitura, comunicados de policia. Conteudo que NAO aparece no indice de
+-- noticias (tbm=nws), e que era justamente o valor do antigo "Top 100".
 --
--- Isso travava a busca manual no stage 1 e o usuario ficava olhando "1/7" ate
--- desistir — exatamente o sintoma que o cliente reportou.
+-- Historico (2026-08-01):
+--   Esse ramo usava o scraper de dataset da Bright Data. O tempo de coleta dele
+--   saltou de 17-70s (ate 21/07) para 660-978s, travando a busca manual no
+--   stage 1 — o sintoma que o cliente reportou. Migramos o ramo para a SERP API
+--   sincrona (a mesma que o ramo news usa), que serve o MESMO indice organico
+--   em 4-19s por pagina. Medido em 5/5 tentativas: 24-27 resultados cada.
 --
--- Nao ha incidente publico da Bright Data nem do Google com essa data. A leitura
--- mais provavel e endurecimento do SearchGuard (anti-bot do Google) no indice
--- organico, que e a superficie mais raspada da internet. O indice de NOTICIAS
--- (tbm=nws) nao sofre disso: entrega ~30 resultados em ~50s de forma estavel.
+-- Default TRUE: o ramo web fica ativo. Se um dia voltar a degradar, desligar
+-- aqui ou pelo admin (Configuracoes > Busca Manual) — a busca segue funcionando
+-- so com o ramo news, que e o alicerce (~30 resultados, estavel).
 --
--- Default FALSE: a busca roda so no ramo news, rapida e previsivel.
--- Ligar de volta se o cenario mudar. Medicoes em workdesk/AUDITORIA_2026-07-30.md.
+-- Medicoes completas em workdesk/AUDITORIA_2026-07-30.md.
 
 INSERT INTO system_config (key, value, description, category, value_type)
 VALUES (
   'manual_search_web_enabled',
-  'false',
-  'Ativa o ramo web (indice organico) na busca manual. Desligado em 2026-08-01: o scraper do Google passou a levar 11-16 min em vez de 17-70s. O ramo news continua sempre ativo.',
+  'true',
+  'Ativa o ramo web (indice organico) na busca manual — portais locais e comunicados que nao entram no indice de noticias. Desligar se a fonte degradar; a busca continua funcionando so com noticias.',
   'pipeline',
   'boolean'
 )

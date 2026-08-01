@@ -30,9 +30,9 @@ export const manualSearchQueue = new Queue('manual-search-queue', { connection: 
 // controla quantas paginas a SERP pagina (20 por request).
 const MANUAL_NEWS_MAX_RESULTS = 30;
 
-// Ramo web: o scraper cobra o mesmo trazendo 20 ou 100, entao pedimos tudo.
-// Cortar aqui seria descartar dado ja pago.
-const MANUAL_WEB_MAX_RESULTS = 100;
+// Ramo web (indice organico). Mesma SERP paginada do news: ~10 por pagina,
+// 7-12s cada. 30 = 3 paginas, ~30s. Subir daqui vira custo de tempo linear.
+const MANUAL_WEB_MAX_RESULTS = 30;
 
 export interface ManualSearchJobData {
   searchId: string;
@@ -103,17 +103,13 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       webEnabled,
     );
 
-    // Bright Data $0.0015/unidade. Por cidade:
-    //   web  = 1 chamada ao scraper "100 Results" (~100 organicos de uma vez)
-    //   news = SERP paginada, 20 por request
-    // ATENCAO: o scraper e cobrado por *record* ($1.50/1k), e nao confirmei se
-    // 1 record = 1 keyword ou 1 resultado organico. Se for por resultado, o ramo
-    // web custa ~100x isto. Conferir no painel de billing depois da 1a busca real.
+    // Bright Data $0.0015/request. Os dois ramos usam a mesma SERP paginada,
+    // 10 resultados por request. Web so conta se estiver ligado.
     // Brave: $0.005/query (sem paginacao interna)
     const isBrightData = config.searchBackend === 'brightdata';
-    const requestsPerCity = isBrightData
-      ? 1 + Math.ceil(MANUAL_NEWS_MAX_RESULTS / 20)
-      : 1;
+    const newsReqs = Math.ceil(MANUAL_NEWS_MAX_RESULTS / 10);
+    const webReqs = webEnabled ? Math.ceil(MANUAL_WEB_MAX_RESULTS / 10) : 0;
+    const requestsPerCity = isBrightData ? newsReqs + webReqs : 1;
     const costPerRequest = isBrightData ? 0.0015 : 0.005;
     const totalRequests = cidades.length * requestsPerCity;
     await db.trackCost({

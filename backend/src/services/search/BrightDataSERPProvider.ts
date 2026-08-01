@@ -1,10 +1,17 @@
 // ============================================
 // Bright Data SERP Provider — Dual Mode
 // ============================================
-// Dois produtos diferentes da Bright Data, a mesma API key:
-//   NEWS mode (auto-scan):    SERP API via zone  — tbm=nws, paginada 20/req
-//   WEB mode  (busca manual): scraper "100 Results" — ~100 organicos em 1 req
-// A zone tem blacklist de IP propria; o scraper nao passa por zone nenhuma.
+// Os dois modos usam a MESMA SERP API sincrona (via zone), mudando so o indice:
+//   NEWS mode: tbm=nws   — indice de noticias. Estavel, e o alicerce do sistema.
+//   WEB  mode: organico  — portais locais, prefeitura, comunicados de policia.
+//              Conteudo que NAO aparece no indice de noticias.
+//
+// O modo web ja usou o scraper de dataset ("Google SERP - 100 Results"). Abandonado
+// em 2026-08-01: o tempo de coleta dele saltou de 17-70s (ate 21/07) para 660-978s,
+// travando a busca manual. A SERP API entrega o MESMO indice organico em 7-12s por
+// pagina — 60 a 100x mais rapido. Quando falha, falha em segundos, nao em minutos.
+// Medicoes em workdesk/AUDITORIA_2026-07-30.md.
+//
 // Docs: https://docs.brightdata.com/scraping-automation/serp-api
 
 import * as Sentry from '@sentry/node';
@@ -12,22 +19,10 @@ import { SearchProvider, SearchResult, SearchOptions, SearchResponse } from './S
 import { config } from '../../config';
 import { logger } from '../../middleware/logger';
 
-// SERP API via zone (modo news). Sujeita a blacklist de IP da zone.
 const SYNC_API_URL = 'https://api.brightdata.com/request';
 
-// Scraper "Google SERP - 100 Results" (modo web). NAO usa zone.
-// Endpoint /scrape = SINCRONO (resultado direto na resposta).
-// O /trigger era o assincrono, com snapshot + polling — foi o que travou em
-// 2026-07-30 (>500s sem concluir, contra 17-70s ate 21/07). Ver AUDITORIA.
-const DATASET_ID = 'gd_mfz5x93lmsjjjylob';
-const SCRAPE_URL = `https://api.brightdata.com/datasets/v3/scrape?dataset_id=${DATASET_ID}&notify=false&include_errors=true`;
-
-// Medido: 23-36s por keyword. Timeout com folga — antes NAO havia nenhum.
-const SCRAPE_TIMEOUT_MS = 120_000;
-
 // Medido: 5-20s por pagina. Sem isto uma pagina pendurada trava o stage 1 da
-// busca manual PARA SEMPRE — nao ha nada acima que corte. Com 3 paginas no
-// maximo, o pior caso do ramo news fica limitado a 3 min.
+// busca manual PARA SEMPRE — nao ha nada acima que corte.
 const SERP_TIMEOUT_MS = 60_000;
 
 export class BrightDataSERPProvider implements SearchProvider {
@@ -49,86 +44,17 @@ export class BrightDataSERPProvider implements SearchProvider {
   }
 
   async searchWithMeta(query: string, options: SearchOptions = {}): Promise<SearchResponse> {
-    const mode = options.searchMode || 'news';
-    if (mode === 'web') return await this.searchWebScrape(query, options);
-    return await this.searchSerpPaginated(query, options);
+    return await this.searchSerpPaginated(query, options, options.searchMode || 'news');
   }
 
   // ============================================
-  // WEB MODE: scraper "100 Results", chamada sincrona
+  // SERP sincrona via zone, paginada — serve os dois indices
   // ============================================
-  // Uma request devolve ~100 resultados organicos em ~25-36s.
-  //
-  // NAO enviar `uule` junto com `tbs`: medido em 2026-07-30 — sozinhos rendem
-  // 97 e 100 resultados, JUNTOS derrubam pra 1. A cidade e o estado ja vao na
-  // keyword, e o uule vinha sendo montado como texto simples ("Cidade,Estado,
-  // Brazil") quando o Google espera um formato codificado proprio.
-  private async searchWebScrape(query: string, options: SearchOptions): Promise<SearchResponse> {
-    const totalWanted = options.maxResults || 50;
-    const tbs = this.mapDateRestrict(options.dateRestrict);
-    const loc = options.location ? `[${options.location.city || '?'}/${options.location.state || '?'}]` : '';
-
-    const input: Record<string, string> = {
-      url: 'https://www.google.com/',
-      keyword: query,
-      language: 'pt-BR',
-      country: 'BR',
-    };
-    if (tbs) input.tbs = tbs;
-
-    const response = await fetch(SCRAPE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify({ input: [input] }),
-      signal: AbortSignal.timeout(SCRAPE_TIMEOUT_MS),
-    });
-
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`Scrape error (${response.status}): ${err.substring(0, 300)}`);
-    }
-
-    const rawText = await response.text();
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(rawText);
-    } catch {
-      throw new Error(`Scrape devolveu resposta nao-JSON (${rawText.length} bytes): "${rawText.substring(0, 120)}"`);
-    }
-
-    const rows = (Array.isArray(parsed) ? parsed : [parsed]) as Array<{ organic?: SERPItem[] }>;
-    const seen = new Set<string>();
-    const results: SearchResult[] = [];
-
-    for (const row of rows) {
-      for (const item of row.organic || []) {
-        if (!item.link || seen.has(item.link)) continue;
-        seen.add(item.link);
-        results.push({
-          url: item.link,
-          title: item.title || '',
-          snippet: item.description || item.title || '',
-        });
-      }
-    }
-
-    const sliced = results.slice(0, totalWanted);
-    this.lastRequestCount = 1;
-    logger.info(`[BrightData:Web] ${loc} "${query.substring(0, 50)}..." → ${sliced.length} results (${results.length} organic brutos, 1 req)`);
-    return { results: sliced, requestCount: 1 };
-  }
-
-  // ============================================
-  // NEWS MODE: SERP sincrona via zone, tbm=nws, paginada (auto-scan)
-  // ============================================
-  // O modo web NAO passa por aqui — vai pelo scraper (searchWebScrape).
 
   private async searchSerpPaginated(
     query: string,
     options: SearchOptions,
+    mode: 'news' | 'web',
   ): Promise<SearchResponse> {
     const totalWanted = options.maxResults || 20;
     const allResults: SearchResult[] = [];
@@ -145,7 +71,7 @@ export class BrightDataSERPProvider implements SearchProvider {
     for (let page = 0; page < maxPages; page++) {
       const start = page * perPage;
       const googleUrl = this.buildSerpUrl(query, {
-        start,
+        start, mode,
         dateRestrict: options.dateRestrict,
       });
 
@@ -178,7 +104,7 @@ export class BrightDataSERPProvider implements SearchProvider {
       }
 
       const rawText = await response.text();
-      const TAG = '[BrightData:News]';
+      const TAG = mode === 'web' ? '[BrightData:Web]' : '[BrightData:News]';
       let data: SERPResponse;
       try {
         data = JSON.parse(rawText) as SERPResponse;
@@ -188,8 +114,8 @@ export class BrightDataSERPProvider implements SearchProvider {
         // com 0 resultados sem erro nenhum — foi o que mascarou o bug de 22/07.
         logger.error(`${TAG} Page ${page + 1} resposta nao-JSON (${rawText.length} bytes): "${rawText.substring(0, 120)}"`);
         if (page === 0) {
-          Sentry.captureException(new Error('[BrightData:News] resposta non-JSON na pagina 1 — 0 resultados'), {
-            tags: { provider: 'brightdata', mode: 'news' },
+          Sentry.captureException(new Error(`${TAG} resposta non-JSON na pagina 1 — 0 resultados`), {
+            tags: { provider: 'brightdata', mode },
             extra: { query: query.substring(0, 100), preview: rawText.substring(0, 300) },
           });
         }
@@ -207,7 +133,8 @@ export class BrightDataSERPProvider implements SearchProvider {
     const results = allResults.slice(0, totalWanted);
     this.lastRequestCount = requestsMade;
     const loc = options.location ? `[${options.location.city || '?'}/${options.location.state || '?'}]` : '';
-    logger.info(`[BrightData:News] ${loc} "${query.substring(0, 50)}..." → ${results.length} results (${requestsMade} req)`);
+    const TAG_FINAL = mode === 'web' ? '[BrightData:Web]' : '[BrightData:News]';
+    logger.info(`${TAG_FINAL} ${loc} "${query.substring(0, 50)}..." → ${results.length} results (${requestsMade} req)`);
     return { results, requestCount: requestsMade };
   }
 
@@ -218,6 +145,7 @@ export class BrightDataSERPProvider implements SearchProvider {
 
   private buildSerpUrl(query: string, opts: {
     start: number;
+    mode: 'news' | 'web';
     dateRestrict?: string;
   }): string {
     // brd_json=1 OBRIGATORIO: sem ele o /request com format=raw devolve o HTML
@@ -225,11 +153,15 @@ export class BrightDataSERPProvider implements SearchProvider {
     // silencio. Foi a causa do bug de 22/07 (fix veio do staging).
     // `num` deprecado pelo Google (set/2025) — paginacao so via `start`, 10/pagina.
     const params = new URLSearchParams({
-      q: query, tbm: 'nws',
+      q: query,
       start: String(opts.start),
       gl: 'br', hl: 'pt-BR',
       brd_json: '1',
     });
+
+    // tbm=nws restringe ao indice de noticias. No modo web fica de fora, pra
+    // pegar o indice organico — portais locais, prefeitura, blog de bairro.
+    if (opts.mode === 'news') params.set('tbm', 'nws');
 
     // Rede de seguranca: o post-filter de data no pipelineCore rejeita artigo
     // fora do periodo mesmo que o Google ignore o parametro.

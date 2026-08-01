@@ -56,11 +56,12 @@ async function main(): Promise<void> {
   // Mesmas queries do manualSearchWorker.collectManualSearchUrls
   const q = `notícias policiais ocorrências crime ${cidade} ${estado}`;
 
-  // Mesmos tetos do manualSearchWorker: web pede tudo (scraper cobra igual),
-  // news pagina 20 por request. O teto de artigos analisados e aplicado depois
-  // do Filter1, dentro do worker — nao aqui.
-  await run('WEB (scraper 100 Results)', q, 'web', 100);
-  await run('NEWS (SERP via zone)', q, 'news', 30);
+  // Mesmos tetos do manualSearchWorker. Os dois ramos usam a MESMA SERP
+  // paginada (10 por request), mudando so o indice do Google.
+  // Obs: aqui o ramo web roda sempre, ignorando a config manual_search_web_enabled
+  // — a ideia e justamente medir se ele voltou a prestar.
+  await run('WEB (organico — portais locais)', q, 'web', 30);
+  await run('NEWS (tbm=nws)', q, 'news', 30);
 
   console.log('\n' + '='.repeat(70));
 }

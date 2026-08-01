@@ -23,10 +23,13 @@ const DEFAULTS: Record<string, string> = {
   filter2_confidence_min: '0.7',
   content_fetch_concurrency: '5',
   search_max_results: '15',
-  // Ramo web (indice organico) da busca manual. DESLIGADO desde 2026-08-01:
-  // o tempo de coleta do scraper saltou de 17-70s pra 660-978s depois de 21/07,
-  // travando a busca no stage 1. Ligar de volta se o cenario mudar.
-  manual_search_web_enabled: 'false',
+  // Ramo web (indice organico) da busca manual — portais locais, prefeitura,
+  // comunicado de policia. Conteudo que NAO aparece no indice de noticias.
+  //
+  // Ficou desligado por algumas horas em 2026-08-01, enquanto usava o scraper de
+  // dataset (que saltou de 17-70s pra 660-978s e travava a busca). Religado ao
+  // migrar pra SERP API, medida em 5/5 tentativas: 24-27 resultados em 4-19s.
+  manual_search_web_enabled: 'true',
   manual_search_max_results_30d: '50',
   manual_search_max_results_60d: '50',
   manual_search_max_results_90d: '80',

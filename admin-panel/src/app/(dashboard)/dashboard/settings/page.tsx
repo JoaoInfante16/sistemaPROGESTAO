@@ -705,10 +705,10 @@ export default function SettingsPage() {
                   <div className="pr-4">
                     <Label className="font-medium">Fonte Web (indice organico)</Label>
                     <p className="text-sm text-muted-foreground">
-                      Fonte extra alem das noticias. <strong>Desligada desde 01/08/2026</strong>: o Google
-                      passou a bloquear esse indice e a coleta saltou de ~20s para 11-16 minutos, travando a
-                      busca. Com ela desligada a busca roda so nas noticias — ~30 resultados em ~50s, estavel.
-                      Religue apenas para testar se o cenario melhorou.
+                      Busca em portais locais, sites de prefeitura e comunicados de policia — conteudo que
+                      nao aparece no indice de noticias. Soma ~25 resultados por cidade, em segundos.
+                      Se um dia essa fonte degradar, desligue aqui: a busca continua funcionando so com
+                      as noticias (~30 resultados, estavel).
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
