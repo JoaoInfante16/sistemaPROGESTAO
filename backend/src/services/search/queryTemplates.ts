@@ -1,10 +1,30 @@
 // ============================================
-// Query Templates - Perplexity Search API
+// Query Templates — Google (indice de noticias, tbm=nws)
 // ============================================
-// Otimizados para busca semantica (Perplexity).
-// Template 0 = mega query que cobre tudo (default).
-// Templates 1-4 = queries focadas para cobertura profunda (multi-query).
-// Rotacionados via round-robin a cada scan.
+// Reescritos em 2026-08-01. A versao anterior era feita pra **Perplexity**
+// (busca semantica): frases longas em linguagem natural, do tipo "prisoes em
+// flagrante ou preventivas em X nas ultimas 48 horas, citando fontes oficiais...".
+// O backend virou Bright Data/Google e ninguem reescreveu. Medido no dia:
+// **os templates 1-4 devolviam ZERO** no indice de noticias.
+//
+// Duas regras que sairam da medicao, ambas contraintuitivas:
+//
+// 1. QUERY CURTA GANHA DE QUERY LONGA. Porto Alegre, pagina 1, `sbd:1`:
+//    `notícias policiais ocorrências crime Porto Alegre Rio Grande do Sul` -> 4/10 na janela
+//    `polícia Porto Alegre`                                               -> 10/10, a mais recente de 17h atras
+//
+// 2. NAO COLOCAR O ESTADO NA QUERY — nem por extenso, nem a sigla. Ele empurra
+//    o resultado pra conteudo institucional (concurso, corrida da PC, boletim
+//    de secretaria) e afasta a ocorrencia local:
+//    `polícia São José`    -> mais recente ha 44 MINUTOS
+//    `polícia São José SC` -> mais recente ha 3 SEMANAS
+//
+//    A desambiguacao de cidade homonima (Sao Jose/SC vs Sao Jose/SP) NAO se faz
+//    aqui — quem faz e o pos-filtro do Filter2, que le cidade E estado do corpo
+//    do artigo. Botar o estado na query nao desambigua, so degrada.
+//
+// 3. Templates diferentes trazem materia diferente: `polícia` trouxe 10 itens
+//    que o template base nao trazia; `homicídio` trouxe 9. Multi-query vale.
 
 import { MonitoredLocation } from '../../utils/types';
 
@@ -16,49 +36,23 @@ export interface QueryTemplate {
 }
 
 /**
- * Templates otimizados para Perplexity Search API.
- *
- * Template 0 (mega query) é completo e cobre todos os tipos de crime.
- * Templates 1-4 aprofundam categorias especificas.
- *
- * Se a location tem keywords customizadas, o template 0 as incorpora.
+ * Templates curtos, por keyword. O 0 e o mais generico e o que rende mais
+ * volume; os outros aprofundam categorias que o generico nao cobre bem.
  */
 export const QUERY_TEMPLATES: QueryTemplate[] = [
   {
     id: 0,
-    name: 'completo',
+    name: 'policia',
     build: (loc) => {
       const hasKeywords = loc.mode === 'keywords' && loc.keywords && loc.keywords.length > 0;
-      if (hasKeywords) {
-        return `${loc.keywords!.join(' ')} ${loc.name}`;
-      }
-      return `notícias policiais ocorrências crime ${loc.name}`;
+      if (hasKeywords) return `${loc.keywords!.join(' ')} ${loc.name}`;
+      return `polícia ${loc.name}`;
     },
   },
-  {
-    id: 1,
-    name: 'prisoes_flagrante',
-    build: (loc) =>
-      `prisões em flagrante ou preventivas em ${loc.name} nas últimas 48 horas, citando fontes oficiais como Polícia Civil ou PM, com datas, bairros e detalhes dos crimes`,
-  },
-  {
-    id: 2,
-    name: 'homicidios_mortes',
-    build: (loc) =>
-      `homicídios, tentativas de homicídio ou mortes por confronto policial em ${loc.name} nos últimos 3 dias, incluindo vítimas, suspeitos e locais exatos de portais locais confiáveis`,
-  },
-  {
-    id: 3,
-    name: 'crimes_patrimoniais',
-    build: (loc) =>
-      `roubos, furtos, tráfico de drogas e apreensões de armas ou veículos em ${loc.name} hoje e ontem, incluindo bairros e valores, de fontes como SSP ou boletins policiais recentes`,
-  },
-  {
-    id: 4,
-    name: 'violencia_domestica',
-    build: (loc) =>
-      `ocorrências de violência doméstica, lesão corporal, descumprimento de medidas protetivas em ${loc.name} nos últimos 2 dias, focando em prisões e detalhes de sites oficiais`,
-  },
+  { id: 1, name: 'homicidios', build: (loc) => `homicídio morte tiros ${loc.name}` },
+  { id: 2, name: 'patrimonial', build: (loc) => `roubo furto assalto ${loc.name}` },
+  { id: 3, name: 'trafico_armas', build: (loc) => `tráfico drogas apreensão armas ${loc.name}` },
+  { id: 4, name: 'violencia_domestica', build: (loc) => `violência doméstica feminicídio ${loc.name}` },
 ];
 
 /**
@@ -81,7 +75,7 @@ export function selectTemplates(scanIndex: number, queriesPerScan: number): Quer
 
 /**
  * Gera queries a partir de templates selecionados para uma location.
- * Se multi_query desabilitado, retorna apenas o mega query (template 0).
+ * Se multi_query desabilitado, retorna apenas o template 0.
  */
 export function buildQueries(
   location: MonitoredLocation,
@@ -93,4 +87,17 @@ export function buildQueries(
 
   const templates = selectTemplates(options.scanIndex, options.queriesPerScan);
   return templates.map((t) => t.build(location));
+}
+
+/**
+ * Queries da busca manual. Sem estado, pelo motivo medido no topo do arquivo.
+ *
+ * Com tipo de crime escolhido, uma query focada basta — o usuario ja restringiu
+ * o assunto. Sem tipo, roda os 3 primeiros templates, que foi o que rendeu mais
+ * materia unica dentro da janela na medicao.
+ */
+export function buildManualSearchQueries(cidade: string, tipoCrime?: string): string[] {
+  if (tipoCrime) return [`${tipoCrime} ${cidade}`];
+  const loc = { name: cidade, mode: 'any' } as MonitoredLocation;
+  return QUERY_TEMPLATES.slice(0, 3).map((t) => t.build(loc));
 }

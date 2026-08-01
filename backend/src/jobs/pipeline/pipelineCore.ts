@@ -4,6 +4,7 @@
 // Extraído de scanPipeline + manualSearchWorker.
 // Cada pipeline chama esses stages e customiza via callbacks.
 
+import * as Sentry from '@sentry/node';
 import { createSearchProvider } from '../../services/search';
 import { createContentFetcher } from '../../services/content';
 import { createEmbeddingProvider } from '../../services/embedding';
@@ -168,6 +169,16 @@ export interface Filter2StageResult {
   tokensUsed: { filter2: number; embedding: number };
 }
 
+// Casa com `api_rate_limits.openai.max_concurrent` (5). O rate limiter e quem
+// de fato governa a vazao; o pool so precisa ser grande o bastante pra satura-lo.
+const FILTER2_CONCURRENCY = 5;
+
+/** Resultado de um item, resolvido em paralelo e agregado depois em ordem. */
+type ItemFilter2 =
+  | { tipo: 'ok'; extraction: ExtractedNews; f2: number; emb: number }
+  | { tipo: 'rejeitado'; rejeicao: RejectedUrl; log: string; f2: number }
+  | { tipo: 'erro'; url: string; msg: string };
+
 export async function runFilter2WithEmbedding(
   contents: FetchedContent[],
   cfg: { maxContentChars: number; minConfidence: number },
@@ -176,79 +187,132 @@ export async function runFilter2WithEmbedding(
   postFilter?: PostFilter2Options,
   sourceTypeMap?: Map<string, string>,
 ): Promise<Filter2StageResult> {
+  if (contents.length === 0) {
+    return { extractions: [], tokensUsed: { filter2: 0, embedding: 0 } };
+  }
+
+  // Antes era um `for` sequencial usando ~20% da vazao que o rate limiter
+  // permite. Com o stage 1 trazendo 3x mais URL (queries curtas, 2026-08-01),
+  // o serial virou o gargalo da busca inteira.
+  //
+  // ATENCAO: o `asyncPool` NAO tem try/catch — se `fn` rejeitar, o
+  // `Promise.all` interno derruba o pool inteiro. Todo erro tem que morrer
+  // aqui dentro.
+  const resultados = await asyncPool<FetchedContent, ItemFilter2>(
+    contents,
+    FILTER2_CONCURRENCY,
+    async (fetched): Promise<ItemFilter2> => {
+      try {
+        const { extraction: extracted, rejectionReason, tokensUsed: f2tokens = 0 } = await rateLimiter.schedule('openai', () =>
+          filter2GPTWithReason(fetched.content, {
+            maxContentChars: cfg.maxContentChars,
+            minConfidence: cfg.minConfidence,
+          })
+        );
+
+        if (!extracted) {
+          const reason = rejectionReason || 'unknown';
+          return {
+            tipo: 'rejeitado', f2: f2tokens,
+            rejeicao: { url: fetched.url, stage: 'filter2', reason },
+            log: `filter2 REJEITOU ${fetched.url.substring(0, 60)}... motivo: ${reason}`,
+          };
+        }
+
+        // Post-filter: date range (comparar só YYYY-MM-DD, sem timezone)
+        if (postFilter?.periodoDias) {
+          const cutoff = new Date();
+          cutoff.setDate(cutoff.getDate() - postFilter.periodoDias);
+          const cutoffStr = cutoff.toISOString().split('T')[0]; // YYYY-MM-DD
+          if (extracted.data_ocorrencia < cutoffStr) {
+            return {
+              tipo: 'rejeitado', f2: f2tokens,
+              rejeicao: { url: fetched.url, stage: 'filter2_date', reason: `Data antiga: ${extracted.data_ocorrencia}` },
+              log: `filter2 data fora: ${extracted.data_ocorrencia} (cutoff: ${cutoffStr}) → ${fetched.url.substring(0, 80)}`,
+            };
+          }
+        }
+
+        // Post-filter: cidade/estado
+        if (postFilter?.cidades && postFilter?.estado) {
+          const cidadeExtraida = normalizeText(extracted.cidade);
+          const estadoExtraido = normalizeText(extracted.estado || '');
+          const estadoEsperado = normalizeText(postFilter.estado);
+          const cidadesLower = postFilter.cidades.map(normalizeText);
+
+          // Match de cidade (exato ou parcial), SEMPRE validando estado
+          // (sem estado não há como distinguir cidades homônimas: São José/SC vs São José/SP)
+          const cidadeExata = cidadesLower.some(c => cidadeExtraida === c);
+          const cidadeParcial = cidadesLower.some(c => cidadeExtraida.includes(c) || c.includes(cidadeExtraida));
+          const estadoBate = estadoExtraido.length > 0 && estadoExtraido.includes(estadoEsperado);
+
+          if (!((cidadeExata || cidadeParcial) && estadoBate)) {
+            return {
+              tipo: 'rejeitado', f2: f2tokens,
+              rejeicao: { url: fetched.url, stage: 'filter2_location', reason: `Local errado: ${extracted.cidade}/${extracted.estado || '?'} (esperado: ${postFilter.estado})` },
+              log: `filter2 cidade/estado fora: ${extracted.cidade}/${extracted.estado || '?'} (esperado: ${postFilter.cidades.join(', ')}, ${postFilter.estado}) → ${fetched.url.substring(0, 80)}`,
+            };
+          }
+        }
+
+        // Gerar embedding com prefixo de metadata (tipo/estado/cidade/bairro/data)
+        // Ancora os campos estruturados no vetor — mesma ocorrencia coberta por varios
+        // veiculos com angulos editoriais diferentes fica com score alto (testado: raw
+        // 0.63-0.77 → enriched 0.82-0.90 em caso real do homicidio Florianopolis 2026-04-17).
+        const embeddingResult = await rateLimiter.schedule('openai', () =>
+          embeddingProvider.generate(buildEmbeddingText(extracted))
+        );
+
+        return {
+          tipo: 'ok', f2: f2tokens, emb: embeddingResult.tokensUsed,
+          extraction: {
+            ...extracted,
+            embedding: embeddingResult.embedding,
+            sourceUrl: fetched.url,
+            sourceType: sourceTypeMap?.get(fetched.url) || 'google',
+          },
+        };
+      } catch (err) {
+        return { tipo: 'erro', url: fetched.url, msg: (err as Error).message };
+      }
+    },
+  );
+
+  // Agrega em ordem de entrada (o asyncPool preserva o indice)
   const extractions: ExtractedNews[] = [];
   let filter2Tokens = 0;
   let embeddingTokens = 0;
+  let erros = 0;
 
-  for (const fetched of contents) {
-    const { extraction: extracted, rejectionReason, tokensUsed: f2tokens = 0 } = await rateLimiter.schedule('openai', () =>
-      filter2GPTWithReason(fetched.content, {
-        maxContentChars: cfg.maxContentChars,
-        minConfidence: cfg.minConfidence,
-      })
-    );
-    filter2Tokens += f2tokens;
-
-    if (!extracted) {
-      const reason = rejectionReason || 'unknown';
-      rejectedUrls.push({ url: fetched.url, stage: 'filter2', reason });
-      logger.info(`${logPrefix} filter2 REJEITOU ${fetched.url.substring(0, 60)}... motivo: ${reason}`);
-      continue;
+  for (const r of resultados) {
+    if (r.tipo === 'ok') {
+      filter2Tokens += r.f2;
+      embeddingTokens += r.emb;
+      extractions.push(r.extraction);
+    } else if (r.tipo === 'rejeitado') {
+      filter2Tokens += r.f2;
+      rejectedUrls.push(r.rejeicao);
+      logger.info(`${logPrefix} ${r.log}`);
+    } else {
+      erros++;
+      rejectedUrls.push({ url: r.url, stage: 'filter2', reason: `erro: ${r.msg.substring(0, 80)}` });
+      logger.error(`${logPrefix} filter2 falhou em ${r.url.substring(0, 60)}: ${r.msg}`);
     }
+  }
 
-    // Post-filter: date range (comparar só YYYY-MM-DD, sem timezone)
-    if (postFilter?.periodoDias) {
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - postFilter.periodoDias);
-      const cutoffStr = cutoff.toISOString().split('T')[0]; // YYYY-MM-DD
-      if (extracted.data_ocorrencia < cutoffStr) {
-        rejectedUrls.push({ url: fetched.url, stage: 'filter2_date', reason: `Data antiga: ${extracted.data_ocorrencia}` });
-        logger.info(`${logPrefix} filter2 data fora: ${extracted.data_ocorrencia} (cutoff: ${cutoffStr}) → ${fetched.url.substring(0, 80)}`);
-        continue;
-      }
-    }
-
-    // Post-filter: cidade/estado
-    if (postFilter?.cidades && postFilter?.estado) {
-      const cidadeExtraida = normalizeText(extracted.cidade);
-      const estadoExtraido = normalizeText(extracted.estado || '');
-      const estadoEsperado = normalizeText(postFilter.estado);
-      const cidadesLower = postFilter.cidades.map(normalizeText);
-
-      // Match de cidade (exato ou parcial), SEMPRE validando estado
-      // (sem estado não há como distinguir cidades homônimas: São José/SC vs São José/SP)
-      const cidadeExata = cidadesLower.some(c => cidadeExtraida === c);
-      const cidadeParcial = cidadesLower.some(c => cidadeExtraida.includes(c) || c.includes(cidadeExtraida));
-      const estadoBate = estadoExtraido.length > 0 && estadoExtraido.includes(estadoEsperado);
-
-      const aceitar = (cidadeExata || cidadeParcial) && estadoBate;
-
-      if (!aceitar) {
-        rejectedUrls.push({ url: fetched.url, stage: 'filter2_location', reason: `Local errado: ${extracted.cidade}/${extracted.estado || '?'} (esperado: ${postFilter.estado})` });
-        logger.info(`${logPrefix} filter2 cidade/estado fora: ${extracted.cidade}/${extracted.estado || '?'} (esperado: ${postFilter.cidades.join(', ')}, ${postFilter.estado}) → ${fetched.url.substring(0, 80)}`);
-        continue;
-      }
-    }
-
-    // Gerar embedding com prefixo de metadata (tipo/estado/cidade/bairro/data)
-    // Ancora os campos estruturados no vetor — mesma ocorrencia coberta por varios
-    // veiculos com angulos editoriais diferentes fica com score alto (testado: raw
-    // 0.63-0.77 → enriched 0.82-0.90 em caso real do homicidio Florianopolis 2026-04-17).
-    const embeddingText = buildEmbeddingText(extracted);
-    const embeddingResult = await rateLimiter.schedule('openai', () =>
-      embeddingProvider.generate(embeddingText)
-    );
-    embeddingTokens += embeddingResult.tokensUsed;
-
-    extractions.push({
-      ...extracted,
-      embedding: embeddingResult.embedding,
-      sourceUrl: fetched.url,
-      sourceType: sourceTypeMap?.get(fetched.url) || 'google',
+  // Um erro isolado degrada e segue. Falha em TODOS e problema sistemico
+  // (chave invalida, provedor fora) e nao pode terminar como "0 resultados,
+  // tudo certo" — foi esse padrao de falha silenciosa que mascarou o bug ate 30/07.
+  if (erros === contents.length) {
+    throw new Error(`Filter2 falhou em todos os ${contents.length} artigos — provavel problema no provedor`);
+  }
+  if (erros > 0) {
+    Sentry.captureMessage(`Filter2: ${erros}/${contents.length} artigos com erro`, {
+      level: 'warning', tags: { component: 'filter2' },
     });
   }
 
-  logger.info(`${logPrefix} filter2: ${contents.length} → ${extractions.length} (${contents.length - extractions.length} rejeitadas) [filter2: ${filter2Tokens} tokens, embedding: ${embeddingTokens} tokens]`);
+  logger.info(`${logPrefix} filter2: ${contents.length} → ${extractions.length} (${contents.length - extractions.length} rejeitadas${erros ? `, ${erros} por erro` : ''}) [filter2: ${filter2Tokens} tokens, embedding: ${embeddingTokens} tokens]`);
   return { extractions, tokensUsed: { filter2: filter2Tokens, embedding: embeddingTokens } };
 }
 

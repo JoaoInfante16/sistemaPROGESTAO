@@ -18,6 +18,7 @@ import * as Sentry from '@sentry/node';
 import { SearchProvider, SearchResult, SearchOptions, SearchResponse } from './SearchProvider';
 import { config } from '../../config';
 import { logger } from '../../middleware/logger';
+import { parseSerpDate, inicioDaJanela } from './serpDateParser';
 
 const SYNC_API_URL = 'https://api.brightdata.com/request';
 
@@ -67,6 +68,13 @@ export class BrightDataSERPProvider implements SearchProvider {
     // errada entregava so 20 delas.
     const perPage = 10;
     const maxPages = Math.ceil(totalWanted / perPage);
+
+    // Com `sbd:1` os resultados vem em ordem decrescente de data, entao da pra
+    // parar de pedir pagina assim que a mais nova dela ja e mais velha que a
+    // janela pedida. Antes se puxava um numero fixo de paginas e se jogava fora
+    // no Filter2 — em Porto Alegre isso significou baixar 19 artigos pelo Jina
+    // pra aproveitar 1.
+    const janela = inicioDaJanela(options.dateRestrict);
 
     for (let page = 0; page < maxPages; page++) {
       const start = page * perPage;
@@ -128,6 +136,15 @@ export class BrightDataSERPProvider implements SearchProvider {
       allResults.push(...pageResults);
       if (pageResults.length < 5) break;
       if (allResults.length >= totalWanted) break;
+
+      // Saiu da janela? A proxima pagina so tem coisa ainda mais velha.
+      if (janela) {
+        const maisNovaDaPagina = this.dataMaisNova(data);
+        if (maisNovaDaPagina && maisNovaDaPagina < janela) {
+          logger.info(`${TAG} Page ${page + 1} ja e toda anterior a ${janela.toISOString().split('T')[0]} — parando de paginar`);
+          break;
+        }
+      }
     }
 
     const results = allResults.slice(0, totalWanted);
@@ -163,10 +180,15 @@ export class BrightDataSERPProvider implements SearchProvider {
     // pegar o indice organico — portais locais, prefeitura, blog de bairro.
     if (opts.mode === 'news') params.set('tbm', 'nws');
 
-    // Rede de seguranca: o post-filter de data no pipelineCore rejeita artigo
-    // fora do periodo mesmo que o Google ignore o parametro.
-    const tbs = this.mapDateRestrict(opts.dateRestrict);
-    if (tbs) params.set('tbs', tbs);
+    // `sbd:1` = ordenar por data. Medido em 2026-08-01: e o UNICO componente de
+    // `tbs` que o Google obedece no indice de noticias. `qdr:d`, `qdr:w`, `qdr:m`
+    // e ate `cdr:1` com range explicito devolveram os MESMOS 10 resultados, na
+    // mesma ordem, com materia de marco numa busca de "1 dia". O `qdr` continua
+    // sendo enviado so como rede de seguranca (custa nada se voltar a valer);
+    // quem de fato garante o periodo e o `sbd:1` + o corte de paginacao acima
+    // + o pos-filtro de data do Filter2.
+    const qdr = this.mapDateRestrict(opts.dateRestrict);
+    params.set('tbs', [qdr, 'sbd:1'].filter(Boolean).join(','));
 
     // uule NAO entra: o Google exige encoding canonico (base64) e texto puro era
     // ignorado. Medido em 2026-07-30 no indice organico, uule+tbs juntos ainda
@@ -188,6 +210,21 @@ export class BrightDataSERPProvider implements SearchProvider {
       return undefined;
     }
     return 'qdr:w';
+  }
+
+  /**
+   * Data mais nova da pagina. Com `sbd:1` e o primeiro item, mas nem todo item
+   * traz data — entao varre todos e pega o maior. Null se nenhum for legivel
+   * (nesse caso a paginacao segue como antes, sem corte).
+   */
+  private dataMaisNova(data: SERPResponse): Date | null {
+    const itens = [...(data.news || []), ...(data.organic || [])];
+    let maior: Date | null = null;
+    for (const item of itens) {
+      const d = parseSerpDate(item.date);
+      if (d && (!maior || d > maior)) maior = d;
+    }
+    return maior;
   }
 
   // Le `news` (tbm=nws) e cai pra `organic` (modo web). O mesmo parser serve

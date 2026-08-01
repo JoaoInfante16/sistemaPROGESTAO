@@ -13,6 +13,7 @@ import { logger } from '../../middleware/logger';
 import { rateLimiter } from '../../services/rateLimiter';
 import { configManager } from '../../services/configManager';
 import { sendPushToUser } from '../../services/notifications/pushService';
+import { buildManualSearchQueries } from '../../services/search/queryTemplates';
 import {
   runFilter0,
   runFilter1,
@@ -26,9 +27,10 @@ import {
 
 export const manualSearchQueue = new Queue('manual-search-queue', { connection: redis });
 
-// Teto do ramo news por cidade — aqui o numero economiza de verdade, porque
-// controla quantas paginas a SERP pagina (20 por request).
-const MANUAL_NEWS_MAX_RESULTS = 30;
+// Teto do ramo news POR QUERY (nao por cidade). Desde 2026-08-01 a busca manual
+// dispara varias queries curtas em vez de uma longa — ver queryTemplates.ts.
+// 20 = ate 2 paginas, e a paginacao para sozinha ao sair da janela.
+const MANUAL_NEWS_MAX_PER_QUERY = 20;
 
 // Ramo web (indice organico). Mesma SERP paginada do news: ~10 por pagina,
 // 7-12s cada. 30 = 3 paginas, ~30s. Subir daqui vira custo de tempo linear.
@@ -106,8 +108,12 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     // Bright Data $0.0015/request. Os dois ramos usam a mesma SERP paginada,
     // 10 resultados por request. Web so conta se estiver ligado.
     // Brave: $0.005/query (sem paginacao interna)
+    // Teto de requests: a paginacao para sozinha ao sair da janela, entao o real
+    // costuma ser menor. Cobrar pelo teto superestima um pouco — preferivel a
+    // subestimar o gasto.
     const isBrightData = config.searchBackend === 'brightdata';
-    const newsReqs = Math.ceil(MANUAL_NEWS_MAX_RESULTS / 10);
+    const queriesPorCidade = buildManualSearchQueries('x', tipoCrime).length;
+    const newsReqs = queriesPorCidade * Math.ceil(MANUAL_NEWS_MAX_PER_QUERY / 10);
     const webReqs = webEnabled ? Math.ceil(MANUAL_WEB_MAX_RESULTS / 10) : 0;
     const requestsPerCity = isBrightData ? newsReqs + webReqs : 1;
     const costPerRequest = isBrightData ? 0.0015 : 0.005;
@@ -279,17 +285,15 @@ async function collectManualSearchUrls(
   const cityPromises = cidades.map(async (cidade) => {
     const cityResults: Array<{ url: string; title: string; snippet: string; source: string }> = [];
 
-    // Query do modo web: keywords simples, SEM operadores.
-    // A versao antiga usava allintext:"cidade" + grupo OR + -site:. Testado em
-    // 2026-07-30 contra a SERP: essa forma devolve results_cnt=0 do Google —
-    // ou seja, o ramo web nunca entregou nada. A forma abaixo devolveu 137
-    // resultados na mesma cidade. Nao reintroduzir operadores sem testar.
-    // Dominios de rede social ja sao barrados pelo Filter0.
-    const webQuery = tipoCrime
-      ? `${tipoCrime} ${cidade} ${estado}`
-      : `notícias policiais ocorrências crime ${cidade} ${estado}`;
+    // Queries curtas e SEM o estado — ver o cabecalho de queryTemplates.ts para
+    // as medicoes. Resumo: `polícia São José` trouxe materia de 44 minutos atras;
+    // `polícia São José SC` parou em 3 semanas. E a query longa que se usava aqui
+    // (`notícias policiais ocorrências crime <cidade> <estado>`) rendia 4 de 10
+    // dentro da janela contra 10 de 10 da curta.
+    const queries = buildManualSearchQueries(cidade, tipoCrime);
+    const webQuery = queries[0];
 
-    logger.info(`${logPrefix} [${cidade}] ${webEnabled ? 'Web+News em paralelo' : 'News apenas (web desligado)'} | ${dateRestrict}`);
+    logger.info(`${logPrefix} [${cidade}] ${queries.length} query(s) news${webEnabled ? ' + web' : ''} | ${dateRestrict} | ${JSON.stringify(queries)}`);
 
     const [webResults, newsResults] = await Promise.allSettled([
       // Web (organic) — mesmo texto do ramo news, mas no indice web do Google:
@@ -313,18 +317,30 @@ async function collectManualSearchUrls(
             })
           )
         : Promise.resolve([]),
-      // News paginado
-      rateLimiter.schedule(config.searchBackend, () =>
-        searchProvider.search(
-          tipoCrime ? `${tipoCrime} ${cidade} ${estado}` : `notícias policiais ocorrências crime ${cidade} ${estado}`,
-          {
-            maxResults: MANUAL_NEWS_MAX_RESULTS,
-            dateRestrict,
-            searchMode: 'news',
-            location: { city: cidade, state: estado, country: 'BR' },
+      // News — as queries rodam EM SERIE de proposito. A zone SERP aceita ~1
+      // requisicao por vez e ja se viu pagina voltar vazia (HTTP 200, 0 bytes)
+      // com apenas 2 chamadas concorrentes. Cidades seguem em paralelo.
+      (async () => {
+        const acumulado: Array<{ url: string; title: string; snippet: string }> = [];
+        for (const q of queries) {
+          try {
+            const r = await rateLimiter.schedule(config.searchBackend, () =>
+              searchProvider.search(q, {
+                maxResults: MANUAL_NEWS_MAX_PER_QUERY,
+                dateRestrict,
+                searchMode: 'news',
+                location: { city: cidade, state: estado, country: 'BR' },
+              })
+            );
+            acumulado.push(...r);
+            logger.info(`${logPrefix} [${cidade}] "${q}" → ${r.length}`);
+          } catch (err) {
+            // Uma query ruim nao pode derrubar as outras.
+            logger.warn(`${logPrefix} [${cidade}] query "${q}" falhou: ${(err as Error).message}`);
           }
-        )
-      ),
+        }
+        return acumulado;
+      })(),
     ]);
 
     if (webResults.status === 'fulfilled') {

@@ -91,10 +91,38 @@ Todos os combos executados e commitados em `develop + staging` (ver DEV_LOG):
 - Deploy staging feito. Produção suspensa pelo João.
 - APK staging buildando.
 
-## 🔥 Próxima sessão
+## 🔥 Em execução — 2026-08-01: a query era o problema
 
-> Vindo da auditoria de **2026-07-30** ([AUDITORIA_2026-07-30.md](AUDITORIA_2026-07-30.md)).
-> Nada foi codado — tudo abaixo aguarda decisão do João.
+> Medições completas no DEV_LOG (entrada de 2026-08-01, parte 2). Aprovado pelo João.
+
+**O que se descobriu:** a busca manual devolvia 1 resultado não por bug do pipeline, mas porque **a query era ruim e o filtro de data do Google nunca funcionou**.
+
+| medição | resultado |
+|---|---|
+| `tbs=qdr:d`, `qdr:w`, `qdr:m`, `cdr` range | **os mesmos 10 itens, mesma ordem** — o Google ignora |
+| `tbs=sbd:1` (ordenar por data) | **obedecido**, pagina cronologicamente com URL real |
+| query atual (`...crime Porto Alegre Rio Grande do Sul`) | 4 de 10 dentro da janela |
+| sem o estado | 8 de 10 |
+| **`polícia Porto Alegre`** | **10 de 10**, mais recente há 17 horas |
+| **`polícia São José`** | **10 de 10**, mais recente há 44 minutos |
+| `polícia São José SC` | 7 de 10, mais recente 3 semanas |
+
+**Conclusões:** query curta ganha de query longa; **o estado na query (por extenso ou sigla) empurra o resultado pra conteúdo institucional e afasta a notícia local fresca**; templates diferentes trazem matéria diferente (`polícia` traz 10 que o template base não traz, `homicídio` traz 9).
+
+**Plano aprovado:**
+1. ✅ `sbd:1` + paginação que para ao sair da janela (novo `serpDateParser.ts`)
+2. ✅ Templates reescritos pra Google: curtos, por keyword, **sem estado**
+3. ✅ Busca manual passa a usar N queries curtas em vez de 1 longa
+4. ⬜ Validar em staging pelo APK
+5. ⬜ **Só então** promover tudo pra `main` de uma vez
+
+**Descartado com medição:** ligar o Google News RSS. Ele obedece `when:` e vê 37 matérias na janela, mas a URL é redirect opaco — o Jina devolve 98 chars de boilerplate e o pipeline descarta abaixo de 100. Morreria tudo no stage 4. Fica anotado como *índice* possível (título/data/veículo corretos e grátis) se um dia houver como resolver a URL.
+
+**Incômodo registrado:** o RSS grátis enxerga matéria até hoje; o SERP pago com `sbd:1` na query antiga começava 2 semanas atrás. A via raspada dá visão pior do índice do Google do que o feed aberto — argumento pra, no médio prazo, ir às **fontes oficiais por estado** (SSP/PC: 27 fontes, não 5.570 cidades, e encaixa no `type='state'` que já existe no schema).
+
+**Não fazer:** ler o banco em vez de buscar na internet (proposto por Claude, **rejeitado pelo João com razão** — só ajudaria em cidade já monitorada, que é onde a busca manual não faz falta).
+
+---
 
 ### 🚨 PRIORIDADE 1 — Produção está desatualizada
 

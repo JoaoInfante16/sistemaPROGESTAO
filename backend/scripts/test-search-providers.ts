@@ -1,101 +1,83 @@
 // ============================================
-// Diagnostico das fontes de busca — pelo caminho REAL do app
+// Diagnostico do stage 1 da busca manual — pelo caminho REAL do app
 // ============================================
-// Reproduz exatamente o que o manualSearchWorker.collectManualSearchUrls faz:
-// cidades em PARALELO, e dentro de cada cidade web+news em PARALELO, tudo
-// passando pelo rateLimiter (Bottleneck) — que e onde a concorrencia real
-// acontece.
+// Reproduz o que o manualSearchWorker.collectManualSearchUrls faz hoje:
+// cidades em PARALELO, e dentro de cada cidade as queries curtas EM SERIE,
+// todas via rateLimiter (Bottleneck).
 //
 // IMPORTANTE: nao testar a API por fora (curl, fetch solto). Ja custou caro —
 // em 2026-08-01 os testes diretos davam 5/5 enquanto o app travava, porque o
-// app dispara varias requisicoes concorrentes e o teste disparava uma de cada
-// vez. Medir sempre pelo mesmo caminho que o worker usa.
+// app dispara requisicoes concorrentes e o teste disparava uma de cada vez.
 //
 // Uso:
-//   npx tsx scripts/test-search-providers.ts                      -> 1 cidade
-//   npx tsx scripts/test-search-providers.ts "Campo Grande,Cuiabá" "Mato Grosso do Sul"
+//   npx tsx scripts/test-search-providers.ts                          -> 1 cidade
+//   npx tsx scripts/test-search-providers.ts "São José,Palhoça" "Santa Catarina" 30
 
 import { searchProvider } from '../src/jobs/pipeline/pipelineCore';
 import { rateLimiter } from '../src/services/rateLimiter';
 import { config } from '../src/config';
+import { buildManualSearchQueries } from '../src/services/search/queryTemplates';
+import { parseSerpDate, inicioDaJanela } from '../src/services/search/serpDateParser';
 
 const cidades = (process.argv[2] || 'Florianópolis').split(',').map((c) => c.trim());
 const estado = process.argv[3] || 'Santa Catarina';
-const dateRestrict = 'd30';
+const periodoDias = parseInt(process.argv[4] || '30', 10);
+const dateRestrict = `d${periodoDias}`;
 
-// Mesmos tetos do manualSearchWorker
-const NEWS_MAX = 30;
-const WEB_MAX = 30;
+// Mesmo teto por query do worker
+const MAX_POR_QUERY = 20;
 
-interface Medicao {
-  cidade: string;
-  ramo: 'web' | 'news';
-  ok: boolean;
-  qtd: number;
-  ms: number;
-  erro?: string;
-}
-
-async function buscar(cidade: string, ramo: 'web' | 'news'): Promise<Medicao> {
-  const query = `notícias policiais ocorrências crime ${cidade} ${estado}`;
+async function porCidade(cidade: string): Promise<{ cidade: string; urls: Set<string>; ms: number; reqs: number }> {
+  const queries = buildManualSearchQueries(cidade);
+  const urls = new Set<string>();
   const t0 = Date.now();
-  try {
-    // MESMA chamada do worker — via rateLimiter, nao direto no provider
-    const results = await rateLimiter.schedule(config.searchBackend, () =>
-      searchProvider.search(query, {
-        maxResults: ramo === 'web' ? WEB_MAX : NEWS_MAX,
-        dateRestrict,
-        searchMode: ramo,
-        location: { city: cidade, state: estado, country: 'BR' },
-      }),
-    );
-    return { cidade, ramo, ok: results.length > 0, qtd: results.length, ms: Date.now() - t0 };
-  } catch (err) {
-    return { cidade, ramo, ok: false, qtd: 0, ms: Date.now() - t0, erro: (err as Error).message.substring(0, 120) };
+  let reqs = 0;
+
+  // EM SERIE, igual ao worker
+  for (const q of queries) {
+    try {
+      const r = await rateLimiter.schedule(config.searchBackend, () =>
+        searchProvider.search(q, {
+          maxResults: MAX_POR_QUERY,
+          dateRestrict,
+          searchMode: 'news',
+          location: { city: cidade, state: estado, country: 'BR' },
+        }),
+      );
+      reqs += searchProvider.lastRequestCount ?? 0;
+      for (const x of r) urls.add(x.url);
+      console.log(`    "${q}" → ${r.length} resultados`);
+    } catch (err) {
+      console.log(`    "${q}" FALHOU: ${(err as Error).message.substring(0, 90)}`);
+    }
   }
+  return { cidade, urls, ms: Date.now() - t0, reqs };
 }
 
 async function main(): Promise<void> {
-  console.log(`Cidades: ${cidades.join(', ')} | Estado: ${estado} | periodo: ${dateRestrict}`);
+  const janela = inicioDaJanela(dateRestrict)!;
+  console.log(`Cidades: ${cidades.join(', ')} | ${estado} | ${periodoDias} dias (janela >= ${janela.toISOString().split('T')[0]})`);
   console.log(`Backend: ${config.searchBackend}`);
-  console.log('='.repeat(72));
+  console.log('='.repeat(74));
 
   const t0 = Date.now();
-
-  // Igual ao worker: todas as cidades em paralelo, web+news em paralelo dentro
-  const porCidade = await Promise.all(
-    cidades.map(async (cidade) => {
-      const [web, news] = await Promise.all([buscar(cidade, 'web'), buscar(cidade, 'news')]);
-      return [web, news];
-    }),
-  );
-
-  const todas = porCidade.flat();
+  // Cidades em paralelo, igual ao worker
+  const res = await Promise.all(cidades.map(async (c) => {
+    console.log(`\n  [${c}]`);
+    return porCidade(c);
+  }));
   const totalMs = Date.now() - t0;
 
-  console.log('');
-  for (const m of todas) {
-    const status = m.ok ? 'OK    ' : 'FALHOU';
-    console.log(`  [${status}] ${m.ramo.padEnd(4)} ${m.cidade.padEnd(18)} ${String(m.qtd).padStart(3)} resultados  ${(m.ms / 1000).toFixed(1)}s`);
-    if (m.erro) console.log(`           erro: ${m.erro}`);
+  console.log('\n' + '='.repeat(74));
+  let totalUrls = 0, totalReqs = 0;
+  for (const r of res) {
+    console.log(`  ${r.cidade.padEnd(20)} ${String(r.urls.size).padStart(3)} URLs unicas | ${r.reqs} requests | ${(r.ms / 1000).toFixed(1)}s`);
+    totalUrls += r.urls.size;
+    totalReqs += r.reqs;
   }
-
-  const ok = todas.filter((m) => m.ok).length;
-  const urls = todas.reduce((s, m) => s + m.qtd, 0);
-
-  console.log('');
-  console.log('='.repeat(72));
-  console.log(`  ${ok}/${todas.length} chamadas com resultado | ${urls} URLs no total | ${(totalMs / 1000).toFixed(1)}s de ponta a ponta`);
-  if (ok < todas.length) {
-    console.log('  >>> Alguma falhou. Se o padrao for "falha quando varias saem juntas",');
-    console.log('  >>> o suspeito e concorrencia: a zone SERP aceita ~1 por vez e o');
-    console.log('  >>> rate limiter (api_rate_limits.brightdata) permite mais.');
-  }
+  console.log(`\n  TOTAL: ${totalUrls} URLs | ${totalReqs} requests (~$${(totalReqs * 0.0015).toFixed(4)}) | ${(totalMs / 1000).toFixed(1)}s de ponta a ponta`);
+  console.log(`\n  (o parse de data e a triagem por cidade/estado acontecem depois, no Filter2)`);
+  void parseSerpDate;
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+main().then(() => process.exit(0)).catch((err) => { console.error(err); process.exit(1); });

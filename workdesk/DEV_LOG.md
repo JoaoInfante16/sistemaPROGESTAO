@@ -71,11 +71,44 @@ Tentei resolver o redirect na mão: `fetch` com `redirect: 'follow'` e User-Agen
 
 **O incômodo que sobra:** o RSS grátis enxerga 37 matérias dentro da janela (até 01/08); o SERP pago com `sbd:1` só começa em "2 semanas atrás" (~18/07). **A via raspada nos entrega uma visão pior do índice do próprio Google do que o RSS aberto.** Isso é argumento pra, no médio prazo, ir às fontes oficiais direto — não pra seguir ajustando parâmetro.
 
-**Proposto, aguardando aprovação (nada codado):**
-1. **`sbd:1` + paginação consciente da janela** na busca manual. Barato, certo, usa o que já se paga, URL real.
-2. **Testar tirar o estado da query** — o teste sem "Rio Grande do Sul" deu resultado visivelmente mais limpo que o da busca manual, que concatena o estado. Precisa de teste controlado.
-3. **Aposentar os templates 1-4** (medidos em zero).
-4. **NÃO ligar o RSS** — provado quebrado como fonte de conteúdo.
+### ✅ Implementado (aprovado pelo João: "coloca no roadmap e vamos começar")
+
+**Achado 6 — a query era o problema principal, não a data.** Teste controlado, página 1, `sbd:1`, contando quantos dos 10 caem dentro de 30 dias:
+
+| query | dentro da janela | mais recente |
+|---|---|---|
+| `notícias policiais ocorrências crime Porto Alegre Rio Grande do Sul` (a antiga) | 4/10 | — |
+| sem o estado | 8/10 | — |
+| **`polícia Porto Alegre`** | **10/10** | **há 17 horas** |
+| `homicídio morte tiros Porto Alegre` | 10/10 | — |
+| `roubo furto assalto Porto Alegre` | 4/10 | — |
+
+E o estado **degrada mesmo como sigla**, o que era contraintuitivo:
+
+| query | mais recente |
+|---|---|
+| `polícia São José` | **há 44 minutos** |
+| `polícia São José SC` | há 3 semanas |
+| `polícia Porto Alegre` | há 17 horas |
+| `polícia Porto Alegre RS` | há 3 semanas |
+
+O estado empurra o ranking pra conteúdo institucional (concurso, corrida da Polícia Civil, boletim de secretaria) e afasta a ocorrência local. **Não desambigua nada** — quem desambigua São José/SC de São José/SP é o pós-filtro do Filter2, que lê cidade *e* estado do corpo do artigo.
+
+Templates diferentes também trazem matéria diferente: `polícia` trouxe 10 itens que o template base não trazia, `homicídio` trouxe 9.
+
+**O que foi codado:**
+
+- **`serpDateParser.ts`** (novo) — parseia as datas do SERP, relativas (`"há 17 horas"`, `"2 semanas atrás"`, `" 1 mês atrás"`) e absolutas (`"6 de jun. de 2026"`, `"01/06/2026"`). Com regressão em `scripts/test-serp-date-parser.ts`, **22/22**, todas as strings colhidas do Google no dia.
+- **`BrightDataSERPProvider`** — `sbd:1` no `tbs` e **parada de paginação ao sair da janela**. O `qdr` continua indo só como rede de segurança.
+- **`queryTemplates.ts`** — reescrito para Google: curto, por keyword, **sem estado**. Novo `buildManualSearchQueries()`.
+- **`manualSearchWorker`** — 3 queries curtas **em série** (a zone aceita ~1 por vez; já se viu página vazia com 2 concorrentes) no lugar de 1 query longa. Teto virou por query (`MANUAL_NEWS_MAX_PER_QUERY = 20`). Cálculo de custo ajustado.
+- **`pipelineCore.runFilter2WithEmbedding`** — **paralelizado com `asyncPool`** (concorrência 5, casando com `api_rate_limits.openai`). Era `for` sequencial usando ~20% da vazão permitida; com o stage 1 trazendo 3x mais URL, virou o gargalo. Cuidado registrado no ROADMAP respeitado: o `asyncPool` não tem try/catch e derruba o pool inteiro se `fn` rejeitar, então **todo erro morre dentro do item**. Erro isolado degrada e segue (vai pro Sentry); **erro em todos lança**, pra não terminar como "0 resultados, tudo certo" — que é o padrão de falha silenciosa que mascarou o bug até 30/07.
+
+**Medido depois, pelo caminho real (`scripts/test-search-providers.ts`, reescrito):** Porto Alegre, 30 dias → **60 URLs únicas em 6 requests, $0,009, 85s**. Antes: 20 URLs, das quais 1 sobrevivia.
+
+**Regressão honesta:** o stage 1 saiu de 19s para 85s (3 queries × 2 páginas, em série). É o preço de achar notícia de verdade. A paralelização do Filter2 compensa no total, mas **só a medição em staging com o pipeline inteiro diz o número final** — não meço isso local.
+
+**NÃO ligar o RSS** — provado quebrado como fonte de conteúdo (achado 4).
 
 ### `package-lock.json` versionado + `npm ci` (autorizado pelo João)
 
