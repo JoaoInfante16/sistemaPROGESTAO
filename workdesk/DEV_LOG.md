@@ -9,6 +9,37 @@
 
 ---
 
+## 2026-08-01 — parte 2 (busca manual funciona; e a prova de que manual ≠ auto-scan retroativo)
+
+**Busca manual confirmada funcionando ponta a ponta.** Porto Alegre/RS, 30 dias: estágio 1 em 19,4s (antes travava pra sempre), pipeline completo em ~115s, status `completed`.
+
+**Mas voltou 1 resultado — e o João perguntou por que o auto-scan tem 16 notícias de POA nos mesmos 30 dias.** Investigação com dados reais:
+
+- A busca achou 20 URLs, 19 chegaram ao Filter2, **18 morreram lá** (pós-filtros de data e cidade). Sobrou 1.
+- Rodei o estágio 1 de novo pelo caminho real (`scripts/diagnostico-titulos.ts`, novo) e olhei os títulos: a query de "30 dias" devolveu matérias de **janeiro a junho** — caso família Aguiar, retrospectivas de feminicídio, notícias do MPRS. **O Google ignora `tbs=qdr:m` em query retrospectiva**: o ranking é por relevância, e caso grande antigo vence ocorrência pequena recente. O pós-filtro de data (que já existia como "rede de segurança") fez exatamente o trabalho dele.
+- Conclusão estrutural: **auto-scan = ~30 fotos diárias com `qdr:d` que se acumulam** (recência alinha com ranking); **busca manual = UMA foto do ranking de hoje**. Nunca vão devolver o mesmo conjunto. Janela curta (d1/d7) e tipo de crime específico funcionam bem na manual; "todos os crimes, 30 dias" é estruturalmente fraco.
+- Registrado na memória (`project-fontes-de-busca`).
+
+**Observação solta:** mesmo com só 2 requisições paralelas (web+news), a página 2 do ramo web veio vazia (HTTP 200, 0 bytes, sem `x-brd-err-code`). O suspeito de concorrência da zone segue vivo — teste multi-cidade pelo app fica pra depois, como combinado.
+
+**Ideia levantada, aguardando decisão:** a busca manual ignora o próprio banco. Pra cidade monitorada, mesclar as notícias já acumuladas pelo auto-scan (janela do período) com o que o Google devolver na hora — POA mostraria ~16+ em vez de 1.
+
+### `package-lock.json` versionado + `npm ci` (autorizado pelo João)
+
+Feito: lock removido do `.gitignore` (raiz), `backend/` e `admin-panel/` commitados, `npm install` → `npm ci` no Dockerfile (2 estágios) e no `render.yaml`. `yarn.lock` **segue ignorado** — o projeto é npm e dois locks concorrentes divergem. Sem `.dockerignore` no repo, então o `COPY package*.json ./` que já existia leva o lock junto; nenhuma mudança de `COPY` foi necessária.
+
+Validado antes de commitar: `npm ci --omit=dev` num diretório isolado, 333 pacotes, exit 0. Docker não está instalado nesta máquina, então o build completo da imagem não foi exercitado — o risco residual é baixo (o `npm ci` é o passo que poderia falhar) mas não é zero.
+
+O lock do backend estava com `engines.node: >=20.0.0` enquanto o `package.json` já dizia `>=22.0.0` (resquício do fix do Dockerfile). Sincronizado por edição direta do campo, de propósito: `npm install --package-lock-only` teria re-resolvido tudo e poderia subir versões não testadas.
+
+**Correção de uma afirmação minha na entrada anterior deste mesmo dia** (linha "Node 20 → 22 no Dockerfile"): eu escrevi que o lock ausente "foi o que quebrou o deploy". **Está errado.** Conferi: o lock local (29/07) e o `node_modules` local já tinham `@supabase/supabase-js` **2.111.0** — ou seja, o Render resolveu a mesma versão que o João tinha. O que quebrou foi só o **Node 20 do Dockerfile** contra uma dependência que passou a exigir `node>=22`. Commitar o lock naquele dia não teria evitado nada.
+
+O motivo certo pra versionar o lock é outro, e continua valendo:
+- `^2.39.3` virou **2.111.0** — 72 minors — sem ninguém revisar. Lock ignorado é justamente o que deixa esse salto acontecer invisível, local e no Render.
+- **Produção (`main`) é o risco vivo:** no próximo deploy dela o `^2.39.3` é resolvido do zero e traz o que estiver mais novo naquele dia, que pode ter mudança de comportamento, não só de `engines`. Com o lock commitado, produção passa a instalar exatamente o que staging vem rodando.
+
+---
+
 ## 2026-08-01 (ramo web desligado — o Google fechou a porta)
 
 Continuação do dia anterior. O deploy do staging tinha falhado (Node 20 vs `@supabase/realtime-js` 2.111.0, que exige `node>=22`) — corrigido no Dockerfile. Com o código novo no ar, João testou a busca manual e **continuou travando no estágio 1**.

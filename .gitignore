@@ -3,7 +3,11 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
+
+# package-lock.json E VERSIONADO de proposito (desde 2026-08-01).
+# Sem ele o Render resolve os `^` do zero a cada build e instala o que estiver
+# mais novo no dia — build nao reproduzivel, sem nenhum commit envolvido.
+# yarn.lock segue ignorado: o projeto e npm, e dois locks concorrentes divergem.
 yarn.lock
 
 # Environment variables

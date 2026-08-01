@@ -7,12 +7,15 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files (o glob leva o package-lock.json junto — o `npm ci` exige)
 COPY package*.json ./
 COPY tsconfig.json ./
 
-# Install all dependencies (dev needed for tsc build)
-RUN npm install
+# `npm ci` (nao `npm install`): instala EXATAMENTE o que esta no lock e falha se
+# lock e package.json divergirem. Com `npm install` o Render resolvia os `^` do
+# zero a cada build e trazia o que estivesse mais novo no dia — foi assim que o
+# @supabase/supabase-js pulou de 2.39 pra 2.111 sem ninguem pedir.
+RUN npm ci
 
 # Copy source code
 COPY src ./src
@@ -28,7 +31,7 @@ WORKDIR /app
 
 # Install only production dependencies
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
