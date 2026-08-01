@@ -24,6 +24,48 @@
 
 **Ideia levantada, aguardando decisão:** a busca manual ignora o próprio banco. Pra cidade monitorada, mesclar as notícias já acumuladas pelo auto-scan (janela do período) com o que o Google devolver na hora — POA mostraria ~16+ em vez de 1.
 
+### O `tbs` do Google é ignorado — e o Google News RSS resolve (medido)
+
+O João rejeitou a ideia de "mesclar com o banco" com o argumento certo: **a busca manual tem que ACHAR notícia na internet**, não consultar cache. Cidade já monitorada é justamente onde a busca manual não faz falta. A ideia foi descartada e a investigação continuou.
+
+**Achado 1 — o filtro de data nunca funcionou.** `scripts/testar-filtro-data.ts` (novo) roda a mesma query variando só o `tbs`:
+
+| `tbs` | resultado |
+|---|---|
+| `qdr:d` (1 dia) | os mesmos 10, com matérias de mar/abr/mai |
+| `qdr:w` (7 dias) | **idênticos**, mesma ordem |
+| `qdr:m` (30 dias) | **idênticos**, mesma ordem |
+| `cdr:1,cd_min:...,cd_max:...` | **idênticos**, mesma ordem |
+| `qdr:m,sbd:1` | **muda** (reordena por data) |
+
+O Google **ignora `qdr` e `cdr`** no índice de notícias; só `sbd` é obedecido. Nenhuma busca do sistema jamais filtrou data na fonte. A busca manual de 30 dias recebia o ranking de relevância de sempre, o pós-filtro do Filter2 derrubava 18 de 19 e sobrava 1 — **o pipeline estava certo o tempo todo**.
+
+E o auto-scan não acha mais por causa do `qdr:d`: acha por **força bruta** (roda de hora em hora, 2 queries por scan, mantém só ≤2 dias, deduplica contra o banco). Em 30 dias acumula 16.
+
+**Achado 2 — o Google News RSS obedece o operador `when:`.** `scripts/testar-rss-when.ts` (novo), Porto Alegre:
+
+| janela | itens | período coberto |
+|---|---|---|
+| sem `when` | 80 | 2015-04-15 a 2026-07-18 (2 dentro de 30 dias) |
+| `when:1d` | 7 | 31/07 a 01/08 |
+| `when:7d` | 10 | 27/07 a 01/08 |
+| `when:30d` | **37** | **02/07 a 01/08 — 100% na janela** |
+
+E não é redundante: RSS bruto (79 únicos) contra o ramo news pago (30) tem **18 em comum — 23% de redundância**. O RSS traz **61 matérias que o SERP não tem**.
+
+O provider **já existe** (`GoogleNewsRSSProvider.ts`), com parse de `pubDate` e saída compatível com o pipeline. Está com `google_news_rss_enabled = false` — o João desligou na época do Top 100, por redundância. **O Top 100 morreu**, então o motivo do desligamento morreu junto.
+
+Isso também responde a pergunta dele sobre "colocar várias RSS": não precisa curar feed por cidade. É **um** RSS, com a cidade na query, servindo qualquer município.
+
+**Achado 3 — os templates 1-4 devolvem 0 no Google.** `queryTemplates.ts` diz no header que foi escrito pra **Perplexity** (busca semântica). São frases longas em linguagem natural. No Google News RSS os 4 focados retornam **zero**; só o template 0 (`completo`) funciona. Com `multi_query_enabled=true` e `search_queries_per_scan=2`, o auto-scan gasta request do Bright Data em query desenhada pra um provedor que o projeto não usa mais.
+
+**Proposto, aguardando aprovação do João (nada codado):**
+1. Ligar o Google News RSS na **busca manual**, com `when:{periodoDias}d`. Grátis. POA sairia de 1 pra dezenas.
+2. Usar `when:` também no auto-scan, em vez de depender do `tbs` ignorado.
+3. Reescrever ou aposentar os templates 1-4.
+
+**Incertezas honestas:** (a) o RSS devolve URL de redirect do Google — o comentário do provider diz que o Jina resolve, mas eu **não verifiquei**, e isso afeta custo e rendimento; (b) dos 36 únicos, 7 têm "Porto Alegre" no título — o resto é do estado ou de outra cidade, e o Filter2 tria pelo corpo, então o rendimento real fica entre 7 e 36 e só medindo o pipeline inteiro pra saber; (c) o teste rodou do IP do João — o Google pode limitar RSS vindo de datacenter, e o Render é datacenter. Precisa de teste em staging.
+
 ### `package-lock.json` versionado + `npm ci` (autorizado pelo João)
 
 Feito: lock removido do `.gitignore` (raiz), `backend/` e `admin-panel/` commitados, `npm install` → `npm ci` no Dockerfile (2 estágios) e no `render.yaml`. `yarn.lock` **segue ignorado** — o projeto é npm e dois locks concorrentes divergem. Sem `.dockerignore` no repo, então o `COPY package*.json ./` que já existia leva o lock junto; nenhuma mudança de `COPY` foi necessária.
