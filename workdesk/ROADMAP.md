@@ -267,6 +267,78 @@ auto-scan. O contrário (mexer nos dois ao mesmo tempo) foi o que já custou car
 Comparar contra a primeira semana com os templates novos. **Sem esse número, nada
 se mexe.**
 
+### 🔴 Achados da leitura da pipeline (02/08) — com evidência no banco
+
+Investigação a pedido do João, **só leitura**, nada alterado.
+
+#### 1. `São José do Cedro` está no feed de `São José` — 10 notícias
+
+O pós-filtro de cidade aceita **substring**:
+
+```ts
+const cidadeParcial = cidadesLower.some(c => cidadeExtraida.includes(c) || c.includes(cidadeExtraida));
+```
+
+`"são josé do cedro".includes("são josé")` → **true**, e o estado (SC) bate. Reproduzido:
+
+```
+monitorada="São José" vs extraida="São José do Cedro"    -> ACEITA ✅ (errado)
+monitorada="São José" vs extraida="São José do Cerrito"  -> ACEITA ✅ (errado)
+```
+
+São José do Cedro fica a ~600 km de São José. **É visível pro cliente**, e afeta
+também a busca manual (mesmo código). O `includes` existe para tolerar variação
+de acento/sufixo — precisa virar comparação por igualdade normalizada, com o
+`includes` só como fallback controlado.
+
+#### 2. A janela de coleta contradiz a de aceitação — e a recuperação de fim de semana não funciona
+
+| | valor |
+|---|---|
+| coleta (`dateRestrict`, [scanPipeline.ts:342](../backend/src/jobs/pipeline/scanPipeline.ts#L342)) | **`'d1'` hardcoded** |
+| aceitação (`scan_period_days`, pós-filtro) | **4** |
+
+O `scan_period_days` foi subido de 2 para 4 justamente "pra recuperar sáb/dom na
+segunda" — mas a coleta continua pedindo 1 dia. Pior: desde a mudança de 01/08, o
+`inicioDaJanela('d1')` **corta a paginação** em 24h. Então na segunda o scan não
+enxerga o fim de semana, por mais que o filtro aceite.
+
+⚠️ Esta parte é **regressão que eu introduzi** com o `sbd:1` + parada de paginação.
+Antes o `d1` era só um `qdr` ignorado pelo Google; agora ele trunca de verdade.
+
+#### 3. Duplicata no `news` — 26% das linhas em grupos suspeitos
+
+`202 linhas → 24 grupos (cidade+tipo+data) com mais de 1 → 52 linhas (26%)`
+
+Nem todos são duplicata (mesma cidade/tipo/dia pode ser evento diferente), mas a
+inspeção confirma casos reais, e o padrão é claro — **o mesmo evento com `bairro`
+preenchido numa linha e `null` na outra**:
+
+```
+Florianópolis|homicidio|2026-04-23  → 4 linhas
+   bairro=null   | Um jovem de 24 anos foi morto a facadas em uma residência no Centro...
+   bairro=Centro | Um jovem de 24 anos foi morto a facadas em sua casa no Centro...
+```
+
+Suspeita: `buildEmbeddingText` inclui o bairro no prefixo, então bairro ausente
+muda o vetor e derruba o cosine abaixo do threshold.
+
+**O conserto já existe** — `runIntraBatchDedupLayered` (8.3), que na busca manual
+recuperou 5 de 16. Só não foi ligado no scan, de propósito.
+
+#### 4. O custo do scan é contado de duas formas que não batem
+
+- `budget_tracking` usa tokens reais por estágio
+- `operation_logs.cost_usd` usa `calculateCost()`, uma fórmula **separada** com taxas fixas
+- `dedup_gpt` grava `duplicatesFound * 0.001` — número inventado, e conta duplicata de **qualquer** camada (a camada 1 é grátis). O `tokensUsed` que `deduplicateNews` devolve é **descartado**
+
+#### 5. Menores
+
+- **Push de estatística:** `natureza === 'estatistica'` dispara push igual a crime ("homicídios caíram 12%" chega como alerta). O código já trata estatística como coisa à parte em outros pontos — aqui não. Decisão de produto.
+- **`scanIndex = Date.now()/60000`** muda a cada minuto; com scan de hora em hora, a rotação de queries é aleatória, não round-robin.
+- **Sem `parent_id`, não há pós-filtro nenhum** (`locationPostFilter = undefined`) — a cidade aceitaria notícia de qualquer lugar. Hoje as 4 cidades têm pai; é latente.
+- **RSS está desligado** no banco (`google_news_rss_enabled = false`) — correto, já que a URL do RSS é redirect opaco.
+
 ### Candidatos, por ordem de ganho esperado
 
 | candidato | por que | risco |
