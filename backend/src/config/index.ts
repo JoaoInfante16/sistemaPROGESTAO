@@ -14,9 +14,34 @@ function optionalEnv(key: string, defaultValue: string): string {
   return process.env[key] || defaultValue;
 }
 
+/**
+ * As tarefas agendadas (auto-scan e fechamento de billing) sao SINGLETON: tem
+ * que rodar em UM ambiente so.
+ *
+ * Staging, producao e dev local usam o mesmo Supabase, e o gatilho do scan e a
+ * coluna `last_check` de `monitored_locations` — linha compartilhada. Sem esta
+ * guarda os ambientes se REVEZAM escaneando: quem tica primeiro pega a cidade e
+ * o outro pula. Resultado: a tabela `news`, que alimenta o feed do cliente,
+ * recebe resultado de codigo de teste, e qualquer medicao "antes/depois" do
+ * auto-scan fica contaminada por misturar duas versoes.
+ *
+ * O `queueNames.ts` resolveu o roubo de JOBS, mas nao isto — a disputa migrou
+ * pro `last_check`.
+ *
+ * Default derivado do NODE_ENV de proposito: se fosse `false` fixo e producao
+ * esquecesse de setar, o scan do cliente morreria calado. Setar
+ * AUTO_SCAN_ENABLED=true em staging permite testar o scan la sem tocar em prod.
+ */
+function tarefasAgendadasHabilitadas(): boolean {
+  const explicito = process.env.AUTO_SCAN_ENABLED;
+  if (explicito !== undefined && explicito !== '') return explicito === 'true';
+  return optionalEnv('NODE_ENV', 'development') === 'production';
+}
+
 export const config = {
   // Server
   nodeEnv: optionalEnv('NODE_ENV', 'development'),
+  scheduledJobsEnabled: tarefasAgendadasHabilitadas(),
   port: parseInt(optionalEnv('PORT', '3000'), 10),
 
   // Database (Supabase)

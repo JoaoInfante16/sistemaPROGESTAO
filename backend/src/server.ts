@@ -75,11 +75,23 @@ const server = app.listen(config.port, () => {
   logger.info(`Server running on port ${config.port} (${config.nodeEnv})`);
   logger.info(`Health check: http://localhost:${config.port}/health`);
 
-  // Iniciar workers, scheduler e event listener
+  // Workers sempre sobem: eles so consomem a fila DESTE ambiente (queueNames.ts),
+  // entao ficar ocioso nao custa nada e permite disparar um scan manual aqui.
   scanWorker = createScanWorker();
   manualSearchWorker = createManualSearchWorker();
-  startScheduler();
-  startBillingScheduler();
+
+  // Ja os SCHEDULERS sao singleton — ver `scheduledJobsEnabled` em config/.
+  // Rodar em dois ambientes contra o mesmo banco faz staging e producao se
+  // revezarem no auto-scan e escreverem no mesmo feed.
+  if (config.scheduledJobsEnabled) {
+    startScheduler();
+    startBillingScheduler();
+  } else {
+    logger.warn(
+      `[Scheduler] Tarefas agendadas DESLIGADAS neste ambiente (${config.nodeEnv}) — ` +
+      `auto-scan e fechamento de billing nao vao rodar aqui. Para ligar: AUTO_SCAN_ENABLED=true`
+    );
+  }
 });
 
 // ============================================
