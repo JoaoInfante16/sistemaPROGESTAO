@@ -87,6 +87,35 @@ Todas de 01/08, com o método real do worker (ver [Fases/Fase 7/DEV_LOG.md](./Fa
   de "essa cidade não tem notícia". Retry só sobre **sinal explícito** (corpo de 0
   bytes, `x-brd-err-code`).
 
+### 🚫 Auto-scan: não encostar
+
+Ordem explícita do João em 02/08: *"N toque no auto scan que ta funcionando!!"*.
+Da Fase 8 em diante, **nada de alterar código compartilhado com ele** — se um
+stage precisar mudar para a busca manual, criar função nova e deixar a antiga
+intacta (vale sobretudo para `runIntraBatchDedup`).
+
+**Ele NÃO está parado por bug — está fora da janela.** `scan_weekend_enabled = false`,
+`scan_weekday_start = 6`, `scan_weekday_end = 18`. Última execução: sexta 31/07
+às 20h. 01 e 02/08 são sábado e domingo, então volta na segunda.
+
+**O que já foi alterado em 01/08 e afeta o auto-scan** (feito antes da ordem
+acima, e declarado nos commits — registrado aqui para não virar surpresa):
+
+| mudança | efeito esperado no auto-scan |
+|---|---|
+| `queryTemplates.ts` reescrito | **deve melhorar muito** — os templates 1-4 eram frases de Perplexity e devolviam ZERO no Google |
+| `sbd:1` + parada de paginação por janela no provider | resultados vêm ordenados por data; ele já filtra ≤2 dias |
+| `runFilter2WithEmbedding` paralelizado | mais rápido; mesma saída |
+| `queueNames.ts` (sufixo de ambiente) | staging e produção param de disputar a mesma fila |
+
+**Ainda não rodou com essas mudanças** (entraram no fim de sexta/sábado, com o
+CRON já fora da janela). A primeira execução real será na segunda — vale
+conferir `operation_logs` nesse dia.
+
+Sinal de que as mudanças eram necessárias: nos logs de 31/07 o auto-scan
+processava 1 a 10 URLs por scan e achava **0 notícias** em quase todos. Consistente
+com os templates mortos.
+
 ### Onde o funil perde hoje (Salvador, 30 dias, staging)
 
 ```

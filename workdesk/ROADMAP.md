@@ -70,14 +70,17 @@ Resolve os dois lados: datas diferentes param de se fundir, e dentro do mesmo
 evento dá para ser mais permissivo. Como exige mesma cidade, item de região
 metropolitana nunca se funde com o principal.
 
-⚠️ `runIntraBatchDedup` **também é usado pelo auto-scan** — verificar nos dois.
+🚫 **NÃO alterar `runIntraBatchDedup`** — ela é compartilhada com o auto-scan, e o
+João pediu explicitamente para não encostar nele. Criar **função nova**, usada só
+pelo `manualSearchWorker`. A antiga fica intacta e o auto-scan segue no caminho
+que já funciona. Mesma regra vale para qualquer outro ponto compartilhado.
 
 ### 8.4 — Escada de períodos até 1 ano
 
 30 / 60 / 90 / **180** / **365**. Coletar fundo é barato (~$0,04); o caro é
 analisar (~$0,0025/artigo).
 
-- `periodo_dias` em [validation.ts](../backend/src/middleware/validation.ts) precisa aceitar até 365
+- `periodo_dias` em [validation.ts](../backend/src/middleware/validation.ts) **já aceita até 365** (`.max(365)`) — nada a fazer aqui
 - Tetos por período (ajustáveis no admin, sobem menos que proporcionalmente porque o índice do Google rareia para trás):
 
 | período | teto | ~custo de análise |
@@ -158,16 +161,42 @@ falta o deep link abrir o resultado. A tela já sabe retomar por `resumeSearchId
 
 ---
 
-## 📊 Fase 10 — Calendário no relatório (documentada)
+## 📊 Fase 10 — Calendário (documentada)
 
-`_computeAnalytics` ([report_screen.dart:138-212](../mobile-app/lib/features/search/screens/report_screen.dart#L138)) roda **uma vez no `initState`** e varre tudo sem filtro — donut, bairros, tendência semanal, fontes.
+Ideia do João (02/08): **um calendário abaixo dos cards**, em painel expansível
+(pushdown), limitado a 1 ano, para o usuário escolher o intervalo que quiser.
 
-Para o calendário, precisa virar **função de um subconjunto filtrado**, chamada em
-`setState`. É a mesma mecânica dos toggles de região/período — fazendo um, o
-outro sai quase de graça.
+### A restrição que define o desenho
 
-É o que **paga** a busca de 1 ano: gasta-se ~$0,50 uma vez e o relatório re-fatia
-infinitas vezes de graça.
+**O Google só pagina de hoje para trás.** O `sbd:1` ordena por data e caminha do
+mais recente ao mais antigo — não existe "comece em março". Consequência:
+
+> Buscar 1 a 31 de março custa **o mesmo** que buscar os últimos cinco meses.
+> A largura do intervalo é irrelevante; o que custa é quão longe fica o início.
+
+Isso tem um lado bom: se a busca já atravessou até março, **ela coletou tudo no
+caminho** — que é exatamente o balde `fora_do_periodo` da Fase 8.
+
+### Por que isso é quase de graça no backend
+
+**Não é preciso trocar `periodo_dias` por um intervalo de datas.** Como a
+paginação sempre parte de hoje, a data **final** não economiza trabalho nenhum —
+ela é filtro de exibição, e o app faz isso client-side sobre o que já veio. O
+backend só precisa saber **até onde voltar**, que é o `periodo_dias` atual (já
+aceita 365).
+
+Então o calendário é:
+
+1. **Re-fatiar client-side**, de graça, o que a busca coletou (principal + `fora_do_periodo`). Os resultados já carregam `data_ocorrencia`.
+2. Quando o usuário puxa para **antes do que foi coletado**, aí sim oferecer *"buscar esse período"* — que é simplesmente uma busca nova com `periodo_dias` maior.
+
+### O que muda no app
+
+`_computeAnalytics` ([report_screen.dart:138-212](../mobile-app/lib/features/search/screens/report_screen.dart#L138)) roda **uma vez no `initState`** e varre tudo sem filtro — donut, bairros, tendência semanal, fontes. Precisa virar **função de um subconjunto filtrado**, chamada em `setState`.
+
+É a mesma mecânica dos toggles de região/período: **lista e relatório viram função de um recorte**. Fazendo um, os outros saem quase de graça — toggle, período e intervalo do calendário são todos o mesmo filtro.
+
+É também o que **paga** a busca de 1 ano: gasta-se ~$0,50 uma vez e re-fatia infinitas vezes sem custo.
 
 ⚠️ `_loadMapPoints` busca por `searchId` no backend e receberia os pontos extras
 automaticamente — precisa do mesmo filtro. E o cabeçalho ("Últimos N dias") tem
