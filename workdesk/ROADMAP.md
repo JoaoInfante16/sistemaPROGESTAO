@@ -100,14 +100,17 @@ janela para uma cota de 50). É escolha de custo, não bug — sobe numa config.
 🔴 Com o teto de análise aberto (02/08), o limite deixou de ser dinheiro e passou
 a ser **tempo**: o app desiste em 10 min (`_maxPolls = 200` × 3s).
 
-Por isso o período foi capado em **180 dias** por enquanto (decisão do João):
-6 meses ≈ 7 min numa cidade, o que dá folga. Mas **multi-cidade ainda estoura**, e
-365 raspava o teto. Enquanto a regra for por relógio, o seletor não pode ser
-realmente livre.
+Dois travamentos foram postos em 02/08 justamente para caber nesse teto, e ambos
+saem depois desta fase — cada um é **dois números**:
 
-Depois desta fase, subir para 365 é mudar `.max(180)` em
-[validation.ts](../backend/src/middleware/validation.ts) — as fórmulas de teto não
-têm faixa nem máximo próprio.
+| trava | onde | volta para |
+|---|---|---|
+| período ≤ 180 dias | [validation.ts](../backend/src/middleware/validation.ts) | 365 |
+| 1 cidade por busca | `validation.ts` + `multi_city_search_field.dart` (`maxCities`) | 10 |
+
+**Desistir por estagnação, não por relógio:** enquanto o contador de progresso
+avança, o app continua esperando; se não muda há ~2 min, aí é falha. Some o
+número mágico e qualquer lentidão futura fica coberta.
 
 
 - `runContentFetch` e `runFilter2WithEmbedding` ganham `onProgress(feitos, total)` **opcional** (para não afetar o auto-scan)

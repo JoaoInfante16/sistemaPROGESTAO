@@ -134,6 +134,40 @@ resolve, é o algoritmo que precisa mudar (ver ROADMAP).
 
 ---
 
+## 2026-08-02 — uma cidade por busca (+ região metropolitana)
+
+Decisão do João: *"Melhor limitar a uma cidade + região metropolitana no max
+então"*, depois de entender que o limite virou tempo.
+
+**A parte elegante: não custa nada.** Desde a 8.2 as cidades vizinhas saem das
+**mesmas queries**, marcadas como `cidade_vizinha`, em vez de descartadas. Então
+"1 cidade + região" custa exatamente o que "1 cidade" já custava — a região é
+resultado que estava sendo jogado fora.
+
+E resolve o problema de tempo pela raiz: o custo por cidade é linear, mas o
+**tempo também**. Uma cidade em 180 dias ≈ 7 min; três estouram os 10 min do app.
+
+### ⚠️ Backend e app têm que subir JUNTOS
+
+O APK que o cliente tem hoje deixa escolher até **10** cidades
+(`MultiCitySearchField`, `maxCities: 10`). Com o backend em `max(1)`, quem
+escolher 2 toma **400**.
+
+Mudados os dois no mesmo commit:
+
+| | antes | agora |
+|---|---|---|
+| `validation.ts` | `.max(10)` | `.max(1)` |
+| `multi_city_search_field.dart` | `maxCities = 10` | `maxCities = 1` |
+
+Copy do app ajustada junto: label "Cidade" no singular, e o rodapé passou a
+dizer **"A região metropolitana é incluída automaticamente"** em vez de
+"1/1 cidades selecionadas" — responde sozinho a pergunta "por que só uma?".
+
+Voltar a permitir várias é só mudar os dois números, **depois da 8.5**.
+
+---
+
 ## 2026-08-02 — 8.3: dedup em camadas ✅
 
 **Medido no funil real** (Salvador / 30 dias, mesmas 32 extrações, mesmo

@@ -11,7 +11,12 @@ class MultiCitySearchField extends StatefulWidget {
     super.key,
     this.estadoNome,
     required this.onChanged,
-    this.maxCities = 10,
+    // UMA cidade por busca desde 02/08 — o backend valida o mesmo
+    // (validation.ts). A regiao metropolitana vem junto de graca, marcada como
+    // `cidade_vizinha` nos resultados. Voltar a permitir varias so depois que o
+    // app desistir por estagnacao em vez de por relogio (hoje ele desiste em 10
+    // min, e tres cidades em 180 dias passam disso).
+    this.maxCities = 1,
   });
 
   @override
@@ -183,11 +188,13 @@ class _MultiCitySearchFieldState extends State<MultiCitySearchField> {
             onChanged: _onChanged,
             enabled: enabled,
             decoration: InputDecoration(
-              labelText: 'Cidades',
+              labelText: widget.maxCities == 1 ? 'Cidade' : 'Cidades',
               hintText: widget.estadoNome == null
                   ? 'Selecione o estado primeiro'
                   : _atLimit
-                      ? 'Limite de ${widget.maxCities} cidades atingido'
+                      ? (widget.maxCities == 1
+                          ? 'Remova a cidade para trocar'
+                          : 'Limite de ${widget.maxCities} cidades atingido')
                       : 'Toque para ver cidades ou digite...',
               prefixIcon: const Icon(Icons.search),
               border: const OutlineInputBorder(),
@@ -222,7 +229,12 @@ class _MultiCitySearchFieldState extends State<MultiCitySearchField> {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
-                '${_selectedCities.length}/${widget.maxCities} cidades selecionadas',
+                widget.maxCities == 1
+                    // A regiao metropolitana entra sozinha desde a 8.2 — as
+                    // cidades vizinhas saem das mesmas queries e vem marcadas.
+                    // Dizer isso aqui evita a pergunta "por que so uma?".
+                    ? 'A região metropolitana é incluída automaticamente'
+                    : '${_selectedCities.length}/${widget.maxCities} cidades selecionadas',
                 style: TextStyle(fontSize: 12, color: Colors.grey[600]),
               ),
             ),

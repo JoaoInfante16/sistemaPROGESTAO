@@ -113,7 +113,20 @@ export const schemas = {
   // Busca manual multi-cidade (dispara pipeline)
   triggerManualSearch: z.object({
     estado: z.string().min(2).max(100),
-    cidades: z.array(z.string().min(2).max(100)).min(1).max(10),
+    // UMA cidade por busca (02/08). A regiao metropolitana vem junto de graca —
+    // desde a 8.2 as cidades vizinhas ja saem das MESMAS queries, marcadas como
+    // `cidade_vizinha`, em vez de serem descartadas. Ou seja: "1 cidade + regiao"
+    // custa o mesmo que "1 cidade" custava.
+    //
+    // O motivo de nao ser 10: o custo por cidade e linear, mas o TEMPO tambem —
+    // e o app desiste em 10 min. Uma cidade em 180 dias leva ~7 min; tres
+    // estouram. Voltar a permitir varias so depois da 8.5 (desistir por
+    // estagnacao, nao por relogio).
+    //
+    // ⚠️ O APK que o cliente tem hoje deixa escolher ate 10 (MultiCitySearchField,
+    // maxCities). Backend e app tem que subir JUNTOS, senao quem escolher 2
+    // cidades toma 400.
+    cidades: z.array(z.string().min(2).max(100)).min(1).max(1),
     // Teto de 180 dias (6 meses) desde 02/08. O backend inteiro ja funciona com
     // qualquer periodo — quem limita e o APP: ele desiste de esperar em 10 min
     // (_maxPolls=200 x 3s), e com o teto de analise aberto uma busca de 1 ano
