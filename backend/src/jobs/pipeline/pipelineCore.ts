@@ -13,7 +13,7 @@ import { filter1GPTBatch } from '../../services/filters/filter1GPTBatch';
 import { filter2GPTWithReason } from '../../services/filters/filter2GPT';
 import { logger } from '../../middleware/logger';
 import { NewsExtraction } from '../../utils/types';
-import { asyncPool, cosineSimilarity, normalizeText } from '../../utils/helpers';
+import { asyncPool, cosineSimilarity, mesmaCidade, normalizeText } from '../../utils/helpers';
 import { FetchedContent } from '../../services/content/ContentFetcher';
 import { rateLimiter } from '../../services/rateLimiter';
 import { deduplicateResults } from '../../services/search/urlDeduplicator';
@@ -315,31 +315,42 @@ export async function runFilter2WithEmbedding(
 
         // Post-filter: cidade/estado
         if (postFilter?.cidades && postFilter?.estado) {
-          const cidadeExtraida = normalizeText(extracted.cidade);
           const estadoExtraido = normalizeText(extracted.estado || '');
           const estadoEsperado = normalizeText(postFilter.estado);
-          const cidadesLower = postFilter.cidades.map(normalizeText);
-
-          // Match de cidade (exato ou parcial), SEMPRE validando estado
-          // (sem estado não há como distinguir cidades homônimas: São José/SC vs São José/SP)
-          const cidadeExata = cidadesLower.some(c => cidadeExtraida === c);
-          const cidadeParcial = cidadesLower.some(c => cidadeExtraida.includes(c) || c.includes(cidadeExtraida));
           const estadoBate = estadoExtraido.length > 0 && estadoExtraido.includes(estadoEsperado);
 
-          if (!((cidadeExata || cidadeParcial) && estadoBate)) {
+          // Cidade por IGUALDADE (depois de limpar "(BA)", "- SC", "Municipio de"),
+          // NUNCA por substring: `includes` colocou 10 noticias de Sao Jose do
+          // Cedro no feed de Sao Jose. Ver `limparNomeCidade` em utils/helpers.
+          // O estado segue sendo validado SEMPRE — sem ele nao ha como separar
+          // homonimas (Sao Jose/SC vs Sao Jose/SP).
+          const cidadeBate = postFilter.cidades.some(
+            (c) => mesmaCidade(extracted.cidade, c, postFilter.estado)
+          );
+
+          if (!(cidadeBate && estadoBate)) {
             // Vizinha ainda exige o estado bater. Sem isso, Camacari/SP entraria
             // como vizinha de Salvador/BA — o mesmo erro de cidade homonima que
             // o filtro existe pra evitar.
-            const regiaoLower = (postFilter.cidadesRegiao || []).map(normalizeText);
-            const ehVizinha = classificar && estadoBate && regiaoLower.some(
-              (c) => cidadeExtraida === c || cidadeExtraida.includes(c) || c.includes(cidadeExtraida)
+            const ehVizinha = classificar && estadoBate && (postFilter.cidadesRegiao || []).some(
+              (c) => mesmaCidade(extracted.cidade, c, postFilter.estado)
             );
 
             if (!ehVizinha) {
+              // Marca quando a regra ANTIGA (substring) teria aceitado. Fica
+              // gravado em `rejected_urls` e permite medir se o aperto derrubou
+              // noticia boa, sem instrumentar nada novo.
+              const cidadeExtraida = normalizeText(extracted.cidade);
+              const quaseAceito = [...postFilter.cidades, ...(postFilter.cidadesRegiao || [])].some((c) => {
+                const alvo = normalizeText(c);
+                return cidadeExtraida.includes(alvo) || alvo.includes(cidadeExtraida);
+              });
+              const marca = quaseAceito ? ' [parcial]' : '';
+
               return {
                 tipo: 'rejeitado', f2: f2tokens,
-                rejeicao: { url: fetched.url, stage: 'filter2_location', reason: `Local errado: ${extracted.cidade}/${extracted.estado || '?'} (esperado: ${postFilter.estado})` },
-                log: `filter2 cidade/estado fora: ${extracted.cidade}/${extracted.estado || '?'} (esperado: ${postFilter.cidades.join(', ')}, ${postFilter.estado}) → ${fetched.url.substring(0, 80)}`,
+                rejeicao: { url: fetched.url, stage: 'filter2_location', reason: `Local errado${marca}: ${extracted.cidade}/${extracted.estado || '?'} (esperado: ${postFilter.estado})` },
+                log: `filter2 cidade/estado fora${marca}: ${extracted.cidade}/${extracted.estado || '?'} (esperado: ${postFilter.cidades.join(', ')}, ${postFilter.estado}) → ${fetched.url.substring(0, 80)}`,
               };
             }
             cidadeVizinha = true;

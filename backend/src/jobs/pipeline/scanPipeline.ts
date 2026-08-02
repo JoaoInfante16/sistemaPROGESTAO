@@ -70,6 +70,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
 
   const pipelineConfig = {
     searchMaxResults: await configManager.getNumber('search_max_results'),
+    scanPeriodDays: await configManager.getNumber('scan_period_days'),
     contentFetchConcurrency: await configManager.getNumber('content_fetch_concurrency'),
     filter2ConfidenceMin: await configManager.getNumber('filter2_confidence_min'),
     filter2MaxContentChars: await configManager.getNumber('filter2_max_content_chars'),
@@ -180,11 +181,10 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   });
 
   // STAGE 5: Filter2 + Embedding (com filtro de cidade/estado)
-  const scanPeriodDays = await configManager.getNumber('scan_period_days');
   const locationPostFilter = parentState ? {
     estado: parentState.name,
     cidades: [location.name],
-    periodoDias: scanPeriodDays,
+    periodoDias: pipelineConfig.scanPeriodDays,
   } : undefined;
 
   const filter2Result = await runFilter2WithEmbedding(
@@ -315,6 +315,7 @@ async function collectUrls(
   location: MonitoredLocation,
   cfg: {
     searchMaxResults: number;
+    scanPeriodDays: number;
     multiQueryEnabled: boolean;
     queriesPerScan: number;
     googleNewsRSSEnabled: boolean;
@@ -334,12 +335,20 @@ async function collectUrls(
     scanIndex,
   });
 
+  // `d1` estava HARDCODED aqui enquanto o `scan_period_days` (default 4, criado
+  // justamente pra "recuperar sab/dom na segunda") so era lido la embaixo, no
+  // pos-filtro do Filter2. Ate 01/08 isso era inofensivo — o Google ignora o
+  // `qdr`. Depois que a paginacao passou a cortar pela janela (`inicioDaJanela`),
+  // o `d1` virou trava de verdade: a coleta parava em 24h e o fim de semana se
+  // perdia. Agora a coleta e o pos-filtro olham para o MESMO periodo.
+  const dateRestrict = `d${cfg.scanPeriodDays}`;
+
   for (const query of queries) {
     try {
       const results = await rateLimiter.schedule(config.searchBackend, () =>
         searchProvider.search(query, {
           maxResults: cfg.searchMaxResults,
-          dateRestrict: 'd1',
+          dateRestrict,
           location: { city: location.name, state: stateName, country: 'BR' },
         })
       );

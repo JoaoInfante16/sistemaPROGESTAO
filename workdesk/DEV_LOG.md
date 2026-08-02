@@ -27,16 +27,23 @@
 `staging` está alguns commits atrás de `develop`, mas só em documentação — o
 código é o mesmo. APK de staging instalado no celular do João.
 
-**Próximo passo combinado:** atacar os 4 achados da auditoria do auto-scan (Fase 11
-do [ROADMAP](./ROADMAP.md)). O João mandou começar; a ordem de "não encostar" foi
-suspensa **para esses itens**.
+**Em curso:** os 4 achados da auditoria do auto-scan (Fase 11 do
+[ROADMAP](./ROADMAP.md)). A ordem de "não encostar" foi suspensa **para esses
+itens**.
 
-**Os dois primeiros, por ordem:**
-1. **`São José do Cedro` no feed de `São José`** — pós-filtro aceita substring, 10 notícias erradas no banco, visível pro cliente. Afeta a busca manual também (mesmo código).
-2. **`dateRestrict: 'd1'` vs `scan_period_days: 4`** — a recuperação de fim de semana não funciona. **Regressão introduzida em 01/08** pelo `sbd:1` + parada de paginação: antes o `d1` era um `qdr` ignorado, agora trunca de verdade.
+| # | achado | estado |
+|---|---|---|
+| 1 | `São José do Cedro` no feed de `São José` (pós-filtro por substring) | ✅ **corrigido** — igualdade com limpeza, 21/21 no teste |
+| 2 | `dateRestrict: 'd1'` vs `scan_period_days: 4` | ✅ **corrigido** — regressão minha de 01/08 |
+| 3 | duplicata no `news` (`runIntraBatchDedupLayered` existe, não está ligado no scan) | pendente |
+| 4 | custo contado de duas formas incompatíveis | pendente |
 
-Os outros dois (duplicata no `news`, custo contado de duas formas) e os menores
-estão detalhados na Fase 11.
+As 10 linhas erradas seguem no banco **de propósito** — decisão do João, fase de
+teste. `scripts/limpar-cidades-intrusas.ts` está pronto para quando importar.
+
+Achado novo da mesma investigação: **não existe dedup por URL antes do Jina** — o
+scan reanalisa o mesmo artigo de hora em hora. Barato hoje ($0,12/mês), mas é
+desperdício estrutural. Anotado na Fase 11.
 
 ### Documentos desta fase — ler antes de reconstruir contexto
 
@@ -183,6 +190,105 @@ auto-scan e custo do mês. Verificado em 02/08:
 - `filter2_confidence_min` = **0,5** (o default do código é 0,7)
 - 7 configs mortas no banco
 - custo do mês: **$0,12** de $100
+
+---
+
+## 2026-08-02 — Fase 11, achados #1 e #2 corrigidos
+
+Os dois primeiros da auditoria do auto-scan. Os dois mexem em código
+**compartilhado com a busca manual** — o plano foi mostrado ao João e aprovado
+antes de codar.
+
+### #1 — cidade por igualdade, nunca por substring
+
+Confirmado no banco antes de mexer:
+
+```
+monitored_locations: Florianópolis, Porto Alegre, São José, Palhoça
+news "São José / SC" .......... 24
+news "São José do Cedro / SC" . 10   ← ninguém monitora essa cidade
+```
+
+Fontes das 10: `portalsmo.com.br`, `portaltri.com.br`, `jornaldafronteira.com.br`
+— imprensa do extremo-oeste catarinense, ~600 km de São José. **29% do que o
+scan de São José salvou era de outra cidade.**
+
+Entravam por [pipelineCore.ts](../backend/src/jobs/pipeline/pipelineCore.ts):
+
+```ts
+const cidadeParcial = cidadesLower.some(c => cidadeExtraida.includes(c) || c.includes(cidadeExtraida));
+```
+
+`"são josé do cedro".includes("são josé")` → `true`, estado bate, entra. E a
+linha é gravada com `cidade: "São José do Cedro"` — então **some do filtro por
+cidade e aparece no feed sem filtro**, que é o que o app abre.
+
+**Por que o parcial existia:** o Filter2 devolve `"Salvador (BA)"`,
+`"São José - SC"`, `"Município de Palhoça"`. Um `===` cru rejeitaria os três.
+
+**Conserto:** `limparNomeCidade` + `mesmaCidade` em
+[utils/helpers.ts](../backend/src/utils/helpers.ts) — limpa parênteses, sufixo de
+UF/estado depois de separador e o prefixo `município|cidade de`, e **só então
+compara exato**. Usado nos dois pontos do pós-filtro (principal e vizinha).
+
+Decisão registrada: **não cortar no hífen.** `Embu-Guaçu` e `Embu` são municípios
+distintos de SP — cortar ali trocaria um falso positivo por outro.
+
+`scripts/test-match-cidade.ts`, sem rede nem banco: **21/21**. Cobre o bug
+original, os dois sentidos do substring, o ruído do GPT, os hifenados e os
+degenerados.
+
+**Medição do aperto, de graça:** quando a regra antiga teria aceitado, a rejeição
+é gravada com ` [parcial]` no motivo. Fica em `rejected_urls` e responde depois
+se o aperto derrubou notícia boa, sem instrumentar nada.
+
+Verificado que o problema era só ali: `intraBatchDedupLayered` e `metroRegion` já
+comparavam por igualdade.
+
+### #2 — o `d1` hardcoded, e por que o prazo era hoje
+
+O scan não roda desde **sexta 31/07 20:00**. Isso está certo:
+`scan_weekend_enabled = false` e 01–02/08 foram sábado e domingo.
+
+E é exatamente para isso que o `scan_period_days` existe. O comentário no
+[configManager](../backend/src/services/configManager/index.ts) diz com todas as
+letras: `// janela do BrightData (era 2; 4 permite recuperar sáb/dom na segunda)`.
+
+Só que a coleta mandava `dateRestrict: 'd1'` **hardcoded**, e o config só era
+lido lá embaixo, no pós-filtro do Filter2.
+
+Até 01/08 isso era inofensivo — o Google ignora o `qdr`. Depois que a paginação
+passou a cortar pela janela (`inicioDaJanela`), o `d1` virou trava real: **a
+coleta parava em 24h.** Segunda de manhã o scan pegaria só a sexta à noite e o
+fim de semana inteiro se perderia. Regressão minha de 01/08, com prazo de
+segunda 9h.
+
+Agora `scanPeriodDays` entra no `pipelineConfig` e a coleta e o pós-filtro olham
+para o **mesmo** período.
+
+### Achado novo, não consertado: não existe dedup por URL
+
+O scan roda de hora em hora (`scan_frequency_minutes` default 60) e **não
+consulta `news_sources` antes do estágio 4**. O mesmo artigo é reanalisado no
+Filter2 a cada rodada — hoje até 24×/dia; com `d4`, mais. O Jina é cacheado
+(Redis), o GPT não.
+
+Não bloqueia: o custo do mês é **$0,12 de $100**. Combinado com o João deixar
+separado — #2 tinha prazo, isso é melhoria. Anotado na Fase 11.
+
+### Banco — medido, e deliberadamente NÃO limpo
+
+`scripts/limpar-cidades-intrusas.ts` (dry-run por default, `--aplicar`,
+`--reverter`). Compara cada notícia com as cidades monitoradas **pela regra
+nova** e marca `active = false` nas que ninguém pediu — não deleta, o feed já
+filtra por `active` e a volta é um UPDATE.
+
+Dry-run: **10 intrusas, todas de São José do Cedro.** Nenhuma outra cidade
+vazou — 192 das 202 são legítimas. O escopo do bug é estreito.
+
+**Decisão do João: não rodar o `--aplicar` agora** — fase de teste e o cliente
+sabe. O script fica pronto para quando o dado importar (antes de produção valer
+de verdade). O conserto no código já impede que o número cresça.
 
 ---
 

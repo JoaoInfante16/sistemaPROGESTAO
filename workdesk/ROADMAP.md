@@ -271,9 +271,20 @@ se mexe.**
 
 Investigação a pedido do João, **só leitura**, nada alterado.
 
-#### 1. `São José do Cedro` está no feed de `São José` — 10 notícias
+#### 1. ✅ CORRIGIDO (02/08) — `São José do Cedro` no feed de `São José`
 
-O pós-filtro de cidade aceita **substring**:
+> Conserto: `limparNomeCidade` + `mesmaCidade` em `utils/helpers.ts`, usados nos
+> dois pontos do pós-filtro. Igualdade exata **depois** de limpar `(BA)`, `- SC`,
+> `Município de`. Não corta no hífen (`Embu-Guaçu` ≠ `Embu`).
+> `scripts/test-match-cidade.ts`: 21/21. Rejeição que a regra antiga aceitaria sai
+> marcada com `[parcial]` em `rejected_urls`, para medir o aperto depois.
+>
+> **As 10 linhas seguem no banco**, por decisão do João (fase de teste, cliente
+> sabe). `scripts/limpar-cidades-intrusas.ts` está pronto — dry-run por default,
+> `--aplicar`, `--reverter`. Dry-run confirmou que o escopo é só São José do
+> Cedro: 192 das 202 notícias são legítimas.
+
+O pós-filtro de cidade aceitava **substring**:
 
 ```ts
 const cidadeParcial = cidadesLower.some(c => cidadeExtraida.includes(c) || c.includes(cidadeExtraida));
@@ -291,7 +302,14 @@ também a busca manual (mesmo código). O `includes` existe para tolerar variaç
 de acento/sufixo — precisa virar comparação por igualdade normalizada, com o
 `includes` só como fallback controlado.
 
-#### 2. A janela de coleta contradiz a de aceitação — e a recuperação de fim de semana não funciona
+#### 2. ✅ CORRIGIDO (02/08) — a janela de coleta contradizia a de aceitação
+
+> Conserto: `scanPeriodDays` entra no `pipelineConfig` e a coleta manda
+> `d${scanPeriodDays}`. Coleta e pós-filtro passam a olhar o **mesmo** período.
+>
+> O prazo era real: o scan estava parado desde sexta 31/07 20:00 (correto —
+> `scan_weekend_enabled = false`, 01–02/08 foram sáb/dom), e segunda de manhã era
+> exatamente o caso que o `scan_period_days: 4` foi criado para cobrir.
 
 | | valor |
 |---|---|
@@ -332,7 +350,19 @@ recuperou 5 de 16. Só não foi ligado no scan, de propósito.
 - `operation_logs.cost_usd` usa `calculateCost()`, uma fórmula **separada** com taxas fixas
 - `dedup_gpt` grava `duplicatesFound * 0.001` — número inventado, e conta duplicata de **qualquer** camada (a camada 1 é grátis). O `tokensUsed` que `deduplicateNews` devolve é **descartado**
 
-#### 5. Menores
+#### 5. Não existe dedup por URL antes do Jina (achado novo, 02/08)
+
+O scan roda de hora em hora (`scan_frequency_minutes` default 60) e **nunca
+consulta `news_sources` antes do estágio 4**. O mesmo artigo é reanalisado no
+Filter2 a cada rodada — até 24×/dia. O Jina é cacheado no Redis; o GPT não.
+
+Ficou mais visível com o conserto do #2: `d4` traz mais repetido que `d1`.
+
+Não é urgente — o custo do mês é **$0,12 de $100**. Mas é desperdício estrutural,
+e o conserto é um `SELECT` em `news_sources` filtrando as URLs já vistas antes do
+estágio 4. Decisão do João: **separado**, não junto com #2.
+
+#### 6. Menores
 
 - **Push de estatística:** `natureza === 'estatistica'` dispara push igual a crime ("homicídios caíram 12%" chega como alerta). O código já trata estatística como coisa à parte em outros pontos — aqui não. Decisão de produto.
 - **`scanIndex = Date.now()/60000`** muda a cada minuto; com scan de hora em hora, a rotação de queries é aleatória, não round-robin.

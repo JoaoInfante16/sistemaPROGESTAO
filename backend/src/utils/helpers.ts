@@ -64,3 +64,49 @@ export function cosineSimilarity(vecA: number[], vecB: number[]): number {
 export function normalizeText(text: string): string {
   return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
+
+/**
+ * Limpa o ruido que o GPT costuma anexar ao nome da cidade, pra permitir
+ * comparacao por IGUALDADE em vez de substring.
+ *
+ * O Filter2 devolve coisas como "Salvador (BA)", "Sao Jose - SC" ou
+ * "Municipio de Palhoca" \u2014 foi por isso que o pos-filtro passou a aceitar match
+ * parcial. So que `includes` deixa passar cidade que apenas COMECA igual:
+ * medido em 02/08/2026, 10 das 34 noticias de "Sao Jose" no banco eram de
+ * **Sao Jose do Cedro**, a 600km, porque `"sao jose do cedro".includes("sao
+ * jose")` e true e o estado bate. Limpar e comparar exato resolve os dois lados.
+ *
+ * `estado` opcional cobre o sufixo por extenso ("Sao Jose - Santa Catarina").
+ *
+ * NAO corta no hifen de proposito: `Embu-Guacu` e `Embu` sao municipios
+ * distintos de SP, e cortar ali fundiria um no outro \u2014 trocaria um falso
+ * positivo por outro.
+ */
+export function limparNomeCidade(nome: string, estado?: string): string {
+  let s = normalizeText(nome || '')
+    .replace(/\s*\([^)]*\)\s*/g, ' ')            // "salvador (ba)"
+    .replace(/^(municipio|cidade)\s+de\s+/, '')  // "municipio de palhoca"
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (estado) {
+    const alvo = normalizeText(estado).trim();
+    if (alvo) s = s.replace(new RegExp(`\\s*[-\u2013/,]\\s*${escaparRegex(alvo)}\\s*$`), '');
+  }
+
+  // Sufixo de UF de 2 letras depois de separador: "sao jose - sc", "salvador/ba".
+  // Nenhum municipio brasileiro termina em " - XX", entao e seguro.
+  s = s.replace(/\s*[-\u2013/,]\s*[a-z]{2}\s*$/, '');
+
+  return s.trim();
+}
+
+/** Mesma cidade? Igualdade exata depois da limpeza. Ver `limparNomeCidade`. */
+export function mesmaCidade(a: string, b: string, estado?: string): boolean {
+  const x = limparNomeCidade(a, estado);
+  return x.length > 0 && x === limparNomeCidade(b, estado);
+}
+
+function escaparRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
