@@ -155,6 +155,46 @@ auto-scan e custo do mês. Verificado em 02/08:
 
 ---
 
+## 2026-08-02 — 🎉 FASE 8 VALIDADA NO APP: 54 resultados
+
+Teste do João no celular, APK de staging contra `81733a9`. **54 resultados.**
+
+```
+início do dia (queixa original) .....  1
+depois da chave da Bright Data ...... 13
+depois da Fase 8 .................... 54
+```
+
+Não foi uma correção — foram cinco, e cada uma escondia a seguinte:
+
+| # | o que era | ganho |
+|---|---|---|
+| 8.1 | 3 queries em série por medo infundado | estágio 1: 23,7s → 9,0s |
+| 8.4 | teto de coleta fixo em 20 → "30 dias" cobria 3 | 59 → 175 URLs, alcance real |
+| teto aberto | análise parava em 50 artigos | ~155 analisados |
+| 8.3 | dedup só por cosine comia metade | 32→16 vira 32→21 |
+| web | ramo web furava a fila do teto | news deixa de perder vaga |
+
+### O que ainda NÃO foi verificado
+
+**Qualidade.** 54 é volume; ninguém conferiu se são 54 notícias boas. O que vale
+olhar, em ordem:
+
+1. **Região metropolitana** — o GPT devolveu 9 municípios para Salvador e só foi
+   verificado que Feira de Santana (corretamente) ficou de fora. Nenhum dos 9 foi
+   conferido um a um.
+2. **Duplicata** — a trava geo-temporal deveria ter acabado com a queixa antiga.
+3. **Relevância** — `filter2_confidence_min` está em **0,5** no banco (o default
+   do código é 0,7). Mais permissivo do que parece. Se aparecer notícia fraca,
+   este é o primeiro número a olhar.
+4. **`natureza: "estatistica"`** — não é ocorrência e pode estar inflando a
+   contagem visual.
+
+⚠️ **Produção continua em `faa38b7`.** O cliente ainda usa a versão de junho —
+nada disto chegou nele. Ver [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md), item 1.
+
+---
+
 ## 2026-08-02 — teto aberto de verdade: chave nova em vez de chave reaproveitada
 
 O teto foi decidido aberto e o código já tinha default `0` — **mas não estava
