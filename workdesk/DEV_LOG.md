@@ -24,6 +24,8 @@
 | staging | `staging` | `6ff8ba8` | **funcionando** — Salvador devolve 13 resultados |
 | **produção** | `main` | `faa38b7` | 🔴 **quebrada em 4 lugares, é o que o cliente usa** |
 
+**Chave da Bright Data:** a de **staging estava expirada** (`SERP error 401: Token expired`) e foi trocada pelo João em 02/08 — era o último bloqueio para validar a busca lá. A de **produção está boa** (confirmado por ele no mesmo dia), então a promoção de `main` não depende de mexer em credencial.
+
 **Produção é a prioridade 1.** `main` está de junho e não tem nada do que foi
 consertado. Confirmado lendo o código de `origin/main`:
 
