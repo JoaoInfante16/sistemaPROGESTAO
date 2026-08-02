@@ -155,6 +155,44 @@ auto-scan e custo do mês. Verificado em 02/08:
 
 ---
 
+## 2026-08-02 — staging atualizado + a config que NÃO pode ser tocada
+
+`staging` foi de `6ff8ba8` para `f105656` — toda a Fase 8.
+
+### 🚨 `manual_search_max_results_30d`: NÃO mexer até `main` subir
+
+São **dois painéis admin** (serviços separados no Render), o que engana — mas eles
+escrevem na **mesma** tabela `system_config`. Uma linha por chave, lida pelos dois
+backends. Mexer "pra testar em staging" muda produção **na hora, sem deploy**.
+
+E esta chave especificamente **mudou de significado** entre as versões:
+
+| | o que a chave significa | efeito de pôr `0` |
+|---|---|---|
+| `main` (produção) | teto de **coleta** no stage 1 (`searchMaxResults`) | coleta **zero URL** → busca manual do cliente devolve nada |
+| `develop`/`staging` | teto de **análise**, `0` = sem teto | analisa tudo |
+
+Verificado em `git show origin/main:backend/src/jobs/workers/manualSearchWorker.ts`
+(linha 68: `searchMaxResults: Math.round(baseMaxResults * profundidade)`).
+
+**Deixar em 50** até `main` ser promovida. Staging testa com teto de 50 (180 dias
+→ 122) — cap real, mas suficiente e mais barato.
+
+### Para testar, não precisa configurar nada
+
+As duas configs novas **não existem na `main`**, então são inofensivas — e o
+código já tem os defaults certos:
+
+| config | default no código | precisa setar? |
+|---|---|---|
+| `manual_search_horizon_days` | 180 | não |
+| `dedup_gpt_confirm_enabled` | false | não |
+
+**Regra que fica:** antes de mudar config compartilhada, conferir como a `main`
+usa aquela chave.
+
+---
+
 ## 2026-08-02 — configs no painel em vez de SQL
 
 Ideia do João: *"Pq a gente n coloca tudo isso no painel admin dai eu rodo só o 22"*.
