@@ -27,6 +27,7 @@
 | 021 | 021_manual_search_web_toggle.sql | Config `manual_search_web_enabled` (default false). Desliga o ramo web da busca manual | **NAO aplicada** — a chave nao existe no banco, entao o backend cai no default do codigo, que hoje e **`true`** (o ramo web foi RELIGADO ao migrar pro SERP API). Rodar esta migration DESLIGARIA o web — so rodar se for isso que se quer |
 | 021b | 021_executive_cache.sql | Tabela executive_cache | **Sim** (verificado em 02/08) |
 | 022 | 022_executive_cache_search_id.sql | Coluna search_id em executive_cache | **Sim** (verificado em 02/08) |
+| 024 | 024_limpar_configs_mortas.sql | **DESTRUTIVA (DELETE)**, mas neutra: apaga 7 configs mortas. Todas existem no `DEFAULTS` hardcoded do configManager — inclusive na `main`, com os MESMOS valores do banco — entao o `get()` cai no default e producao nao muda. Bloco 3 (opcional, comentado) apaga `manual_search_max_results_30d` e assim resolve o conflito de semantica entre `main` (teto de coleta) e `develop` (teto de analise): cada codigo cai no seu default | **Pendente — o Joao vai rodar** |
 | 023 | 023_manual_search_teto_aberto.sql | Fase 8.2/8.3/8.4: `manual_search_max_results_30d` = **0 (sem teto)** e vira BASE — os outros periodos escalam dela por raiz quadrada, sem faixas. Insere `manual_search_horizon_days` (180) e `dedup_gpt_confirm_enabled` (false) | **OPCIONAL** — so mexe em `system_config`, e o painel admin faz o mesmo (o PATCH usa `configManager.set`, que e upsert). Preferir o painel |
 
 > ⚠️ Este log e preenchido a mao e ja desatualizou (019 e 020 estavam marcadas
