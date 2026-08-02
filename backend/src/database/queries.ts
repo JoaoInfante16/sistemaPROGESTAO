@@ -1002,7 +1002,17 @@ interface CreateSearchCacheParams {
 }
 
 export async function createSearchCache(p: CreateSearchCacheParams): Promise<string> {
-  const paramsHash = JSON.stringify(p.params);
+  // O `user_id` ENTRA no hash. Sem ele, `params_hash` é UNIQUE global (schema.sql)
+  // e dois clientes que buscassem a mesma cidade no mesmo período colidiam: o
+  // segundo caía no ramo de baixo e **apagava a busca do primeiro** pra conseguir
+  // inserir a sua. Com o usuário dentro do hash, a trava vira na prática
+  // UNIQUE(user_id, params) e a colisão só acontece com a própria busca anterior.
+  //
+  // Ninguém consulta a coluna — ela existe só como trava de unicidade (grep:
+  // `params_hash` só aparece nesta função), então mudar a fórmula não invalida
+  // nada. Linhas antigas com o formato velho deixam de colidir e expiram sozinhas
+  // pelo `expires_at` de 7 dias.
+  const paramsHash = JSON.stringify({ u: p.user_id, ...p.params });
 
   // Tentar inserir
   const { data, error } = await supabase
@@ -1017,11 +1027,14 @@ export async function createSearchCache(p: CreateSearchCacheParams): Promise<str
     .single();
 
   if (error && error.message.includes('duplicate key')) {
-    // Busca com mesmos params já existe — deletar antiga e recriar
+    // Busca com mesmos params já existe — deletar antiga e recriar.
+    // O `user_id` é redundante depois que ele entrou no hash, e fica de propósito:
+    // se a fórmula do hash mudar um dia, o delete continua confinado ao dono.
     await supabase
       .from('search_cache')
       .delete()
-      .eq('params_hash', paramsHash);
+      .eq('params_hash', paramsHash)
+      .eq('user_id', p.user_id);
 
     const { data: retryData, error: retryError } = await supabase
       .from('search_cache')

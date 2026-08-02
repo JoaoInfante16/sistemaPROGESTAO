@@ -201,6 +201,97 @@ auto-scan e custo do mês. Verificado em 02/08:
 
 ---
 
+## 2026-08-02 — 🚨 O banco estava aberto para a chave anon (achado novo)
+
+Apareceu **investigando outra coisa**: fui checar se o middleware do admin podia
+ler `user_profiles` para validar `is_admin`, e a resposta foi que sim — **sem
+sessão nenhuma**.
+
+Medido com a `SUPABASE_ANON_KEY` do próprio `.env`:
+
+```
+GET  /rest/v1/user_profiles?select=id,is_admin   -> 200, lista inteira
+GET  /rest/v1/news | search_cache | budget_tracking
+     | system_config | monitored_locations | ...  -> 200, com dados
+POST /rest/v1/system_config   (payload vazio)     -> 400, código 23502
+```
+
+O `23502` é *"null value violates not-null constraint"*. A requisição **passou
+pela RLS** e morreu na validação do Postgres — ou seja, **a escrita também
+estava liberada**; um payload válido teria gravado. Nada foi gravado no teste:
+os três INSERTs falharam por NOT NULL.
+
+A chave anon é **pública por definição**: está no APK entregue ao cliente
+(`env.dart`) e no bundle JS do admin-panel.
+
+Só `pipeline_rejected_urls` e `user_favorites` devolveram `[]` — a 006 liga RLS
+explicitamente, e foi a única migration que fez isso.
+
+### Por que fechar não quebra nada (verificado, não suposto)
+
+| quem | como usa o Supabase |
+|---|---|
+| mobile-app | **só `auth`** — `grep "\.from("` em `lib/` não acha acesso a tabela |
+| admin-panel | **só `auth`** — `supabase.auth.*` em `use-auth.ts` e `middleware.ts`, mais nada |
+| backend | `SUPABASE_SERVICE_KEY`, que faz **bypass de RLS** por design |
+
+Todo dado já passa pelo backend. Ligar RLS **sem criar policy nenhuma** fecha a
+porta pública e não muda nada do que funciona.
+
+Migration [025](./SQL/migrations/025_rls_fechar_anon.sql) escrita, com o teste de
+verificação no cabeçalho. **Não rodada** — afeta produção na hora (banco
+compartilhado) e precisa da autorização do João.
+
+---
+
+## 2026-08-02 — os três bugs de segurança da lista
+
+### `params_hash`: um cliente apagava a busca de outro
+
+`params_hash` é **UNIQUE global** (`schema.sql`) e não continha o usuário. Dois
+clientes buscando a mesma cidade no mesmo período colidiam — e o segundo caía no
+ramo de recuperação, que **deletava a linha do primeiro** para conseguir inserir
+a sua.
+
+O conserto da lista era `.eq('user_id')` no delete. **Só isso não resolveria:**
+com o UNIQUE global, o delete não acharia nada (a linha é de outro dono) e o
+INSERT seguinte falharia de novo — trocaria "apaga a busca alheia" por "a minha
+busca não funciona".
+
+O conserto é o `user_id` **entrar no hash**: a trava vira na prática
+`UNIQUE(user_id, params)` e a colisão só acontece com a própria busca anterior. A
+coluna não é consultada em lugar nenhum (grep: `params_hash` só aparece nessa
+função), então mudar a fórmula não invalida nada; linhas no formato antigo
+deixam de colidir e expiram sozinhas pelo `expires_at` de 7 dias. O `.eq('user_id')`
+entrou junto, redundante de propósito — se a fórmula mudar um dia, o delete
+continua confinado ao dono.
+
+### `queue.add` sem try/catch
+
+A linha em `search_cache` já existe quando o enfileiramento acontece. Redis fora
+= linha órfã em `processing`, e o usuário toma 409 nas próximas tentativas até o
+TTL de busca fantasma expirar, **20 minutos depois**. Agora marca `failed` na
+hora e libera na hora.
+
+### `is_admin`: o painel checava só se havia sessão
+
+A mesma base de usuários serve o app do cliente, então qualquer conta abria a URL
+do painel e via a casca do dashboard. Dados nunca vazaram — toda rota admin do
+backend passa por `requireAdmin` e responde 403 — mas parecer acessível já é
+problema de confiança.
+
+`<AdminGuard>` no layout do dashboard. A checagem vai pelo **backend**
+(`GET /auth/me`, que já existia e já devolve `is_admin`, lendo com a service
+key), e **não** pelo Supabase do browser: com a 025 aplicada, um guard que
+dependesse da chave anon pararia de funcionar no dia seguinte.
+
+Quem não é admin é deslogado — senão fica preso num vai-e-vem entre `/login` e
+`/dashboard`, já que a sessão é válida e o middleware manda quem tem sessão pro
+dashboard. Falha de rede **não** desloga: redireciona com aviso e mantém a
+sessão, porque derrubar o admin numa instabilidade seria pior.
+
+---
+
 ## 2026-08-02 — Fase 11, achado #3: o auto-scan passa a deduplicar em camadas
 
 Terceiro conserto. A 8.3 escreveu `runIntraBatchDedupLayered` **em arquivo

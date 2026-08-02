@@ -357,6 +357,12 @@ export const api = {
       token,
     }),
 
+  // Perfil do próprio usuário autenticado. É o que diz se ele é admin — o
+  // frontend não pode ler `user_profiles` direto (e não deve: a chave anon é
+  // pública). Protegida por requireAuth no backend, que lê com a service key.
+  getMe: (token: string) =>
+    apiFetch<UserProfile>('/auth/me', { token }),
+
   // Users (GET/POST /users, PATCH /users/:id)
   getUsers: (token: string) =>
     apiFetch<UserProfile[]>('/users', { token }),

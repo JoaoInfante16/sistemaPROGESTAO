@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,14 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const { signIn } = useAuth();
   const router = useRouter();
+
+  // Motivo de ter sido mandado de volta pelo AdminGuard. Sem isto, quem não é
+  // admin só vê a tela de login de novo, sem entender por quê.
+  const motivo = useSearchParams().get('erro');
+  const avisoDoGuard =
+    motivo === 'nao-admin' ? 'Esta conta não tem acesso ao painel administrativo.'
+    : motivo === 'verificacao' ? 'Não foi possível verificar seu acesso. Tente novamente.'
+    : '';
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,9 +48,9 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
-            {error && (
+            {(error || avisoDoGuard) && (
               <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">
-                {error}
+                {error || avisoDoGuard}
               </div>
             )}
             <div className="space-y-2">

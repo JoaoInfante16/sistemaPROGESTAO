@@ -83,21 +83,37 @@ router.post(
       });
 
       // Enfileirar job
-      await manualSearchQueue.add(
-        'manual-search',
-        {
-          searchId,
-          userId,
-          estado,
-          cidades,
-          periodoDias: periodo_dias,
-          tipoCrime: tipo_crime,
-        },
-        {
-          attempts: 2,
-          backoff: { type: 'exponential', delay: 3000 },
+      //
+      // A linha em `search_cache` já existe neste ponto, com status `processing`.
+      // Se o Redis estiver fora e o enfileiramento falhar, ela fica órfã: nada
+      // vai processá-la, e o usuário toma 409 ("já existe uma busca em
+      // andamento") nas próximas tentativas até o TTL de busca fantasma expirar,
+      // 20 minutos depois. Marcar `failed` na hora libera o usuário na hora.
+      try {
+        await manualSearchQueue.add(
+          'manual-search',
+          {
+            searchId,
+            userId,
+            estado,
+            cidades,
+            periodoDias: periodo_dias,
+            tipoCrime: tipo_crime,
+          },
+          {
+            attempts: 2,
+            backoff: { type: 'exponential', delay: 3000 },
+          }
+        );
+      } catch (enqueueError) {
+        logger.error(`[ManualSearch] Falha ao enfileirar ${searchId}: ${(enqueueError as Error).message}`);
+        try {
+          await db.updateSearchStatus(searchId, 'failed');
+        } catch (statusError) {
+          logger.error(`[ManualSearch] Falha ao marcar ${searchId} como failed: ${(statusError as Error).message}`);
         }
-      );
+        throw enqueueError;
+      }
 
       logger.info(`[ManualSearch] Created search ${searchId} for ${cidades.length} cidades in ${estado}`);
       res.status(201).json({ searchId, status: 'processing' });
