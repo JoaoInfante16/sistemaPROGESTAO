@@ -114,7 +114,12 @@ conferir `operation_logs` nesse dia.
 
 Sinal de que as mudanças eram necessárias: nos logs de 31/07 o auto-scan
 processava 1 a 10 URLs por scan e achava **0 notícias** em quase todos. Consistente
-com os templates mortos.
+com os templates mortos. **Esse é o "antes"** da medição da Fase 11 — não perder.
+
+Melhorar o auto-scan **é trabalho previsto, só que depois**: o João pediu no mesmo
+dia que ficasse no plano, condicionado a a busca manual passar nos testes. Está na
+[Fase 11 do ROADMAP](./ROADMAP.md), com gatilho e candidatos. Até lá, a ordem de
+não encostar vale integralmente.
 
 ### Onde o funil perde hoje (Salvador, 30 dias, staging)
 

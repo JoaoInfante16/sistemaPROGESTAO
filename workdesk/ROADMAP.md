@@ -204,6 +204,50 @@ de refletir o recorte escolhido, senão o relatório mente.
 
 ---
 
+## 🔁 Fase 11 — Revisar o auto-scan (só depois que a busca manual provar)
+
+Pedido do João em 02/08, logo depois de mandar não encostar nele agora: *"Coloca
+no plano depois um trabalho de verificar possível atualização no auto scan para
+ficar melhor, se a busca passar nos testes"*.
+
+**A ordem importa e é o ponto do item:** a busca manual é o banco de provas. O
+que sobreviver a ela — medido, não suposto — é candidato a ser levado para o
+auto-scan. O contrário (mexer nos dois ao mesmo tempo) foi o que já custou caro.
+
+### Gatilho — não começar antes disto
+
+1. Fase 8 validada em staging, com o funil medido antes e depois
+2. Auto-scan rodado ao menos uma semana com as mudanças de 01/08, com número na mão
+
+### Medir primeiro (o "antes" já existe nos logs)
+
+Baseline de 31/07: 1 a 10 URLs por scan e **0 notícias** na maioria — sintoma dos
+templates de Perplexity. Comparar contra a primeira semana com os templates novos,
+por `operation_logs` e notícias salvas por scan. **Sem esse número, nada se mexe.**
+
+### Candidatos, por ordem de ganho esperado
+
+| candidato | por que | risco |
+|---|---|---|
+| **Data do SERP antes do Jina** | o scan usa `periodoDias=2`; hoje ele baixa e analisa artigo velho para descartar depois. O `parseSerpDate` já lê a data no estágio 1 — cortar ali economiza Jina **e** GPT em cima do que ia ser jogado fora. É o maior ganho de custo | baixo |
+| **Dedup em camadas** (o de 8.3) | se provar na busca manual, o scan ganha o mesmo: para de fundir crimes de datas diferentes | médio — é o que mais mexe no resultado salvo |
+| **Templates por perfil de cidade** | capital e cidade pequena não rendem com a mesma query; hoje é o mesmo conjunto para todas | médio |
+| **Paginação em lote** (de 8.1) | o scan pagina pouco por rodar todo dia; ganho menor que na busca manual | baixo |
+
+### Regras que valem para qualquer mudança aqui
+
+- **Autorização explícita do João** por mudança — a ordem de não encostar continua valendo até ele levantar
+- **Medição antes e depois**, sempre por notícias salvas por scan
+- **Commit próprio** por mudança, para rollback isolado
+- Preferir **parâmetro opcional** a alterar comportamento compartilhado (padrão já adotado no `onProgress` de 8.5 e na função nova de 8.3)
+
+⚠️ Herança a não esquecer: quatro mudanças de 01/08 **já** afetam o auto-scan
+(templates, `sbd:1` + parada de paginação, Filter2 paralelo, sufixo de fila). Estão
+listadas no [DEV_LOG](./DEV_LOG.md), bloco *"Auto-scan: não encostar"*. A primeira
+execução real delas é segunda 04/08 — o "antes/depois" desta fase começa ali.
+
+---
+
 ## 💡 Em aberto (não decidido)
 
 - **Fontes oficiais por estado** (SSP/Polícia Civil): 27 fontes, não 5.570 cidades, encaixando no `type='state'` que já existe. Motivo: o RSS grátis enxerga matéria que o SERP pago não surface — a via raspada dá visão pior do índice do Google do que o feed aberto. É projeto, não remendo; fazer só depois de medir o ganho da Fase 8
