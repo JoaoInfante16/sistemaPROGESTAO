@@ -465,8 +465,14 @@ async function collectManualSearchUrls(
       // Web (organic) — mesmo texto do ramo news, mas no indice web do Google:
       // pega portais e sites que nao aparecem no indice de noticias.
       //
-      // DESLIGADO por default desde 2026-08-01 (config manual_search_web_enabled).
-      // Motivo: o tempo de coleta do scraper explodiu apos 21/07 — snapshots da
+      // ⚠️ Este comentario dizia "DESLIGADO por default" — estava DESATUALIZADO.
+      // Verificado no banco em 02/08: a chave `manual_search_web_enabled` nem
+      // existe la, entao vale o default do configManager, que e `true`. O ramo
+      // web esta LIGADO. Foi religado ao migrar do scraper de dataset pra SERP
+      // API (medido: 24-27 resultados em 4-19s). O historico abaixo e do periodo
+      // em que ficou desligado:
+      //
+      // Motivo de ter sido desligado: o tempo de coleta do scraper explodiu apos 21/07 — snapshots da
       // propria conta saltaram de 17-70s para 660-978s, com variancia enorme
       // (mesma cidade, 10 min de diferenca: 22s vs 667s). Assinatura de scraper
       // apanhando pra passar no SearchGuard do Google. Nao e incidente com data

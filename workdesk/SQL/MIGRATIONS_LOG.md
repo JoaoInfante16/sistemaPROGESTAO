@@ -22,10 +22,17 @@
 | 005 | 005_city_groups.sql | Tabelas city_groups + city_group_members (agrupamento de cidades) | Sim (Fase 6, 2026-04-06) |
 | 017 | 017_billing_history.sql | Tabela billing_history (fechamento mensal de custos) | Sim (Fase 5, 2026-04-06) |
 | 018 | 018_city_groups.sql | Tabelas city_groups + city_group_members (agrupamento de cidades no feed) | Sim (Fase 6, 2026-04-15) |
-| 019 | 019_news_add_estado.sql | ALTER news ADD COLUMN estado + index (cidade, estado). Fix de cidades homonimas | **Pendente** (Joao roda junto com migration de limpeza) |
-| 020 | 020_news_drop_resumo_agregado.sql | DROP coluna resumo_agregado (dead feature, nunca foi populada) | **Pendente — RODAR APOS deploy do backend** |
-| 021 | 021_manual_search_web_toggle.sql | Config `manual_search_web_enabled` (default false). Desliga o ramo web da busca manual — o scraper do indice organico saltou de 17-70s pra 660-978s depois de 21/07 e travava o stage 1 | **Pendente** |
+| 019 | 019_news_add_estado.sql | ALTER news ADD COLUMN estado + index (cidade, estado). Fix de cidades homonimas | **Sim** (verificado no banco em 02/08 — o log dizia pendente por engano) |
+| 020 | 020_news_drop_resumo_agregado.sql | DROP coluna resumo_agregado (dead feature, nunca foi populada) | **Sim** (verificado no banco em 02/08 — a coluna nao existe mais) |
+| 021 | 021_manual_search_web_toggle.sql | Config `manual_search_web_enabled` (default false). Desliga o ramo web da busca manual | **NAO aplicada** — a chave nao existe no banco, entao o backend cai no default do codigo, que hoje e **`true`** (o ramo web foi RELIGADO ao migrar pro SERP API). Rodar esta migration DESLIGARIA o web — so rodar se for isso que se quer |
+| 021b | 021_executive_cache.sql | Tabela executive_cache | **Sim** (verificado em 02/08) |
+| 022 | 022_executive_cache_search_id.sql | Coluna search_id em executive_cache | **Sim** (verificado em 02/08) |
 | 023 | 023_manual_search_teto_aberto.sql | Fase 8.2/8.3/8.4: `manual_search_max_results_30d` = **0 (sem teto)** e vira BASE — os outros periodos escalam dela por raiz quadrada, sem faixas. Insere `manual_search_horizon_days` (180) e `dedup_gpt_confirm_enabled` (false). Nao destrutiva; o DELETE das faixas mortas `_60d`/`_90d` esta comentado, pra rodar so apos o deploy | **Pendente** |
+
+> ⚠️ Este log e preenchido a mao e ja desatualizou (019 e 020 estavam marcadas
+> como pendentes e ja tinham sido rodadas). Antes de confiar nele, rodar
+> **`npx tsx scripts/diagnostico-banco.ts`** — ele olha o estado REAL do banco
+> (colunas, tabelas e configs) e e so leitura.
 
 ## Alteracoes manuais (sem migration file)
 

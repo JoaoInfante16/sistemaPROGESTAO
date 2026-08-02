@@ -121,16 +121,37 @@ dia que ficasse no plano, condicionado a a busca manual passar nos testes. Está
 [Fase 11 do ROADMAP](./ROADMAP.md), com gatilho e candidatos. Até lá, a ordem de
 não encostar vale integralmente.
 
-### Onde o funil perde hoje (Salvador, 30 dias, staging)
+### Onde o funil está DEPOIS da Fase 8 (Salvador, 30 dias)
 
 ```
-86 URLs → 68 Filter1 → 50 análise (TETO cortou 18) → Filter2 extraiu 26 → dedup entregou 13
+175 URLs únicas → 168 Filter0 → 155 Filter1 → [teto] → 32 extraídas → 21 entregues
+        ↑ alcance: 31 de 30 dias pedidos ✅
 ```
 
-O dedup está em `dedup_similarity_threshold = 0.70`. O João já testou 0,80 e
-**ainda duplicava**, por isso baixou. Causa real: o algoritmo compara só cosine
-contra o elemento semente, sem olhar data nem tipo de crime — subir o número não
-resolve, é o algoritmo que precisa mudar (ver ROADMAP).
+Antes da Fase 8 era `86 → 68 → 50 (teto cortou 18) → 26 → 13`, cobrindo **3 dias**
+e chamando de 30.
+
+O `dedup_similarity_threshold` segue em **0,70** e agora está certo: com a trava
+geo-temporal da 8.3, ser permissivo no cosine é seguro. Subir o número
+continuaria sendo a solução errada.
+
+### Estado do banco — não deduzir, rodar
+
+`workdesk/SQL/MIGRATIONS_LOG.md` é preenchido à mão e **já desatualizou** (019 e
+020 estavam marcadas como pendentes e já tinham sido aplicadas).
+
+**`npx tsx scripts/diagnostico-banco.ts`** — só leitura, olha o estado real:
+colunas, tabelas, configs, migrations, buscas presas, últimas execuções do
+auto-scan e custo do mês. Verificado em 02/08:
+
+- migrations 019, 020, 021b, 022 **aplicadas**; 021 e 023 **não**
+- `manual_search_web_enabled` **não existe no banco** → vale o default do código,
+  que é `true`. **O ramo web está LIGADO.** (Um comentário no worker dizia o
+  contrário e foi corrigido.)
+- `search_max_results` = **20** (não 15, como estava escrito aqui antes)
+- `filter2_confidence_min` = **0,5** (o default do código é 0,7)
+- 7 configs mortas no banco
+- custo do mês: **$0,12** de $100
 
 ---
 
@@ -369,7 +390,7 @@ para dar pra comparar os dois, e `periodoDias` entrou no registro.
 | usa config/função da busca manual? | **nenhuma ocorrência** |
 | `pageConcurrency`? | não passa → paginação serial de sempre |
 | `classificar`? | não passa → pós-filtros descartam como antes |
-| teto próprio | `search_max_results` = 15, intocado |
+| teto próprio | `search_max_results` = 20 (valor real no banco), intocado |
 
 Única herança: `parseNewsResults` agora preenche `publishedAt`. O scan ignora o
 campo.
@@ -553,7 +574,7 @@ jogado fora, não troca.
 ### Duas decisões de desenho que valem lembrar
 
 **A paginação em lote é opt-in (`pageConcurrency`, default 1 = serial).** O
-provider é **compartilhado com o auto-scan**, e `search_max_results = 15` faz ele
+provider é **compartilhado com o auto-scan**, e `search_max_results = 20` (valor real no banco) faz ele
 paginar 2 páginas. Ligado por padrão, o CRON passaria a pedir sempre as duas em
 vez de às vezes parar na primeira — mudança de custo e de comportamento nele. Só
 a busca manual opta.

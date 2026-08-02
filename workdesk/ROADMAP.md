@@ -249,9 +249,19 @@ auto-scan. O contrário (mexer nos dois ao mesmo tempo) foi o que já custou car
 
 ### Medir primeiro (o "antes" já existe nos logs)
 
-Baseline de 31/07: 1 a 10 URLs por scan e **0 notícias** na maioria — sintoma dos
-templates de Perplexity. Comparar contra a primeira semana com os templates novos,
-por `operation_logs` e notícias salvas por scan. **Sem esse número, nada se mexe.**
+**Baseline confirmado no banco em 02/08** (`scripts/diagnostico-banco.ts`):
+`operation_logs` está saudável e a última execução foi **31/07 20:00**. Das 10
+últimas, **9 acharam ZERO notícias**, com `urls_processed` entre 0 e 10.
+
+```
+2026-07-31 20:00 | urls= 1 | news=0
+2026-07-31 19:00 | urls=10 | news=0
+2026-07-31 19:00 | urls= 4 | news=0
+2026-07-31 18:00 | urls= 1 | news=1
+```
+
+Comparar contra a primeira semana com os templates novos. **Sem esse número, nada
+se mexe.**
 
 ### Candidatos, por ordem de ganho esperado
 
