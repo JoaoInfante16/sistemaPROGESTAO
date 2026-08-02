@@ -20,6 +20,10 @@ export interface ConfigEntry {
 // Defaults caso o DB não tenha configs (ou falhe)
 const DEFAULTS: Record<string, string> = {
   dedup_similarity_threshold: '0.85',
+  // Camada 3 do dedup intra-batch da busca manual: confirma por GPT os pares na
+  // faixa duvidosa (entre o threshold e 0.92). Desligado por default — a trava
+  // geo-temporal da camada 1 ja resolve a maior parte dos falsos positivos.
+  dedup_gpt_confirm_enabled: 'false',
   filter2_confidence_min: '0.7',
   content_fetch_concurrency: '5',
   search_max_results: '15',

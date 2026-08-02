@@ -21,12 +21,12 @@ import {
   runFilter1,
   runContentFetch,
   runFilter2WithEmbedding,
-  runIntraBatchDedup,
   deduplicateResults,
   diasAtrasISO,
   searchProvider,
   RejectedUrl,
 } from '../pipeline/pipelineCore';
+import { runIntraBatchDedupLayered } from '../pipeline/intraBatchDedupLayered';
 import { SearchResult, SearchOptions } from '../../services/search/SearchProvider';
 import { newsMaxPorQuery, analiseMaxPorBusca } from '../../services/search/manualSearchCaps';
 
@@ -103,6 +103,9 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       filter2MaxContentChars: await configManager.getNumber('filter2_max_content_chars'),
       filter0RegexEnabled: await configManager.getBoolean('filter0_regex_enabled'),
       dedupSimilarityThreshold: await configManager.getNumber('dedup_similarity_threshold'),
+      // Camada 3 do dedup. Default false: so vale a pena se a faixa duvidosa
+      // estiver errando muito, e ai custa GPT por par.
+      dedupGptConfirmEnabled: await configManager.getBoolean('dedup_gpt_confirm_enabled'),
       // Ate onde "fora do periodo" ainda vale a pena. Quem protege o orcamento e
       // o teto de analise, nao o horizonte — por isso ele pode ser generoso.
       horizonteDias: await configManager.getNumber('manual_search_horizon_days'),
@@ -244,29 +247,34 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       details: { searchId, stage: 'filter2+embedding', analyzed: validContents.length, extracted: extractions.length, tokensUsed: f2tokens },
     });
 
-    // STAGE 6: Dedup intra-batch, POR BALDE
+    // STAGE 6: Dedup intra-batch EM CAMADAS (8.3)
     //
-    // Deduplicar tudo junto seria perigoso: o `runIntraBatchDedup` elege o lider
-    // do cluster por confianca, entao uma noticia principal poderia se fundir com
-    // uma de cidade vizinha e SUMIR do resultado principal, virando "extra". Por
-    // balde, isso e impossivel. O preco e uma materia repetida entre o principal
-    // e os extras — visivel so numa secao recolhida, e bem menos grave que perder
-    // resultado. A 8.3 resolve de verdade, com trava geo-temporal.
+    // Funcao NOVA, em arquivo proprio. A `runIntraBatchDedup` do pipelineCore
+    // segue intacta e e a que o auto-scan usa — ordem do Joao em 02/08.
     //
-    // 🚫 `runIntraBatchDedup` NAO foi alterada — ela e compartilhada com o auto-scan.
+    // A 8.2 precisou deduplicar por balde separado porque o algoritmo antigo
+    // elegia o lider do cluster por confianca: uma noticia principal podia se
+    // fundir com uma de cidade vizinha e SUMIR do principal. Aqui isso nao
+    // acontece por dois motivos — a trava geo-temporal exige mesma cidade, e os
+    // sinalizadores do cluster sao inclusivos (basta um membro ser do periodo
+    // pedido pro cluster inteiro ser). Entao os baldes voltam a ser deduplicados
+    // juntos, o que tambem elimina a materia repetida entre principal e extras.
     if (await isCancelled(searchId)) { logger.info(`${LOG_PREFIX} cancelled before stage 6`); return; }
     await db.updateSearchProgress(searchId, { stage: 'dedup', stage_num: 6, total_stages: 7, details: `Consolidando ${extractions.length} resultados` });
 
-    const baldes = new Map<string, typeof extractions>();
-    for (const e of extractions) {
-      const chave = `${e.cidade_vizinha ? 'v' : '-'}${e.fora_do_periodo ? 'f' : '-'}`;
-      const atual = baldes.get(chave);
-      if (atual) atual.push(e); else baldes.set(chave, [e]);
-    }
+    const dedup = await runIntraBatchDedupLayered(extractions, LOG_PREFIX, {
+      similarityThreshold: pipelineConfig.dedupSimilarityThreshold,
+      gptConfirmEnabled: pipelineConfig.dedupGptConfirmEnabled,
+    });
+    const consolidated = dedup.consolidated;
 
-    const consolidated = [...baldes.entries()].flatMap(([chave, itens]) =>
-      runIntraBatchDedup(itens, `${LOG_PREFIX} [${chave}]`, pipelineConfig.dedupSimilarityThreshold).consolidated
-    );
+    if (dedup.tokensUsed > 0) {
+      await db.trackCost({
+        source: 'manual_search', provider: 'openai',
+        cost_usd: dedup.tokensUsed * 0.00000015,
+        details: { searchId, stage: 'dedup_gpt_confirm', tokensUsed: dedup.tokensUsed },
+      });
+    }
 
     // Build final results with sources array
     const finalResults = consolidated.map(news => ({

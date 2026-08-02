@@ -207,6 +207,7 @@ CREATE TABLE system_config (
 -- Valores iniciais
 INSERT INTO system_config (key, value, description, category, value_type) VALUES
   ('dedup_similarity_threshold', '0.85', 'Threshold de similaridade coseno para deduplicação (camada 2)', 'pipeline', 'number'),
+  ('dedup_gpt_confirm_enabled', 'false', 'Camada 3 do dedup da busca manual: confirma por GPT os pares na faixa duvidosa (entre o threshold e 0.92)', 'pipeline', 'boolean'),
   ('filter2_confidence_min', '0.7', 'Confiança mínima da extração GPT para aceitar notícia', 'pipeline', 'number'),
   ('content_fetch_concurrency', '5', 'Máximo de fetches simultâneos por pipeline run', 'pipeline', 'number'),
   ('search_max_results', '15', 'URLs por query no monitoramento automatico', 'pipeline', 'number'),

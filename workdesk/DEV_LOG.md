@@ -134,6 +134,73 @@ resolve, é o algoritmo que precisa mudar (ver ROADMAP).
 
 ---
 
+## 2026-08-02 — 8.3: dedup em camadas ✅
+
+**Medido no funil real** (Salvador / 30 dias, mesmas 32 extrações, mesmo
+threshold 0,70):
+
+| dedup | resultado |
+|---|---|
+| antigo (só cosine) | 32 → **16** |
+| camadas (8.3) | 32 → **21** |
+
+**5 ocorrências reais que o antigo fundia por engano** — +31%. A trava
+geo-temporal barrou **273 pares** antes de qualquer cosine, de graça.
+
+### Por que subir o threshold nunca ia resolver
+
+O algoritmo antigo compara **só cosine**, sem olhar data nem tipo de crime. Isso
+erra nos dois sentidos ao mesmo tempo:
+
+- **funde demais** — dois homicídios *diferentes*, em datas diferentes, têm
+  resumos quase idênticos ("homem é morto a tiros em Salvador") e batem 0,70+
+- **funde de menos** — o mesmo evento por dois veículos com ângulos editoriais
+  diferentes às vezes não chega ao limiar
+
+Por isso o João testou 0,80, continuou duplicando, e baixou pra 0,70. Nenhum
+número resolvia: era o algoritmo. A camada 1 conserta a primeira falha de graça,
+e por isso permite ser permissivo na segunda sem medo.
+
+### As três camadas (mesma estratégia que o auto-scan já usa contra o banco)
+
+1. **Trava geo-temporal**, em memória e grátis: mesma cidade, mesmo estado, mesmo
+   tipo de crime, data ±1 dia. Bairro tolerante a nulo, igual ao
+   `findGeoTemporalCandidates`.
+2. **Cosine**, com o `dedup_similarity_threshold` de sempre.
+3. **Confirmação GPT** só na faixa duvidosa (entre o threshold e 0,92), atrás de
+   `dedup_gpt_confirm_enabled` (**default false**). Acima de 0,92 o cosine decide
+   sozinho — pedir GPT ali seria gastar à toa. GPT fora degrada pra camada 2.
+
+🚫 `runIntraBatchDedup` **não foi tocada** — arquivo novo
+([intraBatchDedupLayered.ts](../backend/src/jobs/pipeline/intraBatchDedupLayered.ts)),
+usado só pelo `manualSearchWorker`. O auto-scan segue no caminho de sempre.
+
+### Sinalizadores inclusivos — e o fim do dedup por balde
+
+O cluster **não herda os flags do líder**. Basta um membro ser do período pedido
+para o cluster inteiro ser:
+
+```
+fora_do_periodo = TODOS os membros são fora   (não: o líder é)
+cidade_vizinha  = TODOS os membros são vizinha
+```
+
+Sem isso, um evento na fronteira da janela (veículos divergem um dia na data)
+podia sumir da lista principal e reaparecer em "fora do período" ao sabor de um
+decimal de confiança. Foi por esse risco que a 8.2 teve de deduplicar cada balde
+separado — **agora os baldes voltaram a ser deduplicados juntos**, o que também
+eliminou a matéria repetida entre principal e extras que a 8.2 deixou.
+
+### Regressão sem rede
+
+[`scripts/test-dedup-camadas.ts`](../backend/scripts/test-dedup-camadas.ts) —
+10 casos, embeddings sintéticos, camada 3 desligada, roda em milissegundos.
+**10/10.** Trava o caso que quebrava (datas diferentes), o que tem que continuar
+fundindo, a tolerância de 1 dia, bairro, tipo de crime, cidade vizinha e a regra
+inclusiva na fronteira.
+
+---
+
 ## 2026-08-02 — teto de período: 6 meses por enquanto
 
 Decisão do João depois de ver que o limite virou tempo, não dinheiro: *"deixa

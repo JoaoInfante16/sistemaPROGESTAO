@@ -55,24 +55,19 @@ cada bloco é commit próprio, para ter rollback.
 fora** (Camaçari ×2, Lauro de Freitas). Feira de Santana seguiu rejeitada, correto.
 Detalhes no [DEV_LOG](./DEV_LOG.md).
 
-### 8.3 — Dedup em camadas
+### ✅ 8.3 — Dedup em camadas — FEITO em 02/08
 
-Hoje corta 26 → 13 e o João já testou 0,80 sem resolver. O algoritmo compara só
-cosine contra o elemento semente.
+- [x] Camada 1: trava geo-temporal em memória (cidade + estado + tipo + data ±1d, bairro tolerante a nulo)
+- [x] Camada 2: cosine com o `dedup_similarity_threshold` de sempre
+- [x] Camada 3: confirmação GPT na faixa duvidosa, atrás de `dedup_gpt_confirm_enabled` (default `false`)
+- [x] Sinalizadores **inclusivos** no cluster → baldes voltaram a ser deduplicados juntos
+- [x] Regressão sem rede: `scripts/test-dedup-camadas.ts`, 10/10
+- [x] 🚫 `runIntraBatchDedup` intacta — arquivo novo, usado só pelo `manualSearchWorker`
 
-Reusar a estratégia do auto-scan ([services/deduplication](../backend/src/services/deduplication/)):
-1. Trava geo-temporal em memória: mesma cidade + mesmo tipo de crime + data ±1 dia
-2. Só então cosine
-3. Confirmação GPT na faixa duvidosa, atrás de `dedup_gpt_confirm_enabled` (default `false`)
-
-Resolve os dois lados: datas diferentes param de se fundir, e dentro do mesmo
-evento dá para ser mais permissivo. Como exige mesma cidade, item de região
-metropolitana nunca se funde com o principal.
-
-🚫 **NÃO alterar `runIntraBatchDedup`** — ela é compartilhada com o auto-scan, e o
-João pediu explicitamente para não encostar nele. Criar **função nova**, usada só
-pelo `manualSearchWorker`. A antiga fica intacta e o auto-scan segue no caminho
-que já funciona. Mesma regra vale para qualquer outro ponto compartilhado.
+**Medido:** Salvador / 30 dias, mesmas 32 extrações, mesmo threshold 0,70 —
+antigo 32→16, camadas 32→**21**. **5 ocorrências reais** que o antigo fundia por
+engano (+31%), com 273 pares barrados pela trava antes de qualquer cosine.
+Detalhes no [DEV_LOG](./DEV_LOG.md).
 
 ### ✅ 8.4 — Período livre e respeitado — FEITO em 02/08 (backend)
 

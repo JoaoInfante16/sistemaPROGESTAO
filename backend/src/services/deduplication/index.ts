@@ -131,5 +131,9 @@ Answer ONLY "YES" or "NO":`;
   }
 }
 
-// Export para testes
+// Camada 3 reusada pelo dedup intra-batch em camadas da busca manual
+// (jobs/pipeline/intraBatchDedupLayered.ts) — mesmo prompt, mesma validacao.
+export { confirmDuplicateWithGPT };
+
+// Export para testes (nome antigo, mantido pra nao quebrar scripts)
 export { confirmDuplicateWithGPT as _confirmDuplicateWithGPT };

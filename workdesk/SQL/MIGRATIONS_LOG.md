@@ -25,7 +25,7 @@
 | 019 | 019_news_add_estado.sql | ALTER news ADD COLUMN estado + index (cidade, estado). Fix de cidades homonimas | **Pendente** (Joao roda junto com migration de limpeza) |
 | 020 | 020_news_drop_resumo_agregado.sql | DROP coluna resumo_agregado (dead feature, nunca foi populada) | **Pendente — RODAR APOS deploy do backend** |
 | 021 | 021_manual_search_web_toggle.sql | Config `manual_search_web_enabled` (default false). Desliga o ramo web da busca manual — o scraper do indice organico saltou de 17-70s pra 660-978s depois de 21/07 e travava o stage 1 | **Pendente** |
-| 023 | 023_manual_search_teto_aberto.sql | Fase 8.4: `manual_search_max_results_30d` = **0 (sem teto)** e vira BASE — os outros periodos escalam dela por raiz quadrada, sem faixas. Insere `manual_search_horizon_days` (365) da 8.2. Nao destrutiva; o DELETE das faixas mortas `_60d`/`_90d` esta comentado, pra rodar so apos o deploy | **Pendente** |
+| 023 | 023_manual_search_teto_aberto.sql | Fase 8.2/8.3/8.4: `manual_search_max_results_30d` = **0 (sem teto)** e vira BASE — os outros periodos escalam dela por raiz quadrada, sem faixas. Insere `manual_search_horizon_days` (180) e `dedup_gpt_confirm_enabled` (false). Nao destrutiva; o DELETE das faixas mortas `_60d`/`_90d` esta comentado, pra rodar so apos o deploy | **Pendente** |
 
 ## Alteracoes manuais (sem migration file)
 

@@ -33,6 +33,18 @@ VALUES (
 )
 ON CONFLICT (key) DO NOTHING;
 
+-- Camada 3 do dedup em camadas (Fase 8.3). Desligada por default — a trava
+-- geo-temporal da camada 1 já resolve a maior parte dos falsos positivos.
+INSERT INTO system_config (key, value, description, category, value_type)
+VALUES (
+  'dedup_gpt_confirm_enabled',
+  'false',
+  'Camada 3 do dedup da busca manual: confirma por GPT os pares na faixa duvidosa (entre o threshold e 0.92)',
+  'pipeline',
+  'boolean'
+)
+ON CONFLICT (key) DO NOTHING;
+
 -- ------------------------------------------------------------------
 -- OPCIONAL — rodar só APÓS o deploy do backend da 8.4.
 -- Configs mortas desde que o teto deixou de ser por faixa.

@@ -12,8 +12,10 @@
 
 import {
   runFilter0, runFilter1, runContentFetch, runFilter2WithEmbedding,
-  deduplicateResults, searchProvider, RejectedUrl,
+  runIntraBatchDedup, deduplicateResults, searchProvider, RejectedUrl,
 } from '../src/jobs/pipeline/pipelineCore';
+import { runIntraBatchDedupLayered } from '../src/jobs/pipeline/intraBatchDedupLayered';
+import { configManager } from '../src/services/configManager';
 import { rateLimiter } from '../src/services/rateLimiter';
 import { config } from '../src/config';
 import { buildManualSearchQueries } from '../src/services/search/queryTemplates';
@@ -109,6 +111,16 @@ async function main(): Promise<void> {
   );
   console.log(`5) FILTER2 ............ ${conteudos.length} → ${r2.extractions.length}`);
 
+  // STAGE 6 — dedup, nos DOIS algoritmos, pra medir o ganho da 8.3
+  const threshold = await configManager.getNumber('dedup_similarity_threshold');
+  const antigo = runIntraBatchDedup(r2.extractions, '[antigo]', threshold);
+  const novo = await runIntraBatchDedupLayered(r2.extractions, '[camadas]', { similarityThreshold: threshold });
+  console.log(`6) DEDUP (threshold ${threshold})`);
+  console.log(`     antigo (so cosine) .... ${r2.extractions.length} → ${antigo.consolidated.length}`);
+  console.log(`     camadas (8.3) ......... ${r2.extractions.length} → ${novo.consolidated.length}  [${novo.bloqueadosPelaTrava} pares barrados pela trava]`);
+  const recuperadas = novo.consolidated.length - antigo.consolidated.length;
+  if (recuperadas > 0) console.log(`     → ${recuperadas} ocorrencia(s) que o antigo fundia por engano`);
+
   // ---- Motivos, agrupados
   console.log('\n' + '='.repeat(76));
   console.log('MOTIVOS DE REJEICAO POR STAGE');
@@ -126,12 +138,13 @@ async function main(): Promise<void> {
     if (itens.length > 15) console.log(`     ... +${itens.length - 15}`);
   }
 
-  // ---- Separado por balde (8.2)
-  const principal = r2.extractions.filter((e) => !e.fora_do_periodo && !e.cidade_vizinha);
-  const regiao = r2.extractions.filter((e) => e.cidade_vizinha);
-  const foraPeriodo = r2.extractions.filter((e) => e.fora_do_periodo && !e.cidade_vizinha);
+  // ---- Separado por balde (8.2), ja consolidado pelo dedup em camadas
+  const finais = novo.consolidated;
+  const principal = finais.filter((e) => !e.fora_do_periodo && !e.cidade_vizinha);
+  const regiao = finais.filter((e) => e.cidade_vizinha);
+  const foraPeriodo = finais.filter((e) => e.fora_do_periodo && !e.cidade_vizinha);
 
-  const linha = (e: (typeof r2.extractions)[number]): string =>
+  const linha = (e: (typeof finais)[number]): string =>
     `  ${e.data_ocorrencia} | ${e.tipo_crime.padEnd(20)} | ${e.cidade}/${e.estado || '?'} | conf ${e.confianca}`;
 
   console.log('\n' + '='.repeat(76));
