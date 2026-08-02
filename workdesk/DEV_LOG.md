@@ -227,6 +227,57 @@ auto-scan e custo do mês. Verificado em 02/08:
 
 ---
 
+## 2026-08-02 — ✅ VALIDADO NO APP: 77 resultados, e onde o tempo vai
+
+Primeiro teste real da reforma, pelo app. **Campo Grande / 60 dias → 77
+resultados.** A mesma busca no código anterior (commit `373cf00`, 3 assuntos)
+tinha entrado com **159 snippets**; com 5 assuntos entrou com **269**. **+69% de
+cobertura**, que é exatamente o que a hipótese do teto-por-query previa.
+
+### A timeline, medida no `budget_tracking`
+
+```
+23:00:06  início
+23:00:30  coleta ............  24s   5 assuntos em paralelo, 269 snippets
+23:00:50  filter1 ...........  20s
+23:03:49  fetch (Jina) ...... 179s   241 artigos   <-- 54% do tempo total
+23:05:35  filter2+embedding . 106s   241 → 151 extraídas
+23:05:37  fim ............... 5min31s
+```
+
+Funil: `269 → 241 baixadas → 151 extraídas → 77 entregues`.
+
+O João achou que tinha travado no 4/7. **Não travou** — o `feitos/total` da 8.5
+mostrou 47/151 e depois 70/241 andando. É lento, não parado; e é exatamente o
+caso que a barra granular foi feita para distinguir.
+
+### Por que o estágio 4 é lento — e a doc estava otimista
+
+**241 artigos em 179s com pool de 10 = ~7,4s por artigo.** A doc do projeto
+assumia ~3s. O Jina é mais lento que isso na prática, e é o número que vale para
+qualquer estimativa daqui em diante.
+
+### O que acelera, e por que não é uma config só
+
+⚠️ **Há DOIS limitadores em série no estágio 4**, ambos em 10:
+
+| onde | valor |
+|---|---|
+| `asyncPool` do `runContentFetch` | `manual_search_fetch_concurrency` = 10 |
+| `Bottleneck` do rateLimiter | `api_rate_limits.jina.max_concurrent` = 10 |
+
+Subir **só** o primeiro não acelera nada — o Bottleneck estrangula em 10 do mesmo
+jeito. E `api_rate_limits` **não tem UI no painel** (a API existe,
+`GET/PATCH /settings/rate-limits`, e nada no front a consome), então hoje é
+edição no Supabase.
+
+O teto real depende do **plano contratado do Jina**, que não está no repo. Antes
+de subir, vale saber: um 429 hoje vira "fetch falhou" e **perde o artigo em
+silêncio** — não há tratamento de 429 no `JinaContentFetcher`. Acelerar com
+segurança pede o retry com `Retry-After` primeiro.
+
+---
+
 ## 2026-08-02 — todas as configs vivas agora têm campo no painel
 
 Pergunta do João no fim: *"tudo devidamente conectado no painel admin pra eu
