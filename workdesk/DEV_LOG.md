@@ -201,6 +201,42 @@ auto-scan e custo do mês. Verificado em 02/08:
 
 ---
 
+## 2026-08-02 — Fase 11: cortar pela data do SERP antes de baixar o artigo
+
+Segundo conserto do auto-scan, e o que o ROADMAP apontava como **maior ganho de
+custo** entre os candidatos.
+
+O `publishedAt` chega do estágio 1 desde a 8.4 e só era usado pra decidir quando
+parar de paginar. Agora ele também corta: artigo publicado antes da janela não
+desce pro Jina nem pro Filter2 — o pós-filtro ia rejeitar de qualquer forma,
+**depois de pago**.
+
+### Duas escolhas conservadoras
+
+`parseSerpDate` é aproximado de propósito (`"1 mês atrás"` = 30 dias), e o preço
+de um falso negativo aqui é notícia perdida. Então:
+
+- **sem data legível, mantém** — o corte só age sobre evidência positiva;
+- **1 dia de folga** sobre `scan_period_days`, pra imprecisão do parser não
+  comer a borda da janela.
+
+Quem decide de verdade continua sendo o Filter2, lendo a data da **ocorrência**
+no corpo do texto. Este corte é sobre a data de **publicação** — e a direção que
+importa é segura: matéria publicada antes do início da janela não descreve
+ocorrência de depois dela.
+
+### Medível sem instrumentar
+
+Os cortados vão pra `pipeline_rejected_urls` com `stage = 'serp_data'` e o motivo
+trazendo as duas datas. A coluna é `TEXT` livre (migration 006), então não houve
+migration. Contagem também em `budget_tracking.details`
+(`velhasPelaSerp` / `analisaveis`).
+
+O `cleanupOldRejectedUrls()` subiu pra antes da peneira — senão o corte gravava
+e a limpeza rodava logo em seguida sobre a mesma tabela.
+
+---
+
 ## 2026-08-02 — Fase 11, achado #5: dedup por URL antes de qualquer GPT
 
 Decisão do João: *"aplicamos tudo já, com cautela, testo em staging alguns dias

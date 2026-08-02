@@ -23,6 +23,7 @@ import {
   runFilter2WithEmbedding,
   runIntraBatchDedup,
   deduplicateResults,
+  diasAtrasISO,
   searchProvider,
   RejectedUrl,
 } from './pipelineCore';
@@ -109,6 +110,10 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   const searchResults = deduplicateResults(allResults);
   logger.info(`${LOG_PREFIX} Collected ${allResults.length} URLs → ${searchResults.length} unique (sources: ${sources.join(', ')})`);
 
+  // Antes da peneira: a limpeza das rejeições velhas, senão o corte por data
+  // abaixo grava e o cleanup roda logo em seguida sobre a mesma tabela.
+  await db.cleanupOldRejectedUrls();
+
   // STAGE 1.5: peneira barata — tira o que já foi analisado antes de gastar GPT
   //
   // O scan roda de hora em hora sobre a MESMA janela (`scan_period_days`), então
@@ -129,6 +134,31 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
     logger.info(`${LOG_PREFIX} ${urlsConhecidas.size} URL(s) já analisadas em scan anterior — ${ineditos.length} inéditas seguem`);
   }
 
+  // E o que a própria SERP já disse ser velho demais.
+  //
+  // `publishedAt` chega do estágio 1 desde a 8.4 e era usado só pra decidir
+  // quando parar de paginar. Aqui ele evita baixar (Jina) e analisar (Filter2)
+  // artigo cuja publicação é anterior à janela — o pós-filtro do Filter2 ia
+  // rejeitar do mesmo jeito, depois de pago.
+  //
+  // Duas escolhas conservadoras, porque `parseSerpDate` é aproximado ("1 mês
+  // atrás" = 30 dias) e o preço de um falso negativo é notícia perdida:
+  //   - sem data legível, MANTÉM;
+  //   - 1 dia de folga sobre a janela, pra imprecisão do parser não cortar a
+  //     borda. Quem decide de verdade continua sendo o Filter2, lendo a data da
+  //     OCORRÊNCIA no corpo do texto.
+  const limiteSerp = diasAtrasISO(pipelineConfig.scanPeriodDays + 1);
+  const velhos = ineditos.filter((r) => r.publishedAt && r.publishedAt < limiteSerp);
+  const dentroDaJanela = ineditos.filter((r) => !(r.publishedAt && r.publishedAt < limiteSerp));
+  if (velhos.length > 0) {
+    logger.info(`${LOG_PREFIX} ${velhos.length} URL(s) publicadas antes de ${limiteSerp} — cortadas antes do Jina`);
+    await db.insertRejectedUrls(velhos.map((r) => ({
+      url: r.url, title: r.title || '', stage: 'serp_data',
+      reason: `publicada em ${r.publishedAt} (janela começa ${limiteSerp})`,
+      location_id: locationId,
+    })));
+  }
+
   if (queryCount > 0) {
     // Bright Data: $0.0015/request, com paginacao (20 results/page)
     // Brave: $0.005/query (sem paginacao interna)
@@ -146,16 +176,15 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
         queryCount, requestsPerQuery, totalRequests,
         resultsCount: searchResults.length, sources,
         jaVistas: urlsConhecidas.size, ineditas: ineditos.length,
+        velhasPelaSerp: velhos.length, analisaveis: dentroDaJanela.length,
       },
     });
   }
 
-  await db.cleanupOldRejectedUrls();
-
   const rejectedUrls: RejectedUrl[] = [];
 
   // STAGE 2: Filter0
-  const afterFilter0 = runFilter0(ineditos, pipelineConfig.filter0RegexEnabled, rejectedUrls, LOG_PREFIX);
+  const afterFilter0 = runFilter0(dentroDaJanela, pipelineConfig.filter0RegexEnabled, rejectedUrls, LOG_PREFIX);
 
   // Save rejected from filter0
   const filter0Rejected = rejectedUrls.filter(r => r.stage === 'filter0');
