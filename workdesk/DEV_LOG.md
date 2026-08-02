@@ -155,6 +155,40 @@ auto-scan e custo do mês. Verificado em 02/08:
 
 ---
 
+## 2026-08-02 — configs no painel em vez de SQL
+
+Ideia do João: *"Pq a gente n coloca tudo isso no painel admin dai eu rodo só o 22"*.
+
+**Ele está certo, e nem o 22 precisa** — a 022 já estava aplicada (verificado no
+banco). E a 023 **só mexe em `system_config`**: o `PATCH /settings/config/:key`
+usa `configManager.set`, que é **upsert** — cria a chave se não existir. Logo, dá
+para fazer tudo pelo painel e **não rodar SQL nenhum**.
+
+`value_type` e `category` não afetam leitura (`getNumber` faz `parseFloat`,
+`getBoolean` compara com `'true'`), então criar config pelo painel é equivalente
+ao INSERT.
+
+Adicionados em **Configurações → Busca Manual**:
+
+| campo | tipo | valor |
+|---|---|---|
+| Artigos analisados — base (30 dias) | número, min **0** | **0** = sem teto |
+| Horizonte de "fora do período" | número (dias) | 180 |
+| Confirmar duplicatas com IA | toggle | desligado |
+
+O toggle da **Fonte Web** já existia — o João lembrou certo.
+
+Dois detalhes que o card genérico errava:
+- o custo estimado tratava **todo** campo como contagem de URL. Com "horizonte em
+  dias" isso viraria número sem significado → só aparece no teto de artigos
+- com o teto em `0`, mostrava **"~$0.000/busca"** — exatamente o contrário do que
+  acontece, já que sem teto é o cenário mais caro. Agora diz **"sem teto —
+  analisa tudo"**
+
+A migration 023 continua no repo para instalação nova, marcada como **opcional**.
+
+---
+
 ## 2026-08-02 — o ramo web medido: fica ligado, mas passou a ser o último da fila
 
 Pergunta do João: *"desligo o web ou n?"*. Medido em vez de opinado.

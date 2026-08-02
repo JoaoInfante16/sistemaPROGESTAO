@@ -100,6 +100,17 @@ const MANUAL_SEARCH_THRESHOLDS: ThresholdConfig[] = [
     max: 500,
     step: 10,
   },
+  {
+    key: 'manual_search_horizon_days',
+    label: 'Horizonte de "fora do período" (dias)',
+    description:
+      'Notícia mais antiga que o período pedido não é descartada: vem marcada como "fora do período". Este é o limite de quão antiga ela pode ser.',
+    tooltip:
+      'Não é alavanca de custo — quem limita o gasto é o teto de artigos acima. Casado com o máximo de 180 dias da busca: acima disso, nada entra.',
+    min: 30,
+    max: 365,
+    step: 30,
+  },
 ];
 
 const AI_FILTER_THRESHOLDS: ThresholdConfig[] = [
@@ -708,6 +719,27 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
+                {/* Camada 3 do dedup — confirmacao por GPT na faixa duvidosa */}
+                <div className="rounded-lg border p-4 flex items-center justify-between">
+                  <div className="pr-4">
+                    <Label className="font-medium">Confirmar duplicatas com IA</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Quando duas materias parecem a mesma ocorrencia mas nao ha certeza, pergunta ao GPT
+                      antes de juntar. Desligado, decide so pela similaridade — que ja e seguro, porque
+                      antes disso o sistema exige mesma cidade, mesmo tipo de crime e mesma data.
+                      Ligue se voltar a aparecer noticia repetida no resultado.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {savingConfig.has('dedup_gpt_confirm_enabled') && <Loader2 className="h-4 w-4 animate-spin" />}
+                    <Switch
+                      checked={isConfigEnabled('dedup_gpt_confirm_enabled')}
+                      onCheckedChange={() => toggleConfig('dedup_gpt_confirm_enabled', isConfigEnabled('dedup_gpt_confirm_enabled'))}
+                      disabled={savingConfig.has('dedup_gpt_confirm_enabled')}
+                    />
+                  </div>
+                </div>
+
                 {MANUAL_SEARCH_THRESHOLDS.map((threshold) => {
                   const currentVal = editingConfig[threshold.key] ?? getConfigValue(threshold.key);
                   const hasChange = editingConfig[threshold.key] !== undefined;
@@ -717,6 +749,17 @@ export default function SettingsPage() {
                   const searchReqs = Math.ceil(urlCount / 20);
                   const fetchCount = Math.round(urlCount * 0.6);
                   const estimatedCost = searchReqs * 0.0015 + urlCount * 0.00003 + fetchCount * (0.0001 + 0.0006 + 0.00001);
+                  // O horizonte e medido em DIAS, nao em artigos — estimar custo
+                  // a partir dele daria um numero sem significado nenhum.
+                  const ehTetoDeArtigos = threshold.key === 'manual_search_max_results_30d';
+                  const unidade = ehTetoDeArtigos ? 'artigos' : 'dias';
+                  const rotuloCusto = !ehTetoDeArtigos
+                    ? null
+                    : urlCount === 0
+                      // 0 = sem teto. Mostrar "$0.000" seria exatamente ao contrario
+                      // do que acontece: sem teto e o cenario MAIS caro.
+                      ? 'sem teto — analisa tudo'
+                      : `~$${estimatedCost.toFixed(3)}/busca`;
                   return (
                     <div key={threshold.key} className="rounded-lg border p-4">
                       <div className="flex items-center justify-between mb-3">
@@ -731,11 +774,12 @@ export default function SettingsPage() {
                             </TooltipContent>
                           </Tooltip>
                         </div>
-                        <span className="text-xs font-mono text-muted-foreground">~${estimatedCost.toFixed(3)}/busca</span>
+                        {rotuloCusto && <span className="text-xs font-mono text-muted-foreground">{rotuloCusto}</span>}
                       </div>
+                      <p className="text-sm text-muted-foreground mb-3">{threshold.description}</p>
                       <div className="flex items-center gap-3">
                         <Input type="number" className="w-24" min={threshold.min} max={threshold.max} step={threshold.step} value={currentVal} onChange={(e) => handleConfigChange(threshold.key, e.target.value)} />
-                        <span className="text-xs text-muted-foreground">URLs ({threshold.min} - {threshold.max})</span>
+                        <span className="text-xs text-muted-foreground">{unidade} ({threshold.min} - {threshold.max})</span>
                         {hasChange && (
                           <Button size="sm" onClick={() => saveNumericConfig(threshold.key, editingConfig[threshold.key])} disabled={isSaving}>
                             {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" />Salvar</>}

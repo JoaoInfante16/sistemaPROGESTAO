@@ -1,6 +1,19 @@
 -- ============================================
 -- 023 — Busca manual: teto de análise ABERTO + limpeza das faixas
 -- ============================================
+--
+-- ⚠️ OPCIONAL — o painel admin faz o mesmo, e é o caminho preferido.
+--
+-- Esta migration só mexe em `system_config`, e o `PATCH /settings/config/:key`
+-- usa `configManager.set`, que é **upsert**: cria a chave se não existir. Ou
+-- seja, dá pra fazer tudo em Configurações → Busca Manual, sem SQL:
+--
+--   • "Artigos analisados — base (30 dias)"  → 0   (sem teto)
+--   • "Horizonte de fora do período (dias)"  → 180
+--   • "Confirmar duplicatas com IA"          → desligado
+--
+-- O arquivo fica para instalação nova e para quem preferir SQL.
+--
 -- Fase 8.4 (2026-08-02). Decisão do João: "vamos deixar o teto de análise aberto".
 --
 -- O teto deixou de ser por faixa de período. `manual_search_max_results_30d`
