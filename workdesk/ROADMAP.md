@@ -12,6 +12,34 @@
 
 ---
 
+## 🔜 PRIORIDADE 0 — Testar a reforma de 02/08 (nada dela rodou ainda)
+
+A reforma inteira (8 commits) está em `develop` e **nenhuma linha executou com
+rede, banco e fila**. Passou em `tsc --noEmit` e nas regressões sem rede — que
+cobrem lógica pura, não o caminho real.
+
+Ordem sugerida:
+
+1. **Subir `develop` → `staging`** (é onde o APK do João aponta)
+2. **Busca manual pelo app**, 30 dias, uma cidade. O que olhar:
+   - `budget_tracking.details.queries` — devem ser **5 assuntos**, não 3
+   - `resultsCount` contra o de hoje (Salvador/30d deu 202 URLs com 3 assuntos)
+   - o estágio 4 deve ficar ~**metade** do tempo (pool 5 → 10)
+3. **Repetir com 90 dias, na mesma cidade.** É o teste que responde a pergunta
+   original do João: com 5 assuntos, 90 dias tem que render mais que 30 — o que
+   hoje não acontece.
+4. **Painel admin**: conferir que o toggle da Fonte Web aparece **ligado** e que
+   o campo do teto mostra **0**, não vazio. Editar a lista de assuntos e salvar.
+5. **Segunda 03/08**: `npx tsx scripts/diagnostico-banco.ts` para ver o scan
+   rodando, e `budget_tracking.details.commit` para saber **qual código** rodou.
+
+⚠️ Ao subir para staging, lembrar que produção usa o **mesmo banco e o mesmo
+Redis**. As chaves novas (`search_subjects`, `manual_search_fetch_concurrency`)
+não existem na `main`, então são inofensivas — mesmo padrão da
+`manual_search_analysis_cap`.
+
+---
+
 ## 🚨 PRIORIDADE 1 — Produção está desatualizada
 
 `main` está em `faa38b7` (junho) e **quebrada em quatro lugares independentes**:
@@ -242,22 +270,61 @@ de refletir o recorte escolhido, senão o relatório mente.
 
 ---
 
-## 🔁 Fase 11 — Revisar o auto-scan (só depois que a busca manual provar)
+## ✅ Fase 11 — Auto-scan revisado (FEITO em 02/08)
+
+Todos os achados fechados, mais dois extras. Decisão do João:
+*"aplicamos tudo já, com cautela, testo em staging alguns dias e depois subo
+tudo pro main"* — o que substituiu o gatilho original ("só depois de uma semana
+medida"). Consequência aceita: a medição de segunda mede tudo junto.
+
+| # | achado | conserto |
+|---|---|---|
+| 1 | cidade por substring | igualdade com limpeza (`mesmaCidade`), 21/21 |
+| 2 | `dateRestrict: 'd1'` hardcoded | `scanPeriodDays` entra na coleta |
+| 3 | duplicata no `news` (26%) | `runIntraBatchDedupLayered` ligado no scan |
+| 4 | custo em duas contabilidades | `calculateCost` removida, `custoDoRun` acumula o real |
+| 5 | sem dedup por URL antes do Jina | peneira em `news_sources` antes do Filter0 |
+| 6 | `scanIndex` mudava a cada minuto | agora anda 1 por execução |
+
+**Ainda sem medir:** o baseline de 31/07 (9 de 10 execuções com zero notícias)
+segue guardado; o "depois" começa segunda 03/08.
+
+### Candidatos que sobraram (não são achados)
+
+| candidato | por que | risco |
+|---|---|---|
+| **Templates por perfil de cidade** | capital e cidade pequena não rendem com a mesma query; hoje é a mesma lista para todas. Com `search_subjects` no painel, isto virou "lista por location" | médio |
+| **Paginação em lote** (de 8.1) | o scan pagina pouco por rodar todo dia; ganho menor que na busca manual | baixo |
+
+### Regras que valem para qualquer mudança aqui
+
+- **Medição antes e depois**, sempre por notícias salvas por scan
+- **Commit próprio** por mudança, para rollback isolado
+- Preferir **parâmetro opcional** a alterar comportamento compartilhado
+
+---
+
+## 📜 Fase 11 — o histórico da auditoria (referência)
+
+> Tudo abaixo está **fechado** — fica como registro de como cada achado foi
+> encontrado e por quê. O estado atual está na Fase 11 acima.
 
 Pedido do João em 02/08, logo depois de mandar não encostar nele agora: *"Coloca
 no plano depois um trabalho de verificar possível atualização no auto scan para
 ficar melhor, se a busca passar nos testes"*.
 
-**A ordem importa e é o ponto do item:** a busca manual é o banco de provas. O
-que sobreviver a ela — medido, não suposto — é candidato a ser levado para o
-auto-scan. O contrário (mexer nos dois ao mesmo tempo) foi o que já custou caro.
+**A ordem importava:** a busca manual seria o banco de provas, e o que
+sobrevivesse a ela iria para o auto-scan. Na prática o João optou por aplicar
+tudo de uma vez e testar em staging — o preço é a medição de segunda vir
+misturada, e ele aceitou sabendo.
 
-### Gatilho — não começar antes disto
+### Gatilho original (superado pela decisão de aplicar tudo)
 
-1. Fase 8 validada em staging, com o funil medido antes e depois
-2. Auto-scan rodado ao menos uma semana com as mudanças de 01/08, com número na mão
+1. ~~Fase 8 validada em staging, com o funil medido antes e depois~~ ✅ feito
+2. ~~Auto-scan rodado ao menos uma semana com as mudanças de 01/08~~ — **não
+   esperado**, por decisão do João
 
-### Medir primeiro (o "antes" já existe nos logs)
+### O "antes" da medição (guardar)
 
 **Baseline confirmado no banco em 02/08** (`scripts/diagnostico-banco.ts`):
 `operation_logs` está saudável e a última execução foi **31/07 20:00**. Das 10
@@ -330,7 +397,11 @@ enxerga o fim de semana, por mais que o filtro aceite.
 ⚠️ Esta parte é **regressão que eu introduzi** com o `sbd:1` + parada de paginação.
 Antes o `d1` era só um `qdr` ignorado pelo Google; agora ele trunca de verdade.
 
-#### 3. Duplicata no `news` — 26% das linhas em grupos suspeitos
+#### 3. ✅ CORRIGIDO (02/08) — duplicata no `news`, 26% das linhas em grupos suspeitos
+
+> Conserto: `runIntraBatchDedupLayered` (o algoritmo em camadas da 8.3) ligado no
+> scan, no lugar do `runIntraBatchDedup`, que só olhava cosine.
+
 
 `202 linhas → 24 grupos (cidade+tipo+data) com mais de 1 → 52 linhas (26%)`
 
@@ -350,13 +421,23 @@ muda o vetor e derruba o cosine abaixo do threshold.
 **O conserto já existe** — `runIntraBatchDedupLayered` (8.3), que na busca manual
 recuperou 5 de 16. Só não foi ligado no scan, de propósito.
 
-#### 4. O custo do scan é contado de duas formas que não batem
+#### 4. ✅ CORRIGIDO (02/08) — o custo do scan era contado de duas formas que não batiam
+
+> Conserto: `calculateCost` removida; `custoDoRun` acumula exatamente o que é
+> gravado no `budget_tracking`. `dedup_gpt` passou a cobrar por token real, e só
+> quando a camada 3 roda. A coleta usa o `requestCount` do provider.
+
 
 - `budget_tracking` usa tokens reais por estágio
 - `operation_logs.cost_usd` usa `calculateCost()`, uma fórmula **separada** com taxas fixas
 - `dedup_gpt` grava `duplicatesFound * 0.001` — número inventado, e conta duplicata de **qualquer** camada (a camada 1 é grátis). O `tokensUsed` que `deduplicateNews` devolve é **descartado**
 
-#### 5. Não existe dedup por URL antes do Jina (achado novo, 02/08)
+#### 5. ✅ CORRIGIDO (02/08) — não existia dedup por URL antes do Jina
+
+> Conserto: `db.findKnownSourceUrls` consulta `news_sources` em lotes de 100,
+> antes do Filter0 — mais cedo que o planejado, porque URL já salva não muda de
+> status em estágio nenhum.
+
 
 O scan roda de hora em hora (`scan_frequency_minutes` default 60) e **nunca
 consulta `news_sources` antes do estágio 4**. O mesmo artigo é reanalisado no
@@ -370,31 +451,24 @@ estágio 4. Decisão do João: **separado**, não junto com #2.
 
 #### 6. Menores
 
-- **Push de estatística:** `natureza === 'estatistica'` dispara push igual a crime ("homicídios caíram 12%" chega como alerta). O código já trata estatística como coisa à parte em outros pontos — aqui não. Decisão de produto.
-- **`scanIndex = Date.now()/60000`** muda a cada minuto; com scan de hora em hora, a rotação de queries é aleatória, não round-robin.
-- **Sem `parent_id`, não há pós-filtro nenhum** (`locationPostFilter = undefined`) — a cidade aceitaria notícia de qualquer lugar. Hoje as 4 cidades têm pai; é latente.
+- **Push de estatística:** `natureza === 'estatistica'` dispara push igual a crime ("homicídios caíram 12%" chega como alerta). O código já trata estatística como coisa à parte em outros pontos — aqui não. **Decisão de produto, ainda em aberto.**
+- ✅ **`scanIndex = Date.now()/60000`** — corrigido em 02/08: agora divide pelo `scan_frequency_minutes` da location e anda 1 por execução, então o rodízio é rodízio de verdade.
+- **Sem `parent_id`, não há pós-filtro nenhum** (`locationPostFilter = undefined`) — a cidade aceitaria notícia de qualquer lugar. Hoje as 4 cidades têm pai; **é latente e segue em aberto**.
 - **RSS está desligado** no banco (`google_news_rss_enabled = false`) — correto, já que a URL do RSS é redirect opaco.
 
-### Candidatos, por ordem de ganho esperado
+### Candidatos — dois viraram conserto, dois continuam
 
-| candidato | por que | risco |
-|---|---|---|
-| **Data do SERP antes do Jina** | o scan usa `periodoDias=2`; hoje ele baixa e analisa artigo velho para descartar depois. O `parseSerpDate` já lê a data no estágio 1 — cortar ali economiza Jina **e** GPT em cima do que ia ser jogado fora. É o maior ganho de custo | baixo |
-| **Dedup em camadas** (o de 8.3) | se provar na busca manual, o scan ganha o mesmo: para de fundir crimes de datas diferentes | médio — é o que mais mexe no resultado salvo |
-| **Templates por perfil de cidade** | capital e cidade pequena não rendem com a mesma query; hoje é o mesmo conjunto para todas | médio |
-| **Paginação em lote** (de 8.1) | o scan pagina pouco por rodar todo dia; ganho menor que na busca manual | baixo |
-
-### Regras que valem para qualquer mudança aqui
-
-- **Autorização explícita do João** por mudança — a ordem de não encostar continua valendo até ele levantar
-- **Medição antes e depois**, sempre por notícias salvas por scan
-- **Commit próprio** por mudança, para rollback isolado
-- Preferir **parâmetro opcional** a alterar comportamento compartilhado (padrão já adotado no `onProgress` de 8.5 e na função nova de 8.3)
+| candidato | estado |
+|---|---|
+| **Data do SERP antes do Jina** | ✅ feito em 02/08 (era o maior ganho de custo esperado) |
+| **Dedup em camadas** (o de 8.3) | ✅ feito em 02/08 |
+| **Templates por perfil de cidade** | em aberto — agora que `search_subjects` está no painel, isto vira "lista por location" |
+| **Paginação em lote** (de 8.1) | em aberto; ganho menor, o scan pagina pouco |
 
 ⚠️ Herança a não esquecer: quatro mudanças de 01/08 **já** afetam o auto-scan
-(templates, `sbd:1` + parada de paginação, Filter2 paralelo, sufixo de fila). Estão
-listadas no [DEV_LOG](./DEV_LOG.md), bloco *"Auto-scan: não encostar"*. A primeira
-execução real delas é **segunda 03/08** — o "antes/depois" desta fase começa ali.
+(templates, `sbd:1` + parada de paginação, Filter2 paralelo, sufixo de fila). A
+primeira execução real delas é **segunda 03/08** — e agora ela vem junto com a
+reforma de 02/08, então o "depois" mede as duas coisas.
 
 ---
 
@@ -406,10 +480,11 @@ execução real delas é **segunda 03/08** — o "antes/depois" desta fase come�
 
 ## 🔧 Dívida técnica herdada
 
-- `.eq('user_id')` faltando no delete por `params_hash` ([queries.ts:989](../backend/src/database/queries.ts#L989)) — um cliente apaga a busca de outro que usou os mesmos parâmetros
-- `try/catch` no `queue.add` — se o enfileiramento falhar, marcar `failed` em vez de deixar linha órfã
-- Checar `is_admin` no middleware do admin panel (hoje só checa se há sessão)
-- Timeouts em Jina e OpenAI (Bright Data já tem)
+> Cinco itens saíram desta lista em 02/08: os três de segurança (delete por
+> `params_hash`, `is_admin` no painel, `queue.add` sem try/catch) e os timeouts
+> de Jina e OpenAI. Ver DEV_LOG.
+
+- **Migration 025 (RLS)** — 🚨 o banco aceita leitura e escrita pela chave anon, que é pública. Escrita, **não rodada**, aguarda autorização
 - Limpar 7 configs mortas (`scan_cron_schedule`, `worker_concurrency`, `worker_max_per_minute`, `scan_lock_ttl_minutes`, `budget_warning_threshold`, e desde a 8.4 `manual_search_max_results_60d` e `_90d`) — ou ligá-las
 - `openai` ^4.24.1 → v6; Flutter: `fl_chart` 0.70→1.x, `share_plus` 10→12, `flutter_map` 7→8, `sentry_flutter` 8→9
 - **Renomear "Netrios News" para "SIMEops"** (diretório e repo)

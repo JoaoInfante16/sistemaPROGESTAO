@@ -20,33 +20,53 @@
 
 | ambiente | branch | commit | situação |
 |---|---|---|---|
-| local | `develop` | `373cf00` | Fase 8 + achados #1 e #2 da Fase 11 |
-| staging | `staging` | `373cf00` | ✅ **validado no app: 54 resultados** (era 1) |
+| local | `develop` | `6f7fcec` | Fase 8 + **reforma do backend (8 commits)** |
+| staging | `staging` | `373cf00` | Fase 8 validada no app (54 resultados); **sem a reforma ainda** |
 | **produção** | `main` | `faa38b7` | 🔴 **junho, quebrada em 4 lugares — é o que o cliente usa** |
 
-`develop` e `staging` estão idênticas. APK de staging instalado no celular do João.
+⚠️ **`develop` está à frente de `staging` pela primeira vez desde a Fase 8.**
+A reforma inteira está só no local. Próximo passo: subir para `staging` e testar
+pelo app.
+
+🔴 **NADA DA REFORMA RODOU DE VERDADE.** Tudo passou em `tsc --noEmit` e nas
+regressões sem rede (dedup 10/10, assuntos 10/10, cidade 21/21) — mas nenhuma
+busca manual e nenhum scan executaram com o código novo. As regressões cobrem
+lógica pura, não o caminho com rede, banco e fila.
+
+### O que a reforma de 02/08 mudou (8 commits em `develop`)
+
+| commit | o quê |
+|---|---|
+| `c89f748` | scan não reanalisa URL que já virou notícia |
+| `a0b6621` | scan corta pela data do SERP antes do Jina |
+| `7d53d33` | scan deduplica em camadas (achado #3) |
+| `b5206c2` | segurança: busca isolada por usuário, AdminGuard, `queue.add` protegido |
+| `75cf668` | **assuntos configuráveis** + painel enxerga os defaults |
+| `c944010` | timeouts (Jina 20s, OpenAI 60s) + concorrência 5→10 na busca manual |
+| `6f7fcec` | custo contado de um jeito só (achado #4) |
+
+**Os 4 achados da auditoria do auto-scan estão fechados**, mais dois extras
+(dedup por URL, `scanIndex`). Detalhes em cada entrada abaixo.
 
 ⚠️ **Os consertos do auto-scan só valem onde o scan roda.** Se o CRON de verdade
-roda na `main`, os achados #1 e #2 não mudam nada para o cliente até a promoção.
-Conferir na segunda de qual ambiente saem as linhas novas de `operation_logs`.
+roda na `main`, nada disso muda para o cliente até a promoção. Conferir na
+segunda de qual ambiente saem as linhas novas de `operation_logs` — o `commit`
+agora vai no `details` do `budget_tracking` do scan, então dá para saber.
 
-**Em curso:** os 4 achados da auditoria do auto-scan (Fase 11 do
-[ROADMAP](./ROADMAP.md)). A ordem de "não encostar" foi suspensa **para esses
-itens**.
+⚠️ **A medição de segunda ficou misturada.** O plano era 03/08 medir só os
+templates novos de 01/08 contra o baseline de 31/07 (9 de 10 execuções com zero).
+Com a reforma aplicada por decisão do João (*"aplicamos tudo já, com cautela"*),
+o "depois" agora mede templates + assuntos + peneira + dedup em camadas juntos.
 
-| # | achado | estado |
-|---|---|---|
-| 1 | `São José do Cedro` no feed de `São José` (pós-filtro por substring) | ✅ **corrigido** — igualdade com limpeza, 21/21 no teste |
-| 2 | `dateRestrict: 'd1'` vs `scan_period_days: 4` | ✅ **corrigido** — regressão minha de 01/08 |
-| 3 | duplicata no `news` (`runIntraBatchDedupLayered` existe, não está ligado no scan) | pendente |
-| 4 | custo contado de duas formas incompatíveis | pendente |
+### 🚨 Achado de segurança que não estava na lista
 
-As 10 linhas erradas seguem no banco **de propósito** — decisão do João, fase de
-teste. `scripts/limpar-cidades-intrusas.ts` está pronto para quando importar.
+**O banco está aberto para a chave anon** — leitura E escrita, em praticamente
+todas as tabelas. Medido em 02/08. Migration
+[025](./SQL/migrations/025_rls_fechar_anon.sql) escrita e **não rodada** (afeta
+produção na hora). Ver a entrada dedicada abaixo.
 
-Achado novo da mesma investigação: **não existe dedup por URL antes do Jina** — o
-scan reanalisa o mesmo artigo de hora em hora. Barato hoje ($0,12/mês), mas é
-desperdício estrutural. Anotado na Fase 11.
+As 10 linhas de São José do Cedro seguem no banco **de propósito** — decisão do
+João, fase de teste. `scripts/limpar-cidades-intrusas.ts` está pronto.
 
 ### Documentos desta fase — ler antes de reconstruir contexto
 
@@ -120,6 +140,12 @@ Todas de 01/08, com o método real do worker (ver [Fases/Fase 7/DEV_LOG.md](./Fa
 - **Nunca fazer retry por contagem baixa.** Não dá para distinguir "fui bloqueado"
   de "essa cidade não tem notícia". Retry só sobre **sinal explícito** (corpo de 0
   bytes, `x-brd-err-code`).
+- **O índice do Google tem teto POR QUERY, ~60-70 itens úteis** (02/08, no
+  `budget_tracking`). São Paulo/90 dias tinha 36 páginas de direito e a SERP
+  **secou sozinha na 23**. Não é regulável: `num` foi deprecado, `qdr`/`cdr` são
+  ignorados. Pedir mais página do mesmo assunto não traz mais nada — **perguntar
+  outro assunto traz**. É por isso que `search_subjects` existe, e é a única
+  alavanca que aumenta alcance de verdade.
 
 ### ⚠️ Auto-scan: a ordem mudou no fim do dia
 

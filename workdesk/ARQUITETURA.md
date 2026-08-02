@@ -218,7 +218,9 @@
     |  STAGE 3  CONTENT FETCH (Jina Reader, ~$0.002/artigo)         |
     |  -------------------------------------------------             |
     |  Baixa e extrai texto limpo de cada URL aprovada               |
-    |  Concorrencia: content_fetch_concurrency (5 default)           |
+    |  Concorrencia: auto-scan  content_fetch_concurrency ...... 5   |
+    |                busca man. manual_search_fetch_concurrency  10  |
+    |  Timeout: 20s no Jina, 30s no fallback Web Unlocker            |
     |  Cache Redis 24h (so se >100 chars)                             |
     |                                                                 |  [X->] fetch falhou
     |  Rejeita:                                                       |  [X->] conteudo <100 chars
@@ -340,19 +342,43 @@ diferentes (valor core do sistema). Revertido. Prompt antigo validado como base.
   - Configs: scan_weekday_start/end, scan_weekend_enabled/start/end
 
   Fontes: Bright Data (modo news) + Google News RSS
-  Query: templates rotativos (queryTemplates.ts, round-robin)
-  Multi-query: 2 queries por scan (configuravel)
+  Query: assuntos do painel (config `search_subjects`), em rodizio
+         - o rodizio anda 1 por execucao (scanIndex / scan_frequency_minutes),
+           entao cobre a lista inteira ao longo do dia
+         - location com mode='keywords' usa as palavras dela, nao a lista
+  Multi-query: 2 assuntos por scan (search_queries_per_scan)
   Periodo de busca: scan_period_days (4 dias — cobre recuperacao de fim de semana)
 
+  STAGE 1.5 — peneira barata, antes de qualquer GPT (02/08):
+    - URL ja em news_sources ......... descartada (ja virou noticia salva)
+    - publicada antes da janela ...... descartada (com 1 dia de folga;
+                                       sem data legivel, MANTEM)
+    Metricas em budget_tracking.details: jaVistas / ineditas /
+    velhasPelaSerp / analisaveis
+
   Apos pipelineCore:
+  +==================================================================+
+  |  STAGE 5.5: DEDUP INTRA-BATCH EM CAMADAS (desde 02/08)           |
+  |  runIntraBatchDedupLayered — o mesmo da busca manual (8.3)       |
+  |  Layer 1: trava geo-temporal em memoria ($0)                     |
+  |  Layer 2: cosine com dedup_similarity_threshold                  |
+  |  Layer 3: GPT so na faixa duvidosa, atras de config (off)        |
+  |  (era runIntraBatchDedup, so cosine — fundia crimes de datas     |
+  |   diferentes e deixava passar o mesmo evento por 2 veiculos)     |
   +==================================================================+
   |  STAGE 6: DEDUP CONTRA DB (3 camadas)                            |
   |  Layer 1: Geo-temporal (SQL, $0) — mesma cidade+crime+data       |
   |  Layer 2: Embedding similarity (cosine >= 0.85, $0)              |
-  |  Layer 3: GPT confirma (~5% dos casos, $0.001)                   |
+  |  Layer 3: GPT confirma (~5% dos casos, cobrado por TOKEN real)   |
   |  Se duplicata: adiciona URL como fonte extra                      |
   |  Se nova: salva + push notification                               |
   +==================================================================+
+
+  CUSTO — uma contabilidade so (desde 02/08):
+    `custoDoRun` acumula exatamente o que cada estagio grava em
+    budget_tracking, e e ele que vai pro operation_logs.cost_usd.
+    A funcao `calculateCost()` (formula paralela, taxas fixas a mao)
+    foi REMOVIDA — os dois numeros discordavam por construcao.
 ```
 
 ---
@@ -365,7 +391,11 @@ diferentes (valor core do sistema). Revertido. Prompt antigo validado como base.
 
   Diferencas do auto-scan:
   - Filtro de cidade/estado pos-Filter2 (a busca traz noticias nacionais)
-  - Max results configuravel por periodo (30d/60d/90d no admin panel)
+  - Roda TODOS os assuntos de `search_subjects` (o auto-scan roda N por vez)
+  - Tetos derivados do periodo por raiz quadrada, SEM faixas
+    (manualSearchCaps.ts). Teto de analise: manual_search_analysis_cap,
+    0 = sem teto, que e o default desde 02/08
+  - Concorrencia propria no estagio 4 (manual_search_fetch_concurrency = 10)
   - Resultados salvos em search_results (JSONB, com sources[])
   - Dedup intra-batch com embedding (consolida fontes no mesmo card)
   - SEM dedup contra DB (por enquanto)
@@ -452,19 +482,34 @@ diferentes (valor core do sistema). Revertido. Prompt antigo validado como base.
   |                                                              |
   |  Pipeline:                                                   |
   |  - search_max_results ............. 15 (auto-scan)           |
-  |  - manual_search_max_results_30d .. 50                       |
-  |  - manual_search_max_results_60d .. 50                       |
-  |  - manual_search_max_results_90d .. 80                       |
-  |  - content_fetch_concurrency ...... 5                        |
+  |  - manual_search_analysis_cap ..... 0  (0 = SEM TETO)        |
+  |  - manual_search_horizon_days ..... 180                      |
+  |  - content_fetch_concurrency ...... 5  (auto-scan)           |
+  |  - manual_search_fetch_concurrency  10 (busca manual)        |
   |  - filter0_regex_enabled .......... toggle                   |
   |  - filter2_confidence_min ......... 0.7                      |
   |  - filter2_max_content_chars ...... 8000                     |
   |  - dedup_similarity_threshold ..... 0.85                     |
+  |  - dedup_gpt_confirm_enabled ...... false (camada 3)         |
   |                                                              |
   |  Fontes:                                                     |
+  |  - search_subjects ................ lista de assuntos,       |
+  |      um por linha. Busca manual roda TODOS; auto-scan roda   |
+  |      search_queries_per_scan por vez, em rodizio             |
+  |  - manual_search_web_enabled ...... true (indice organico)   |
   |  - multi_query_enabled (auto-scan)                           |
   |  - search_queries_per_scan ........ 2                        |
-  |  - google_news_rss_enabled                                   |
+  |  - google_news_rss_enabled ........ false                    |
+  |                                                              |
+  |  >>> O painel MESCLA banco + DEFAULTS desde 02/08. Chave     |
+  |  que so existe em codigo aparece marcada origem='default'.   |
+  |  Antes ela sumia da tela, e um toggle vazio lia como         |
+  |  DESLIGADO enquanto o backend a usava LIGADA.                |
+  |                                                              |
+  |  >>> `manual_search_max_results_30d/60d/90d` NAO sao mais    |
+  |  lidas por este codigo. Ficam no DEFAULTS porque a `main`    |
+  |  (producao) le a _30d como teto de COLETA — significado      |
+  |  diferente, mesmo banco. Somem quando a main for promovida.  |
   |                                                              |
   |  Janela do auto-scan (LIDAS, com UI no admin):               |
   |  - scan_weekday_start / end ....... 6 / 18                   |
@@ -474,7 +519,6 @@ diferentes (valor core do sistema). Revertido. Prompt antigo validado como base.
   |                                                              |
   |  Sistema (LIDAS, mas SEM UI no admin — editar no Supabase):  |
   |  - monthly_budget_usd ............. 100                      |
-  |  - content_fetch_concurrency ...... 5                        |
   |  - push_enabled ................... true                     |
   |  - search_permission .............. authorized               |
   |  - auth_required .................. true  (tem UI)           |
@@ -567,7 +611,10 @@ diferentes (valor core do sistema). Revertido. Prompt antigo validado como base.
         BrightDataSERPProvider.ts  PRINCIPAL — dual mode (news sync / web Top100)
         BraveNewsProvider.ts .. Legado (so se SEARCH_BACKEND=brave)
         GoogleNewsRSSProvider.ts  RSS gratis (date pre-filter)
-        queryTemplates.ts ..... Templates de query (auto-scan)
+        queryTemplates.ts ..... Assuntos pesquisados (config search_subjects,
+                                editavel no painel). Fallback de fabrica em
+                                ASSUNTOS_PADRAO. Busca manual roda TODOS;
+                                auto-scan roda N por vez, em rodizio
         urlDeduplicator.ts .... Normaliza e dedup URLs
       executive/
         index.ts .............. Resumo executivo via GPT (cards + paragrafo)
