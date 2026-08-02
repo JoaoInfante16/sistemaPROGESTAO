@@ -27,9 +27,17 @@ Ler e respeitar [workdesk/WORKFLOW.md](workdesk/WORKFLOW.md). Pontos que mais im
 
 Três papéis distintos em [workdesk/](workdesk/):
 
-- [workdesk/DEV_LOG.md](workdesk/DEV_LOG.md) — **passado**. Append a cada mudança de código ou decisão técnica. Sem esperar pedido.
+- [workdesk/DEV_LOG.md](workdesk/DEV_LOG.md) — **passado**. Append a cada mudança de código ou decisão técnica. Sem esperar pedido. Começa com o bloco **ESTADO DO MUNDO** — leia primeiro em sessão nova.
 - [workdesk/ROADMAP.md](workdesk/ROADMAP.md) — **futuro**. Revisado junto com João no fim da sessão.
 - [workdesk/ARQUITETURA.md](workdesk/ARQUITETURA.md) — **presente**. Editado in-place quando algo estrutural muda.
+
+Fase encerrada é **arquivada** em `workdesk/Fases/Fase N/` (DEV_LOG + ROADMAP daquela fase), e a raiz recomeça com a fase seguinte. Estamos na **Fase 9** (frontend); 1 a 8 estão arquivadas.
+
+Documentos de referência, que não pertencem a fase nenhuma e ficam na raiz:
+
+- [workdesk/FRONTEND_BRIEFING.md](workdesk/FRONTEND_BRIEFING.md) — entrada de quem for mexer no Flutter
+- [workdesk/API_CONTRATO.md](workdesk/API_CONTRATO.md) — shapes exatos de cada rota
+- [workdesk/BACKEND_PENDENTE.md](workdesk/BACKEND_PENDENTE.md) — o que falta no backend, por consequência
 
 Toda migration SQL em [workdesk/SQL/migrations/](workdesk/SQL/migrations/) **obriga** entrada em [workdesk/SQL/MIGRATIONS_LOG.md](workdesk/SQL/MIGRATIONS_LOG.md) no mesmo turno.
 

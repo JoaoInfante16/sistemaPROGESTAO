@@ -1,11 +1,25 @@
 
 # SIMEops / PROGESTAO - ARQUITETURA DO SISTEMA
-## Documento Tecnico — revisado em 2026-07-30 (auditoria geral)
+## Documento Tecnico — revisado em 2026-08-02 (fim da Fase 8)
 
-> Correcoes desta revisao: provider principal e **Bright Data** (nao Brave); CRON roda
-> a cada 5 min (nao de hora em hora); `filter2_max_content_chars` e 8000 (nao 4000).
-> Adicionados os servicos que faltavam: executive, geocoding, billing, reports, groups.
-> Diagnostico de performance e bugs abertos: ver [AUDITORIA_2026-07-30.md](AUDITORIA_2026-07-30.md).
+> Este documento descreve o **presente**: como o sistema funciona hoje. Editado
+> in-place quando algo estrutural muda — nao e historico.
+>
+> **O que mudou nesta revisao** (reforma do backend, 02/08):
+> - os assuntos pesquisados sairam do codigo e viraram config editavel no painel
+>   (`search_subjects`) — a busca manual roda todos, o auto-scan em rodizio
+> - peneira no STAGE 1.5 do auto-scan: URL ja salva e materia velha nao descem
+>   mais pro Jina
+> - dedup em camadas ligado no auto-scan (era so cosine)
+> - contabilidade unica de custo — `calculateCost()` removida
+> - concorrencia separada por caminho + timeouts em Jina (20s) e OpenAI (60s)
+>
+> **Numeros reais medidos em 02/08** (Campo Grande / 60 dias, pelo app):
+> `269 URLs -> 241 baixadas -> 151 extraidas -> 77 entregues`, em 5min31s.
+> O estagio 4 (Jina) e ~54% do tempo, a ~7,4s por artigo com pool de 10.
+>
+> Historico e medicoes anteriores: [Fases/](./Fases/). O que falta:
+> [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md).
 
 ```
 +==============================================================================+

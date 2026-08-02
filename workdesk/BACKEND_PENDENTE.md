@@ -104,7 +104,7 @@ estagnação.
 
 | o quê | estado | por que importa |
 |---|---|---|
-| **A reforma de 02/08 rodando de verdade** | ❌ **nada foi testado em execução real** | tudo passou em tsc e nas regressões sem rede; nenhuma busca manual nem scan rodou com o código novo. É o próximo passo |
+| **A reforma de 02/08 rodando de verdade** | ✅ **validada no app 02/08** | Campo Grande/60d → **77 resultados**; 269 snippets contra 159 do código anterior (+69%). O `commit` no `budget_tracking` confirmou o código novo |
 | **Período longo ponta a ponta** | ✅ medido 02/08 (São Paulo/90d: alcance de 90 dias exatos) | falta repetir com 180 |
 | **Ramo web: 3–4 buscas de medição** | 1 de ~4 feitas | critério já combinado: se seguir entregando ~1 de 23, desligar pelo painel |
 | **`api_rate_limits.brightdata.max_concurrent`** | não revisado | está em 10; a doc diz que o limite real é 100 QPS. Pode subir — só não foi medido |
@@ -126,7 +126,7 @@ estagnação.
 
 ## ✅ 8. Auto-scan — os 4 achados fechados
 
-Fase 11 do [ROADMAP](./ROADMAP.md). Todos corrigidos em 02/08.
+Auditoria do auto-scan, na [Fase 8 arquivada](./Fases/Fase%208/ROADMAP.md). Todos corrigidos em 02/08.
 
 | # | achado | estado |
 |---|---|---|

@@ -182,7 +182,7 @@ cidade **da requisição**, então um bairro de Camaçari viraria pino dentro de
 Salvador.
 
 📌 Quando o app ganhar o filtro por período/região (calendário), esses endpoints
-precisam ganhar o mesmo recorte — hoje é fixo. Ver Fase 10 no ROADMAP.
+precisam ganhar o mesmo recorte — hoje é fixo. Ver 9.6 no [ROADMAP](./ROADMAP.md).
 
 ---
 
@@ -237,4 +237,4 @@ Matéria-prima pronta, esperando UI:
 | `sources[]` | cada item | "coberto por 3 veículos" |
 
 Conceito de UI que o João já definiu, e os pontos de encaixe verificados no
-código Flutter, estão na **Fase 9** do [ROADMAP](./ROADMAP.md).
+código Flutter, estão no [FRONTEND_BRIEFING.md](./FRONTEND_BRIEFING.md).
