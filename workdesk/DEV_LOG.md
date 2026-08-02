@@ -20,12 +20,15 @@
 
 | ambiente | branch | commit | situação |
 |---|---|---|---|
-| local | `develop` | `6b9ef5a` | Fase 8 completa + auditoria do auto-scan |
-| staging | `staging` | `81733a9` | ✅ **validado no app: 54 resultados** (era 1) |
+| local | `develop` | `373cf00` | Fase 8 + achados #1 e #2 da Fase 11 |
+| staging | `staging` | `373cf00` | ✅ **validado no app: 54 resultados** (era 1) |
 | **produção** | `main` | `faa38b7` | 🔴 **junho, quebrada em 4 lugares — é o que o cliente usa** |
 
-`staging` está alguns commits atrás de `develop`, mas só em documentação — o
-código é o mesmo. APK de staging instalado no celular do João.
+`develop` e `staging` estão idênticas. APK de staging instalado no celular do João.
+
+⚠️ **Os consertos do auto-scan só valem onde o scan roda.** Se o CRON de verdade
+roda na `main`, os achados #1 e #2 não mudam nada para o cliente até a promoção.
+Conferir na segunda de qual ambiente saem as linhas novas de `operation_logs`.
 
 **Em curso:** os 4 achados da auditoria do auto-scan (Fase 11 do
 [ROADMAP](./ROADMAP.md)). A ordem de "não encostar" foi suspensa **para esses
