@@ -101,6 +101,38 @@ export async function insertNewsSource(newsId: string, url: string, sourceName?:
   }
 }
 
+/**
+ * Quais destas URLs já viraram notícia salva. Serve pro auto-scan não pagar
+ * Jina + GPT de novo pelo mesmo artigo a cada rodada: ele roda de hora em hora
+ * sobre a mesma janela, então a SERP devolve os mesmos links repetidamente.
+ *
+ * Em lotes porque o `.in()` do PostgREST vai na query string — algumas centenas
+ * de URLs longas estouram o limite de tamanho do request.
+ */
+export async function findKnownSourceUrls(urls: string[]): Promise<Set<string>> {
+  const conhecidas = new Set<string>();
+  if (urls.length === 0) return conhecidas;
+
+  const LOTE = 100;
+  for (let i = 0; i < urls.length; i += LOTE) {
+    const { data, error } = await supabase
+      .from('news_sources')
+      .select('url')
+      .in('url', urls.slice(i, i + LOTE));
+
+    if (error) {
+      // Falhar aqui só custa dinheiro (reanalisa), não corretude — então
+      // degrada pra "não conheço nenhuma" em vez de derrubar o scan.
+      logger.error('Failed to check known source URLs:', error.message);
+      return conhecidas;
+    }
+
+    for (const row of data || []) conhecidas.add((row as { url: string }).url);
+  }
+
+  return conhecidas;
+}
+
 // ============================================
 // Deduplication - Geo-Temporal Candidates
 // ============================================
@@ -1291,6 +1323,7 @@ export const db = {
   updateLocationLastCheck,
   insertNews,
   insertNewsSource,
+  findKnownSourceUrls,
   findGeoTemporalCandidates,
   insertOperationLog,
   trackCost,

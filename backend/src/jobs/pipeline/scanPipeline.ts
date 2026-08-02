@@ -109,6 +109,26 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   const searchResults = deduplicateResults(allResults);
   logger.info(`${LOG_PREFIX} Collected ${allResults.length} URLs → ${searchResults.length} unique (sources: ${sources.join(', ')})`);
 
+  // STAGE 1.5: peneira barata — tira o que já foi analisado antes de gastar GPT
+  //
+  // O scan roda de hora em hora sobre a MESMA janela (`scan_period_days`), então
+  // a SERP devolve os mesmos links rodada após rodada. Sem esta checagem o mesmo
+  // artigo era reanalisado até 24x/dia: o Jina tem cache no Redis, o Filter1 e o
+  // Filter2 não têm nenhum.
+  //
+  // Roda antes do Filter0 (e não só antes do Jina) porque a URL já estar em
+  // `news_sources` significa que ela JÁ virou notícia salva — não há estágio
+  // seguinte que possa mudar essa conclusão, então quanto mais cedo cortar,
+  // menos se paga.
+  //
+  // `searchResults.length` continua sendo o que vai pro `operation_logs`: é o
+  // que a SERP entregou, e é com esse número que o baseline de 31/07 foi medido.
+  const urlsConhecidas = await db.findKnownSourceUrls(searchResults.map((r) => r.url));
+  const ineditos = searchResults.filter((r) => !urlsConhecidas.has(r.url));
+  if (urlsConhecidas.size > 0) {
+    logger.info(`${LOG_PREFIX} ${urlsConhecidas.size} URL(s) já analisadas em scan anterior — ${ineditos.length} inéditas seguem`);
+  }
+
   if (queryCount > 0) {
     // Bright Data: $0.0015/request, com paginacao (20 results/page)
     // Brave: $0.005/query (sem paginacao interna)
@@ -120,7 +140,13 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
       source: 'auto_scan',
       provider: config.searchBackend as 'google' | 'perplexity' | 'brave' | 'brightdata',
       cost_usd: totalRequests * costPerRequest,
-      details: { queryCount, requestsPerQuery, totalRequests, resultsCount: searchResults.length, sources },
+      // `jaVistas`/`ineditas` medem quanto a peneira economizou. Vão aqui porque
+      // `operation_logs` tem colunas fixas e este `details` é JSONB livre.
+      details: {
+        queryCount, requestsPerQuery, totalRequests,
+        resultsCount: searchResults.length, sources,
+        jaVistas: urlsConhecidas.size, ineditas: ineditos.length,
+      },
     });
   }
 
@@ -129,7 +155,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   const rejectedUrls: RejectedUrl[] = [];
 
   // STAGE 2: Filter0
-  const afterFilter0 = runFilter0(searchResults, pipelineConfig.filter0RegexEnabled, rejectedUrls, LOG_PREFIX);
+  const afterFilter0 = runFilter0(ineditos, pipelineConfig.filter0RegexEnabled, rejectedUrls, LOG_PREFIX);
 
   // Save rejected from filter0
   const filter0Rejected = rejectedUrls.filter(r => r.stage === 'filter0');

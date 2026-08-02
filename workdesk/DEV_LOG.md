@@ -201,6 +201,39 @@ auto-scan e custo do mês. Verificado em 02/08:
 
 ---
 
+## 2026-08-02 — Fase 11, achado #5: dedup por URL antes de qualquer GPT
+
+Decisão do João: *"aplicamos tudo já, com cautela, testo em staging alguns dias
+e depois subo tudo pro main"*. Primeiro dos três consertos do auto-scan.
+
+O scan roda de hora em hora sobre a **mesma janela** (`scan_period_days` = 4
+desde o conserto #2), então a SERP devolve os mesmos links rodada após rodada. E
+o pipeline nunca perguntava ao banco se já conhecia aquela URL: o Jina tem cache
+no Redis, mas **Filter1 e Filter2 não têm nenhum**. O mesmo artigo era reanalisado
+até 24×/dia.
+
+`db.findKnownSourceUrls(urls)` — `SELECT url FROM news_sources WHERE url IN (...)`,
+em lotes de 100 porque o `.in()` do PostgREST viaja na query string e algumas
+centenas de URLs longas estouram o tamanho do request.
+
+### Duas decisões dentro do conserto
+
+**Roda antes do Filter0, não só antes do Jina.** Estar em `news_sources` significa
+que a URL **já virou notícia salva** — não existe estágio seguinte capaz de mudar
+essa conclusão. Cortar no estágio 4, como estava planejado, ainda pagaria o
+Filter1 (GPT em lote) por artigo que já está no banco.
+
+**`urls_processed` do `operation_logs` não muda de significado.** Continua sendo
+`searchResults.length`, o que a SERP entregou — é com esse número que o baseline
+de 31/07 foi medido, e trocá-lo agora inutilizaria a comparação. Quem segue no
+pipeline é a lista filtrada; a economia aparece em `budget_tracking.details`
+(`jaVistas` / `ineditas`), que é JSONB livre e não precisa de migration.
+
+**Falha degrada para "não conheço nenhuma"** em vez de derrubar o scan: erro
+nessa consulta custa dinheiro (reanalisa), nunca corretude.
+
+---
+
 ## 2026-08-02 — Fase 11, achados #1 e #2 corrigidos
 
 Os dois primeiros da auditoria do auto-scan. Os dois mexem em código
