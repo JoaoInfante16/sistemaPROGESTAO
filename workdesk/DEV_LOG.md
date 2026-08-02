@@ -133,11 +133,17 @@ mexer no auto-scan **está liberado para os 4 achados da Fase 11** — e só par
 Fora desses, a regra de opt-in continua sendo a mais segura.
 
 E ficou provado que ele **não estava "funcionando"**: 9 das 10 últimas execuções
-acharam zero notícias, e há 10 notícias de uma cidade a 600 km no feed.
+acharam zero notícias, e havia 10 notícias de uma cidade a 600 km no feed (os
+achados #1 e #2 já foram corrigidos; as 10 linhas seguem no banco por decisão do
+João, fase de teste).
 
 **Ele NÃO está parado por bug — está fora da janela.** `scan_weekend_enabled = false`,
 `scan_weekday_start = 6`, `scan_weekday_end = 18`. Última execução: sexta 31/07
 às 20h. 01 e 02/08 são sábado e domingo, então volta na segunda.
+
+📌 **Não caçar fantasma no horário:** `operation_logs.created_at` é **UTC** e a
+janela do scan é local. Os logs de 09:00 a 20:00 UTC são 06:00 a 17:00 em Brasília
+— batem exatamente com a janela 6–18. Está certo.
 
 **O que já foi alterado em 01/08 e afeta o auto-scan** (feito antes da ordem
 acima, e declarado nos commits — registrado aqui para não virar surpresa):
@@ -157,10 +163,9 @@ Sinal de que as mudanças eram necessárias: nos logs de 31/07 o auto-scan
 processava 1 a 10 URLs por scan e achava **0 notícias** em quase todos. Consistente
 com os templates mortos. **Esse é o "antes"** da medição da Fase 11 — não perder.
 
-Melhorar o auto-scan **é trabalho previsto, só que depois**: o João pediu no mesmo
-dia que ficasse no plano, condicionado a a busca manual passar nos testes. Está na
-[Fase 11 do ROADMAP](./ROADMAP.md), com gatilho e candidatos. Até lá, a ordem de
-não encostar vale integralmente.
+O resto da Fase 11 (candidatos de melhoria, não os 4 achados) continua valendo a
+regra antiga: medir a primeira semana com os templates novos antes de mexer. Ver
+[Fase 11 do ROADMAP](./ROADMAP.md).
 
 ### Onde o funil está DEPOIS da Fase 8 (Salvador, 30 dias)
 

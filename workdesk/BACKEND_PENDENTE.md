@@ -117,7 +117,22 @@ Os dois primeiros são de segurança e deveriam vir antes dos outros.
 
 ---
 
-## 🔬 6. Em aberto, precisa de decisão antes de código
+## 📏 6. Verificações que ficaram sem fechar (achadas relendo o DEV_LOG)
+
+Não são código a escrever — são caixas que ficaram abertas e que, se ninguém
+olhar, viram surpresa depois.
+
+| o quê | estado | por que importa |
+|---|---|---|
+| **Período longo ponta a ponta** | ❌ nunca medido | a curva de tetos foi dimensionada, mas o alcance real de 180 dias não foi verificado. O teste do João foi com 30 dias (os 54 resultados). Sem isso, a Fase 8.4 está "pronta" mas não provada no extremo |
+| **`filter2_confidence_min` = 0,5 no banco** | ⚠️ diverge do código (0,7) | ninguém decidiu isso nesta fase — está mais permissivo que o default. Afeta **quanta extração ruim entra**. Decidir qual dos dois vale e alinhar |
+| **Ramo web: 3–4 buscas de medição** | 1 de ~4 feitas | critério já combinado: se seguir entregando ~1 de 23, desligar pelo painel. O `source_type` vem em cada resultado, dá para conferir sem instrumentar |
+| **`api_rate_limits.brightdata.max_concurrent`** | não revisado (caixa aberta da 8.1) | está em 10 e "parece adequado", mas a doc diz que o limite real é 100 QPS. Pode subir — só não foi medido |
+| **Primeira execução do auto-scan com os templates novos** | 📅 **segunda 03/08** | é o "depois" da medição da Fase 11. As 4 mudanças de 01/08 nunca rodaram no scan. Sem olhar esse dia, o baseline de 31/07 (9 de 10 com zero) fica sem par |
+
+---
+
+## 🔬 7. Em aberto, precisa de decisão antes de código
 
 - **Fontes oficiais por estado** (SSP/Polícia Civil): 27 fontes, não 5.570 cidades — encaixa no `type='state'` que já existe. Motivo de considerar: o RSS grátis enxerga matéria que o SERP pago não surface. É projeto, não remendo; medir o ganho da Fase 8 antes.
 - **Google News RSS como índice** (não como fonte): título, data e veículo corretos e de graça, mas a URL é redirect opaco e o Jina devolve 98 chars de boilerplate. Só vira útil se aparecer forma limpa de resolver a URL.
@@ -125,13 +140,22 @@ Os dois primeiros são de segurança e deveriam vir antes dos outros.
 
 ---
 
-## 🔁 7. Auto-scan — trabalho previsto, com gatilho
+## 🔁 8. Auto-scan — 2 dos 4 achados corrigidos
 
-Fase 11 do [ROADMAP](./ROADMAP.md). **Não começar antes** de: (a) Fase 8 validada
-em produção e (b) uma semana de auto-scan medido com os templates novos.
+Fase 11 do [ROADMAP](./ROADMAP.md).
 
-Baseline do "antes" já guardado: 31/07, **9 das 10 últimas execuções acharam zero
-notícias**.
+| # | achado | estado |
+|---|---|---|
+| 1 | cidade por substring (`São José do Cedro`) | ✅ 02/08 — igualdade com limpeza, 21/21 |
+| 2 | `dateRestrict: 'd1'` vs `scan_period_days` | ✅ 02/08 — regressão de 01/08 |
+| 3 | duplicata no `news` (26% em grupos suspeitos) | ❌ `runIntraBatchDedupLayered` existe, falta ligar no scan |
+| 4 | custo contado de duas formas | ❌ |
+| 5 | **sem dedup por URL antes do Jina** (novo, 02/08) | ❌ reanalisa o mesmo artigo de hora em hora |
+| 6 | menores: push de estatística, `scanIndex`, sem `parent_id` | ❌ um é decisão de produto |
 
-Maior ganho esperado: **cortar pela data do SERP antes do Jina** — o scan usa
-`periodoDias` curto e hoje baixa e analisa artigo velho para descartar depois.
+Baseline do "antes" guardado: 31/07, **9 das 10 últimas execuções acharam zero
+notícias**. O "depois" começa **segunda 03/08**.
+
+Melhorias (não achados) seguem com gatilho: uma semana medida antes de mexer.
+Maior ganho esperado: **cortar pela data do SERP antes do Jina** — o scan baixa e
+analisa artigo velho para descartar depois.
