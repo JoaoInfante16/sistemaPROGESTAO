@@ -6,6 +6,10 @@
 > medições que não devem ser refeitas: ver o bloco **ESTADO DO MUNDO** no
 > [DEV_LOG](./DEV_LOG.md).
 
+**Dois documentos irmãos, criados no fim da Fase 8:**
+- [API_CONTRATO.md](./API_CONTRATO.md) — rotas e shapes, para quem for mexer no app
+- [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md) — lista crua do que falta no backend, ordenada por consequência
+
 ---
 
 ## 🚨 PRIORIDADE 1 — Produção está desatualizada
