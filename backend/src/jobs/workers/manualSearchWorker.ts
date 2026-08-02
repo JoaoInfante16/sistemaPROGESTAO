@@ -37,6 +37,12 @@ const MANUAL_NEWS_MAX_PER_QUERY = 20;
 // 7-12s cada. 30 = 3 paginas, ~30s. Subir daqui vira custo de tempo linear.
 const MANUAL_WEB_MAX_RESULTS = 30;
 
+// Paginas pedidas de uma vez por query (offsets `start` sao independentes).
+// Hoje MANUAL_NEWS_MAX_PER_QUERY=20 da 2 paginas, entao 4 cobre tudo de uma vez;
+// o valor ja fica dimensionado pros periodos longos da 8.4, onde o teto sobe e a
+// paginacao e que domina o tempo. O auto-scan NAO passa esta opcao e segue serial.
+const MANUAL_PAGE_CONCURRENCY = 4;
+
 export interface ManualSearchJobData {
   searchId: string;
   userId: string;
@@ -109,9 +115,14 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     // Bright Data $0.0015/request. Os dois ramos usam a mesma SERP paginada,
     // 10 resultados por request. Web so conta se estiver ligado.
     // Brave: $0.005/query (sem paginacao interna)
-    // Teto de requests: a paginacao para sozinha ao sair da janela, entao o real
-    // costuma ser menor. Cobrar pelo teto superestima um pouco — preferivel a
-    // subestimar o gasto.
+    //
+    // Esta conta e o TETO, nao o real. Antes ela superestimava, porque a paginacao
+    // parava sozinha ao sair da janela. Com o lote de 8.1 ela ficou justa: como
+    // MANUAL_PAGE_CONCURRENCY (4) cobre as 2 paginas de MANUAL_NEWS_MAX_PER_QUERY,
+    // as duas sao sempre pedidas — a que o serial economizava agora e paga como
+    // pagina especulativa (o provider loga quantas foram). Em compensacao o retry
+    // de corpo vazio pode gastar 1 request a mais que o teto, entao numa falha
+    // rara isto subestima. Para o numero exato, `requestCount` do provider.
     const isBrightData = config.searchBackend === 'brightdata';
     const queriesPorCidade = buildManualSearchQueries('x', tipoCrime).length;
     const newsReqs = queriesPorCidade * Math.ceil(MANUAL_NEWS_MAX_PER_QUERY / 10);
@@ -327,28 +338,40 @@ async function collectManualSearchUrls(
             })
           )
         : Promise.resolve([]),
-      // News — as queries rodam EM SERIE de proposito. A zone SERP aceita ~1
-      // requisicao por vez e ja se viu pagina voltar vazia (HTTP 200, 0 bytes)
-      // com apenas 2 chamadas concorrentes. Cidades seguem em paralelo.
+      // News — as queries rodam EM PARALELO, e cada uma pagina em lote.
+      //
+      // Ate 01/08 rodavam em serie, com base na suspeita de que a zone SERP
+      // aceitava ~1 requisicao por vez. A documentacao oficial diz o contrario
+      // em uma linha: a SERP API NAO tem limite de concorrencia, so de vazao —
+      // 100 QPS por conta. Uma busca inteira faz ~0.07 QPS, tres ordens de
+      // grandeza abaixo. A serializacao custava ~3x no estagio 1 e nao comprava
+      // nada. Ver DEV_LOG, bloco "Medicoes que NAO devem ser refeitas".
       (async () => {
-        const acumulado: Array<{ url: string; title: string; snippet: string }> = [];
-        for (const q of queries) {
-          try {
-            const r = await rateLimiter.schedule(config.searchBackend, () =>
+        const settled = await Promise.allSettled(
+          queries.map((q) =>
+            rateLimiter.schedule(config.searchBackend, () =>
               searchProvider.search(q, {
                 maxResults: MANUAL_NEWS_MAX_PER_QUERY,
                 dateRestrict,
                 searchMode: 'news',
+                pageConcurrency: MANUAL_PAGE_CONCURRENCY,
                 location: { city: cidade, state: estado, country: 'BR' },
               })
-            );
-            acumulado.push(...r);
-            logger.info(`${logPrefix} [${cidade}] "${q}" → ${r.length}`);
-          } catch (err) {
-            // Uma query ruim nao pode derrubar as outras.
-            logger.warn(`${logPrefix} [${cidade}] query "${q}" falhou: ${(err as Error).message}`);
+            )
+          )
+        );
+
+        // Uma query ruim nao pode derrubar as outras — por isso allSettled e nao
+        // all. Era o que o try/catch dentro do for garantia antes.
+        const acumulado: Array<{ url: string; title: string; snippet: string }> = [];
+        settled.forEach((s, i) => {
+          if (s.status === 'fulfilled') {
+            acumulado.push(...s.value);
+            logger.info(`${logPrefix} [${cidade}] "${queries[i]}" → ${s.value.length}`);
+          } else {
+            logger.warn(`${logPrefix} [${cidade}] query "${queries[i]}" falhou: ${(s.reason as Error)?.message ?? s.reason}`);
           }
-        }
+        });
         return acumulado;
       })(),
     ]);

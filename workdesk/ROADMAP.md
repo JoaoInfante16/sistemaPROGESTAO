@@ -32,18 +32,15 @@ Checklist ao promover:
 Plano completo desenhado com o João em 02/08. Ordem de execução sugerida abaixo;
 cada bloco é commit próprio, para ter rollback.
 
-### 8.1 — Paralelizar de volta (rápido, alto impacto)
+### ✅ 8.1 — Paralelizar de volta — FEITO em 02/08
 
-As 3 queries da busca manual foram serializadas em 01/08 com base na suspeita
-**errada** de que a zone aceitava ~1 requisição por vez. A documentação oficial
-diz que **não há limite de concorrência** (só vazão, 100 QPS por conta).
+- [x] Desfeita a serialização em [manualSearchWorker.ts](../backend/src/jobs/workers/manualSearchWorker.ts)
+- [x] Paginação em lote, **opt-in** via `pageConcurrency` (default 1 = serial, para o auto-scan não mudar)
+- [x] Retry único de corpo vazio (0 bytes é sinal explícito)
+- [ ] Revisar `api_rate_limits.brightdata` — `max_concurrent: 10` segue adequado, não foi mexido
 
-- Desfazer a serialização em [manualSearchWorker.ts](../backend/src/jobs/workers/manualSearchWorker.ts) (comentário "EM SERIE de proposito")
-- Paginar em lotes paralelos: os offsets `start` são independentes, dá para pedir páginas 0/10/20/30 de uma vez e checar a janela entre lotes
-- Retry único quando o corpo vier vazio (0 bytes é sinal explícito, não ambiguidade)
-- Revisar `api_rate_limits.brightdata` — `max_concurrent: 10` está adequado, pode até subir
-
-**Ganho medido/estimado:** estágio 1 de ~85s para ~30s; busca de 1 ano de ~8 min para ~3.
+**Medido:** Salvador / 30 dias, 23,7s → **9,0s (2,6x)** com saída idêntica (59 URLs,
+6 requests nos dois). Detalhes no [DEV_LOG](./DEV_LOG.md).
 
 ### 8.2 — Parar de descartar (região metropolitana + fora do período)
 

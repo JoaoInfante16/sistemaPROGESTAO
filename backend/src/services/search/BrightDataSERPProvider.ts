@@ -68,6 +68,12 @@ export class BrightDataSERPProvider implements SearchProvider {
     // errada entregava so 20 delas.
     const perPage = 10;
     const maxPages = Math.ceil(totalWanted / perPage);
+    const TAG = mode === 'web' ? '[BrightData:Web]' : '[BrightData:News]';
+
+    // Quantas paginas pedir de uma vez. Default 1 = serial, como sempre foi.
+    // Ver o comentario de `pageConcurrency` em SearchProvider.ts pra saber por
+    // que isto e opt-in e nao padrao.
+    const lote = Math.max(1, options.pageConcurrency || 1);
 
     // Com `sbd:1` os resultados vem em ordem decrescente de data, entao da pra
     // parar de pedir pagina assim que a mais nova dela ja e mais velha que a
@@ -76,13 +82,114 @@ export class BrightDataSERPProvider implements SearchProvider {
     // pra aproveitar 1.
     const janela = inicioDaJanela(options.dateRestrict);
 
-    for (let page = 0; page < maxPages; page++) {
-      const start = page * perPage;
-      const googleUrl = this.buildSerpUrl(query, {
-        start, mode,
-        dateRestrict: options.dateRestrict,
-      });
+    let parar = false;
+    let especulativas = 0;
 
+    for (let base = 0; base < maxPages && !parar; base += lote) {
+      const paginas: number[] = [];
+      for (let p = base; p < Math.min(base + lote, maxPages); p++) paginas.push(p);
+
+      const respostas = await Promise.allSettled(
+        paginas.map((p) => this.fetchSerpPage(query, options, mode, p * perPage))
+      );
+
+      // As paginas do lote ja foram pedidas e pagas, mas sao consumidas EM ORDEM
+      // com exatamente a mesma regra de parada do codigo serial. Se a parada cai
+      // no meio do lote, o resto e descartado — o resultado final fica IDENTICO
+      // ao serial, e o preco da aposta e $0.0015 por pagina especulativa.
+      for (let i = 0; i < respostas.length; i++) {
+        const page = paginas[i];
+        const r = respostas[i];
+
+        if (r.status === 'rejected') {
+          // So chega aqui se o serial tambem tivesse feito esta requisicao (nao
+          // parou antes) — entao o erro e legitimo e deve subir. A promise
+          // rejeitada nao diz quantas tentativas gastou; conta 1 e segue.
+          requestsMade += 1;
+          this.lastRequestCount = requestsMade;
+          throw r.reason;
+        }
+
+        requestsMade += r.value.requests;
+        const { data, rawText } = r.value;
+
+        if (!data) {
+          // Corpo vazio ou HTML com HTTP 200 = provider quebrado (brd_json ausente,
+          // zona errada, rate limit), NAO "nao achou nada". Sem isto a busca conclui
+          // com 0 resultados sem erro nenhum — foi o que mascarou o bug de 22/07.
+          logger.error(`${TAG} Page ${page + 1} resposta nao-JSON (${rawText.length} bytes): "${rawText.substring(0, 120)}"`);
+          if (page === 0) {
+            Sentry.captureException(new Error(`${TAG} resposta non-JSON na pagina 1 — 0 resultados`), {
+              tags: { provider: 'brightdata', mode },
+              extra: { query: query.substring(0, 100), preview: rawText.substring(0, 300) },
+            });
+          }
+          parar = true;
+        } else {
+          const pageResults = this.parseNewsResults(data);
+          logger.info(`${TAG} Page ${page + 1} → ${pageResults.length} results`);
+          allResults.push(...pageResults);
+
+          if (pageResults.length < 5) parar = true;
+          else if (allResults.length >= totalWanted) parar = true;
+          else if (janela) {
+            // Saiu da janela? A proxima pagina so tem coisa ainda mais velha.
+            const maisNovaDaPagina = this.dataMaisNova(data);
+            if (maisNovaDaPagina && maisNovaDaPagina < janela) {
+              logger.info(`${TAG} Page ${page + 1} ja e toda anterior a ${janela.toISOString().split('T')[0]} — parando de paginar`);
+              parar = true;
+            }
+          }
+        }
+
+        if (parar) {
+          // Paginas do lote que o serial nunca teria pedido.
+          for (let j = i + 1; j < respostas.length; j++) {
+            const sobra = respostas[j];
+            if (sobra.status === 'fulfilled') requestsMade += sobra.value.requests;
+            else requestsMade += 1;
+            especulativas++;
+          }
+          break;
+        }
+      }
+    }
+
+    if (especulativas > 0) {
+      logger.info(`${TAG} ${especulativas} pagina(s) especulativa(s) descartada(s) — custo da paginacao em lote`);
+    }
+
+    const results = allResults.slice(0, totalWanted);
+    this.lastRequestCount = requestsMade;
+    const loc = options.location ? `[${options.location.city || '?'}/${options.location.state || '?'}]` : '';
+    logger.info(`${TAG} ${loc} "${query.substring(0, 50)}..." → ${results.length} results (${requestsMade} req${lote > 1 ? `, lote de ${lote}` : ''})`);
+    return { results, requestCount: requestsMade };
+  }
+
+  /**
+   * Uma pagina da SERP. Devolve o JSON parseado (ou `null` se o corpo nao for
+   * JSON) e quantas requisicoes HTTP foram gastas — a contagem importa porque a
+   * Bright Data cobra por requisicao, inclusive a repetida.
+   *
+   * Lanca em falha explicita (HTTP != 2xx, `x-brd-err-code`): sao recusas reais
+   * e devem subir pro BullMQ reprocessar e pro Sentry registrar.
+   */
+  private async fetchSerpPage(
+    query: string,
+    options: SearchOptions,
+    mode: 'news' | 'web',
+    start: number,
+  ): Promise<{ data: SERPResponse | null; rawText: string; requests: number }> {
+    const TAG = mode === 'web' ? '[BrightData:Web]' : '[BrightData:News]';
+    const googleUrl = this.buildSerpUrl(query, { start, mode, dateRestrict: options.dateRestrict });
+    let requests = 0;
+
+    // Corpo de 0 bytes com HTTP 200 e SEM `x-brd-err-code` foi observado em
+    // 01/08 e segue sem explicacao (nao era concorrencia — a doc descarta).
+    // Cabe repetir UMA vez porque o sinal e inequivoco: 0 bytes nao e "nao achei
+    // nada", e resposta que nao chegou. Isso nao contradiz a regra do projeto de
+    // nunca repetir por contagem baixa — la o sinal e ambiguo, aqui nao e.
+    for (let tentativa = 1; tentativa <= 2; tentativa++) {
       const response = await fetch(SYNC_API_URL, {
         method: 'POST',
         headers: {
@@ -92,8 +199,7 @@ export class BrightDataSERPProvider implements SearchProvider {
         body: JSON.stringify({ zone: this.zone, url: googleUrl, format: 'raw' }),
         signal: AbortSignal.timeout(SERP_TIMEOUT_MS),
       });
-
-      requestsMade++;
+      requests++;
 
       if (!response.ok) {
         const err = await response.text();
@@ -103,8 +209,7 @@ export class BrightDataSERPProvider implements SearchProvider {
       // A Bright Data sinaliza falha de auth/proxy com HTTP 200, corpo VAZIO e o
       // erro so nos headers (ex: ip_blacklisted). Sem esta checagem o pipeline
       // trata como "nao achou nada" e a busca conclui com 0 resultados, sem erro
-      // nenhum — foi o que mascarou o bug ate 2026-07-30. Falhar alto e melhor:
-      // o BullMQ reprocessa e o Sentry registra.
+      // nenhum — foi o que mascarou o bug ate 2026-07-30. Falhar alto e melhor.
       const brdErrCode = response.headers.get('x-brd-err-code');
       if (brdErrCode) {
         const brdErrMsg = response.headers.get('x-brd-err-msg') || '';
@@ -112,47 +217,20 @@ export class BrightDataSERPProvider implements SearchProvider {
       }
 
       const rawText = await response.text();
-      const TAG = mode === 'web' ? '[BrightData:Web]' : '[BrightData:News]';
-      let data: SERPResponse;
-      try {
-        data = JSON.parse(rawText) as SERPResponse;
-      } catch {
-        // Corpo vazio ou HTML com HTTP 200 = provider quebrado (brd_json ausente,
-        // zona errada, rate limit), NAO "nao achou nada". Sem isto a busca conclui
-        // com 0 resultados sem erro nenhum — foi o que mascarou o bug de 22/07.
-        logger.error(`${TAG} Page ${page + 1} resposta nao-JSON (${rawText.length} bytes): "${rawText.substring(0, 120)}"`);
-        if (page === 0) {
-          Sentry.captureException(new Error(`${TAG} resposta non-JSON na pagina 1 — 0 resultados`), {
-            tags: { provider: 'brightdata', mode },
-            extra: { query: query.substring(0, 100), preview: rawText.substring(0, 300) },
-          });
-        }
-        break;
+
+      if (rawText.length === 0 && tentativa === 1) {
+        logger.warn(`${TAG} start=${start} corpo vazio (0 bytes, sem x-brd-err-code) — repetindo uma vez`);
+        continue;
       }
 
-      const pageResults = this.parseNewsResults(data);
-      logger.info(`${TAG} Page ${page + 1} → ${pageResults.length} results`);
-
-      allResults.push(...pageResults);
-      if (pageResults.length < 5) break;
-      if (allResults.length >= totalWanted) break;
-
-      // Saiu da janela? A proxima pagina so tem coisa ainda mais velha.
-      if (janela) {
-        const maisNovaDaPagina = this.dataMaisNova(data);
-        if (maisNovaDaPagina && maisNovaDaPagina < janela) {
-          logger.info(`${TAG} Page ${page + 1} ja e toda anterior a ${janela.toISOString().split('T')[0]} — parando de paginar`);
-          break;
-        }
+      try {
+        return { data: JSON.parse(rawText) as SERPResponse, rawText, requests };
+      } catch {
+        return { data: null, rawText, requests };
       }
     }
 
-    const results = allResults.slice(0, totalWanted);
-    this.lastRequestCount = requestsMade;
-    const loc = options.location ? `[${options.location.city || '?'}/${options.location.state || '?'}]` : '';
-    const TAG_FINAL = mode === 'web' ? '[BrightData:Web]' : '[BrightData:News]';
-    logger.info(`${TAG_FINAL} ${loc} "${query.substring(0, 50)}..." → ${results.length} results (${requestsMade} req)`);
-    return { results, requestCount: requestsMade };
+    return { data: null, rawText: '', requests };
   }
 
 

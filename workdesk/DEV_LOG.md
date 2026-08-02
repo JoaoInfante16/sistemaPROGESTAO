@@ -134,6 +134,52 @@ resolve, é o algoritmo que precisa mudar (ver ROADMAP).
 
 ---
 
+## 2026-08-02 — 8.1: paralelizar de volta ✅
+
+Desfeita a serialização de 01/08. Ela tinha sido feita com base na suspeita
+(errada) de que a zone SERP aceitava ~1 requisição por vez; a documentação oficial
+diz que **não há limite de concorrência**, só vazão de 100 QPS por conta.
+
+**Medido pelo caminho real** (`scripts/test-search-providers.ts`, que agora roda
+os dois modos e compara), Salvador / 30 dias:
+
+| modo | tempo | URLs | requests |
+|---|---|---|---|
+| série (como era) | 23,7s | 59 | 6 |
+| paralelo (como ficou) | **9,0s** | **59** | **6** |
+
+**2,6x mais rápido com saída idêntica** — mesmas URLs, mesmo custo. Era tempo
+jogado fora, não troca.
+
+### O que mudou
+
+1. **3 queries em paralelo** no `manualSearchWorker` (`Promise.allSettled` — uma
+   query ruim continua não derrubando as outras, que era o que o `try/catch`
+   dentro do `for` garantia).
+2. **Paginação em lote** no provider: os offsets `start` são independentes, então
+   as páginas de uma query vão juntas.
+3. **Retry de corpo vazio** — 0 bytes com HTTP 200 e sem `x-brd-err-code` (visto
+   em 01/08, ainda sem explicação) repete **uma** vez. Não contradiz a regra de
+   nunca repetir por contagem baixa: lá o sinal é ambíguo, aqui não é.
+
+### Duas decisões de desenho que valem lembrar
+
+**A paginação em lote é opt-in (`pageConcurrency`, default 1 = serial).** O
+provider é **compartilhado com o auto-scan**, e `search_max_results = 15` faz ele
+paginar 2 páginas. Ligado por padrão, o CRON passaria a pedir sempre as duas em
+vez de às vezes parar na primeira — mudança de custo e de comportamento nele. Só
+a busca manual opta.
+
+**O lote consome as páginas em ordem, com a mesma regra de parada de antes.** Se
+a parada cai no meio do lote, o resto é descartado. Isso mantém o resultado
+**idêntico** ao serial; o preço é $0,0015 por página especulativa, e o provider
+loga quantas foram. Em Salvador foram zero — a janela de 30 dias não fecha antes
+da página 2.
+
+Commit próprio, `main`/auto-scan intocados.
+
+---
+
 ## 2026-08-02 — abertura da Fase 8
 
 Fase 7 fechou com a busca manual funcionando ponta a ponta em staging. A Fase 8
