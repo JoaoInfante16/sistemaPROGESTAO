@@ -227,6 +227,46 @@ auto-scan e custo do mês. Verificado em 02/08:
 
 ---
 
+## 2026-08-02 — todas as configs vivas agora têm campo no painel
+
+Pergunta do João no fim: *"tudo devidamente conectado no painel admin pra eu
+configurar depois se quiser?"*. Medi antes de responder — comparando as chaves do
+`DEFAULTS` com as referenciadas em `settings/page.tsx`:
+
+```
+34 configs   |   20 com campo   |   14 SEM campo
+```
+
+**Não estava conectado.** E uma das faltantes era a
+`manual_search_fetch_concurrency`, que eu **tinha acabado de criar** no mesmo dia
+sem expor — o João passaria a ter uma alavanca de velocidade que só existia
+editando o Supabase à mão.
+
+### O que entrou
+
+| config | onde | por que importa |
+|---|---|---|
+| `manual_search_fetch_concurrency` | Busca Manual | velocidade do estágio mais lento |
+| `content_fetch_concurrency` | Sistema | o par dela no auto-scan |
+| `monthly_budget_usd` | Sistema | **o orçamento** não tinha campo |
+| `push_enabled` | Sistema | toggle |
+| `multi_query_enabled` | Sistema | desligado, o scan pergunta **só o primeiro assunto** — para sempre |
+| `search_permission` | Sistema | é `'all'`/`'authorized'`, string e não booleano: o Switch grava o texto pelo `saveConfigValue`, não pelo `toggleConfig` |
+| `billing_close_day` | Sistema | limitado a 1-28 no campo: 29-31 não existe em todo mês e o fechamento não rodaria em fevereiro |
+
+### As 7 que ficaram de fora, e por quê
+
+```
+manual_search_max_results_60d / _90d  → legado; este backend não lê (a `main` lê a _30d)
+budget_warning_threshold, scan_cron_schedule, worker_concurrency,
+worker_max_per_minute, scan_lock_ttl_minutes  → MORTAS, nada as lê (migration 024)
+```
+
+Dar campo a config morta seria pior que não ter: promete um controle que não
+controla nada. **Toda config viva tem campo agora.**
+
+---
+
 ## 2026-08-02 — Fase 11, achado #4: o custo do scan tinha duas contabilidades
 
 Fecha os quatro achados da auditoria do auto-scan.

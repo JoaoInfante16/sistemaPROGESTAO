@@ -112,6 +112,55 @@ const MANUAL_SEARCH_THRESHOLDS: ThresholdConfig[] = [
     max: 365,
     step: 30,
   },
+  {
+    key: 'manual_search_fetch_concurrency',
+    label: 'Artigos baixados em paralelo',
+    description:
+      'Quantas matérias a busca manual baixa ao mesmo tempo. É o que decide a duração da parte mais lenta da busca (o "lendo matérias").',
+    tooltip:
+      'Não muda custo nem resultado, só velocidade. O limite contratado do Jina é 10 — passar disso começa a tomar erro 429. Vale só para a busca manual; o monitoramento automático tem o número dele, mais baixo de propósito, para não competir.',
+    min: 1,
+    max: 10,
+    step: 1,
+  },
+];
+
+// Configs que eram LIDAS pelo backend e não tinham campo nenhum — só dava para
+// mexer indo no Supabase à mão. Medido em 02/08: eram 7.
+const SISTEMA_THRESHOLDS: ThresholdConfig[] = [
+  {
+    key: 'monthly_budget_usd',
+    label: 'Orçamento mensal (US$)',
+    description:
+      'Teto de gasto do mês somando Bright Data, Jina e OpenAI. O monitoramento automático para de escanear quando o mês chega neste valor.',
+    tooltip:
+      'ATENÇÃO: não interrompe busca que já começou — é conferido no início de cada scan. Uma busca manual cara já em andamento vai até o fim. Gasto atual do mês aparece na aba de custos.',
+    min: 10,
+    max: 1000,
+    step: 10,
+  },
+  {
+    key: 'content_fetch_concurrency',
+    label: 'Artigos em paralelo — monitoramento automático',
+    description:
+      'O mesmo que o número da busca manual, mas para o scan que roda sozinho de hora em hora.',
+    tooltip:
+      'Mais baixo que o da busca manual de propósito: o scan roda em segundo plano e não tem ninguém esperando na tela. Deixar os dois no máximo faria um competir com o outro pelo mesmo limite do Jina.',
+    min: 1,
+    max: 10,
+    step: 1,
+  },
+  {
+    key: 'billing_close_day',
+    label: 'Dia do fechamento mensal',
+    description:
+      'Em que dia do mês o custo acumulado é fechado e arquivado no histórico de billing.',
+    tooltip:
+      'Use 1 a 28 — dia 29, 30 ou 31 não existe em todo mês, e o fechamento simplesmente não rodaria em fevereiro.',
+    min: 1,
+    max: 28,
+    step: 1,
+  },
 ];
 
 const AI_FILTER_THRESHOLDS: ThresholdConfig[] = [
@@ -841,10 +890,14 @@ export default function SettingsPage() {
                   const searchReqs = Math.ceil(urlCount / 20);
                   const fetchCount = Math.round(urlCount * 0.6);
                   const estimatedCost = searchReqs * 0.0015 + urlCount * 0.00003 + fetchCount * (0.0001 + 0.0006 + 0.00001);
-                  // O horizonte e medido em DIAS, nao em artigos — estimar custo
-                  // a partir dele daria um numero sem significado nenhum.
+                  // So o teto de artigos e alavanca de custo. O horizonte e medido
+                  // em DIAS e a concorrencia em requisicoes simultaneas — estimar
+                  // custo a partir deles daria numero sem significado nenhum.
                   const ehTetoDeArtigos = threshold.key === 'manual_search_analysis_cap';
-                  const unidade = ehTetoDeArtigos ? 'artigos' : 'dias';
+                  const unidade =
+                    ehTetoDeArtigos ? 'artigos'
+                    : threshold.key === 'manual_search_fetch_concurrency' ? 'em paralelo'
+                    : 'dias';
                   const rotuloCusto = !ehTetoDeArtigos
                     ? null
                     : urlCount === 0
@@ -905,6 +958,115 @@ export default function SettingsPage() {
                   return (
                     <div key={threshold.key} className="rounded-lg border p-4">
                       <div className="flex items-center gap-2 mb-1">
+                        <Label className="font-medium">{threshold.label}</Label>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="max-w-[280px]">
+                            <p className="text-sm">{threshold.tooltip}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p className="text-sm text-muted-foreground mb-3">{threshold.description}</p>
+                      <div className="flex items-center gap-3">
+                        <Input type="number" className="w-24" min={threshold.min} max={threshold.max} step={threshold.step} value={currentVal} onChange={(e) => handleConfigChange(threshold.key, e.target.value)} />
+                        <span className="text-xs text-muted-foreground">({threshold.min} - {threshold.max})</span>
+                        {hasChange && (
+                          <Button size="sm" onClick={() => saveConfigValue(threshold.key, editingConfig[threshold.key])} disabled={isSaving}>
+                            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" />Salvar</>}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+
+            {/* ============================== */}
+            {/* GRUPO 4: Sistema */}
+            {/* ============================== */}
+            {/* Estas configs eram LIDAS pelo backend e não tinham campo nenhum —
+                só dava para mexer indo no Supabase à mão. */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <SlidersHorizontal className="h-5 w-5" />
+                  Sistema
+                </CardTitle>
+                <CardDescription>
+                  Orçamento, velocidade e notificações. Mexer aqui vale para todo o sistema.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="rounded-lg border p-4 flex items-center justify-between">
+                  <div className="pr-4">
+                    <Label className="font-medium">Notificações push</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Avisa no celular a cada notícia nova encontrada pelo monitoramento automático.
+                      Desligado, as notícias continuam sendo salvas normalmente — só não chega alerta.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {savingConfig.has('push_enabled') && <Loader2 className="h-4 w-4 animate-spin" />}
+                    <Switch
+                      checked={isConfigEnabled('push_enabled')}
+                      onCheckedChange={() => toggleConfig('push_enabled', isConfigEnabled('push_enabled'))}
+                      disabled={savingConfig.has('push_enabled')}
+                    />
+                  </div>
+                </div>
+
+                {/* `search_permission` é string ('all' | 'authorized'), não boolean —
+                    por isso não usa `toggleConfig`, que só sabe alternar true/false. */}
+                <div className="rounded-lg border p-4 flex items-center justify-between">
+                  <div className="pr-4">
+                    <Label className="font-medium">Busca manual exige login</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Ligado, só usuário autenticado dispara busca manual. Desligado, qualquer um com
+                      o app consegue — e cada busca custa dinheiro de verdade (Bright Data + IA).
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {savingConfig.has('search_permission') && <Loader2 className="h-4 w-4 animate-spin" />}
+                    <Switch
+                      checked={getConfigValue('search_permission') !== 'all'}
+                      onCheckedChange={(exigirLogin) =>
+                        saveConfigValue('search_permission', exigirLogin ? 'authorized' : 'all')
+                      }
+                      disabled={savingConfig.has('search_permission')}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-lg border p-4 flex items-center justify-between">
+                  <div className="pr-4">
+                    <Label className="font-medium">Vários assuntos por scan automático</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Desligado, o monitoramento automático pergunta só o <strong>primeiro</strong>{' '}
+                      assunto da lista, sempre — os outros nunca são perguntados. Ligado, ele roda{' '}
+                      {getConfigValue('search_queries_per_scan') || '2'} por vez em rodízio e cobre a
+                      lista inteira ao longo do dia. Não afeta a busca manual, que roda todos.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {savingConfig.has('multi_query_enabled') && <Loader2 className="h-4 w-4 animate-spin" />}
+                    <Switch
+                      checked={isConfigEnabled('multi_query_enabled')}
+                      onCheckedChange={() => toggleConfig('multi_query_enabled', isConfigEnabled('multi_query_enabled'))}
+                      disabled={savingConfig.has('multi_query_enabled')}
+                    />
+                  </div>
+                </div>
+
+                {SISTEMA_THRESHOLDS.map((threshold) => {
+                  const currentVal = editingConfig[threshold.key] ?? getConfigValue(threshold.key);
+                  const hasChange = editingConfig[threshold.key] !== undefined;
+                  const isSaving = savingConfig.has(threshold.key);
+                  return (
+                    <div key={threshold.key} className="rounded-lg border p-4">
+                      <div className="flex items-center gap-2 mb-3">
                         <Label className="font-medium">{threshold.label}</Label>
                         <Tooltip>
                           <TooltipTrigger asChild>
