@@ -25,19 +25,20 @@ Ler e respeitar [workdesk/WORKFLOW.md](workdesk/WORKFLOW.md). Pontos que mais im
 
 ## 2. Workdesk — disciplina obrigatória
 
-Três papéis distintos em [workdesk/](workdesk/):
+**Mapa da pasta: [workdesk/README.md](workdesk/README.md)** — explica a organização e o ciclo das fases. Em sessão nova, começar pelo bloco **ESTADO DO MUNDO** no topo do DEV_LOG.
 
-- [workdesk/DEV_LOG.md](workdesk/DEV_LOG.md) — **passado**. Append a cada mudança de código ou decisão técnica. Sem esperar pedido. Começa com o bloco **ESTADO DO MUNDO** — leia primeiro em sessão nova.
+Três papéis distintos:
+
+- [workdesk/DEV_LOG.md](workdesk/DEV_LOG.md) — **passado**. Append a cada mudança de código ou decisão técnica. Sem esperar pedido.
 - [workdesk/ROADMAP.md](workdesk/ROADMAP.md) — **futuro**. Revisado junto com João no fim da sessão.
 - [workdesk/ARQUITETURA.md](workdesk/ARQUITETURA.md) — **presente**. Editado in-place quando algo estrutural muda.
 
-Fase encerrada é **arquivada** em `workdesk/Fases/Fase N/` (DEV_LOG + ROADMAP daquela fase), e a raiz recomeça com a fase seguinte. Estamos na **Fase 9** (frontend); 1 a 8 estão arquivadas.
+Os documentos são de **dois tipos**, e isso decide o que acontece no fim da fase:
 
-Documentos de referência, que não pertencem a fase nenhuma e ficam na raiz:
+- 📌 **vivos** (nunca arquivados, editados no lugar): `ARQUITETURA`, `API_CONTRATO`, `BACKEND_PENDENTE`, `WORKFLOW`, `SQL/`
+- 🗂️ **da fase** (vão para `workdesk/Fases/Fase N/`): `DEV_LOG`, `ROADMAP` e os briefings daquele trabalho
 
-- [workdesk/FRONTEND_BRIEFING.md](workdesk/FRONTEND_BRIEFING.md) — entrada de quem for mexer no Flutter
-- [workdesk/API_CONTRATO.md](workdesk/API_CONTRATO.md) — shapes exatos de cada rota
-- [workdesk/BACKEND_PENDENTE.md](workdesk/BACKEND_PENDENTE.md) — o que falta no backend, por consequência
+Estamos na **Fase 9** (frontend — o app usar o que o backend já entrega); 1 a 8 estão arquivadas.
 
 Toda migration SQL em [workdesk/SQL/migrations/](workdesk/SQL/migrations/) **obriga** entrada em [workdesk/SQL/MIGRATIONS_LOG.md](workdesk/SQL/MIGRATIONS_LOG.md) no mesmo turno.
 

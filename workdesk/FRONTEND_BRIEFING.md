@@ -1,11 +1,15 @@
 # Briefing do Frontend — tudo que você precisa para mexer no app
 
+> 🗂️ **Documento da Fase 9** — descreve um estado que deixa de ser verdade quando
+> o trabalho terminar ("o app ignora oito campos"). É arquivado em
+> `Fases/Fase 9/` no encerramento. Ver [README](./README.md).
+>
 > Escrito em 2026-08-02, logo depois da reforma do backend. É o documento de
 > entrada para quem for desenhar e implementar o Flutter.
 >
 > **Leia junto:** [API_CONTRATO.md](./API_CONTRATO.md) tem os shapes exatos de
-> cada rota. Este aqui tem o **contexto**: o que existe, o que falta, quanto
-> demora, e o que quebra se você fizer errado.
+> cada rota — e continua valendo depois desta fase. Este aqui tem o **contexto**:
+> o que existe, o que falta, quanto demora, e o que quebra se você fizer errado.
 
 ---
 

@@ -1,5 +1,8 @@
-# WORKFLOW — SIMEops (Fase 2 em diante)
+# WORKFLOW — como João e Claude trabalham juntos
 
+> 📌 **Documento vivo** — vale para todas as fases e não é arquivado com nenhuma.
+> Ver [README](./README.md).
+>
 > Este documento é a **constituição** da colaboração João × Claude no projeto.
 > Foi firmado em **2026-04-16**, no início da Fase 2, depois de aprender com a Fase 1 (seis sub-fases até produção).
 > Tudo que está aqui vale até ser explicitamente revisto.

@@ -1,13 +1,16 @@
-# Contrato da API — para quem for mexer no app
+# Contrato da API — o que cada rota recebe e devolve
 
-> Escrito em 2026-08-02, fim da Fase 8, para a instância que vai desenhar o
-> frontend. Descreve **o que o backend entrega hoje** — não o que seria bom ter.
+> 📌 **Documento vivo** — descreve o contrato atual e é atualizado sempre que a
+> API muda. Não é arquivado com a fase. Ver [README](./README.md).
+>
+> Última revisão: 2026-08-02. Descreve **o que o backend entrega hoje** — não o
+> que seria bom ter.
 >
 > Backend staging: `https://simeops-backend.onrender.com`
 > Backend produção: `https://sistemaprogestao-7fzs.onrender.com`
 >
 > ⚠️ **Produção ainda roda código de junho** (`main`). Tudo marcado com 🆕 existe
-> só em `staging`/`develop`. Ver [ROADMAP](./ROADMAP.md), Prioridade 1.
+> só em `staging`/`develop`. Ver [ROADMAP](./ROADMAP.md), Prioridade 0.
 
 ---
 

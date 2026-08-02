@@ -1,10 +1,13 @@
 # Backend — o que ficou por fazer
 
-> Revisado em 2026-08-02, ao fim da reforma. Lista única e consolidada do que
+> 📌 **Documento vivo** — itens entram e saem conforme a dívida muda; o documento
+> atravessa as fases. Não é arquivado. Ver [README](./README.md).
+>
+> Última revisão: 2026-08-02, ao fim da reforma. Lista única e consolidada do que
 > **não** foi feito no backend, com o porquê e o risco de cada item.
 >
-> O [ROADMAP](./ROADMAP.md) tem o plano por fase; aqui é a lista crua, ordenada
-> por consequência. O [DEV_LOG](./DEV_LOG.md) tem as medições.
+> O [ROADMAP](./ROADMAP.md) tem o plano da fase atual; aqui é a lista crua,
+> ordenada por consequência. O [DEV_LOG](./DEV_LOG.md) tem as medições.
 
 ---
 

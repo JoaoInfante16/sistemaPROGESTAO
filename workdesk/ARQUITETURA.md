@@ -2,8 +2,9 @@
 # SIMEops / PROGESTAO - ARQUITETURA DO SISTEMA
 ## Documento Tecnico — revisado em 2026-08-02 (fim da Fase 8)
 
-> Este documento descreve o **presente**: como o sistema funciona hoje. Editado
-> in-place quando algo estrutural muda — nao e historico.
+> 📌 **Documento vivo** — descreve o **presente**: como o sistema funciona hoje.
+> Editado in-place quando algo estrutural muda, nunca arquivado com a fase. O
+> historico de *como se chegou aqui* e o DEV_LOG. Ver [README](./README.md).
 >
 > **O que mudou nesta revisao** (reforma do backend, 02/08):
 > - os assuntos pesquisados sairam do codigo e viraram config editavel no painel

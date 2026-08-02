@@ -1,6 +1,10 @@
 # ROADMAP — SIMEops (Fase 9: o app à altura do backend)
 
+> 🗂️ **Documento da Fase 9** — arquivado em `Fases/Fase 9/` quando ela fechar.
+> Ver [README](./README.md) para a organização da pasta.
+>
 > Planos, backlog e próximos passos. Revisado no fim de cada sessão com o João.
+> Dívida que atravessa fases mora no [BACKEND_PENDENTE](./BACKEND_PENDENTE.md).
 >
 > Fases 1 a 8 arquivadas em [Fases/](./Fases/). Estado atual do sistema e
 > medições que não devem ser refeitas: bloco **ESTADO DO MUNDO** no

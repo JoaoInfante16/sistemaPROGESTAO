@@ -1,13 +1,15 @@
 # DEV_LOG — SIMEops (Fase 9)
 
+> 🗂️ **Documento da Fase 9** — arquivado em `Fases/Fase 9/` quando ela fechar.
+> Ver [README](./README.md) para a organização da pasta.
+>
 > Diário de bordo: o que foi feito, decisões tomadas, problemas encontrados.
-> Append-only, cronológico (mais recente no topo).
+> **Append-only**, cronológico (mais recente no topo). Não se reescreve o passado:
+> se algo estava errado, a correção entra como entrada nova.
 >
 > Fases 1 a 8 arquivadas em [Fases/](./Fases/). A **Fase 8** (busca manual +
 > reforma do backend) está em [Fases/Fase 8/](./Fases/Fase%208/) — inclusive
 > todas as medições de 30/07 a 02/08.
->
-> Rotação: quando passar de ~1500 linhas, arquivar junto com a fase.
 
 ---
 
@@ -116,6 +118,46 @@ produção **na hora, sem deploy**. Quando o significado de uma config mudar,
 **`npx tsx scripts/diagnostico-banco.ts`** — só leitura, olha o estado real.
 Verificado em 02/08: migrations 019, 020, 021b, 022 aplicadas; **021, 023, 024 e
 025 não**. Custo do mês: **$0,12** de $100.
+
+---
+
+## 2026-08-02 — workdesk coerente: cada doc diz o que é e quando morre
+
+Pergunta do João depois da reorganização: *"o que ta na raiz do workdesk seria a
+base da fase 9?"*. **Não** — e a resposta expôs uma incoerência que eu tinha
+acabado de introduzir.
+
+A raiz tem **dois tipos** de documento, e a diferença só aparece no fim da fase:
+
+| tipo | o que acontece no encerramento |
+|---|---|
+| 📌 **vivo** | fica na raiz, editado in-place, para sempre |
+| 🗂️ **da fase** | vai para `Fases/Fase N/` |
+
+**O erro que eu tinha cometido:** classifiquei o `FRONTEND_BRIEFING` como vivo,
+junto do `API_CONTRATO`. Está errado, e o critério é claro: o briefing descreve um
+estado que **deixa de ser verdade** quando o trabalho acaba — hoje ele afirma "o
+app ignora oito campos", e no dia em que o app parar de ignorar a frase vira
+mentira. Documento vivo não pode envelhecer assim. O `API_CONTRATO`, por
+contraste, continua verdadeiro depois de a Fase 9 fechar.
+
+Então o briefing é **da Fase 9** e será arquivado com ela.
+
+### O que ficou
+
+- **[README.md](./README.md) novo** — o mapa da pasta: os dois tipos, o ciclo de
+  uma fase em diagrama, as regras que não podem ser quebradas e o histórico das
+  fases. É a porta de entrada de quem chega sem contexto.
+- **Cada documento declara o próprio tipo** no cabeçalho, com 📌 ou 🗂️. Verificado:
+  7 de 7 declaram.
+- `WORKFLOW.md` perdeu o "(Fase 2 em diante)" do título — ele é a constituição,
+  não pertence a fase nenhuma.
+- `API_CONTRATO` apontava para "Prioridade 1" do ROADMAP, que virou **Prioridade 0**
+  na Fase 9.
+- CLAUDE.md aponta para o README e traz a regra dos dois tipos.
+
+Todos os links relativos foram verificados por script: workdesk→workdesk,
+workdesk→código e CLAUDE.md→workdesk. **Zero quebrados.**
 
 ---
 
