@@ -227,7 +227,7 @@ INSERT INTO system_config (key, value, description, category, value_type) VALUES
   ('filter0_regex_enabled', 'true', 'Filtro regex que bloqueia redes sociais e palavras nao-crime antes do GPT', 'ingestion', 'boolean'),
   -- Busca manual por período
   ('manual_search_max_results_30d', '0', 'BASE de artigos analisados na busca manual (equivale a 30 dias). Outros periodos escalam por raiz quadrada, sem faixas. 0 = SEM TETO', 'pipeline', 'number'),
-  ('manual_search_horizon_days', '365', 'Ate quantos dias atras aceitar noticia como "fora do periodo" em vez de descartar', 'pipeline', 'number');
+  ('manual_search_horizon_days', '180', 'Ate quantos dias atras aceitar noticia como "fora do periodo" em vez de descartar', 'pipeline', 'number');
 
 -- ============================================
 -- 11. UX: Notícias lidas + Favoritos (FASE 8.5)

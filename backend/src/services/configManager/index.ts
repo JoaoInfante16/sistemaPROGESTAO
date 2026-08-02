@@ -41,9 +41,9 @@ const DEFAULTS: Record<string, string> = {
   manual_search_max_results_60d: '50',
   manual_search_max_results_90d: '80',
   // Ate quantos dias atras uma noticia fora da janela ainda entra como "fora do
-  // periodo" em vez de ser descartada. Nao e alavanca de custo — quem limita o
-  // gasto e o teto de analise acima; por isso pode ser generoso.
-  manual_search_horizon_days: '365',
+  // periodo" em vez de ser descartada. Casado com o teto de 180 da validacao:
+  // nada mais velho que 6 meses entra no sistema, qualquer que seja a busca.
+  manual_search_horizon_days: '180',
   monthly_budget_usd: '100',
   budget_warning_threshold: '0.9',
   scan_cron_schedule: '*/5 * * * *',

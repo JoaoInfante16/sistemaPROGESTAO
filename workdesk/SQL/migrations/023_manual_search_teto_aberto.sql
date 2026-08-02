@@ -21,11 +21,12 @@ SET value = '0',
     updated_at = NOW()
 WHERE key = 'manual_search_max_results_30d';
 
--- Horizonte do balde "fora do período" (Fase 8.2). Insere se ainda não existir.
+-- Horizonte do balde "fora do período" (Fase 8.2). Casado com o teto de 180 dias
+-- da validação: nada mais velho que 6 meses entra, qualquer que seja a busca.
 INSERT INTO system_config (key, value, description, category, value_type)
 VALUES (
   'manual_search_horizon_days',
-  '365',
+  '180',
   'Ate quantos dias atras aceitar noticia como "fora do periodo" em vez de descartar',
   'pipeline',
   'number'

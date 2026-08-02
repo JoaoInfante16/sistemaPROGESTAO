@@ -100,12 +100,19 @@ arredondando 45→60) saíram.
 **O gargalo mudou de lugar:** agora é o teto de análise (142 candidatos dentro da
 janela para uma cota de 50). É escolha de custo, não bug — sobe numa config.
 
-### 8.5 — Progresso granular + 409 informativo ⬆️ virou pré-requisito de 365
+### 8.5 — Progresso granular + 409 informativo ⬆️ virou pré-requisito
 
 🔴 Com o teto de análise aberto (02/08), o limite deixou de ser dinheiro e passou
-a ser **tempo**: o app desiste em 10 min (`_maxPolls = 200` × 3s) e uma busca de
-1 ano numa capital chega perto disso — multi-cidade passa. **Não ligar 365 no app
-antes disto.**
+a ser **tempo**: o app desiste em 10 min (`_maxPolls = 200` × 3s).
+
+Por isso o período foi capado em **180 dias** por enquanto (decisão do João):
+6 meses ≈ 7 min numa cidade, o que dá folga. Mas **multi-cidade ainda estoura**, e
+365 raspava o teto. Enquanto a regra for por relógio, o seletor não pode ser
+realmente livre.
+
+Depois desta fase, subir para 365 é mudar `.max(180)` em
+[validation.ts](../backend/src/middleware/validation.ts) — as fórmulas de teto não
+têm faixa nem máximo próprio.
 
 
 - `runContentFetch` e `runFilter2WithEmbedding` ganham `onProgress(feitos, total)` **opcional** (para não afetar o auto-scan)

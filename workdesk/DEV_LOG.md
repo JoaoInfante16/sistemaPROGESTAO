@@ -134,6 +134,36 @@ resolve, é o algoritmo que precisa mudar (ver ROADMAP).
 
 ---
 
+## 2026-08-02 — teto de período: 6 meses por enquanto
+
+Decisão do João depois de ver que o limite virou tempo, não dinheiro: *"deixa
+limite 6 meses então por enquanto"*.
+
+`periodo_dias` passa de `.max(365)` para **`.max(180)`**, e
+`manual_search_horizon_days` acompanha (180) — regra simples: **nada mais velho
+que 6 meses entra no sistema**, qualquer que seja a busca.
+
+**O limite mora só na validação.** As fórmulas de teto não têm faixa nem máximo
+próprio: funcionam para 365 igual. Subir depois da 8.5 é mudar um número em
+[validation.ts](../backend/src/middleware/validation.ts), sem tocar em cálculo
+nenhum.
+
+Por que 180 e não 365 (extrapolado de Salvador/30d, com o teto de análise aberto):
+
+| período | artigos/cidade | custo | tempo |
+|---|---|---|---|
+| 180d | ~300 | ~$0,75 | **~7 min** |
+| 365d | ~470 | ~$1,20 | ~10 min |
+
+O app desiste em 10 minutos. 365 raspava o teto; 180 dá folga — **mas só para uma
+cidade**. Multi-cidade ainda passa de 10 min, então a 8.5 continua sendo
+pré-requisito para o seletor ficar realmente livre.
+
+⚠️ Os outros `365` de `validation.ts` são de analytics (leem a tabela `news`, que
+o auto-scan acumula) e **continuam 365** de propósito.
+
+---
+
 ## 2026-08-02 — teto de análise ABERTO + tracking real
 
 Decisão do João: *"vamos deixar o teto de análise aberto... nosso custo tá baixo,

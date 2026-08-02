@@ -114,7 +114,12 @@ export const schemas = {
   triggerManualSearch: z.object({
     estado: z.string().min(2).max(100),
     cidades: z.array(z.string().min(2).max(100)).min(1).max(10),
-    periodo_dias: z.number().int().min(1).max(365).default(30),
+    // Teto de 180 dias (6 meses) desde 02/08. O backend inteiro ja funciona com
+    // qualquer periodo — quem limita e o APP: ele desiste de esperar em 10 min
+    // (_maxPolls=200 x 3s), e com o teto de analise aberto uma busca de 1 ano
+    // numa capital passa disso. Subir pra 365 depois da 8.5 (desistir por
+    // estagnacao, nao por relogio) e so mudar este numero.
+    periodo_dias: z.number().int().min(1).max(180).default(30),
     tipo_crime: z.string().min(2).max(50).optional(),
   }),
 

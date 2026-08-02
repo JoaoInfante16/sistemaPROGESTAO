@@ -24,7 +24,7 @@ const cidade = process.argv[2] || 'Salvador';
 const estado = process.argv[3] || 'Bahia';
 const periodoDias = parseInt(process.argv[4] || '30', 10);
 const TETO = parseInt(process.argv[5] || '25', 10);
-const HORIZONTE = 365;
+const HORIZONTE = 180; // casa com manual_search_horizon_days
 const NEWS_MAX = newsMaxPorQuery(periodoDias);
 
 async function main(): Promise<void> {

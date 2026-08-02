@@ -1,9 +1,13 @@
 // ============================================
 // Tetos da busca manual, derivados do periodo — SEM degraus
 // ============================================
-// O periodo e um numero livre de 1 a 365 (a validacao ja aceita qualquer int).
-// Nada aqui pode ser tabela de faixas: se o usuario pode pedir 47 dias, 47 dias
-// tem que ter teto proprio, e nao o de "60".
+// O periodo e um numero livre de 1 a 180 (a validacao aceita qualquer int nessa
+// faixa). Nada aqui pode ser tabela de faixas: se o usuario pode pedir 47 dias,
+// 47 dias tem que ter teto proprio, e nao o de "60".
+//
+// As formulas abaixo NAO tem teto proprio de periodo — funcionam pra 365 do
+// mesmo jeito. O limite de 180 mora so na validacao, e e por causa do app (ver
+// validation.ts). Subir depois da 8.5 nao mexe em nada aqui.
 //
 // Ambas as funcoes crescem com a RAIZ do periodo, nao linearmente, porque o
 // indice de noticias do Google rareia conforme se volta no tempo: dobrar o
@@ -14,12 +18,14 @@
 // uma Queue do BullMQ no import, entao um script que so quisesse consultar estes
 // numeros abriria conexao com o Redis e nao terminaria.
 //
-// Curva resultante (base de analise = 50):
-//   dias | coleta/query | analise | custo/cidade
-//     30 |           70 |      50 |  $0.16
-//     90 |          110 |      87 |  $0.27
-//    180 |          150 |     122 |  $0.37
-//    365 |          220 |     174 |  $0.53
+// Curva de COLETA, e a de analise se um dia voltar a ter teto (base 50):
+//   dias | coleta/query | analise c/ base 50 | custo/cidade
+//     30 |           70 |                 50 |  $0.16
+//     90 |          110 |                 87 |  $0.27
+//    180 |          150 |                122 |  $0.37   <- maximo hoje
+//    365 |          220 |                174 |  $0.53   <- so depois da 8.5
+// Com o teto de analise ABERTO (o padrao atual) a coluna de analise vira "tudo
+// que passou no Filter1" — em capital, ~2.5x os numeros acima.
 
 // Teto de COLETA do ramo news, POR QUERY (nao por cidade).
 //
@@ -55,9 +61,9 @@ export function newsMaxPorQuery(periodoDias: number): number {
  * voltar a ter fusivel seja UMA config no admin, sem deploy — se um dia uma
  * busca sair cara ou longa demais, e so por um numero de volta.
  *
- * O que fica sem freio quando e 0 (medido em 02/08, Salvador):
- *   - custo: ~$1.20 por cidade numa busca de 1 ano (~470 artigos analisados)
- *   - tempo: ~10 min por cidade em 1 ano, com Jina e Filter2 em 5 concorrentes
+ * O que fica sem freio quando e 0 (extrapolado de Salvador/30d, medido em 02/08):
+ *   - 180 dias: ~300 artigos por cidade, ~$0.75, ~7 min
+ *   - 365 dias: ~470 artigos por cidade, ~$1.20, ~10 min
  * O `monthly_budget_usd` NAO protege disso: ele e checado uma vez, no inicio do
  * job, entao nao interrompe uma busca cara ja em andamento.
  */
