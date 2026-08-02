@@ -35,6 +35,12 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   String? _reportId;
   String _searchStatus = 'idle'; // idle, processing, completed, failed
   List<Map<String, dynamic>> _results = [];
+  // Baldes extras do /results — cidades vizinhas e itens mais antigos que a
+  // janela. Ficam SEMPRE separados de _results (regra do contrato).
+  // ignore: unused_field — a UI das seções expansíveis consome estes na 9.4
+  List<Map<String, dynamic>> _regiao = [];
+  // ignore: unused_field
+  List<Map<String, dynamic>> _foraDoPeriodo = [];
   Map<String, dynamic>? _progress;
   Timer? _pollTimer;
   DateTime? _searchStartTime;
@@ -96,11 +102,13 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       }
 
       if (s == 'completed') {
-        final results = await api.getManualSearchResults(searchId);
+        final res = await api.getManualSearchResults(searchId);
         if (mounted) {
           setState(() {
             _searchStatus = 'completed';
-            _results = results;
+            _results = res.results;
+            _regiao = res.regiao;
+            _foraDoPeriodo = res.foraDoPeriodo;
           });
         }
       } else if (s == 'failed') {
@@ -262,11 +270,13 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
           _elapsedTimer?.cancel();
 
           if (s == 'completed') {
-            final results = await api.getManualSearchResults(_searchId!);
+            final res = await api.getManualSearchResults(_searchId!);
             if (mounted) {
               setState(() {
                 _searchStatus = 'completed';
-                _results = results;
+                _results = res.results;
+                _regiao = res.regiao;
+                _foraDoPeriodo = res.foraDoPeriodo;
               });
             }
           } else {
@@ -340,6 +350,8 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       _reportId = null;
       _searchStatus = 'idle';
       _results = [];
+      _regiao = [];
+      _foraDoPeriodo = [];
       _progress = null;
       _searchStartTime = null;
       _elapsedText = '0s';

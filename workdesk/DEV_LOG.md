@@ -121,6 +121,45 @@ Verificado em 02/08: migrations 019, 020, 021b, 022 aplicadas; **021, 023, 024 e
 
 ---
 
+## 2026-08-02 — Fase 9 em execução: 9.1, os três baldes chegam ao app
+
+Plano da fase fechado com o João nesta sessão (decisões: feed e busca juntos,
+card redesenhado com hierarquia "corporativo operacional", ordem do roadmap
+mantida, mapa OBRIGATÓRIO no PDF). Escopo ampliado além do briefing: relatórios,
+card de grupos, PDF, mapas, e uma etapa de linguagem visual (tokens, tipografia,
+hierarquia de botões).
+
+### 9.1 implementado
+
+- **`ManualSearchResults`** (model novo em `core/models/`): os três baldes de
+  `GET /manual-search/:id/results` — `results`, `regiao`, `fora_do_periodo` —
+  sempre separados, com o porquê documentado no próprio arquivo.
+- `api_service.getManualSearchResults` deixou de descartar `extras`.
+- `manual_search_screen` guarda `_regiao`/`_foraDoPeriodo` no estado (a UI das
+  seções expansíveis é a 9.4 — por ora ficam com `// ignore: unused_field`).
+- `NewsItem.fromSearchResult` agora preenche `estadoUf` (via `abbrState` — o
+  item da busca manda `estado` por extenso) e lê `source_type`; `NewsSource`
+  ganhou `type` (`news`/`web`).
+
+`flutter analyze` limpo (3 infos pré-existentes, nenhum novo).
+
+### Achados da investigação de planejamento (valem registro)
+
+- **`pdf-export.ts` do admin é código morto** — html2canvas+jsPDF exportado e
+  nunca importado. O caminho real do PDF é `window.print()` na página pública
+  do relatório. Remoção prevista na etapa do relatório web.
+- **Duas escalas de cor de categoria divergem**: `category_colors.dart` (que se
+  declara fonte única) usa Material cru; o `report_screen` tem hexes refinados
+  próprios. Chips/mapa pintam diferente do donut. Unificação prevista na etapa
+  de linguagem visual.
+- **`CityCard` joga fora metade do `CityOverview`**: `trendPercent`,
+  `topCrimeType`, `lastNewsAt`, `cityNames` chegam e não aparecem.
+- **Mapa mobile**: pontos sem tap, zoom fixo 12, codificação de precisão sem
+  legenda; `_loadMapPoints`/`_loadExecutive` usam só `cidades.first` (gap
+  latente para multi-cidade).
+
+---
+
 ## 2026-08-02 — o encerramento de fase, como o João faz (e eu tinha errado)
 
 Correção dele: *"quando acaba a fase, as pastas da raiz que documentam tudo

@@ -1,15 +1,18 @@
+import '../utils/state_utils.dart';
 import '../utils/type_helpers.dart';
 
 class NewsSource {
   final String url;
   final String? sourceName;
+  final String? type; // 'news' | 'web' (busca manual)
 
-  NewsSource({required this.url, this.sourceName});
+  NewsSource({required this.url, this.sourceName, this.type});
 
   factory NewsSource.fromJson(Map<String, dynamic> json) {
     return NewsSource(
       url: json['url'] as String,
       sourceName: json['source_name'] as String?,
+      type: json['type'] as String?,
     );
   }
 }
@@ -29,6 +32,7 @@ class NewsItem {
   final List<NewsSource> sources;
   final bool hasOfficialSource;
   final String? estadoUf;
+  final String? sourceType; // 'news' | 'web' — só na busca manual
   bool isUnread;
   bool isFavorite;
 
@@ -47,6 +51,7 @@ class NewsItem {
     this.sources = const [],
     this.hasOfficialSource = false,
     this.estadoUf,
+    this.sourceType,
     this.isUnread = true,
     this.isFavorite = false,
   });
@@ -87,6 +92,7 @@ class NewsItem {
           sources.add(NewsSource(
             url: s['url'] as String? ?? '',
             sourceName: s['source_name'] as String?,
+            type: s['type'] as String?,
           ));
         } else if (s is String) {
           sources.add(NewsSource(url: s));
@@ -95,6 +101,9 @@ class NewsItem {
     } else if (sourceUrl.isNotEmpty) {
       sources.add(NewsSource(url: sourceUrl));
     }
+
+    // Busca manual manda `estado` por extenso ("Bahia") — vira UF pro card.
+    final estado = json['estado'] as String?;
 
     return NewsItem(
       id: json['id'] as String? ?? 'search-${json.hashCode}',
@@ -109,6 +118,8 @@ class NewsItem {
       confianca: safeDoubleOrNull(json['confianca']),
       createdAt: DateTime.now(),
       sources: sources,
+      estadoUf: estado != null && estado.isNotEmpty ? abbrState(estado) : null,
+      sourceType: json['source_type'] as String?,
       isUnread: false,
       isFavorite: false,
     );

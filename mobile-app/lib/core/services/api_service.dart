@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/env.dart';
+import '../models/manual_search_results.dart';
 import '../models/news_item.dart';
 import '../utils/type_helpers.dart';
 
@@ -223,7 +224,7 @@ class ApiService {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
-  Future<List<Map<String, dynamic>>> getManualSearchResults(
+  Future<ManualSearchResults> getManualSearchResults(
       String searchId) async {
     final res = await _client.get(
       Uri.parse('$_baseUrl/manual-search/$searchId/results'),
@@ -231,7 +232,7 @@ class ApiService {
     ).timeout(_timeout);
     _checkResponse(res);
     final body = jsonDecode(res.body) as Map<String, dynamic>;
-    return (body['results'] as List<dynamic>).cast<Map<String, dynamic>>();
+    return ManualSearchResults.fromJson(body);
   }
 
   Future<List<Map<String, dynamic>>> getSearchHistory() async {
