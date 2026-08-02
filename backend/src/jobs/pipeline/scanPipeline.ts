@@ -109,8 +109,20 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
     logger.warn(`${LOG_PREFIX} Budget warning: $${currentCost.toFixed(2)} / $${monthlyBudget} (${(currentCost / monthlyBudget * 100).toFixed(0)}%)`);
   }
 
+  // Custo REAL do run, somado conforme cada estágio paga.
+  //
+  // Antes o `operation_logs.cost_usd` vinha do `calculateCost()`, uma fórmula
+  // paralela com taxas fixas que não conversava com o `budget_tracking` — os
+  // dois números discordavam por construção (achado #4 da auditoria). Agora há
+  // uma fonte só: o que é gravado no `budget_tracking` é o que vai no log.
+  let custoDoRun = 0;
+  const pagar = async (p: Parameters<typeof db.trackCost>[0]): Promise<void> => {
+    custoDoRun += p.cost_usd;
+    await db.trackCost(p);
+  };
+
   // STAGE 1: Multi-Source URL Collector
-  const { allResults, queryCount, sources } = await collectUrls(location, pipelineConfig, parentState?.name);
+  const { allResults, queryCount, sources, requestCount } = await collectUrls(location, pipelineConfig, parentState?.name);
   const searchResults = deduplicateResults(allResults);
   logger.info(`${LOG_PREFIX} Collected ${allResults.length} URLs → ${searchResults.length} unique (sources: ${sources.join(', ')})`);
 
@@ -164,23 +176,24 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   }
 
   if (queryCount > 0) {
-    // Bright Data: $0.0015/request, com paginacao (20 results/page)
-    // Brave: $0.005/query (sem paginacao interna)
+    // Bright Data cobra $0.0015 por REQUISIÇÃO (não por query); Brave, $0.005
+    // por query, sem paginação interna. `requestCount` vem do provider e conta
+    // páginas e retries de verdade — a estimativa `queryCount × ceil(max/20)`
+    // que estava aqui errava nos dois sentidos.
     const isBrightData = config.searchBackend === 'brightdata';
-    const requestsPerQuery = isBrightData ? Math.ceil(pipelineConfig.searchMaxResults / 20) : 1;
     const costPerRequest = isBrightData ? 0.0015 : 0.005;
-    const totalRequests = queryCount * requestsPerQuery;
-    await db.trackCost({
+    await pagar({
       source: 'auto_scan',
       provider: config.searchBackend as 'google' | 'perplexity' | 'brave' | 'brightdata',
-      cost_usd: totalRequests * costPerRequest,
+      cost_usd: requestCount * costPerRequest,
       // `jaVistas`/`ineditas` medem quanto a peneira economizou. Vão aqui porque
       // `operation_logs` tem colunas fixas e este `details` é JSONB livre.
       details: {
-        queryCount, requestsPerQuery, totalRequests,
+        queryCount, totalRequests: requestCount,
         resultsCount: searchResults.length, sources,
         jaVistas: urlsConhecidas.size, ineditas: ineditos.length,
         velhasPelaSerp: velhos.length, analisaveis: dentroDaJanela.length,
+        commit: (process.env.RENDER_GIT_COMMIT || 'local').substring(0, 7),
       },
     });
   }
@@ -212,7 +225,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
     })));
   }
 
-  await db.trackCost({
+  await pagar({
     source: 'auto_scan', provider: 'openai',
     cost_usd: filter1Result.tokensUsed * 0.00000015, // gpt-4o-mini: $0.15/1M input tokens
     details: { stage: 'filter1_batch', snippetCount: afterFilter0.length, tokensUsed: filter1Result.tokensUsed },
@@ -224,7 +237,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
     await db.insertOperationLog({
       location_id: locationId, stage: 'complete',
       urls_processed: searchResults.length, news_found: 0,
-      cost_usd: calculateCost(queryCount, afterFilter0.length, 0, 0, pipelineConfig.searchMaxResults), duration_ms: duration,
+      cost_usd: custoDoRun, duration_ms: duration,
     });
     return buildResult(location, searchResults.length, afterFilter0.length, 0, 0, 0, 0, 0, duration);
   }
@@ -233,7 +246,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   const validContents = await runContentFetch(afterFilter1, pipelineConfig.contentFetchConcurrency, rejectedUrls, LOG_PREFIX);
 
   const jinaTokensTotal = validContents.reduce((sum, c) => sum + (c.tokensUsed || 0), 0);
-  await db.trackCost({
+  await pagar({
     source: 'auto_scan', provider: 'jina',
     cost_usd: jinaTokensTotal * 0.00000005, // Jina: $50/1B tokens = $0.00000005/token
     details: { stage: 'fetch', count: validContents.length, tokensUsed: jinaTokensTotal },
@@ -264,7 +277,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   }
 
   const f2tokens = filter2Result.tokensUsed;
-  await db.trackCost({
+  await pagar({
     source: 'auto_scan', provider: 'openai',
     cost_usd: f2tokens.filter2 * 0.00000015 + f2tokens.embedding * 0.00000002, // gpt-4o-mini + embedding-3-small
     details: { stage: 'filter2+embedding', analyzed: validContents.length, extracted: extractions.length, tokensUsed: f2tokens },
@@ -289,7 +302,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   const { consolidated, intraMerged } = dedupIntra;
 
   if (dedupIntra.tokensUsed > 0) {
-    await db.trackCost({
+    await pagar({
       source: 'auto_scan', provider: 'openai',
       cost_usd: dedupIntra.tokensUsed * 0.00000015,
       details: { stage: 'dedup_intra_gpt', tokensUsed: dedupIntra.tokensUsed, intraMerged },
@@ -300,10 +313,13 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   let newsSaved = 0;
   let duplicatesFound = 0;
   const dedupLayerStats = { layer1: 0, layer2: 0, layer3: 0 };
+  // `deduplicateNews` já devolve os tokens da camada 3 e eles eram DESCARTADOS.
+  let dedupTokens = 0;
 
   for (const news of consolidated) {
     try {
       const dedupResult = await deduplicateNews(news, news.sourceUrl, pipelineConfig.dedupSimilarityThreshold, news.extraSourceUrls);
+      dedupTokens += dedupResult.tokensUsed;
 
       if (dedupResult.layer === 1) dedupLayerStats.layer1++;
       else if (dedupResult.layer === 2) dedupLayerStats.layer2++;
@@ -358,11 +374,17 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
 
   logger.info(`${LOG_PREFIX} Dedup stats: ${extractions.length} extracted, ${intraMerged} intra-merged, ${consolidated.length} checked vs DB, ${duplicatesFound} dupes, ${newsSaved} new | Layer1(geo): ${dedupLayerStats.layer1}, Layer2(embed): ${dedupLayerStats.layer2}, Layer3(gpt): ${dedupLayerStats.layer3}`);
 
-  if (duplicatesFound > 0) {
-    await db.trackCost({
+  // Cobrado por TOKEN de verdade, e só quando a camada 3 rodou.
+  //
+  // Era `duplicatesFound * 0.001`: um número inventado, cobrado por CADA
+  // duplicata de QUALQUER camada — inclusive a camada 1, que é geo-temporal, em
+  // memória, e não gasta um token sequer. Um scan que deduplicasse tudo de graça
+  // aparecia no relatório como o mais caro do dia.
+  if (dedupTokens > 0) {
+    await pagar({
       source: 'auto_scan', provider: 'openai',
-      cost_usd: duplicatesFound * 0.001,
-      details: { stage: 'dedup_gpt', duplicates: duplicatesFound, layerStats: dedupLayerStats },
+      cost_usd: dedupTokens * 0.00000015,
+      details: { stage: 'dedup_gpt', duplicates: duplicatesFound, tokensUsed: dedupTokens, layerStats: dedupLayerStats },
     });
   }
 
@@ -370,17 +392,16 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
   await db.updateLocationLastCheck(locationId, new Date());
 
   const duration = Date.now() - startTime;
-  const totalCost = calculateCost(queryCount, afterFilter0.length, validContents.length, extractions.length, pipelineConfig.searchMaxResults);
 
   await db.insertOperationLog({
     location_id: locationId, stage: 'complete',
     urls_processed: searchResults.length, news_found: newsSaved,
-    cost_usd: totalCost, duration_ms: duration,
+    cost_usd: custoDoRun, duration_ms: duration,
   });
 
-  logger.info(`${LOG_PREFIX} Completed: ${newsSaved} new, ${duplicatesFound} dupes, cost $${totalCost.toFixed(4)}, ${duration}ms`);
+  logger.info(`${LOG_PREFIX} Completed: ${newsSaved} new, ${duplicatesFound} dupes, cost $${custoDoRun.toFixed(4)}, ${duration}ms`);
 
-  return buildResult(location, searchResults.length, afterFilter0.length, afterFilter1.length, extractions.length, newsSaved, duplicatesFound, totalCost, duration);
+  return buildResult(location, searchResults.length, afterFilter0.length, afterFilter1.length, extractions.length, newsSaved, duplicatesFound, custoDoRun, duration);
 }
 
 // ============================================
@@ -391,6 +412,8 @@ interface CollectResult {
   allResults: SearchResult[];
   queryCount: number;
   sources: string[];
+  /** Requisições HTTP que a paginação de fato gastou — inclui retries. */
+  requestCount: number;
 }
 
 async function collectUrls(
@@ -407,6 +430,7 @@ async function collectUrls(
   const allResults: SearchResult[] = [];
   const sources: string[] = [];
   let queryCount = 0;
+  let requestCount = 0;
 
   // Índice do rodízio de assuntos. Era `Date.now()/60000` — um número novo a
   // cada MINUTO, para um scan que roda de hora em hora: o rodízio saltava
@@ -436,13 +460,32 @@ async function collectUrls(
 
   for (const query of queries) {
     try {
-      const results = await rateLimiter.schedule(config.searchBackend, () =>
-        searchProvider.search(query, {
-          maxResults: cfg.searchMaxResults,
-          dateRestrict,
-          location: { city: location.name, state: stateName, country: 'BR' },
-        })
-      );
+      const opts = {
+        maxResults: cfg.searchMaxResults,
+        dateRestrict,
+        location: { city: location.name, state: stateName, country: 'BR' },
+      };
+
+      // `searchWithMeta` devolve quantas requisições HTTP a paginação de fato
+      // gastou — o único número honesto pro custo, e o que a busca manual já
+      // usa desde a 8.1. `search()` descarta isso, e a estimativa por teto
+      // errava nos dois sentidos: pra cima em cidade pequena (a paginação para
+      // sozinha ao sair da janela) e pra baixo quando o retry de corpo vazio
+      // gasta uma request extra. Provider sem `searchWithMeta` conta 1.
+      let results: SearchResult[];
+      if (searchProvider.searchWithMeta) {
+        const r = await rateLimiter.schedule(config.searchBackend, () =>
+          searchProvider.searchWithMeta!(query, opts)
+        );
+        results = r.results;
+        requestCount += r.requestCount;
+      } else {
+        results = await rateLimiter.schedule(config.searchBackend, () =>
+          searchProvider.search(query, opts)
+        );
+        requestCount += 1;
+      }
+
       allResults.push(...results);
       queryCount++;
     } catch (error) {
@@ -467,19 +510,18 @@ async function collectUrls(
     }
   }
 
-  return { allResults, queryCount, sources };
+  return { allResults, queryCount, sources, requestCount };
 }
 
 // ============================================
 // Helpers
 // ============================================
 
-function calculateCost(queries: number, filter1Count: number, jinaFetches: number, filter2Count: number, searchMaxResults?: number): number {
-  const isBrightData = config.searchBackend === 'brightdata';
-  const requestsPerQuery = isBrightData ? Math.ceil((searchMaxResults || 20) / 20) : 1;
-  const costPerRequest = isBrightData ? 0.0015 : 0.005;
-  return queries * requestsPerQuery * costPerRequest + (filter1Count > 0 ? 0.0001 : 0) + jinaFetches * 0.0003 + filter2Count * 0.001 + filter2Count * 0.00001;
-}
+// `calculateCost` foi removida em 02/08 (achado #4 da auditoria). Era uma
+// segunda fórmula de custo, com taxas fixas escritas à mão, alimentando o
+// `operation_logs` enquanto o `budget_tracking` media tokens de verdade — dois
+// números que discordavam por construção. Agora existe um só: `custoDoRun`, que
+// é a soma do que foi de fato gravado no `budget_tracking` durante o run.
 
 function buildResult(
   location: MonitoredLocation, urlsFound: number, afterFilter0: number, afterFilter1: number,

@@ -201,6 +201,47 @@ auto-scan e custo do mês. Verificado em 02/08:
 
 ---
 
+## 2026-08-02 — Fase 11, achado #4: o custo do scan tinha duas contabilidades
+
+Fecha os quatro achados da auditoria do auto-scan.
+
+Havia **duas** contas paralelas do mesmo gasto, e elas discordavam por
+construção:
+
+| onde | como calculava |
+|---|---|
+| `budget_tracking` | tokens **reais** por estágio |
+| `operation_logs.cost_usd` | `calculateCost()`, fórmula separada com taxas fixas à mão |
+
+`calculateCost` foi **removida**. Agora existe `custoDoRun`: um acumulador que
+soma exatamente o que foi gravado no `budget_tracking` durante o run, via um
+helper `pagar()` que faz as duas coisas de uma vez. Uma fonte só — se um número
+mudar, o outro muda junto porque é o mesmo número.
+
+### Os três erros que a fórmula escondia
+
+**1. `dedup_gpt` cobrava por duplicata, não por token.** Era
+`duplicatesFound * 0.001` — número inventado, cobrado por **cada** duplicata de
+**qualquer** camada, inclusive a camada 1, que é geo-temporal, roda em memória e
+não gasta um token sequer. Um scan que deduplicasse tudo de graça aparecia como o
+mais caro do dia. E o `tokensUsed` que `deduplicateNews` **já devolvia** era
+descartado. Agora é `dedupTokens * 0.00000015`, e só grava se a camada 3 rodou.
+
+**2. A coleta era estimada, não medida.** `queryCount × ceil(searchMaxResults/20)`
+errava nos dois sentidos: para cima em cidade pequena (a paginação para sozinha
+ao sair da janela) e para baixo quando o retry de corpo vazio gasta uma requisição
+extra. O provider já devolve `requestCount` real desde a 8.1, e a busca manual já
+usava — o scan não. Agora usa.
+
+**3. A saída antecipada** (nada passou nos filtros) gravava um custo calculado
+por outra via ainda. Agora grava o mesmo `custoDoRun`.
+
+Junto: `commit` entrou no `details` do estágio 1 do scan, como já existia na
+busca manual. É o que responde **qual código** rodou o scan — pergunta que vai
+importar na segunda, com `main` e `staging` no mesmo Redis e no mesmo banco.
+
+---
+
 ## 2026-08-02 — estágio 4: timeouts e o dobro da vazão
 
 ### Correção de premissa, registrada porque a doc estava errada
