@@ -43,28 +43,64 @@ async function main(): Promise<void> {
   console.log(`\n0) REGIAO METROPOLITANA ... ${cidadesRegiao.length} municipios`);
   if (cidadesRegiao.length > 0) console.log(`   ${cidadesRegiao.join(', ')}`);
 
-  // STAGE 1 — igual ao worker desde a 8.1: queries em PARALELO, paginas em lote
-  const settled = await Promise.allSettled(
-    queries.map((q) =>
-      rateLimiter.schedule(config.searchBackend, () =>
+  // STAGE 1 — igual ao worker desde a 8.1: queries em PARALELO, paginas em lote.
+  // O ramo WEB entra junto (o worker roda os dois), governado pela mesma config.
+  const webEnabled = await configManager.getBoolean('manual_search_web_enabled');
+  const sourceTypeMap = new Map<string, string>();
+
+  // ORDEM IMPORTA e espelha o worker: ele empilha o WEB PRIMEIRO e o news
+  // depois (collectManualSearchUrls). Como o teto de analise corta pelo fim da
+  // lista, quem vem primeiro tem prioridade — ou seja, hoje o web passa na
+  // frente do news. Se este script inverter, a medicao mente.
+  const tarefas: Array<{ rotulo: string; fonte: string; p: Promise<Array<{ url: string; title: string; snippet: string }>> }> = [];
+
+  if (webEnabled) {
+    tarefas.push({
+      rotulo: `web:  "${queries[0]}"`,
+      fonte: 'web',
+      p: rateLimiter.schedule(config.searchBackend, () =>
+        searchProvider.search(queries[0], {
+          maxResults: 30, dateRestrict: `d${periodoDias}`, searchMode: 'web',
+          location: { city: cidade, state: estado, country: 'BR' },
+        }),
+      ),
+    });
+  } else {
+    console.log('  (ramo web DESLIGADO por config)');
+  }
+
+  for (const q of queries) {
+    tarefas.push({
+      rotulo: `news: "${q}"`,
+      fonte: 'news',
+      p: rateLimiter.schedule(config.searchBackend, () =>
         searchProvider.search(q, {
           maxResults: NEWS_MAX, dateRestrict: `d${periodoDias}`, searchMode: 'news',
           pageConcurrency: 4,
           location: { city: cidade, state: estado, country: 'BR' },
         }),
       ),
-    ),
-  );
+    });
+  }
+
+  const settled = await Promise.allSettled(tarefas.map((t) => t.p));
   const brutos: Array<{ url: string; title: string; snippet: string }> = [];
   settled.forEach((s, i) => {
+    const t = tarefas[i];
     if (s.status === 'fulfilled') {
-      console.log(`  "${queries[i]}" → ${s.value.length}`);
+      console.log(`  ${t.rotulo} → ${s.value.length}`);
+      for (const r of s.value) {
+        // Primeira fonte a trazer a URL fica com o credito, igual ao worker.
+        if (!sourceTypeMap.has(r.url)) sourceTypeMap.set(r.url, t.fonte);
+      }
       brutos.push(...s.value);
     } else {
-      console.log(`  "${queries[i]}" FALHOU: ${String((s.reason as Error)?.message).substring(0, 80)}`);
+      console.log(`  ${t.rotulo} FALHOU: ${String((s.reason as Error)?.message).substring(0, 80)}`);
     }
   });
   const urls = deduplicateResults(brutos);
+  const soWeb = urls.filter((u) => sourceTypeMap.get(u.url) === 'web').length;
+  if (webEnabled) console.log(`  → das ${urls.length} unicas, ${soWeb} vieram do ramo web`);
   console.log(`\n1) BUSCA .............. ${brutos.length} brutos → ${urls.length} unicos (teto ${NEWS_MAX}/query)`);
 
   // ALCANCE DA COLETA — a pergunta que a 8.4 existe pra responder: a busca chegou
@@ -108,6 +144,7 @@ async function main(): Promise<void> {
     { maxContentChars: 8000, minConfidence: 0.5 },
     rejected, LOG,
     { periodoDias, estado, cidades: [cidade], classificar: true, cidadesRegiao, horizonteDias: HORIZONTE },
+    sourceTypeMap,
   );
   console.log(`5) FILTER2 ............ ${conteudos.length} → ${r2.extractions.length}`);
 
@@ -146,6 +183,21 @@ async function main(): Promise<void> {
 
   const linha = (e: (typeof finais)[number]): string =>
     `  ${e.data_ocorrencia} | ${e.tipo_crime.padEnd(20)} | ${e.cidade}/${e.estado || '?'} | conf ${e.confianca}`;
+
+  // ---- O ramo web pagou por si? (a pergunta que decide liga/desliga)
+  if (webEnabled) {
+    const porFonte = (arr: typeof finais) => ({
+      web: arr.filter((e) => e.sourceType === 'web').length,
+      news: arr.filter((e) => e.sourceType !== 'web').length,
+    });
+    const f = porFonte(finais);
+    console.log('\n' + '='.repeat(76));
+    console.log('RAMO WEB — vale a pena?');
+    console.log(`  URLs coletadas so pelo web ..... ${soWeb} de ${urls.length}`);
+    console.log(`  resultados FINAIS vindos do web  ${f.web} de ${finais.length}`);
+    console.log(`  custo do ramo web .............. ~$${(3 * 0.0015).toFixed(4)} de coleta + Jina/GPT dos que sobreviveram`);
+    if (f.web === 0) console.log('  → nao entregou NADA nesta busca');
+  }
 
   console.log('\n' + '='.repeat(76));
   console.log(`PRINCIPAL: ${principal.length}   (e o que o app mostra na lista, em body.results)`);

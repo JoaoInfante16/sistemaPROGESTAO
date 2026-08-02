@@ -155,6 +155,53 @@ auto-scan e custo do mês. Verificado em 02/08:
 
 ---
 
+## 2026-08-02 — o ramo web medido: fica ligado, mas passou a ser o último da fila
+
+Pergunta do João: *"desligo o web ou n?"*. Medido em vez de opinado.
+
+### O defeito que a medição revelou
+
+`collectManualSearchUrls` empilha o **web ANTES** do news. Como o teto de análise
+corta pelo fim da lista, **o web ocupava as primeiras vagas**. Ninguém decidiu
+isso — é a ordem de dois `push` seguidos.
+
+Medido (Salvador / 30 dias, teto de 40):
+
+```
+web  → 29 URLs coletadas, consumiu ~29 das 40 vagas, entregou  1 de 23
+news → 173 URLs, ficou com o que sobrou,           entregou  22 de 23
+```
+
+Está acontecendo **em produção agora**: a migration 023 não rodou, então o teto é
+50, e o web come mais da metade dele para devolver ~1 resultado.
+
+**Corrigido:** o `prioridade()` do teto passou a desempatar por fonte —
+`foraDaJanela * 2 + ehWeb`. Dentro da janela, news primeiro; web depois. O índice
+orgânico é complemento, não pode passar na frente do alicerce.
+
+### E o web em si? Fica ligado
+
+Com o teto aberto (023) a ordem deixa de importar, porque tudo é analisado. Aí o
+web é puramente aditivo: **~$0,05 por busca** (coleta $0,0045 + Jina/GPT dos
+sobreviventes) por conteúdo que, por definição, **não aparece no índice de
+notícias** — portal local, prefeitura, comunicado de polícia. E roda em paralelo
+com o news, então não custa tempo de parede.
+
+⚠️ Uma medição só, e o histórico do projeto diz que o web é loteria. Se em três ou
+quatro buscas ele seguir entregando ~1, aí vale desligar. O `source_type` já vem
+em cada resultado, então dá pra conferir sem instrumentar nada.
+
+**Não rodar a migration 021** — ela desligaria o web.
+
+### Erro meu no meio do caminho
+
+A primeira medição deu "web entregou 0 de 22" e estava **errada**: meu script
+empilhava o web depois do news, ao contrário do worker. O teto cortava justamente
+o web, e eu quase concluí que ele não servia para nada. Script corrigido para
+espelhar o worker — a ordem de concatenação é load-bearing.
+
+---
+
 ## 2026-08-02 — 8.5: progresso ao vivo, 409 informativo, busca fantasma ✅ (backend)
 
 Fecha a Fase 8 no backend. Tudo aqui é **matéria-prima para o app** — a tela nova

@@ -246,9 +246,19 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     // fila. Dentro de cada grupo a ordem original e preservada (sort estavel), e
     // ela ja vem util — com `sbd:1` a SERP chega ordenada da mais nova pra mais
     // velha.
+    //
+    // O ramo WEB desempata por ULTIMO, e isso e correcao de um defeito real
+    // (02/08). A ordem de coleta empilha o web antes do news, entao com teto
+    // ligado o web ocupava as primeiras vagas da analise. Medido em Salvador/30d
+    // com teto 40: o web consumiu ~29 das 40 vagas e entregou **1 de 23**
+    // resultados; o news entregou 22 com as vagas que sobraram. O indice
+    // organico e complemento — nao pode passar na frente do alicerce.
     const inicioJanela = diasAtrasISO(periodoDias);
-    const prioridade = (r: { publishedAt?: string }): number =>
-      r.publishedAt && r.publishedAt < inicioJanela ? 1 : 0;
+    const prioridade = (r: { url: string; publishedAt?: string }): number => {
+      const foraDaJanela = r.publishedAt && r.publishedAt < inicioJanela ? 1 : 0;
+      const ehWeb = sourceTypeMap.get(r.url) === 'web' ? 1 : 0;
+      return foraDaJanela * 2 + ehWeb;
+    };
     const ordenado = [...afterFilter1].sort((a, b) => prioridade(a) - prioridade(b));
 
     // `slice(0, Infinity)` devolve tudo — sem teto, nada e cortado e o bloco
