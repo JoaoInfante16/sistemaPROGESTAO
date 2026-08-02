@@ -90,7 +90,7 @@ const AUTO_SCAN_THRESHOLDS: ThresholdConfig[] = [
 // daqui pra nao dar a impressao de que ainda regulam alguma coisa.
 const MANUAL_SEARCH_THRESHOLDS: ThresholdConfig[] = [
   {
-    key: 'manual_search_max_results_30d',
+    key: 'manual_search_analysis_cap',
     label: 'Artigos analisados — base (30 dias)',
     description:
       'Quantos artigos a busca manual analisa numa janela de 30 dias. Os demais períodos escalam deste número automaticamente (90 dias ≈ 1,7x, 1 ano ≈ 3,5x).',
@@ -751,7 +751,7 @@ export default function SettingsPage() {
                   const estimatedCost = searchReqs * 0.0015 + urlCount * 0.00003 + fetchCount * (0.0001 + 0.0006 + 0.00001);
                   // O horizonte e medido em DIAS, nao em artigos — estimar custo
                   // a partir dele daria um numero sem significado nenhum.
-                  const ehTetoDeArtigos = threshold.key === 'manual_search_max_results_30d';
+                  const ehTetoDeArtigos = threshold.key === 'manual_search_analysis_cap';
                   const unidade = ehTetoDeArtigos ? 'artigos' : 'dias';
                   const rotuloCusto = !ehTetoDeArtigos
                     ? null

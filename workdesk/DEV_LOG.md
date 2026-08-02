@@ -155,6 +155,37 @@ auto-scan e custo do mês. Verificado em 02/08:
 
 ---
 
+## 2026-08-02 — teto aberto de verdade: chave nova em vez de chave reaproveitada
+
+O teto foi decidido aberto e o código já tinha default `0` — **mas não estava
+valendo**. A linha no banco (`50`) sobrepõe o default, e ninguém podia mudá-la:
+pôr `0` ali faria a busca manual de **produção** coletar zero URL.
+
+O erro foi meu e é anterior: **reaproveitei uma chave cujo significado mudou.**
+`manual_search_max_results_30d` era "teto de coleta do stage 1" e virou "teto de
+análise". Com o banco compartilhado e duas versões no ar, uma chave não podia
+significar duas coisas.
+
+**Chave nova, `manual_search_analysis_cap`.** Cada versão lê a sua:
+
+| | chave que lê | valor | efeito |
+|---|---|---|---|
+| produção (`main`) | `manual_search_max_results_30d` = 50 | intacta | nada muda |
+| staging/develop | `manual_search_analysis_cap` (ausente) | default `0` | **teto aberto** |
+
+**Zero mudança no banco.** Como a linha não existe, vale o default do código — o
+teto já nasce aberto no deploy, sem painel, sem SQL, sem coordenar com produção.
+Para ter fusível de volta, é só pôr um número no painel.
+
+Isto também aposenta o "bloco 3" da migration 024 (apagar a linha para resolver o
+conflito): não é mais necessário.
+
+**Regra que fica:** quando o significado de uma config muda, **muda o nome**. Com
+banco compartilhado e duas versões no ar, reaproveitar chave é criar acoplamento
+invisível entre ambientes.
+
+---
+
 ## 2026-08-02 — staging atualizado + a config que NÃO pode ser tocada
 
 `staging` foi de `6ff8ba8` para `f105656` — toda a Fase 8.

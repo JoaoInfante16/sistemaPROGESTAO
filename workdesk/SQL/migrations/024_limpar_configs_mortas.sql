@@ -37,8 +37,13 @@ WHERE key IN (
 );
 
 -- ------------------------------------------------------------------
--- Bloco 3 — OPCIONAL, e resolve o conflito entre os ambientes
+-- Bloco 3 — ❌ NÃO É MAIS NECESSÁRIO (resolvido no código em 02/08)
 -- ------------------------------------------------------------------
+-- O teto de análise passou a ler uma chave NOVA (`manual_search_analysis_cap`),
+-- que não existe no banco e por isso cai no default `0` = sem teto. A chave
+-- antiga fica intacta para a `main`. Nada a apagar aqui.
+--
+-- Mantido só como registro do raciocínio:
 -- Esta chave tem SIGNIFICADO DIFERENTE nas duas versões:
 --   main    → teto de COLETA no stage 1
 --   develop → teto de ANÁLISE, 0 = sem teto

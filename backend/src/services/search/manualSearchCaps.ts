@@ -52,9 +52,9 @@ export function newsMaxPorQuery(periodoDias: number): number {
 /**
  * Teto de ARTIGOS ANALISADOS (Jina + GPT) por busca.
  *
- * Ancorado numa unica config — `manual_search_max_results_30d`, que passa a
- * significar "quantos artigos valem 30 dias de janela" — e escalado dali. Uma
- * alavanca so, ajustavel no admin sem deploy, valendo pra qualquer periodo.
+ * Ancorado numa unica config — `manual_search_analysis_cap`, "quantos artigos
+ * valem 30 dias de janela" — e escalado dali. Uma alavanca so, ajustavel no
+ * admin sem deploy, valendo pra qualquer periodo.
  *
  * **0 = SEM TETO**, e e o default desde 02/08 por decisao do Joao: analisar tudo
  * que passou no Filter1. O mecanismo continua aqui inteiro justamente pra que

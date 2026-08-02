@@ -149,10 +149,12 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     // colateral bom: o custo vira previsivel — o numero que chega no Jina e
     // exatamente este teto, nao um resultado incerto das taxas de rejeicao.
     // Uma base so, escalada pelo periodo — ver analiseMaxPorBusca. `0` = ABERTO,
-    // que e o default desde 02/08: analisa tudo que passou no Filter1. As antigas
-    // `manual_search_max_results_60d` e `_90d` ficaram sem uso (registradas na
-    // divida tecnica do ROADMAP junto das outras configs mortas).
-    const base30d = await configManager.getNumber('manual_search_max_results_30d');
+    // que e o default: analisa tudo que passou no Filter1.
+    //
+    // Chave NOVA (`manual_search_analysis_cap`), e nao a `_30d` de antes: aquela
+    // significa "teto de COLETA do stage 1" na `main`, que roda em producao com
+    // o MESMO banco. Detalhes no configManager.
+    const base30d = await configManager.getNumber('manual_search_analysis_cap');
     const maxArticlesToAnalyze = analiseMaxPorBusca(periodoDias, base30d);
     const pipelineConfig = {
       contentFetchConcurrency: await configManager.getNumber('content_fetch_concurrency'),

@@ -34,14 +34,24 @@ const DEFAULTS: Record<string, string> = {
   // dataset (que saltou de 17-70s pra 660-978s e travava a busca). Religado ao
   // migrar pra SERP API, medida em 5/5 tentativas: 24-27 resultados em 4-19s.
   manual_search_web_enabled: 'true',
-  // Teto de ARTIGOS ANALISADOS (Jina + GPT, ~$0.0025 cada). O `_30d` e a BASE:
-  // o teto de qualquer outro periodo e derivado dele por raiz quadrada, sem
-  // faixas (ver analiseMaxPorBusca). Uma alavanca so, e `0` = SEM TETO — que e
-  // a decisao do Joao em 02/08. Pra voltar a ter fusivel, e so por um numero no
-  // painel admin; nao precisa de deploy.
-  manual_search_max_results_30d: '0',
-  // ⚠️ Sem uso desde a 8.4 — o teto deixou de ser por faixa. Continuam aqui so
-  // porque existem no banco; entram na limpeza de configs mortas do ROADMAP.
+  // Teto de ARTIGOS ANALISADOS (Jina + GPT, ~$0.0025 cada), por busca de 30
+  // dias. Os outros periodos escalam dele por raiz quadrada, sem faixas (ver
+  // analiseMaxPorBusca). `0` = SEM TETO, que e a decisao do Joao em 02/08.
+  //
+  // CHAVE NOVA de proposito. A antiga (`manual_search_max_results_30d`) tem
+  // significado DIFERENTE na `main`, que ainda roda em producao: la ela e o teto
+  // de COLETA do stage 1. Como o Supabase e compartilhado, por `0` naquela linha
+  // faria a busca do cliente coletar zero URL. Chave nova = cada versao le a
+  // sua, sem coordenacao e sem mexer no banco.
+  //
+  // Como a linha nao existe no banco, vale este default — ou seja, o teto ja
+  // nasce ABERTO. Pra ter fusivel de volta, e so por um numero no painel.
+  manual_search_analysis_cap: '0',
+
+  // ⚠️ As tres abaixo NAO sao lidas por este codigo. Ficam porque a `main` as le
+  // (`_30d` como teto de coleta) e porque existem no banco. Some quando a main
+  // for promovida — ver migration 024.
+  manual_search_max_results_30d: '50',
   manual_search_max_results_60d: '50',
   manual_search_max_results_90d: '80',
   // Ate quantos dias atras uma noticia fora da janela ainda entra como "fora do
