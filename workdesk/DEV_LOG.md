@@ -134,6 +134,57 @@ resolve, é o algoritmo que precisa mudar (ver ROADMAP).
 
 ---
 
+## 2026-08-02 — teto de análise ABERTO + tracking real
+
+Decisão do João: *"vamos deixar o teto de análise aberto... nosso custo tá baixo,
+só manter o track certinho, ver se isso não tá atrapalhando auto scan, e é isso,
+deixar a opção de regular ali no painel adm"*.
+
+### `0` = sem teto, e é o default
+
+O mecanismo continua inteiro no código — o que mudou é o valor. Voltar a ter
+fusível é **uma config no admin, sem deploy**. Migration
+[023](./SQL/migrations/023_manual_search_teto_aberto.sql) aplica no banco (mudar
+o default em código não altera a linha que já existe lá).
+
+O painel travava em `min: 1` e não deixaria escolher 0 — corrigido, junto com o
+label (dizia "URLs", são artigos analisados) e a remoção das faixas `_60d`/`_90d`,
+que o backend não lê mais.
+
+**O que fica sem freio** (medido, Salvador): ~$1,20 por cidade numa busca de 1 ano
+(~470 artigos) e ~10 min por cidade. O `monthly_budget_usd` **não protege disso**
+— é checado uma vez, no início do job, e não interrompe busca cara já em curso.
+
+⏱️ **O limite real hoje não é dinheiro, é tempo:** o app desiste em 10 minutos
+(`_maxPolls = 200` × 3s). Uma busca de 1 ano numa capital chega perto disso, e
+multi-cidade passa. **Isso torna a 8.5 pré-requisito pra ligar 365 no app** —
+desistir por estagnação, não por relógio.
+
+### Tracking passou a ser real, não estimativa
+
+Era `queries × páginas máximas`. Com o teto de coleta escalando e a paginação
+parando sozinha ao sair da janela, isso errava para cima em cidade pequena e para
+baixo quando o retry de corpo vazio gastava request extra.
+
+Agora vem do `requestCount` do provider, que já existia e era descartado
+(`search()` joga fora, `searchWithMeta()` devolve). Conta paginação real, páginas
+especulativas e retries. O teto antigo continua gravado em `details.tetoEstimado`
+para dar pra comparar os dois, e `periodoDias` entrou no registro.
+
+### Auto-scan: verificado, não afetado
+
+| verificação | resultado |
+|---|---|
+| usa config/função da busca manual? | **nenhuma ocorrência** |
+| `pageConcurrency`? | não passa → paginação serial de sempre |
+| `classificar`? | não passa → pós-filtros descartam como antes |
+| teto próprio | `search_max_results` = 15, intocado |
+
+Única herança: `parseNewsResults` agora preenche `publishedAt`. O scan ignora o
+campo.
+
+---
+
 ## 2026-08-02 — 8.4: período livre e respeitado ✅ (backend)
 
 Feito **antes da 8.3**, por decisão do João: o dedup perde 26→13, mas o teto de

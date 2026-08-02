@@ -49,7 +49,19 @@ export function newsMaxPorQuery(periodoDias: number): number {
  * Ancorado numa unica config — `manual_search_max_results_30d`, que passa a
  * significar "quantos artigos valem 30 dias de janela" — e escalado dali. Uma
  * alavanca so, ajustavel no admin sem deploy, valendo pra qualquer periodo.
+ *
+ * **0 = SEM TETO**, e e o default desde 02/08 por decisao do Joao: analisar tudo
+ * que passou no Filter1. O mecanismo continua aqui inteiro justamente pra que
+ * voltar a ter fusivel seja UMA config no admin, sem deploy — se um dia uma
+ * busca sair cara ou longa demais, e so por um numero de volta.
+ *
+ * O que fica sem freio quando e 0 (medido em 02/08, Salvador):
+ *   - custo: ~$1.20 por cidade numa busca de 1 ano (~470 artigos analisados)
+ *   - tempo: ~10 min por cidade em 1 ano, com Jina e Filter2 em 5 concorrentes
+ * O `monthly_budget_usd` NAO protege disso: ele e checado uma vez, no inicio do
+ * job, entao nao interrompe uma busca cara ja em andamento.
  */
 export function analiseMaxPorBusca(periodoDias: number, base30d: number): number {
+  if (base30d <= 0) return Infinity;
   return Math.max(10, Math.round(base30d * Math.sqrt(periodoDias / 30)));
 }

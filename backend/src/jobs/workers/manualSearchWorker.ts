@@ -27,7 +27,7 @@ import {
   searchProvider,
   RejectedUrl,
 } from '../pipeline/pipelineCore';
-import { SearchResult } from '../../services/search/SearchProvider';
+import { SearchResult, SearchOptions } from '../../services/search/SearchProvider';
 import { newsMaxPorQuery, analiseMaxPorBusca } from '../../services/search/manualSearchCaps';
 
 export const manualSearchQueue = new Queue(queueName('manual-search-queue'), { connection: redis });
@@ -91,7 +91,8 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     // os filtros baratos triam, e o teto se aplica a quem sobreviveu. Efeito
     // colateral bom: o custo vira previsivel — o numero que chega no Jina e
     // exatamente este teto, nao um resultado incerto das taxas de rejeicao.
-    // Uma base so, escalada pelo periodo — ver analiseMaxPorBusca. As antigas
+    // Uma base so, escalada pelo periodo — ver analiseMaxPorBusca. `0` = ABERTO,
+    // que e o default desde 02/08: analisa tudo que passou no Filter1. As antigas
     // `manual_search_max_results_60d` e `_90d` ficaram sem uso (registradas na
     // divida tecnica do ROADMAP junto das outras configs mortas).
     const base30d = await configManager.getNumber('manual_search_max_results_30d');
@@ -112,40 +113,36 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     await db.updateSearchProgress(searchId, { stage: 'searching', stage_num: 1, total_stages: 7, details: `Pesquisando ${cidades.length} cidades` });
 
     const webEnabled = await configManager.getBoolean('manual_search_web_enabled');
-    const { searchResults, sourceTypeMap } = await collectManualSearchUrls(
+    const { searchResults, sourceTypeMap, requestCount } = await collectManualSearchUrls(
       { estado, cidades, periodoDias, tipoCrime },
       LOG_PREFIX,
       webEnabled,
     );
 
-    // Bright Data $0.0015/request. Os dois ramos usam a mesma SERP paginada,
-    // 10 resultados por request. Web so conta se estiver ligado.
-    // Brave: $0.005/query (sem paginacao interna)
+    // Bright Data $0.0015/request; Brave $0.005/query (sem paginacao interna).
     //
-    // Esta conta e o TETO, nao o real — e com a 8.4 voltou a superestimar bastante.
-    // O teto de coleta agora escala com o periodo (6 paginas em 30 dias, 25 em um
-    // ano), mas a paginacao para sozinha quando a pagina ja e toda anterior a
-    // janela: cidade pequena raramente chega perto do teto. O erro e sempre para
-    // cima, exceto pelo retry de corpo vazio, que numa falha rara gasta 1 request
-    // alem. Para o numero exato, `requestCount` do provider.
+    // Ate a 8.4 isto era ESTIMATIVA por teto: queries x paginas maximas. Com o
+    // teto de coleta escalando com o periodo (7 paginas em 30 dias, 22 em um ano)
+    // e a paginacao parando sozinha ao sair da janela, a estimativa passou a errar
+    // muito — pra cima em cidade pequena, e pra baixo quando o retry de corpo
+    // vazio gasta uma request extra. Agora vem do `requestCount` do proprio
+    // provider: numero real, incluindo paginas especulativas e retries.
     const isBrightData = config.searchBackend === 'brightdata';
-    const queriesPorCidade = buildManualSearchQueries('x', tipoCrime).length;
-    const newsReqs = queriesPorCidade * Math.ceil(newsMaxPorQuery(periodoDias) / 10);
-    const webReqs = webEnabled ? Math.ceil(MANUAL_WEB_MAX_RESULTS / 10) : 0;
-    const requestsPerCity = isBrightData ? newsReqs + webReqs : 1;
     const costPerRequest = isBrightData ? 0.0015 : 0.005;
-    const totalRequests = cidades.length * requestsPerCity;
     await db.trackCost({
       source: 'manual_search',
       provider: config.searchBackend as 'google' | 'perplexity' | 'brave' | 'brightdata',
-      cost_usd: totalRequests * costPerRequest,
+      cost_usd: requestCount * costPerRequest,
       // `commit` identifica QUAL codigo processou o job. O /health so identifica
       // o servico web; se um segundo processo (outro servico do Render, um `npm
       // run dev` local esquecido) estiver ligado no mesmo Redis, e o worker dele
       // que pega o job — e so isto aqui denuncia.
       details: {
-        searchId, cidadesCount: cidades.length, requestsPerCity, totalRequests,
+        searchId, cidadesCount: cidades.length,
+        totalRequests: requestCount,
+        tetoEstimado: cidades.length * (buildManualSearchQueries('x', tipoCrime).length * Math.ceil(newsMaxPorQuery(periodoDias) / 10) + (webEnabled ? Math.ceil(MANUAL_WEB_MAX_RESULTS / 10) : 0)),
         resultsCount: searchResults.length,
+        periodoDias,
         queries: buildManualSearchQueries(cidades[0], tipoCrime),
         commit: (process.env.RENDER_GIT_COMMIT || 'local').substring(0, 7),
       },
@@ -194,8 +191,12 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       r.publishedAt && r.publishedAt < inicioJanela ? 1 : 0;
     const ordenado = [...afterFilter1].sort((a, b) => prioridade(a) - prioridade(b));
 
+    // `slice(0, Infinity)` devolve tudo — sem teto, nada e cortado e o bloco
+    // de rejeicao abaixo nao roda.
     const toAnalyze = ordenado.slice(0, totalCap);
-    if (ordenado.length > totalCap) {
+    if (!Number.isFinite(totalCap)) {
+      logger.info(`${LOG_PREFIX} teto de analise ABERTO — analisando os ${ordenado.length} artigos que passaram no Filter1 (~$${(ordenado.length * 0.0025).toFixed(2)})`);
+    } else if (ordenado.length > totalCap) {
       for (const dropped of ordenado.slice(totalCap)) {
         rejectedUrls.push({ url: dropped.url, stage: 'cap', reason: `acima do teto de ${totalCap} artigos` });
       }
@@ -347,12 +348,26 @@ async function collectManualSearchUrls(
   params: { estado: string; cidades: string[]; periodoDias: number; tipoCrime?: string },
   logPrefix: string,
   webEnabled: boolean,
-): Promise<{ searchResults: SearchResult[]; sourceTypeMap: Map<string, string> }> {
+): Promise<{ searchResults: SearchResult[]; sourceTypeMap: Map<string, string>; requestCount: number }> {
   const { estado, cidades, periodoDias, tipoCrime } = params;
   const sourceTypeMap = new Map<string, string>();
   const allResults: SearchResult[] = [];
   const seenUrls = new Set<string>();
   const newsMax = newsMaxPorQuery(periodoDias);
+  let requestCount = 0;
+
+  // `searchWithMeta` devolve quantas requisicoes HTTP a paginacao de fato gastou
+  // — e o unico numero honesto pro custo. `search()` descarta isso. Provider que
+  // nao implementa cai no caminho antigo e conta 1 por query.
+  const buscar = async (query: string, opts: SearchOptions): Promise<SearchResult[]> => {
+    if (searchProvider.searchWithMeta) {
+      const r = await searchProvider.searchWithMeta(query, opts);
+      requestCount += r.requestCount;
+      return r.results;
+    }
+    requestCount += 1;
+    return searchProvider.search(query, opts);
+  };
 
   // Sem arredondar para faixa: uma busca de 45 dias virava `d60` e paginava 15
   // dias a mais do que o pedido. O periodo e livre, o dateRestrict acompanha.
@@ -386,7 +401,7 @@ async function collectManualSearchUrls(
       // Religar quando/se o cenario mudar — a medicao esta em AUDITORIA_2026-07-30.
       webEnabled
         ? rateLimiter.schedule(config.searchBackend, () =>
-            searchProvider.search(webQuery, {
+            buscar(webQuery, {
               maxResults: MANUAL_WEB_MAX_RESULTS,
               dateRestrict,
               searchMode: 'web',
@@ -406,7 +421,7 @@ async function collectManualSearchUrls(
         const settled = await Promise.allSettled(
           queries.map((q) =>
             rateLimiter.schedule(config.searchBackend, () =>
-              searchProvider.search(q, {
+              buscar(q, {
                 maxResults: newsMax,
                 dateRestrict,
                 searchMode: 'news',
@@ -463,13 +478,13 @@ async function collectManualSearchUrls(
     }
   }
 
-  logger.info(`${logPrefix} Total: ${allResults.length} URLs from ${cidades.length} cidades (parallel)`);
+  logger.info(`${logPrefix} Total: ${allResults.length} URLs from ${cidades.length} cidades (parallel) em ${requestCount} requests (~$${(requestCount * 0.0015).toFixed(4)})`);
 
   // Dedup URLs
   const searchResults = deduplicateResults(allResults);
   logger.info(`${logPrefix} total after dedup: ${searchResults.length} URLs`);
 
-  return { searchResults, sourceTypeMap };
+  return { searchResults, sourceTypeMap, requestCount };
 }
 
 // ============================================

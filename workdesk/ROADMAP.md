@@ -100,7 +100,13 @@ arredondando 45→60) saíram.
 **O gargalo mudou de lugar:** agora é o teto de análise (142 candidatos dentro da
 janela para uma cota de 50). É escolha de custo, não bug — sobe numa config.
 
-### 8.5 — Progresso granular + 409 informativo
+### 8.5 — Progresso granular + 409 informativo ⬆️ virou pré-requisito de 365
+
+🔴 Com o teto de análise aberto (02/08), o limite deixou de ser dinheiro e passou
+a ser **tempo**: o app desiste em 10 min (`_maxPolls = 200` × 3s) e uma busca de
+1 ano numa capital chega perto disso — multi-cidade passa. **Não ligar 365 no app
+antes disto.**
+
 
 - `runContentFetch` e `runFilter2WithEmbedding` ganham `onProgress(feitos, total)` **opcional** (para não afetar o auto-scan)
 - Achados recentes (últimos ~5: `tipo · bairro · data`) dentro do progresso — o dado já está em memória

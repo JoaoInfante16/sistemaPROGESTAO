@@ -85,33 +85,20 @@ const AUTO_SCAN_THRESHOLDS: ThresholdConfig[] = [
   },
 ];
 
+// Desde 2026-08-02 (Fase 8.4) o teto da busca manual deixou de ser por faixa de
+// periodo: os antigos `_60d` e `_90d` nao sao mais lidos pelo backend e saíram
+// daqui pra nao dar a impressao de que ainda regulam alguma coisa.
 const MANUAL_SEARCH_THRESHOLDS: ThresholdConfig[] = [
   {
     key: 'manual_search_max_results_30d',
-    label: 'URLs — periodo 30 dias',
-    description: 'Quantidade de URLs por query na busca manual com periodo de 30 dias.',
-    tooltip: 'Mais resultados = mais cobertura mas mais custo. Recomendado: 30-50.',
-    min: 1,
-    max: 100,
-    step: 5,
-  },
-  {
-    key: 'manual_search_max_results_60d',
-    label: 'URLs — período 60 dias',
-    description: 'Quantidade de URLs por query na busca manual com período de 60 dias.',
-    tooltip: 'Períodos maiores têm mais notícias. Recomendado: 50-80.',
-    min: 1,
-    max: 100,
-    step: 5,
-  },
-  {
-    key: 'manual_search_max_results_90d',
-    label: 'URLs — período 90 dias',
-    description: 'Quantidade de URLs por query na busca manual com período de 90 dias.',
-    tooltip: 'Períodos maiores têm mais notícias. Recomendado: 50-80.',
-    min: 1,
-    max: 100,
-    step: 5,
+    label: 'Artigos analisados — base (30 dias)',
+    description:
+      'Quantos artigos a busca manual analisa numa janela de 30 dias. Os demais períodos escalam deste número automaticamente (90 dias ≈ 1,7x, 1 ano ≈ 3,5x).',
+    tooltip:
+      '0 = SEM TETO: analisa tudo que passou na triagem (é o padrão atual). Só o que passa deste ponto custa caro (~$0,0025/artigo em Jina + GPT); o que vem antes é praticamente de graça. Um teto só morde em cidade grande — cidade pequena nunca o alcança.',
+    min: 0,
+    max: 500,
+    step: 10,
   },
 ];
 

@@ -32,8 +32,10 @@ const DEFAULTS: Record<string, string> = {
   manual_search_web_enabled: 'true',
   // Teto de ARTIGOS ANALISADOS (Jina + GPT, ~$0.0025 cada). O `_30d` e a BASE:
   // o teto de qualquer outro periodo e derivado dele por raiz quadrada, sem
-  // faixas (ver analiseMaxPorBusca no manualSearchWorker). Uma alavanca so.
-  manual_search_max_results_30d: '50',
+  // faixas (ver analiseMaxPorBusca). Uma alavanca so, e `0` = SEM TETO — que e
+  // a decisao do Joao em 02/08. Pra voltar a ter fusivel, e so por um numero no
+  // painel admin; nao precisa de deploy.
+  manual_search_max_results_30d: '0',
   // ⚠️ Sem uso desde a 8.4 — o teto deixou de ser por faixa. Continuam aqui so
   // porque existem no banco; entram na limpeza de configs mortas do ROADMAP.
   manual_search_max_results_60d: '50',
