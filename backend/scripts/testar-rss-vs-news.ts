@@ -18,8 +18,7 @@ import { fetchGoogleNewsRSS } from '../src/services/search/GoogleNewsRSSProvider
 import { searchProvider } from '../src/jobs/pipeline/pipelineCore';
 import { rateLimiter } from '../src/services/rateLimiter';
 import { config } from '../src/config';
-import { QUERY_TEMPLATES } from '../src/services/search/queryTemplates';
-import { MonitoredLocation } from '../src/utils/types';
+import { getAssuntos } from '../src/services/search/queryTemplates';
 
 const cidade = process.argv[2] || 'Porto Alegre';
 const estado = process.argv[3] || 'Rio Grande do Sul';
@@ -50,16 +49,16 @@ async function main(): Promise<void> {
   const rssMesmaQuery = await fetchGoogleNewsRSS(queryManual, { maxAgeDays: dias });
   console.log(`[2] RSS mesma query (gratis):      ${rssMesmaQuery.length} resultados`);
 
-  // ---- 3. RSS com os 5 templates do auto-scan (gratis)
-  const loc = { name: cidade, mode: 'any' } as MonitoredLocation;
+  // ---- 3. RSS com todos os assuntos do painel (gratis)
   const porTemplate: Array<{ nome: string; qtd: number }> = [];
   const rssTodos = new Map<string, { title: string; pubDate?: Date }>();
-  for (const t of QUERY_TEMPLATES) {
-    const r = await fetchGoogleNewsRSS(t.build(loc), { maxAgeDays: dias });
-    porTemplate.push({ nome: t.name, qtd: r.length });
+  const assuntos = await getAssuntos();
+  for (const assunto of assuntos) {
+    const r = await fetchGoogleNewsRSS(`${assunto} ${cidade}`, { maxAgeDays: dias });
+    porTemplate.push({ nome: assunto, qtd: r.length });
     for (const item of r) rssTodos.set(chave(item.title), { title: item.title, pubDate: item.pubDate });
   }
-  console.log(`[3] RSS 5 templates (gratis):      ${rssTodos.size} unicos`);
+  console.log(`[3] RSS ${assuntos.length} assuntos (gratis):      ${rssTodos.size} unicos`);
   for (const t of porTemplate) console.log(`      - ${t.nome.padEnd(22)} ${t.qtd}`);
 
   // ---- Sobreposicao

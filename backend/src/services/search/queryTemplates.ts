@@ -1,13 +1,24 @@
 // ============================================
-// Query Templates — Google (indice de noticias, tbm=nws)
+// Assuntos pesquisados — Google (indice de noticias, tbm=nws)
 // ============================================
-// Reescritos em 2026-08-01. A versao anterior era feita pra **Perplexity**
-// (busca semantica): frases longas em linguagem natural, do tipo "prisoes em
-// flagrante ou preventivas em X nas ultimas 48 horas, citando fontes oficiais...".
-// O backend virou Bright Data/Google e ninguem reescreveu. Medido no dia:
-// **os templates 1-4 devolviam ZERO** no indice de noticias.
+// A lista de assuntos vive na config `search_subjects` e e editavel no painel.
+// Cada assunto vira uma query `<assunto> <cidade>`. Ate 02/08 esta lista era
+// hardcoded aqui (QUERY_TEMPLATES abaixo, que agora e so o fallback de fabrica).
 //
-// Duas regras que sairam da medicao, ambas contraintuitivas:
+// POR QUE ISTO E A ALAVANCA QUE IMPORTA (medido em 02/08 no budget_tracking):
+//
+//   Salvador /30 dias -> 202 URLs, paginacao no teto (24 de 24 paginas)
+//   Sao Paulo /90 dias -> 185 URLs, e a SERP SECOU sozinha na pagina 23 de 36
+//
+// Pedir 90 dias em vez de 30 nao trouxe mais nada porque o Google serve ~60-70
+// itens uteis POR QUERY na lista ordenada por data (`sbd:1`), e nao ha parametro
+// que mude isso: `num` foi deprecado em set/2025 e `qdr`/`cdr` sao ignorados
+// (medicao de 01/08). O teto e por query — entao a forma de enxergar mais nao e
+// pedir mais paginas do mesmo assunto, e sim perguntar outra coisa. Dois
+// assuntos valem dois tetos.
+//
+// Regras que sairam da medicao de 2026-08-01, ambas contraintuitivas, e que
+// valem pra qualquer assunto que o cliente adicione:
 //
 // 1. QUERY CURTA GANHA DE QUERY LONGA. Porto Alegre, pagina 1, `sbd:1`:
 //    `notícias policiais ocorrências crime Porto Alegre Rio Grande do Sul` -> 4/10 na janela
@@ -23,81 +34,112 @@
 //    aqui — quem faz e o pos-filtro do Filter2, que le cidade E estado do corpo
 //    do artigo. Botar o estado na query nao desambigua, so degrada.
 //
-// 3. Templates diferentes trazem materia diferente: `polícia` trouxe 10 itens
+// 3. Assuntos diferentes trazem materia diferente: `polícia` trouxe 10 itens
 //    que o template base nao trazia; `homicídio` trouxe 9. Multi-query vale.
+//
+// A versao anterior a 01/08 era feita pra **Perplexity** (busca semantica):
+// frases longas em linguagem natural. O backend virou Bright Data/Google e
+// ninguem reescreveu — medido no dia, os templates 1-4 devolviam ZERO.
 
 import { MonitoredLocation } from '../../utils/types';
+import { configManager } from '../configManager';
 
+/**
+ * Fallback de fabrica, usado se `search_subjects` estiver vazia ou ilegivel.
+ * E o mesmo conjunto que o default da config — existe em codigo pro sistema
+ * nunca ficar sem assunto nenhum se o banco responder lixo.
+ */
+export const ASSUNTOS_PADRAO: string[] = [
+  'polícia',
+  'homicídio morte tiros',
+  'roubo furto assalto',
+  'tráfico drogas apreensão armas',
+  'violência doméstica feminicídio',
+];
+
+/** Compat: alguns scripts e o admin ainda falam em "templates". */
 export interface QueryTemplate {
   id: number;
   name: string;
-  /** Gera a query string para uma location. */
   build: (location: MonitoredLocation) => string;
 }
 
 /**
- * Templates curtos, por keyword. O 0 e o mais generico e o que rende mais
- * volume; os outros aprofundam categorias que o generico nao cobre bem.
+ * Le e normaliza a lista de assuntos do painel.
+ *
+ * Aceita quebra de linha OU virgula como separador — o campo e um textarea e o
+ * usuario digita como quiser; exigir um formato so seria pedir pra lista virar
+ * uma unica query gigante por causa de uma virgula.
  */
-export const QUERY_TEMPLATES: QueryTemplate[] = [
-  {
-    id: 0,
-    name: 'policia',
-    build: (loc) => {
-      const hasKeywords = loc.mode === 'keywords' && loc.keywords && loc.keywords.length > 0;
-      if (hasKeywords) return `${loc.keywords!.join(' ')} ${loc.name}`;
-      return `polícia ${loc.name}`;
-    },
-  },
-  { id: 1, name: 'homicidios', build: (loc) => `homicídio morte tiros ${loc.name}` },
-  { id: 2, name: 'patrimonial', build: (loc) => `roubo furto assalto ${loc.name}` },
-  { id: 3, name: 'trafico_armas', build: (loc) => `tráfico drogas apreensão armas ${loc.name}` },
-  { id: 4, name: 'violencia_domestica', build: (loc) => `violência doméstica feminicídio ${loc.name}` },
-];
+export async function getAssuntos(): Promise<string[]> {
+  const bruto = await configManager.get('search_subjects');
+  const assuntos = parseAssuntos(bruto);
+  return assuntos.length > 0 ? assuntos : ASSUNTOS_PADRAO;
+}
 
-/**
- * Seleciona N templates para um scan usando round-robin.
- * @param scanIndex Índice do scan (incrementa a cada scan da location)
- * @param queriesPerScan Quantas queries rodar neste scan (1-5)
- */
-export function selectTemplates(scanIndex: number, queriesPerScan: number): QueryTemplate[] {
-  const count = Math.max(1, Math.min(queriesPerScan, QUERY_TEMPLATES.length));
-  const startIndex = (scanIndex * count) % QUERY_TEMPLATES.length;
-  const selected: QueryTemplate[] = [];
-
-  for (let i = 0; i < count; i++) {
-    const idx = (startIndex + i) % QUERY_TEMPLATES.length;
-    selected.push(QUERY_TEMPLATES[idx]);
-  }
-
-  return selected;
+export function parseAssuntos(bruto: string): string[] {
+  if (!bruto) return [];
+  return bruto
+    .split(/[\n,]/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    // Assunto repetido custaria uma query inteira pra devolver a mesma SERP.
+    .filter((s, i, arr) => arr.findIndex((o) => o.toLowerCase() === s.toLowerCase()) === i);
 }
 
 /**
- * Gera queries a partir de templates selecionados para uma location.
- * Se multi_query desabilitado, retorna apenas o template 0.
+ * Queries do AUTO-SCAN para uma location.
+ *
+ * Continua rodando so `queriesPerScan` assuntos por vez, em rodizio: o scan roda
+ * de hora em hora, entao ele cobre a lista inteira ao longo do dia sem pagar
+ * tudo de uma vez. Quem roda TODOS os assuntos de uma vez e a busca manual, que
+ * e sob demanda.
+ *
+ * `mode === 'keywords'`: a location tem palavras proprias, definidas no painel
+ * de monitoramentos, e elas SUBSTITUEM a lista de assuntos — e uma escolha por
+ * cidade, mais especifica que a lista geral.
  */
-export function buildQueries(
+export async function buildQueries(
   location: MonitoredLocation,
   options: { multiQueryEnabled: boolean; queriesPerScan: number; scanIndex: number }
-): string[] {
-  if (!options.multiQueryEnabled) {
-    return [QUERY_TEMPLATES[0].build(location)];
+): Promise<string[]> {
+  if (location.mode === 'keywords' && location.keywords && location.keywords.length > 0) {
+    return [`${location.keywords.join(' ')} ${location.name}`];
   }
 
-  const templates = selectTemplates(options.scanIndex, options.queriesPerScan);
-  return templates.map((t) => t.build(location));
+  const assuntos = await getAssuntos();
+  if (!options.multiQueryEnabled) {
+    return [`${assuntos[0]} ${location.name}`];
+  }
+
+  const quantos = Math.max(1, Math.min(options.queriesPerScan, assuntos.length));
+  const inicio = (options.scanIndex * quantos) % assuntos.length;
+
+  const escolhidos: string[] = [];
+  for (let i = 0; i < quantos; i++) {
+    escolhidos.push(assuntos[(inicio + i) % assuntos.length]);
+  }
+  return escolhidos.map((a) => `${a} ${location.name}`);
 }
 
 /**
- * Queries da busca manual. Sem estado, pelo motivo medido no topo do arquivo.
+ * Queries da BUSCA MANUAL. Sem estado, pelo motivo medido no topo do arquivo.
  *
- * Com tipo de crime escolhido, uma query focada basta — o usuario ja restringiu
- * o assunto. Sem tipo, roda os 3 primeiros templates, que foi o que rendeu mais
- * materia unica dentro da janela na medicao.
+ * Roda a lista INTEIRA de assuntos, em qualquer periodo — e o pedido do Joao em
+ * 02/08: *"ter uma lista de tudo o que meu cliente quiser que seja pesquisado, e
+ * todas essas coisas aparecam em todos os periodos"*. Como o teto do indice e por
+ * query, cada assunto e um teto novo: e assim que 90 dias passa a render mais que
+ * 30, o que hoje nao acontece.
+ *
+ * As queries rodam em PARALELO no worker (uma requisicao a mais nao custa tempo
+ * de parede), entao o preco de um assunto extra e so o da SERP: ~$0.0015 por
+ * pagina, mais Jina+GPT do que sobreviver aos filtros.
+ *
+ * Com `tipoCrime` escolhido o usuario ja restringiu o assunto — uma query focada
+ * basta, e a lista fica de fora.
  */
-export function buildManualSearchQueries(cidade: string, tipoCrime?: string): string[] {
+export async function buildManualSearchQueries(cidade: string, tipoCrime?: string): Promise<string[]> {
   if (tipoCrime) return [`${tipoCrime} ${cidade}`];
-  const loc = { name: cidade, mode: 'any' } as MonitoredLocation;
-  return QUERY_TEMPLATES.slice(0, 3).map((t) => t.build(loc));
+  const assuntos = await getAssuntos();
+  return assuntos.map((a) => `${a} ${cidade}`);
 }

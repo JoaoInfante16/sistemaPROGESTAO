@@ -40,7 +40,10 @@ router.get(
 );
 
 const updateConfigSchema = z.object({
-  value: z.string().min(1).max(500),
+  // 2000 e nao 500 por causa de `search_subjects`: e uma lista de assuntos, um
+  // por linha, e 500 caracteres acabam por volta de 20 assuntos. O resto das
+  // configs e numero ou booleano e nem chega perto.
+  value: z.string().min(1).max(2000),
 });
 
 // ============================================

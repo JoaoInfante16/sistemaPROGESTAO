@@ -201,6 +201,108 @@ auto-scan e custo do mês. Verificado em 02/08:
 
 ---
 
+## 2026-08-02 — assuntos configuráveis: a alavanca que faz 90 dias render mais que 30
+
+Pergunta do João: *"você tem certeza que esse teto é do Google e existe por
+query? e é impossível regular ele?"*. Medido antes de responder, no
+`budget_tracking` das duas buscas do dia:
+
+```
+Salvador  /30 dias -> 202 URLs, 24 de 24 páginas  (bateu no nosso teto)
+São Paulo /90 dias -> 185 URLs, 23 de 36 páginas  (a SERP SECOU sozinha)
+```
+
+**Sim, é do Google, e é por query.** São Paulo tinha 13 páginas de direito e
+parou porque acabou o que existia — não porque nosso código cortou. O Google
+serve ~60-70 itens úteis por query na lista ordenada por data.
+
+**E não, não dá pra regular:** `num` foi deprecado (set/2025), `qdr` e `cdr` são
+ignorados (medição de 01/08). Não sobrou parâmetro.
+
+Mas o teto é **por query**. Então a alavanca existe e é outra: **perguntar outra
+coisa**. Dois assuntos valem dois tetos. Era o que o João já estava pedindo pelo
+lado do produto — *"ter uma lista de tudo o que meu cliente quiser que seja
+pesquisado, e todas essas coisas apareçam em todos os períodos"*.
+
+### O que mudou
+
+`search_subjects` — config nova, um assunto por linha, editável no painel.
+Chave nova é inofensiva pra `main` (mesmo padrão da `manual_search_analysis_cap`),
+e o default é exatamente a lista que estava hardcoded, então ligar isto não muda
+nada até alguém editar.
+
+| | antes | agora |
+|---|---|---|
+| busca manual | `QUERY_TEMPLATES.slice(0, 3)` — **3 assuntos**, fixos em código | a lista **inteira** do painel (hoje 5) |
+| auto-scan | rodízio de 2 por scan, sobre os 5 fixos | rodízio de 2 por scan, sobre a lista do painel |
+
+A busca manual já ganhou **de 3 para 5 assuntos** só por passar a ler a config.
+
+**O auto-scan continua em rodízio de propósito** — ele roda de hora em hora e
+cobre a lista inteira ao longo do dia; rodar tudo a cada hora multiplicaria o
+custo por nada. Quem roda tudo de uma vez é a busca manual, que é sob demanda.
+
+### O rodízio não era rodízio
+
+`scanIndex = Date.now()/60000` — número novo a cada **minuto**, para um scan que
+roda de hora em hora. O índice saltava dezenas de posições entre execuções, então
+a escolha era sorteio: um assunto podia ficar dias sem ser perguntado enquanto
+outro repetia. Agora divide pelo intervalo de scan da própria location e anda
+exatamente 1 por execução.
+
+### A UI carrega a medição junto
+
+O card novo traz as três regras contraintuitivas que saíram da medição de 01/08 —
+query curta ganha de longa, **nunca** escrever o estado, não repetir a cidade.
+Sem isso o cliente escreve "notícias policiais ocorrências crime São José SC" e a
+busca piora sem ninguém entender por quê.
+
+Regressão: `scripts/test-assuntos.ts`, **10/10**, sem rede nem banco. Cobre
+vírgula, quebra de linha, espaço, linha vazia, repetido e o default de fábrica
+passando pelo próprio parser.
+
+---
+
+## 2026-08-02 — por que o toggle do web "não funcionava" no painel
+
+Queixa do João: *"tem toggle de web search no admin que n funciona e também, esse
+negócio do teto"*. Não era o toggle — era o painel **enxergando só o banco**.
+
+`configManager.getAll()` fazia `SELECT * FROM system_config` e nada mais. Config
+que só existe no `DEFAULTS` do código não vinha, e o front resolvia string vazia:
+
+- num **toggle**, `'' === 'true'` é `false` → a tela dizia **desligado** enquanto
+  o backend usava o ramo web **ligado**;
+- num **campo numérico**, `''` → caixa em branco, onde o valor real era `0`.
+
+Salvar "consertava" — mas só porque criava a linha no banco.
+
+**Sete configs estavam invisíveis** (medido rodando o `getAll` real):
+
+```
+dedup_gpt_confirm_enabled   manual_search_web_enabled   manual_search_analysis_cap
+manual_search_horizon_days  search_subjects             scan_weekend_start/end
+```
+
+As duas últimas explicam um sintoma que ninguém tinha relatado: os seletores de
+horário do fim de semana também estavam vazios.
+
+`getAll()` agora mescla os dois e marca `origem: 'banco' | 'default'`. O
+`updateConfigSchema` subiu de 500 para 2000 caracteres, porque 500 acabam por
+volta de 20 assuntos.
+
+### `filter2_confidence_min` alinhado em 0,7 ✅ aplicado
+
+Decisão do João: *"alinha em 7"*. Estava **0,5** no banco contra 0,7 no código —
+divergência que ninguém decidiu, e que deixava entrar extração com confiança
+entre 0,5 e 0,7.
+
+Gravado pelo mesmo caminho do painel (`configManager.set`, que é upsert) e
+conferido relendo do banco. ⚠️ Banco compartilhado: **valeu na hora para staging
+e produção**, sem deploy.
+
+---
+
 ## 2026-08-02 — 🚨 O banco estava aberto para a chave anon (achado novo)
 
 Apareceu **investigando outra coisa**: fui checar se o middleware do admin podia

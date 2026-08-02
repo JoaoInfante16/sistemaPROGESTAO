@@ -57,7 +57,7 @@ function buscar(cidade: string, q: string, lote: number): Promise<{ urls: string
 }
 
 async function porCidade(cidade: string, modo: Modo): Promise<Medida> {
-  const queries = buildManualSearchQueries(cidade);
+  const queries = await buildManualSearchQueries(cidade);
   const urls = new Set<string>();
   const t0 = Date.now();
   let reqs = 0;

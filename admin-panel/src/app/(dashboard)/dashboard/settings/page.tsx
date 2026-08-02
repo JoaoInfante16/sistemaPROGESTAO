@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -35,7 +36,7 @@ import {
 } from '@/lib/api';
 import {
   Loader2, Save, Calculator, Search, Clock,
-  Lock, LockOpen, Info, SlidersHorizontal,
+  Lock, LockOpen, Info, SlidersHorizontal, ListPlus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -237,7 +238,7 @@ export default function SettingsPage() {
     }
   };
 
-  const saveNumericConfig = async (key: string, value: string) => {
+  const saveConfigValue = async (key: string, value: string) => {
     setSavingConfig((prev) => new Set(prev).add(key));
     try {
       const token = await getToken();
@@ -259,6 +260,25 @@ export default function SettingsPage() {
       });
     }
   };
+
+  // ============================================
+  // Assuntos pesquisados
+  // ============================================
+  // Espelha o `parseAssuntos` do backend (queryTemplates.ts): quebra de linha ou
+  // vírgula separam, espaço em volta não conta, repetido sai. Serve só para
+  // contar na tela — quem decide é o backend.
+
+  const assuntosTexto = getConfigValue('search_subjects');
+
+  const listaDeAssuntos = useMemo(
+    () =>
+      assuntosTexto
+        .split(/[\n,]/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+        .filter((s, i, arr) => arr.findIndex((o) => o.toLowerCase() === s.toLowerCase()) === i),
+    [assuntosTexto],
+  );
 
   // ============================================
   // Cost calculator (reactive)
@@ -476,7 +496,7 @@ export default function SettingsPage() {
                         onBlur={(e) => {
                           const v = e.target.value;
                           if (v !== '' && editingConfig['scan_weekday_start'] !== undefined) {
-                            saveNumericConfig('scan_weekday_start', v);
+                            saveConfigValue('scan_weekday_start', v);
                           }
                         }}
                       />
@@ -491,7 +511,7 @@ export default function SettingsPage() {
                         onBlur={(e) => {
                           const v = e.target.value;
                           if (v !== '' && editingConfig['scan_weekday_end'] !== undefined) {
-                            saveNumericConfig('scan_weekday_end', v);
+                            saveConfigValue('scan_weekday_end', v);
                           }
                         }}
                       />
@@ -527,7 +547,7 @@ export default function SettingsPage() {
                           onBlur={(e) => {
                             const v = e.target.value;
                             if (v !== '' && editingConfig['scan_weekend_start'] !== undefined) {
-                              saveNumericConfig('scan_weekend_start', v);
+                              saveConfigValue('scan_weekend_start', v);
                             }
                           }}
                         />
@@ -542,7 +562,7 @@ export default function SettingsPage() {
                           onBlur={(e) => {
                             const v = e.target.value;
                             if (v !== '' && editingConfig['scan_weekend_end'] !== undefined) {
-                              saveNumericConfig('scan_weekend_end', v);
+                              saveConfigValue('scan_weekend_end', v);
                             }
                           }}
                         />
@@ -573,7 +593,7 @@ export default function SettingsPage() {
                         onBlur={(e) => {
                           const v = e.target.value;
                           if (v !== '' && editingConfig['scan_period_days'] !== undefined) {
-                            saveNumericConfig('scan_period_days', v);
+                            saveConfigValue('scan_period_days', v);
                           }
                         }}
                       />
@@ -639,7 +659,7 @@ export default function SettingsPage() {
                         <Input type="number" className="w-24" min={threshold.min} max={threshold.max} step={threshold.step} value={currentVal} onChange={(e) => handleConfigChange(threshold.key, e.target.value)} />
                         <span className="text-xs text-muted-foreground">({threshold.min} - {threshold.max})</span>
                         {hasChange && (
-                          <Button size="sm" onClick={() => saveNumericConfig(threshold.key, editingConfig[threshold.key])} disabled={isSaving}>
+                          <Button size="sm" onClick={() => saveConfigValue(threshold.key, editingConfig[threshold.key])} disabled={isSaving}>
                             {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" />Salvar</>}
                           </Button>
                         )}
@@ -680,6 +700,78 @@ export default function SettingsPage() {
                       </>
                     );
                   })()}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* ============================== */}
+            {/* GRUPO 1.5: Assuntos pesquisados */}
+            {/* ============================== */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ListPlus className="h-5 w-5" />
+                  Assuntos pesquisados
+                </CardTitle>
+                <CardDescription>
+                  O que o sistema pergunta ao Google. Vale para o monitoramento automático e para a
+                  busca manual — um assunto por linha.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="rounded-lg border p-4 space-y-3">
+                  <Textarea
+                    rows={6}
+                    className="font-mono text-sm"
+                    value={assuntosTexto}
+                    onChange={(e) => handleConfigChange('search_subjects', e.target.value)}
+                    placeholder={'polícia\nhomicídio morte tiros\nroubo furto assalto'}
+                  />
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      {listaDeAssuntos.length} assunto{listaDeAssuntos.length === 1 ? '' : 's'} — a busca
+                      manual roda <strong>todos</strong>; o automático roda{' '}
+                      {getConfigValue('search_queries_per_scan') || '2'} por vez, em rodízio.
+                    </p>
+                    {editingConfig['search_subjects'] !== undefined && (
+                      <Button
+                        size="sm"
+                        onClick={() => saveConfigValue('search_subjects', editingConfig['search_subjects'])}
+                        disabled={savingConfig.has('search_subjects') || listaDeAssuntos.length === 0}
+                      >
+                        {savingConfig.has('search_subjects')
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <><Save className="h-4 w-4 mr-1" />Salvar</>}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Estas três regras vieram de medição (01/08) e são contraintuitivas:
+                    sem elas, o cliente escreve queries longas e com o estado, e a
+                    busca piora sem ninguém entender por quê. */}
+                <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 text-sm space-y-1">
+                  <p className="font-medium">Como escrever um assunto que funciona</p>
+                  <p className="text-muted-foreground">
+                    <strong>Curto ganha de longo.</strong> &quot;polícia&quot; trouxe 10 de 10 notícias
+                    dentro do período; a versão longa com &quot;notícias policiais ocorrências crime&quot;
+                    trouxe 4 de 10.
+                  </p>
+                  <p className="text-muted-foreground">
+                    <strong>Não escreva o estado.</strong> Ele empurra o resultado para conteúdo
+                    institucional: &quot;polícia São José&quot; achou matéria de 44 minutos atrás;
+                    &quot;polícia São José SC&quot; parou em 3 semanas. A cidade certa é garantida
+                    depois, pela análise do texto.
+                  </p>
+                  <p className="text-muted-foreground">
+                    <strong>Não repita a cidade.</strong> Ela é acrescentada automaticamente no fim.
+                  </p>
+                  <p className="text-muted-foreground">
+                    <strong>Cada assunto novo aumenta o alcance de verdade.</strong> O Google entrega
+                    ~60-70 notícias por assunto e não vai além, por mais páginas que se peça — é por
+                    isso que pedir 90 dias traz quase o mesmo que 30. Perguntar outra coisa é o que
+                    traz mais. Custa ~$0,01 por assunto por cidade.
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -781,7 +873,7 @@ export default function SettingsPage() {
                         <Input type="number" className="w-24" min={threshold.min} max={threshold.max} step={threshold.step} value={currentVal} onChange={(e) => handleConfigChange(threshold.key, e.target.value)} />
                         <span className="text-xs text-muted-foreground">{unidade} ({threshold.min} - {threshold.max})</span>
                         {hasChange && (
-                          <Button size="sm" onClick={() => saveNumericConfig(threshold.key, editingConfig[threshold.key])} disabled={isSaving}>
+                          <Button size="sm" onClick={() => saveConfigValue(threshold.key, editingConfig[threshold.key])} disabled={isSaving}>
                             {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" />Salvar</>}
                           </Button>
                         )}
@@ -828,7 +920,7 @@ export default function SettingsPage() {
                         <Input type="number" className="w-24" min={threshold.min} max={threshold.max} step={threshold.step} value={currentVal} onChange={(e) => handleConfigChange(threshold.key, e.target.value)} />
                         <span className="text-xs text-muted-foreground">({threshold.min} - {threshold.max})</span>
                         {hasChange && (
-                          <Button size="sm" onClick={() => saveNumericConfig(threshold.key, editingConfig[threshold.key])} disabled={isSaving}>
+                          <Button size="sm" onClick={() => saveConfigValue(threshold.key, editingConfig[threshold.key])} disabled={isSaving}>
                             {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-1" />Salvar</>}
                           </Button>
                         )}

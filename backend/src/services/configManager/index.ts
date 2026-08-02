@@ -15,10 +15,23 @@ export interface ConfigEntry {
   category: string;
   value_type: 'string' | 'number' | 'boolean';
   updated_at: string;
+  /**
+   * De onde veio o valor. `default` = a chave NÃO existe em `system_config` e
+   * quem manda é o `DEFAULTS` daqui.
+   *
+   * Existe porque o painel só enxergava o banco: chave ausente aparecia vazia,
+   * e o admin via "desligado" num toggle que o backend estava tratando como
+   * ligado. Foi o caso do `manual_search_web_enabled` (ramo web LIGADO no
+   * backend, desligado na tela) e do `manual_search_analysis_cap` (campo em
+   * branco onde o valor real era 0 = sem teto).
+   */
+  origem?: 'banco' | 'default';
 }
 
 // Defaults caso o DB não tenha configs (ou falhe)
-const DEFAULTS: Record<string, string> = {
+// Exportado para o `scripts/diagnostico-configs-painel.ts` poder comparar o que
+// existe no codigo com o que existe no banco — o painel so enxerga o banco.
+export const DEFAULTS: Record<string, string> = {
   dedup_similarity_threshold: '0.85',
   // Camada 3 do dedup intra-batch da busca manual: confirma por GPT os pares na
   // faixa duvidosa (entre o threshold e 0.92). Desligado por default — a trava
@@ -68,6 +81,31 @@ const DEFAULTS: Record<string, string> = {
   push_enabled: 'true',
   auth_required: 'true',
   search_permission: 'authorized',
+  // ASSUNTOS PESQUISADOS — a lista que o cliente controla pelo painel.
+  //
+  // Um por linha (vírgula também é aceita na leitura). Cada assunto vira uma
+  // query `<assunto> <cidade>`, e a busca manual roda TODOS eles.
+  //
+  // É a única alavanca que aumenta o alcance de verdade. Medido em 02/08: o
+  // Google serve ~60-70 itens úteis POR QUERY na lista ordenada por data, e
+  // parar de paginar antes disso não é escolha nossa — São Paulo/90 dias tinha
+  // 36 páginas de direito e a SERP secou na 23. Pedir mais páginas não traz
+  // mais nada; perguntar outra coisa traz. Dois assuntos ≈ dois tetos.
+  //
+  // Regras que saíram da medição de 01/08 e valem pra qualquer assunto novo:
+  //   - query CURTA ganha de query longa;
+  //   - NUNCA pôr o estado — empurra pro institucional (quem desambigua cidade
+  //     homônima é o pós-filtro do Filter2, lendo cidade e estado do corpo).
+  //
+  // O default abaixo é exatamente o conjunto que estava hardcoded, pra ligar
+  // isto não mudar nada até alguém editar.
+  search_subjects: [
+    'polícia',
+    'homicídio morte tiros',
+    'roubo furto assalto',
+    'tráfico drogas apreensão armas',
+    'violência doméstica feminicídio',
+  ].join('\n'),
   // Ingestão robusta - fontes
   multi_query_enabled: 'true',
   search_queries_per_scan: '2',
@@ -84,6 +122,13 @@ const DEFAULTS: Record<string, string> = {
   scan_weekend_end: '18',
   scan_period_days: '4',         // janela do BrightData (era 2; 4 permite recuperar sáb/dom na segunda)
 };
+
+/** Só para o painel saber que campo desenhar; o backend lê tudo como string. */
+function inferirTipo(value: string): 'string' | 'number' | 'boolean' {
+  if (value === 'true' || value === 'false') return 'boolean';
+  if (value !== '' && !isNaN(Number(value))) return 'number';
+  return 'string';
+}
 
 class ConfigManager {
   private configs: Map<string, string> = new Map();
@@ -116,6 +161,11 @@ class ConfigManager {
 
   /**
    * Retorna todas as configs com metadados (para admin panel).
+   *
+   * Mescla o banco com o `DEFAULTS`: chave que só existe em código entra na
+   * lista marcada como `origem: 'default'`, com o valor que o backend de fato
+   * está usando. Sem isso o painel mostrava o campo vazio — e um toggle vazio
+   * lê como "desligado", que é a mentira oposta do que estava acontecendo.
    */
   async getAll(): Promise<ConfigEntry[]> {
     await this.ensureFresh();
@@ -131,7 +181,27 @@ class ConfigManager {
       return [];
     }
 
-    return (data || []) as ConfigEntry[];
+    const doBanco = (data || []) as ConfigEntry[];
+    const noBanco = new Set(doBanco.map((c) => c.key));
+
+    const sintéticas: ConfigEntry[] = Object.entries(DEFAULTS)
+      .filter(([key]) => !noBanco.has(key))
+      .map(([key, value]) => ({
+        key,
+        value,
+        description: null,
+        // Mesma categoria que o `set()` daria a estas chaves quando forem
+        // salvas — assim a config não pula de grupo ao ser editada.
+        category: 'ingestion',
+        value_type: inferirTipo(value),
+        updated_at: '',
+        origem: 'default' as const,
+      }));
+
+    return [
+      ...doBanco.map((c) => ({ ...c, origem: 'banco' as const })),
+      ...sintéticas,
+    ];
   }
 
   /**

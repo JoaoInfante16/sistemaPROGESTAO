@@ -109,6 +109,12 @@ export interface SystemConfig {
   category: string;
   description: string;
   updated_at: string;
+  /**
+   * `default` = a chave não existe em `system_config`; o valor mostrado é o
+   * default do código, que é o que o backend está usando de fato. Salvar pelo
+   * painel cria a linha e a origem vira `banco`.
+   */
+  origem?: 'banco' | 'default';
 }
 
 export interface DashboardStats {

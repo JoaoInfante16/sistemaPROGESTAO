@@ -32,7 +32,7 @@ const NEWS_MAX = newsMaxPorQuery(periodoDias);
 async function main(): Promise<void> {
   const rejected: RejectedUrl[] = [];
   const LOG = '[funil]';
-  const queries = buildManualSearchQueries(cidade);
+  const queries = await buildManualSearchQueries(cidade);
 
   console.log(`${cidade}/${estado} | ${periodoDias} dias | teto de analise: ${TETO} | horizonte: ${HORIZONTE}d`);
   console.log(`queries: ${JSON.stringify(queries)}`);

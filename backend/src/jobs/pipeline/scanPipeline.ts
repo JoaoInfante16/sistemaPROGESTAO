@@ -408,10 +408,19 @@ async function collectUrls(
   const sources: string[] = [];
   let queryCount = 0;
 
-  const scanIndex = Math.floor(Date.now() / 60000);
+  // Índice do rodízio de assuntos. Era `Date.now()/60000` — um número novo a
+  // cada MINUTO, para um scan que roda de hora em hora: o rodízio saltava
+  // posições e a escolha virava sorteio, então um assunto podia não ser
+  // perguntado por dias enquanto outro repetia.
+  //
+  // Dividindo pelo intervalo de scan da própria location, o índice anda
+  // exatamente 1 por execução — que é o que faz o rodízio cobrir a lista
+  // inteira, em ordem, ao longo do dia.
+  const minutosPorScan = Math.max(1, location.scan_frequency_minutes || 60);
+  const scanIndex = Math.floor(Date.now() / (minutosPorScan * 60_000));
 
   // 1. Search provider (Brave/Perplexity)
-  const queries = buildQueries(location, {
+  const queries = await buildQueries(location, {
     multiQueryEnabled: cfg.multiQueryEnabled,
     queriesPerScan: cfg.queriesPerScan,
     scanIndex,

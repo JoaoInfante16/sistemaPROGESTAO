@@ -191,6 +191,9 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     // provider: numero real, incluindo paginas especulativas e retries.
     const isBrightData = config.searchBackend === 'brightdata';
     const costPerRequest = isBrightData ? 0.0015 : 0.005;
+    // Uma chamada só: as queries são as mesmas para todas as cidades (só muda o
+    // nome no fim), e a lista de assuntos vem do banco desde 02/08.
+    const queriesDaBusca = await buildManualSearchQueries(cidades[0], tipoCrime);
     await db.trackCost({
       source: 'manual_search',
       provider: config.searchBackend as 'google' | 'perplexity' | 'brave' | 'brightdata',
@@ -202,10 +205,10 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       details: {
         searchId, cidadesCount: cidades.length,
         totalRequests: requestCount,
-        tetoEstimado: cidades.length * (buildManualSearchQueries('x', tipoCrime).length * Math.ceil(newsMaxPorQuery(periodoDias) / 10) + (webEnabled ? Math.ceil(MANUAL_WEB_MAX_RESULTS / 10) : 0)),
+        tetoEstimado: cidades.length * (queriesDaBusca.length * Math.ceil(newsMaxPorQuery(periodoDias) / 10) + (webEnabled ? Math.ceil(MANUAL_WEB_MAX_RESULTS / 10) : 0)),
         resultsCount: searchResults.length,
         periodoDias,
-        queries: buildManualSearchQueries(cidades[0], tipoCrime),
+        queries: queriesDaBusca,
         commit: (process.env.RENDER_GIT_COMMIT || 'local').substring(0, 7),
       },
     });
@@ -468,7 +471,7 @@ async function collectManualSearchUrls(
     // `polícia São José SC` parou em 3 semanas. E a query longa que se usava aqui
     // (`notícias policiais ocorrências crime <cidade> <estado>`) rendia 4 de 10
     // dentro da janela contra 10 de 10 da curta.
-    const queries = buildManualSearchQueries(cidade, tipoCrime);
+    const queries = await buildManualSearchQueries(cidade, tipoCrime);
     const webQuery = queries[0];
 
     logger.info(`${logPrefix} [${cidade}] ${queries.length} query(s) news${webEnabled ? ' + web' : ''} | ${dateRestrict} | ${JSON.stringify(queries)}`);
