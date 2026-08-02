@@ -19,15 +19,21 @@ sem `brd_json`, paginação com `num` deprecado, scraper assíncrono do Top 100 
 travada que o cliente relatou) e query `allintext:` que o Google responde com
 zero.
 
-`staging` (`6ff8ba8`) está com tudo consertado e validado — Salvador devolve 13
-resultados. **É o deploy que mais vale, porque é o que o cliente sente.**
+`staging` (`06b9bc8`) está com tudo consertado e **validado no app: 54 resultados**.
+**É o deploy que mais vale, porque é o que o cliente sente.**
 
 Requer autorização explícita do João (CLAUDE.md proíbe merge direto em `main`).
+
+**Decisão do João (02/08): só promover depois de terminar o que falta.** A lista
+crua está em [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md); o corte recomendado é
+"consertos sim, produto depois" — Fases 9 e 10 são melhoria, não pré-requisito.
 
 Checklist ao promover:
 - [ ] Conferir `commit` no `/health` de produção depois do deploy
 - [ ] Confirmar que a fila de produção manteve o nome **puro** (`manual-search-queue`), sem sufixo — é o que garante que o app do cliente não precisa mudar
 - [ ] Rodar uma busca real e conferir `requestsPerCity` e `queries` em `budget_tracking`
+- [ ] **Subir o APK junto** — o limite de 1 cidade está nos dois lados
+- [ ] Confirmar `AUTO_SCAN_ENABLED` / `NODE_ENV=production` no Render, senão o scan do cliente para
 
 ---
 
