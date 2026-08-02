@@ -16,13 +16,37 @@
 > Bloco de orientação para instâncias novas do Claude (ou para o João depois de
 > um tempo longe). Atualizar quando mudar.
 
-### Onde cada ambiente está
+### Onde cada ambiente está (02/08, fim da sessão)
 
 | ambiente | branch | commit | situação |
 |---|---|---|---|
-| local | `develop` | em dia | tudo desta fase |
-| staging | `staging` | `6ff8ba8` | **funcionando** — Salvador devolve 13 resultados |
-| **produção** | `main` | `faa38b7` | 🔴 **quebrada em 4 lugares, é o que o cliente usa** |
+| local | `develop` | `6b9ef5a` | Fase 8 completa + auditoria do auto-scan |
+| staging | `staging` | `81733a9` | ✅ **validado no app: 54 resultados** (era 1) |
+| **produção** | `main` | `faa38b7` | 🔴 **junho, quebrada em 4 lugares — é o que o cliente usa** |
+
+`staging` está alguns commits atrás de `develop`, mas só em documentação — o
+código é o mesmo. APK de staging instalado no celular do João.
+
+**Próximo passo combinado:** atacar os 4 achados da auditoria do auto-scan (Fase 11
+do [ROADMAP](./ROADMAP.md)). O João mandou começar; a ordem de "não encostar" foi
+suspensa **para esses itens**.
+
+**Os dois primeiros, por ordem:**
+1. **`São José do Cedro` no feed de `São José`** — pós-filtro aceita substring, 10 notícias erradas no banco, visível pro cliente. Afeta a busca manual também (mesmo código).
+2. **`dateRestrict: 'd1'` vs `scan_period_days: 4`** — a recuperação de fim de semana não funciona. **Regressão introduzida em 01/08** pelo `sbd:1` + parada de paginação: antes o `d1` era um `qdr` ignorado, agora trunca de verdade.
+
+Os outros dois (duplicata no `news`, custo contado de duas formas) e os menores
+estão detalhados na Fase 11.
+
+### Documentos desta fase — ler antes de reconstruir contexto
+
+| doc | para quê |
+|---|---|
+| [API_CONTRATO.md](./API_CONTRATO.md) | rotas e shapes, para quem mexer no app |
+| [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md) | o que falta no backend, por consequência |
+| [ROADMAP.md](./ROADMAP.md) | Fase 11 com os achados do auto-scan |
+| `scripts/diagnostico-banco.ts` | estado REAL do banco (só leitura) — o MIGRATIONS_LOG já mentiu |
+| `scripts/diagnostico-funil.ts` | funil da busca manual com motivos de rejeição |
 
 **Chave da Bright Data:** a de **staging estava expirada** (`SERP error 401: Token expired`) e foi trocada pelo João em 02/08 — era o último bloqueio para validar a busca lá. A de **produção está boa** (confirmado por ele no mesmo dia), então a promoção de `main` não depende de mexer em credencial.
 
@@ -87,12 +111,19 @@ Todas de 01/08, com o método real do worker (ver [Fases/Fase 7/DEV_LOG.md](./Fa
   de "essa cidade não tem notícia". Retry só sobre **sinal explícito** (corpo de 0
   bytes, `x-brd-err-code`).
 
-### 🚫 Auto-scan: não encostar
+### ⚠️ Auto-scan: a ordem mudou no fim do dia
 
-Ordem explícita do João em 02/08: *"N toque no auto scan que ta funcionando!!"*.
-Da Fase 8 em diante, **nada de alterar código compartilhado com ele** — se um
-stage precisar mudar para a busca manual, criar função nova e deixar a antiga
-intacta (vale sobretudo para `runIntraBatchDedup`).
+Durante a Fase 8 valia *"N toque no auto scan que ta funcionando!!"* — e ela foi
+respeitada: **todo ponto compartilhado virou opt-in** (`pageConcurrency`,
+`classificar`, `onProgress`) ou função nova (`runIntraBatchDedupLayered`). A
+`runIntraBatchDedup` original segue intacta.
+
+**No fim de 02/08 o João pediu a auditoria e mandou atacar os problemas.** Então
+mexer no auto-scan **está liberado para os 4 achados da Fase 11** — e só para eles.
+Fora desses, a regra de opt-in continua sendo a mais segura.
+
+E ficou provado que ele **não estava "funcionando"**: 9 das 10 últimas execuções
+acharam zero notícias, e há 10 notícias de uma cidade a 600 km no feed.
 
 **Ele NÃO está parado por bug — está fora da janela.** `scan_weekend_enabled = false`,
 `scan_weekday_start = 6`, `scan_weekday_end = 18`. Última execução: sexta 31/07
