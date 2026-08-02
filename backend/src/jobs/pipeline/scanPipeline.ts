@@ -21,12 +21,12 @@ import {
   runFilter1,
   runContentFetch,
   runFilter2WithEmbedding,
-  runIntraBatchDedup,
   deduplicateResults,
   diasAtrasISO,
   searchProvider,
   RejectedUrl,
 } from './pipelineCore';
+import { runIntraBatchDedupLayered } from './intraBatchDedupLayered';
 
 const LOG_PREFIX = '[Pipeline]';
 
@@ -76,6 +76,10 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
     filter2ConfidenceMin: await configManager.getNumber('filter2_confidence_min'),
     filter2MaxContentChars: await configManager.getNumber('filter2_max_content_chars'),
     dedupSimilarityThreshold: await configManager.getNumber('dedup_similarity_threshold'),
+    // Camada 3 do dedup intra-batch. Mesma chave que a busca manual usa: é a
+    // alavanca genérica "confirmar duplicatas com IA" do painel, e vale pros
+    // dois caminhos. Default false — só custa GPT se alguém ligar.
+    dedupGptConfirmEnabled: await configManager.getBoolean('dedup_gpt_confirm_enabled'),
     multiQueryEnabled: await configManager.getBoolean('multi_query_enabled'),
     queriesPerScan: await configManager.getNumber('search_queries_per_scan'),
     googleNewsRSSEnabled: await configManager.getBoolean('google_news_rss_enabled'),
@@ -266,8 +270,31 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
     details: { stage: 'filter2+embedding', analyzed: validContents.length, extracted: extractions.length, tokensUsed: f2tokens },
   });
 
-  // STAGE 5.5: Intra-batch dedup (usa mesmo threshold configurável que dedup DB camada 2)
-  const { consolidated, intraMerged } = runIntraBatchDedup(extractions, LOG_PREFIX, pipelineConfig.dedupSimilarityThreshold);
+  // STAGE 5.5: Intra-batch dedup em CAMADAS
+  //
+  // Era `runIntraBatchDedup` (só cosine). Trocado em 02/08 pelo algoritmo em
+  // camadas da 8.3, depois de ele provar na busca manual: mesmas 32 extrações,
+  // mesmo threshold 0,70 — o antigo entregava 16, o novo entrega 21.
+  //
+  // É o conserto do achado #3 da auditoria: 26% das linhas de `news` estavam em
+  // grupos suspeitos (cidade+tipo+data), com o padrão claro do mesmo evento
+  // gravado duas vezes, `bairro` preenchido numa linha e nulo na outra. Só
+  // cosine funde crimes DIFERENTES de datas diferentes e deixa passar o mesmo
+  // evento visto por dois veículos; a trava geo-temporal resolve as duas coisas
+  // antes de qualquer conta de similaridade.
+  const dedupIntra = await runIntraBatchDedupLayered(extractions, LOG_PREFIX, {
+    similarityThreshold: pipelineConfig.dedupSimilarityThreshold,
+    gptConfirmEnabled: pipelineConfig.dedupGptConfirmEnabled,
+  });
+  const { consolidated, intraMerged } = dedupIntra;
+
+  if (dedupIntra.tokensUsed > 0) {
+    await db.trackCost({
+      source: 'auto_scan', provider: 'openai',
+      cost_usd: dedupIntra.tokensUsed * 0.00000015,
+      details: { stage: 'dedup_intra_gpt', tokensUsed: dedupIntra.tokensUsed, intraMerged },
+    });
+  }
 
   // STAGE 6: Dedup contra DB + Save
   let newsSaved = 0;

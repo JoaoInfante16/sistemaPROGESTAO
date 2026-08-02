@@ -201,6 +201,36 @@ auto-scan e custo do mês. Verificado em 02/08:
 
 ---
 
+## 2026-08-02 — Fase 11, achado #3: o auto-scan passa a deduplicar em camadas
+
+Terceiro conserto. A 8.3 escreveu `runIntraBatchDedupLayered` **em arquivo
+separado de propósito**, porque naquele momento valia a ordem de não encostar no
+auto-scan. Ela provou na busca manual (mesmas 32 extrações, mesmo threshold
+0,70: o antigo entregava 16, o novo 21) e agora o scan ganha o mesmo.
+
+É o conserto do achado #3: 26% das linhas de `news` em grupos suspeitos
+(cidade+tipo+data), com o padrão do mesmo evento gravado duas vezes — `bairro`
+preenchido numa linha e nulo na outra, o que muda o vetor e derruba o cosine
+abaixo do threshold.
+
+Só cosine erra nos dois sentidos ao mesmo tempo: funde crimes **diferentes** de
+datas diferentes (resumos quase idênticos) e deixa passar o **mesmo** evento
+visto por dois veículos. A trava geo-temporal resolve as duas coisas antes de
+qualquer conta de similaridade.
+
+`runIntraBatchDedup` (só cosine) **não foi apagada** — `scripts/diagnostico-funil.ts`
+ainda a usa para comparar os dois algoritmos lado a lado.
+
+**Camada 3 no scan:** lê `dedup_gpt_confirm_enabled`, a mesma chave da busca
+manual — é a alavanca genérica "confirmar duplicatas com IA" do painel, e agora
+vale para os dois caminhos. Default `false`, então nada muda até alguém ligar. Se
+ligar, os tokens vão pro `budget_tracking` como `dedup_intra_gpt`, com o número
+real que a função devolve.
+
+Regressão `scripts/test-dedup-camadas.ts`: **10/10** depois da troca.
+
+---
+
 ## 2026-08-02 — Fase 11: cortar pela data do SERP antes de baixar o artigo
 
 Segundo conserto do auto-scan, e o que o ROADMAP apontava como **maior ganho de
