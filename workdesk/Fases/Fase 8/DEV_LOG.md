@@ -3,8 +3,8 @@
 > Diário de bordo: o que foi feito, decisões tomadas, problemas encontrados.
 > Append-only, cronológico (mais recente no topo).
 >
-> Fases 1 a 7 arquivadas em [Fases/](./Fases/). A Fase 7 (auditoria + conserto da
-> busca manual) está em [Fases/Fase 7/](./Fases/Fase%207/) — inclusive o DEV_LOG
+> Fases 1 a 7 arquivadas em [Fases/](../../Fases/). A Fase 7 (auditoria + conserto da
+> busca manual) está em [Fases/Fase 7/](../../Fases/Fase%207/) — inclusive o DEV_LOG
 > detalhado do dia 30/07 a 02/08, com todas as medições.
 >
 > Rotação: quando passar de ~1500 linhas, mover conteúdo antigo pra `_archive/`.
@@ -62,7 +62,7 @@ o "depois" agora mede templates + assuntos + peneira + dedup em camadas juntos.
 
 **O banco está aberto para a chave anon** — leitura E escrita, em praticamente
 todas as tabelas. Medido em 02/08. Migration
-[025](./SQL/migrations/025_rls_fechar_anon.sql) escrita e **não rodada** (afeta
+[025](../../SQL/migrations/025_rls_fechar_anon.sql) escrita e **não rodada** (afeta
 produção na hora). Ver a entrada dedicada abaixo.
 
 As 10 linhas de São José do Cedro seguem no banco **de propósito** — decisão do
@@ -72,9 +72,9 @@ João, fase de teste. `scripts/limpar-cidades-intrusas.ts` está pronto.
 
 | doc | para quê |
 |---|---|
-| [API_CONTRATO.md](./API_CONTRATO.md) | rotas e shapes, para quem mexer no app |
-| [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md) | o que falta no backend, por consequência |
-| [ROADMAP.md](./ROADMAP.md) | Fase 11 com os achados do auto-scan |
+| [API_CONTRATO.md](../../API_CONTRATO.md) | rotas e shapes, para quem mexer no app |
+| [BACKEND_PENDENTE.md](../../BACKEND_PENDENTE.md) | o que falta no backend, por consequência |
+| [ROADMAP.md](../../ROADMAP.md) | Fase 11 com os achados do auto-scan |
 | `scripts/diagnostico-banco.ts` | estado REAL do banco (só leitura) — o MIGRATIONS_LOG já mentiu |
 | `scripts/diagnostico-funil.ts` | funil da busca manual com motivos de rejeição |
 
@@ -117,7 +117,7 @@ para o mesmo Redis). Agora ele fica em `-development`.
 
 ### Medições que NÃO devem ser refeitas
 
-Todas de 01/08, com o método real do worker (ver [Fases/Fase 7/DEV_LOG.md](./Fases/Fase%207/DEV_LOG.md)):
+Todas de 01/08, com o método real do worker (ver [Fases/Fase 7/DEV_LOG.md](../../Fases/Fase%207/DEV_LOG.md)):
 
 - **O Google ignora o filtro de data.** `qdr:d`, `qdr:w`, `qdr:m` e até `cdr:1` com
   range explícito devolvem **os mesmos 10 resultados, na mesma ordem**. Só `sbd:1`
@@ -191,7 +191,7 @@ com os templates mortos. **Esse é o "antes"** da medição da Fase 11 — não 
 
 O resto da Fase 11 (candidatos de melhoria, não os 4 achados) continua valendo a
 regra antiga: medir a primeira semana com os templates novos antes de mexer. Ver
-[Fase 11 do ROADMAP](./ROADMAP.md).
+[Fase 11 do ROADMAP](../../ROADMAP.md).
 
 ### Onde o funil está DEPOIS da Fase 8 (Salvador, 30 dias)
 
@@ -363,7 +363,7 @@ importar na segunda, com `main` e `staging` no mesmo Redis e no mesmo banco.
 
 ### Correção de premissa, registrada porque a doc estava errada
 
-O [BACKEND_PENDENTE](./BACKEND_PENDENTE.md) dizia que sem timeout *"o usuário vê
+O [BACKEND_PENDENTE](../../BACKEND_PENDENTE.md) dizia que sem timeout *"o usuário vê
 'estágio 4 de 7' parado sem nada acontecendo"*. **O João mediu e não é isso:** no
 último teste o estágio 4 andou normalmente, levando ~2 min.
 
@@ -542,7 +542,7 @@ explicitamente, e foi a única migration que fez isso.
 Todo dado já passa pelo backend. Ligar RLS **sem criar policy nenhuma** fecha a
 porta pública e não muda nada do que funciona.
 
-Migration [025](./SQL/migrations/025_rls_fechar_anon.sql) escrita, com o teste de
+Migration [025](../../SQL/migrations/025_rls_fechar_anon.sql) escrita, com o teste de
 verificação no cabeçalho. **Não rodada** — afeta produção na hora (banco
 compartilhado) e precisa da autorização do João.
 
@@ -715,7 +715,7 @@ Fontes das 10: `portalsmo.com.br`, `portaltri.com.br`, `jornaldafronteira.com.br
 — imprensa do extremo-oeste catarinense, ~600 km de São José. **29% do que o
 scan de São José salvou era de outra cidade.**
 
-Entravam por [pipelineCore.ts](../backend/src/jobs/pipeline/pipelineCore.ts):
+Entravam por [pipelineCore.ts](../../../backend/src/jobs/pipeline/pipelineCore.ts):
 
 ```ts
 const cidadeParcial = cidadesLower.some(c => cidadeExtraida.includes(c) || c.includes(cidadeExtraida));
@@ -729,7 +729,7 @@ cidade e aparece no feed sem filtro**, que é o que o app abre.
 `"São José - SC"`, `"Município de Palhoça"`. Um `===` cru rejeitaria os três.
 
 **Conserto:** `limparNomeCidade` + `mesmaCidade` em
-[utils/helpers.ts](../backend/src/utils/helpers.ts) — limpa parênteses, sufixo de
+[utils/helpers.ts](../../../backend/src/utils/helpers.ts) — limpa parênteses, sufixo de
 UF/estado depois de separador e o prefixo `município|cidade de`, e **só então
 compara exato**. Usado nos dois pontos do pós-filtro (principal e vizinha).
 
@@ -753,7 +753,7 @@ O scan não roda desde **sexta 31/07 20:00**. Isso está certo:
 `scan_weekend_enabled = false` e 01–02/08 foram sábado e domingo.
 
 E é exatamente para isso que o `scan_period_days` existe. O comentário no
-[configManager](../backend/src/services/configManager/index.ts) diz com todas as
+[configManager](../../../backend/src/services/configManager/index.ts) diz com todas as
 letras: `// janela do BrightData (era 2; 4 permite recuperar sáb/dom na segunda)`.
 
 Só que a coleta mandava `dateRestrict: 'd1'` **hardcoded**, e o config só era
@@ -830,7 +830,7 @@ olhar, em ordem:
    contagem visual.
 
 ⚠️ **Produção continua em `faa38b7`.** O cliente ainda usa a versão de junho —
-nada disto chegou nele. Ver [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md), item 1.
+nada disto chegou nele. Ver [BACKEND_PENDENTE.md](../../BACKEND_PENDENTE.md), item 1.
 
 ---
 
@@ -1116,7 +1116,7 @@ e por isso permite ser permissivo na segunda sem medo.
    sozinho — pedir GPT ali seria gastar à toa. GPT fora degrada pra camada 2.
 
 🚫 `runIntraBatchDedup` **não foi tocada** — arquivo novo
-([intraBatchDedupLayered.ts](../backend/src/jobs/pipeline/intraBatchDedupLayered.ts)),
+([intraBatchDedupLayered.ts](../../../backend/src/jobs/pipeline/intraBatchDedupLayered.ts)),
 usado só pelo `manualSearchWorker`. O auto-scan segue no caminho de sempre.
 
 ### Sinalizadores inclusivos — e o fim do dedup por balde
@@ -1137,7 +1137,7 @@ eliminou a matéria repetida entre principal e extras que a 8.2 deixou.
 
 ### Regressão sem rede
 
-[`scripts/test-dedup-camadas.ts`](../backend/scripts/test-dedup-camadas.ts) —
+[`scripts/test-dedup-camadas.ts`](../../../backend/scripts/test-dedup-camadas.ts) —
 10 casos, embeddings sintéticos, camada 3 desligada, roda em milissegundos.
 **10/10.** Trava o caso que quebrava (datas diferentes), o que tem que continuar
 fundindo, a tolerância de 1 dia, bairro, tipo de crime, cidade vizinha e a regra
@@ -1156,7 +1156,7 @@ que 6 meses entra no sistema**, qualquer que seja a busca.
 
 **O limite mora só na validação.** As fórmulas de teto não têm faixa nem máximo
 próprio: funcionam para 365 igual. Subir depois da 8.5 é mudar um número em
-[validation.ts](../backend/src/middleware/validation.ts), sem tocar em cálculo
+[validation.ts](../../../backend/src/middleware/validation.ts), sem tocar em cálculo
 nenhum.
 
 Por que 180 e não 365 (extrapolado de Salvador/30d, com o teto de análise aberto):
@@ -1185,7 +1185,7 @@ deixar a opção de regular ali no painel adm"*.
 
 O mecanismo continua inteiro no código — o que mudou é o valor. Voltar a ter
 fusível é **uma config no admin, sem deploy**. Migration
-[023](./SQL/migrations/023_manual_search_teto_aberto.sql) aplica no banco (mudar
+[023](../../SQL/migrations/023_manual_search_teto_aberto.sql) aplica no banco (mudar
 o default em código não altera a linha que já existe lá).
 
 O painel travava em `min: 1` e não deixaria escolher 0 — corrigido, junto com o
@@ -1423,7 +1423,7 @@ Commit próprio, `main`/auto-scan intocados.
 Fase 7 fechou com a busca manual funcionando ponta a ponta em staging. A Fase 8
 ataca o que sobrou de perda no funil e abre a busca de período longo.
 
-**Escopo acordado com o João** (detalhamento no [ROADMAP](./ROADMAP.md)):
+**Escopo acordado com o João** (detalhamento no [ROADMAP](../../ROADMAP.md)):
 
 1. **Parar de descartar** — as duas maiores causas de rejeição do Filter2 são data
    e cidade vizinha, e as duas são informação que o usuário quer. Passam a ser

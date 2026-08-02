@@ -33,10 +33,12 @@ Três papéis distintos:
 - [workdesk/ROADMAP.md](workdesk/ROADMAP.md) — **futuro**. Revisado junto com João no fim da sessão.
 - [workdesk/ARQUITETURA.md](workdesk/ARQUITETURA.md) — **presente**. Editado in-place quando algo estrutural muda.
 
-Os documentos são de **dois tipos**, e isso decide o que acontece no fim da fase:
+Os documentos são de **dois tipos**, e cada um declara o seu no cabeçalho:
 
-- 📌 **vivos** (nunca arquivados, editados no lugar): `ARQUITETURA`, `API_CONTRATO`, `BACKEND_PENDENTE`, `WORKFLOW`, `SQL/`
-- 🗂️ **da fase** (vão para `workdesk/Fases/Fase N/`): `DEV_LOG`, `ROADMAP` e os briefings daquele trabalho
+- 📌 **vivos** — descrevem o estado atual, editados in-place, **continuam na raiz** depois do encerramento: `ARQUITETURA`, `API_CONTRATO`, `BACKEND_PENDENTE`, `WORKFLOW`, `SQL/`
+- 🗂️ **da fase** — **recortados** para `workdesk/Fases/Fase N/` no encerramento: `DEV_LOG`, `ROADMAP` e os briefings daquele trabalho
+
+**Ao encerrar uma fase**, a pasta `Fases/Fase N/` tem que ficar **auto-contida**: recebe os documentos 🗂️ recortados, uma **cópia** da `ARQUITETURA` (retrato do sistema no fim da fase — a viva continua na raiz) e um **README** que resume o que a fase resolveu, as descobertas que valem para sempre e os erros cometidos. Só então a raiz recomeça com DEV_LOG e ROADMAP novos.
 
 Estamos na **Fase 9** (frontend — o app usar o que o backend já entrega); 1 a 8 estão arquivadas.
 

@@ -2,13 +2,13 @@
 
 > Planos, backlog e próximos passos. Revisado no fim de cada sessão com o João.
 >
-> Fases 1 a 7 arquivadas em [Fases/](./Fases/). Estado atual do sistema e
+> Fases 1 a 7 arquivadas em [Fases/](../../Fases/). Estado atual do sistema e
 > medições que não devem ser refeitas: ver o bloco **ESTADO DO MUNDO** no
-> [DEV_LOG](./DEV_LOG.md).
+> [DEV_LOG](../../DEV_LOG.md).
 
 **Dois documentos irmãos, criados no fim da Fase 8:**
-- [API_CONTRATO.md](./API_CONTRATO.md) — rotas e shapes, para quem for mexer no app
-- [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md) — lista crua do que falta no backend, ordenada por consequência
+- [API_CONTRATO.md](../../API_CONTRATO.md) — rotas e shapes, para quem for mexer no app
+- [BACKEND_PENDENTE.md](../../BACKEND_PENDENTE.md) — lista crua do que falta no backend, ordenada por consequência
 
 ---
 
@@ -53,7 +53,7 @@ zero.
 Requer autorização explícita do João (CLAUDE.md proíbe merge direto em `main`).
 
 **Decisão do João (02/08): só promover depois de terminar o que falta.** A lista
-crua está em [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md); o corte recomendado é
+crua está em [BACKEND_PENDENTE.md](../../BACKEND_PENDENTE.md); o corte recomendado é
 "consertos sim, produto depois" — Fases 9 e 10 são melhoria, não pré-requisito.
 
 Checklist ao promover:
@@ -72,13 +72,13 @@ cada bloco é commit próprio, para ter rollback.
 
 ### ✅ 8.1 — Paralelizar de volta — FEITO em 02/08
 
-- [x] Desfeita a serialização em [manualSearchWorker.ts](../backend/src/jobs/workers/manualSearchWorker.ts)
+- [x] Desfeita a serialização em [manualSearchWorker.ts](../../../backend/src/jobs/workers/manualSearchWorker.ts)
 - [x] Paginação em lote, **opt-in** via `pageConcurrency` (default 1 = serial, para o auto-scan não mudar)
 - [x] Retry único de corpo vazio (0 bytes é sinal explícito)
 - [ ] Revisar `api_rate_limits.brightdata` — `max_concurrent: 10` segue adequado, não foi mexido
 
 **Medido:** Salvador / 30 dias, 23,7s → **9,0s (2,6x)** com saída idêntica (59 URLs,
-6 requests nos dois). Detalhes no [DEV_LOG](./DEV_LOG.md).
+6 requests nos dois). Detalhes no [DEV_LOG](../../DEV_LOG.md).
 
 ### ✅ 8.2 — Parar de descartar — FEITO em 02/08
 
@@ -91,7 +91,7 @@ cada bloco é commit próprio, para ter rollback.
 
 **Medido:** Salvador / 30 dias — 21 principal + **3 extras que antes eram jogados
 fora** (Camaçari ×2, Lauro de Freitas). Feira de Santana seguiu rejeitada, correto.
-Detalhes no [DEV_LOG](./DEV_LOG.md).
+Detalhes no [DEV_LOG](../../DEV_LOG.md).
 
 ### ✅ 8.3 — Dedup em camadas — FEITO em 02/08
 
@@ -105,7 +105,7 @@ Detalhes no [DEV_LOG](./DEV_LOG.md).
 **Medido:** Salvador / 30 dias, mesmas 32 extrações, mesmo threshold 0,70 —
 antigo 32→16, camadas 32→**21**. **5 ocorrências reais** que o antigo fundia por
 engano (+31%), com 273 pares barrados pela trava antes de qualquer cosine.
-Detalhes no [DEV_LOG](./DEV_LOG.md).
+Detalhes no [DEV_LOG](../../DEV_LOG.md).
 
 ### ✅ 8.4 — Período livre e respeitado — FEITO em 02/08 (backend)
 
@@ -143,7 +143,7 @@ saem depois desta fase — cada um é **dois números**:
 
 | trava | onde | volta para |
 |---|---|---|
-| período ≤ 180 dias | [validation.ts](../backend/src/middleware/validation.ts) | 365 |
+| período ≤ 180 dias | [validation.ts](../../../backend/src/middleware/validation.ts) | 365 |
 | 1 cidade por busca | `validation.ts` + `multi_city_search_field.dart` (`maxCities`) | 10 |
 
 **Desistir por estagnação, não por relógio:** enquanto o contador de progresso
@@ -177,7 +177,7 @@ aceita qualquer inteiro de 1 a 365 e os tetos acompanham sem faixas — então o
 pode usar slider, campo, calendário, o que a UI pedir. Nada a mudar no servidor.
 
 No feed as notícias já são separadas por data com uma linha divisória no rolamento
-(`_DateHeader`, [feed_screen.dart:278](../mobile-app/lib/features/feed/screens/feed_screen.dart#L278), padrão `Divider — LABEL — Divider`).
+(`_DateHeader`, [feed_screen.dart:278](../../../mobile-app/lib/features/feed/screens/feed_screen.dart#L278), padrão `Divider — LABEL — Divider`).
 
 A ideia: **no fim da lista**, uma linha igual porém em cor destacada, escrito algo
 como *"Região metropolitana e mais ocorrências relevantes"*. Ao tocar, expande e
@@ -211,12 +211,12 @@ falta o deep link abrir o resultado. A tela já sabe retomar por `resumeSearchId
 
 | o quê | onde |
 |---|---|
-| `_results` (hoje `List<Map>` cru, sem classe) | [manual_search_screen.dart:37](../mobile-app/lib/features/search/screens/manual_search_screen.dart#L37) |
-| Onde os resultados chegam (polling e resume) | [:99](../mobile-app/lib/features/search/screens/manual_search_screen.dart#L99) e [:265](../mobile-app/lib/features/search/screens/manual_search_screen.dart#L265) |
-| `ListView.builder` plana, sem agrupamento | [:855-864](../mobile-app/lib/features/search/screens/manual_search_screen.dart#L855) |
-| Parse Map → NewsItem | [news_item.dart:79-115](../mobile-app/lib/core/models/news_item.dart#L79) |
-| Card compartilhado (feed + favoritos + busca) | [news_card.dart:13-19](../mobile-app/lib/features/feed/widgets/news_card.dart#L13) |
-| Polling que desiste em 10 min | [:226](../mobile-app/lib/features/search/screens/manual_search_screen.dart#L226) |
+| `_results` (hoje `List<Map>` cru, sem classe) | [manual_search_screen.dart:37](../../../mobile-app/lib/features/search/screens/manual_search_screen.dart#L37) |
+| Onde os resultados chegam (polling e resume) | [:99](../../../mobile-app/lib/features/search/screens/manual_search_screen.dart#L99) e [:265](../../../mobile-app/lib/features/search/screens/manual_search_screen.dart#L265) |
+| `ListView.builder` plana, sem agrupamento | [:855-864](../../../mobile-app/lib/features/search/screens/manual_search_screen.dart#L855) |
+| Parse Map → NewsItem | [news_item.dart:79-115](../../../mobile-app/lib/core/models/news_item.dart#L79) |
+| Card compartilhado (feed + favoritos + busca) | [news_card.dart:13-19](../../../mobile-app/lib/features/feed/widgets/news_card.dart#L13) |
+| Polling que desiste em 10 min | [:226](../../../mobile-app/lib/features/search/screens/manual_search_screen.dart#L226) |
 
 ### Cuidados
 
@@ -258,7 +258,7 @@ Então o calendário é:
 
 ### O que muda no app
 
-`_computeAnalytics` ([report_screen.dart:138-212](../mobile-app/lib/features/search/screens/report_screen.dart#L138)) roda **uma vez no `initState`** e varre tudo sem filtro — donut, bairros, tendência semanal, fontes. Precisa virar **função de um subconjunto filtrado**, chamada em `setState`.
+`_computeAnalytics` ([report_screen.dart:138-212](../../../mobile-app/lib/features/search/screens/report_screen.dart#L138)) roda **uma vez no `initState`** e varre tudo sem filtro — donut, bairros, tendência semanal, fontes. Precisa virar **função de um subconjunto filtrado**, chamada em `setState`.
 
 É a mesma mecânica dos toggles de região/período: **lista e relatório viram função de um recorte**. Fazendo um, os outros saem quase de graça — toggle, período e intervalo do calendário são todos o mesmo filtro.
 
@@ -386,7 +386,7 @@ de acento/sufixo — precisa virar comparação por igualdade normalizada, com o
 
 | | valor |
 |---|---|
-| coleta (`dateRestrict`, [scanPipeline.ts:342](../backend/src/jobs/pipeline/scanPipeline.ts#L342)) | **`'d1'` hardcoded** |
+| coleta (`dateRestrict`, [scanPipeline.ts:342](../../../backend/src/jobs/pipeline/scanPipeline.ts#L342)) | **`'d1'` hardcoded** |
 | aceitação (`scan_period_days`, pós-filtro) | **4** |
 
 O `scan_period_days` foi subido de 2 para 4 justamente "pra recuperar sáb/dom na

@@ -121,6 +121,56 @@ Verificado em 02/08: migrations 019, 020, 021b, 022 aplicadas; **021, 023, 024 e
 
 ---
 
+## 2026-08-02 — o encerramento de fase, como o João faz (e eu tinha errado)
+
+Correção dele: *"quando acaba a fase, as pastas da raiz que documentam tudo
+daquela fase, são recortadas dali e colocado na pasta fases. Daí coloca o DEVLOG
+e roadmap, arquitetura, e o readme"*.
+
+Eu tinha escrito que a `ARQUITETURA` **nunca** é arquivada. Errado — e a prova
+estava na própria pasta: **`Fases/Fase 1/` já tem `ARQUITETURA.md`** e
+**`Fases/Fase 2/` já tem `WORKFLOW.md`**. A convenção já era essa desde o começo;
+eu inventei uma regra nova em cima de um padrão que já existia, sem olhar.
+
+**A distinção que faltava:** a `ARQUITETURA` é **copiada**, não movida. A cópia é
+um *retrato do sistema no fim daquela fase*; a viva continua na raiz sendo
+editada. Recortá-la deixaria o projeto sem documento do presente.
+
+### O princípio por trás
+
+Cada `Fases/Fase N/` tem que ser **auto-contida** — quem abrir entende a fase
+inteira sem precisar da raiz. É o que justifica o retrato da arquitetura junto: um
+DEV_LOG que fala de `runIntraBatchDedupLayered` não significa nada sem saber como
+o sistema era montado naquele momento.
+
+### Feito para a Fase 8
+
+- `ARQUITETURA.md` copiada para [Fases/Fase 8/](./Fases/Fase%208/)
+- [README da Fase 8](./Fases/Fase%208/README.md) escrito, e ele carrega o que
+  mais importa preservar: as **descobertas que valem para sempre** (o teto por
+  query do Google, o Jina a 7,4s, nunca pôr o estado na query) e os **três erros
+  que a fase cometeu** — reaproveitar chave de config com significado novo, a
+  ordem de dois `push` que era load-bearing, e a medição feita com script que não
+  espelhava o worker e quase levou à conclusão errada.
+
+As Fases 1 a 7 são anteriores à convenção e têm formatos variados. **Ficam como
+estão** — reescrever histórico não agrega, e o README da raiz registra isso para
+ninguém achar que é inconsistência por descuido.
+
+### Efeito colateral de mover: 26 links quebrados
+
+Os documentos da Fase 8 foram escritos quando moravam na raiz, então todo
+`](./API_CONTRATO.md)` e `](../backend/...)` passou a apontar para o nada depois
+do recorte. **26 links**, achados por script.
+
+Corrigidos com `sed`: `./` virou `../../` e `../backend/` virou
+`../../../backend/`. Verificação final nas duas pastas: **zero quebrados**.
+
+📌 **Vale como checklist de encerramento:** recortar documento quebra todo link
+relativo dentro dele. Rodar a verificação depois de mover, sempre.
+
+---
+
 ## 2026-08-02 — workdesk coerente: cada doc diz o que é e quando morre
 
 Pergunta do João depois da reorganização: *"o que ta na raiz do workdesk seria a
