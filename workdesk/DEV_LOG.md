@@ -134,6 +134,66 @@ resolve, é o algoritmo que precisa mudar (ver ROADMAP).
 
 ---
 
+## 2026-08-02 — 8.5: progresso ao vivo, 409 informativo, busca fantasma ✅ (backend)
+
+Fecha a Fase 8 no backend. Tudo aqui é **matéria-prima para o app** — a tela nova
+é Fase 9.
+
+### Contador dentro do estágio
+
+Até aqui o progresso era 7 degraus. Dentro do estágio 4 nada se mexia por dezenas
+de segundos — numa busca de 180 dias, por minutos. É exatamente aí que parece
+travado, e é o que faz o usuário matar o app.
+
+`runContentFetch` e `runFilter2WithEmbedding` ganharam `onProgress` **opcional**.
+O auto-scan chama as duas sem passar nada e não muda em nada.
+
+O JSONB `progress` ganhou `feitos`, `total`, `achados` e `atualizado_em`. Sem
+migration — já foi expandido assim antes.
+
+Dois detalhes que evitam mentira na barra:
+- **conta rejeitado e erro também** (`finally`, não no caminho feliz). Contar só o
+  que deu certo faria a barra travar justamente na busca que mais rejeita
+- **o último item sempre escreve**, ignorando o estrangulamento — é o que fecha
+  em 100%
+
+### Achados ao vivo
+
+Conforme o Filter2 extrai, os últimos 5 (`tipo · bairro · data`) entram no
+progresso. O dado já está em memória: **custo zero**. É o que transforma barra de
+carregamento em algo que dá vontade de olhar.
+
+### Escrita estrangulada — e a corrida que ela criou
+
+1 escrita a cada 2s (o app faz polling a cada 3s; mais que isso não aparece para
+ninguém). Sem isso, 300 artigos = 300 escritas no Supabase por estágio.
+
+Mas escrever sem `await` abriu uma corrida real: a escrita do **estágio 4** podia
+chegar ao banco **depois** da do estágio 5 e sobrescrevê-la — o app veria o
+progresso **andar para trás**. Resolvido com `progresso.aguardar()` na troca de
+estágio: alguns milissegundos, três vezes por busca.
+
+### 409 informativo
+
+Devolvia só `{ error }`. Agora devolve `searchId`, `params` e `progress`, para o
+app poder oferecer *"Salvador em andamento (42%) — ver progresso / cancelar"* em
+vez de um beco sem saída. Só acrescenta campos: o APK atual não regride.
+
+### Busca fantasma — virou load-bearing
+
+Com **uma busca por vez**, um job morto prendia o usuário **para sempre**. E o
+Render reinicia o serviço sozinho no free tier, então isso acontece de verdade.
+
+O critério é melhor que relógio: **sem avanço de progresso** por 20 min. Busca
+longa que está trabalhando escreve a cada ~2s e nunca é morta por engano; busca
+morta para de escrever e cai no TTL. Buscas antigas, sem `atualizado_em`, caem no
+`created_at`.
+
+⚠️ Falta o outro lado: o app ainda desiste por relógio (`_maxPolls = 200` × 3s).
+O backend já emite o contador que permite trocar isso por estagnação — é Fase 9.
+
+---
+
 ## 2026-08-02 — uma cidade por busca (+ região metropolitana)
 
 Decisão do João: *"Melhor limitar a uma cidade + região metropolitana no max

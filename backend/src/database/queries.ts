@@ -1047,13 +1047,36 @@ interface StageHistoryEntry {
   started_at: string; // ISO
 }
 
+/** Achado recente, pra tela de carregamento mostrar a busca trabalhando. */
+export interface AchadoProgresso {
+  tipo_crime: string;
+  bairro?: string | null;
+  data_ocorrencia: string;
+}
+
+export interface SearchProgressPayload {
+  stage: string;
+  stage_num: number;
+  total_stages: number;
+  details?: string;
+  /** Contador DENTRO do estágio (8.5). Sem isto, o estágio 4 fica mudo por minutos. */
+  feitos?: number;
+  total?: number;
+  /** Últimos achados do Filter2, em ordem de conclusão. */
+  achados?: AchadoProgresso[];
+}
+
 // Atualiza o progresso e **acumula** um history de stages com timestamp.
 // Permite que o Flutter (quando user retoma busca via histórico) reconstrua
 // a cronologia completa — [HH:MM:SS] + duração por stage, igual se tivesse
 // ficado na tela. Sem migration: só expande o shape do JSONB `progress`.
+//
+// `atualizado_em` (8.5) marca a ULTIMA vez que algo se mexeu — e o que permite
+// distinguir "busca lenta" de "busca morta" sem relogio fixo. Ver o 409 e a
+// deteccao de busca fantasma em manualSearchRoutes.
 export async function updateSearchProgress(
   searchId: string,
-  progress: { stage: string; stage_num: number; total_stages: number; details?: string }
+  progress: SearchProgressPayload
 ): Promise<void> {
   const { data: current } = await supabase
     .from('search_cache')
@@ -1078,7 +1101,7 @@ export async function updateSearchProgress(
 
   const { error } = await supabase
     .from('search_cache')
-    .update({ progress: { ...progress, history } })
+    .update({ progress: { ...progress, atualizado_em: new Date().toISOString(), history } })
     .eq('search_id', searchId);
 
   // Non-fatal: progress update failure should never abort the pipeline

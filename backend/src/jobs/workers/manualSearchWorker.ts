@@ -9,6 +9,7 @@ import { Worker, Job, Queue } from 'bullmq';
 import { redis } from '../../config/redis';
 import { config } from '../../config';
 import { db } from '../../database/queries';
+import { AchadoProgresso } from '../../database/queries';
 import { logger } from '../../middleware/logger';
 import { rateLimiter } from '../../services/rateLimiter';
 import { configManager } from '../../services/configManager';
@@ -53,6 +54,62 @@ export interface ManualSearchJobData {
   cidades: string[];
   periodoDias: number;
   tipoCrime?: string;
+}
+
+// ============================================
+// Progresso ao vivo dentro do estagio (8.5)
+// ============================================
+// Ate aqui o progresso era 7 degraus. Dentro do estagio 4 nada se mexia por
+// dezenas de segundos — numa busca de 180 dias, por MINUTOS. E exatamente ai que
+// parece travado, e e o que faz o usuario matar o app.
+//
+// A escrita e ESTRANGULADA: sem isso, uma busca de 300 artigos geraria 300
+// escritas no Supabase por estagio. O app faz polling a cada 3s, entao escrever
+// mais que isso nao aparece pra ninguem.
+const PROGRESSO_INTERVALO_MS = 2000;
+const ACHADOS_VISIVEIS = 5;
+
+function criarReporter(searchId: string, logPrefix: string) {
+  let ultimaEscrita = 0;
+  let emVoo: Promise<void> = Promise.resolve();
+  const achados: AchadoProgresso[] = [];
+
+  function reportar(
+    base: { stage: string; stage_num: number; total_stages: number; details?: string },
+    feitos: number,
+    total: number,
+    achado?: AchadoProgresso,
+  ): void {
+    if (achado) {
+      achados.unshift(achado);
+      if (achados.length > ACHADOS_VISIVEIS) achados.pop();
+    }
+
+    const agora = Date.now();
+    // Sempre deixa passar o ultimo item: e o que fecha a barra em 100%.
+    if (agora - ultimaEscrita < PROGRESSO_INTERVALO_MS && feitos < total) return;
+    ultimaEscrita = agora;
+
+    // Fire-and-forget: progresso nunca segura a pipeline nem a derruba.
+    emVoo = db
+      .updateSearchProgress(searchId, { ...base, feitos, total, achados: [...achados] })
+      .catch((err) => {
+        logger.warn(`${logPrefix} progresso falhou: ${(err as Error).message}`);
+      });
+  }
+
+  /**
+   * Espera a ultima escrita aterrissar. O worker chama isto ao TROCAR de estagio.
+   *
+   * Sem isso ha uma corrida real: a escrita do estagio 4, disparada sem await,
+   * pode chegar ao banco DEPOIS da do estagio 5 e sobrescreve-la — o app veria o
+   * progresso andar pra tras. Custa alguns milissegundos, tres vezes por busca.
+   */
+  async function aguardar(): Promise<void> {
+    await emVoo;
+  }
+
+  return { reportar, aguardar };
 }
 
 async function isCancelled(searchId: string): Promise<boolean> {
@@ -209,8 +266,14 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
 
     // STAGE 4: Content Fetch
     if (await isCancelled(searchId)) { logger.info(`${LOG_PREFIX} cancelled before stage 4`); return; }
-    await db.updateSearchProgress(searchId, { stage: 'fetching', stage_num: 4, total_stages: 7, details: `${toAnalyze.length} artigos` });
-    const validContents = await runContentFetch(toAnalyze, pipelineConfig.contentFetchConcurrency, rejectedUrls, LOG_PREFIX);
+    const progresso = criarReporter(searchId, LOG_PREFIX);
+    const baseFetch = { stage: 'fetching', stage_num: 4, total_stages: 7, details: `${toAnalyze.length} artigos` };
+    await db.updateSearchProgress(searchId, { ...baseFetch, feitos: 0, total: toAnalyze.length });
+    const validContents = await runContentFetch(
+      toAnalyze, pipelineConfig.contentFetchConcurrency, rejectedUrls, LOG_PREFIX,
+      (feitos, total) => progresso.reportar(baseFetch, feitos, total),
+    );
+    await progresso.aguardar();
 
     const jinaTokensTotal = validContents.reduce((sum, c) => sum + (c.tokensUsed || 0), 0);
     await db.trackCost({
@@ -228,7 +291,8 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
 
     // STAGE 5: Filter2 + Embedding (com filtro de cidade/estado e data)
     if (await isCancelled(searchId)) { logger.info(`${LOG_PREFIX} cancelled before stage 5`); return; }
-    await db.updateSearchProgress(searchId, { stage: 'analyzing', stage_num: 5, total_stages: 7, details: `${validContents.length} conteudos` });
+    const baseAnalise = { stage: 'analyzing', stage_num: 5, total_stages: 7, details: `${validContents.length} conteudos` };
+    await db.updateSearchProgress(searchId, { ...baseAnalise, feitos: 0, total: validContents.length });
     const filter2Result = await runFilter2WithEmbedding(
       validContents,
       { maxContentChars: pipelineConfig.filter2MaxContentChars, minConfidence: pipelineConfig.filter2ConfidenceMin },
@@ -237,7 +301,9 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       // segue descartando igual a sempre.
       { periodoDias, estado, cidades, classificar: true, cidadesRegiao, horizonteDias: pipelineConfig.horizonteDias },
       sourceTypeMap,
+      (feitos, total, achado) => progresso.reportar(baseAnalise, feitos, total, achado),
     );
+    await progresso.aguardar();
     const extractions = filter2Result.extractions;
 
     const f2tokens = filter2Result.tokensUsed;

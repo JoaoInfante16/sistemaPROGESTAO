@@ -16,6 +16,11 @@ import { logger } from '../middleware/logger';
 
 const router = Router();
 
+// Sem avanço de progresso por este tempo, a busca é considerada morta e o
+// usuário é liberado. Generoso de propósito: o estágio 1 pode ficar minutos sem
+// escrever nada, e matar busca viva é pior que esperar um pouco mais.
+const BUSCA_FANTASMA_MS = 20 * 60 * 1000;
+
 /**
  * POST /manual-search
  * Cria uma busca manual e enfileira o job.
@@ -38,9 +43,37 @@ router.post(
       // Verificar se já tem busca em andamento
       const history = await db.getUserSearchHistory(userId);
       const running = history.find((s: { status: string }) => s.status === 'processing');
+
       if (running) {
-        res.status(409).json({ error: 'Já existe uma busca em andamento. Cancele antes de iniciar outra.' });
-        return;
+        // BUSCA FANTASMA (8.5). O job pode morrer sem marcar nada — o Render
+        // reinicia o serviço sozinho no free tier. Antes disto, a busca ficava
+        // `processing` PARA SEMPRE e o usuário nunca mais conseguia buscar; com
+        // uma busca por vez, isso é uma armadilha permanente.
+        //
+        // O critério é melhor que relógio: **sem avanço de progresso**. Uma busca
+        // longa que está trabalhando escreve a cada ~2s e nunca é morta por
+        // engano; uma morta para de escrever e cai no TTL. Buscas antigas, sem
+        // `atualizado_em`, caem no `created_at`.
+        const status = await db.getSearchStatus(running.search_id).catch(() => null);
+        const ultimoSinal = Date.parse(
+          (status?.progress?.atualizado_em as string) || running.created_at
+        );
+        const paradaHa = Number.isNaN(ultimoSinal) ? 0 : Date.now() - ultimoSinal;
+
+        if (paradaHa > BUSCA_FANTASMA_MS) {
+          logger.warn(`[ManualSearch] Busca ${running.search_id} sem avanço há ${Math.round(paradaHa / 60000)} min — marcando como failed e liberando o usuário`);
+          await db.updateSearchStatus(running.search_id, 'failed').catch(() => {});
+        } else {
+          // 409 INFORMATIVO: devolve com o que o app precisa pra oferecer "ver
+          // progresso / cancelar" em vez de um beco sem saída.
+          res.status(409).json({
+            error: 'Já existe uma busca em andamento.',
+            searchId: running.search_id,
+            params: running.params,
+            progress: status?.progress ?? null,
+          });
+          return;
+        }
       }
 
       // Criar registro na search_cache

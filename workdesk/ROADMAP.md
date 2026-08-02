@@ -113,11 +113,14 @@ avança, o app continua esperando; se não muda há ~2 min, aí é falha. Some o
 número mágico e qualquer lentidão futura fica coberta.
 
 
-- `runContentFetch` e `runFilter2WithEmbedding` ganham `onProgress(feitos, total)` **opcional** (para não afetar o auto-scan)
-- Achados recentes (últimos ~5: `tipo · bairro · data`) dentro do progresso — o dado já está em memória
-- Escrita estrangulada a ~1 a cada 2s (o app faz polling a cada 3s)
-- **409 informativo:** [manualSearchRoutes.ts](../backend/src/routes/manualSearchRoutes.ts) passa a devolver `searchId` e `progress` da busca corrente, para o app oferecer "ver progresso / cancelar" em vez de erro seco
-- **TTL na busca fantasma** — virou load-bearing: com uma busca por vez, um job morto (o Render reinicia sozinho no free tier) prende o usuário para sempre. Critério melhor que o relógio: **sem avanço de progresso** há ~20 min
+**Backend: FEITO em 02/08.**
+
+- [x] `onProgress` **opcional** em `runContentFetch` e `runFilter2WithEmbedding` (auto-scan não afetado)
+- [x] Achados recentes (últimos 5: `tipo · bairro · data`) no progresso — custo zero, o dado já está em memória
+- [x] Escrita estrangulada a 1 a cada 2s + `aguardar()` na troca de estágio (senão o progresso anda para trás)
+- [x] **409 informativo** — devolve `searchId`, `params` e `progress`; só acrescenta campos, o APK atual não regride
+- [x] **Busca fantasma** — sem avanço de progresso há 20 min, libera o usuário
+- [ ] **App: desistir por estagnação** em vez de `_maxPolls = 200` — o backend já emite o contador, falta o Flutter (Fase 9)
 
 ---
 

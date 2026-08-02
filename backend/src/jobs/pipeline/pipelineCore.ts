@@ -157,12 +157,23 @@ export async function runFilter1(
 // Stage 3: Content Fetch via Jina
 // ============================================
 
+/**
+ * Callback de andamento DENTRO de um estagio (8.5). Opcional de proposito: o
+ * auto-scan chama estes stages sem passar nada e nao muda em nada.
+ *
+ * E sincrono e best-effort — quem recebe decide se escreve no banco, e a que
+ * ritmo. Nunca pode bloquear nem derrubar o pipeline.
+ */
+export type OnStageProgress = (feitos: number, total: number) => void;
+
 export async function runContentFetch(
   urls: SearchResult[],
   concurrency: number,
   rejectedUrls: RejectedUrl[],
   logPrefix: string,
+  onProgress?: OnStageProgress,
 ): Promise<FetchedContent[]> {
+  let feitos = 0;
   const contentResults = await asyncPool<SearchResult, FetchedContent | null>(
     urls,
     concurrency,
@@ -172,6 +183,11 @@ export async function runContentFetch(
       } catch (err) {
         logger.error(`${logPrefix} fetch failed ${r.url}: ${(err as Error).message}`);
         return null;
+      } finally {
+        // `finally` porque erro tambem e andamento — senao a barra trava numa
+        // busca cheia de URL morta, que e justamente quando parece travado.
+        feitos++;
+        try { onProgress?.(feitos, urls.length); } catch { /* nunca derruba o stage */ }
       }
     }
   );
@@ -210,6 +226,17 @@ export function diasAtrasISO(dias: number): string {
   return d.toISOString().split('T')[0];
 }
 
+/**
+ * Como o runContentFetch, mas carrega tambem o que ACABOU de ser extraido —
+ * e o que transforma a tela de carregamento em algo que da vontade de olhar,
+ * e o dado ja esta em memoria, custo zero.
+ */
+export type OnFilter2Progress = (
+  feitos: number,
+  total: number,
+  achado?: { tipo_crime: string; bairro?: string | null; data_ocorrencia: string },
+) => void;
+
 /** Resultado de um item, resolvido em paralelo e agregado depois em ordem. */
 type ItemFilter2 =
   | { tipo: 'ok'; extraction: ExtractedNews; f2: number; emb: number }
@@ -223,10 +250,13 @@ export async function runFilter2WithEmbedding(
   logPrefix: string,
   postFilter?: PostFilter2Options,
   sourceTypeMap?: Map<string, string>,
+  onProgress?: OnFilter2Progress,
 ): Promise<Filter2StageResult> {
   if (contents.length === 0) {
     return { extractions: [], tokensUsed: { filter2: 0, embedding: 0 } };
   }
+
+  let feitos = 0;
 
   // Antes era um `for` sequencial usando ~20% da vazao que o rate limiter
   // permite. Com o stage 1 trazendo 3x mais URL (queries curtas, 2026-08-01),
@@ -235,10 +265,8 @@ export async function runFilter2WithEmbedding(
   // ATENCAO: o `asyncPool` NAO tem try/catch — se `fn` rejeitar, o
   // `Promise.all` interno derruba o pool inteiro. Todo erro tem que morrer
   // aqui dentro.
-  const resultados = await asyncPool<FetchedContent, ItemFilter2>(
-    contents,
-    FILTER2_CONCURRENCY,
-    async (fetched): Promise<ItemFilter2> => {
+  const analisarUm = async (fetched: FetchedContent): Promise<ItemFilter2> => {
+    {
       try {
         const { extraction: extracted, rejectionReason, tokensUsed: f2tokens = 0 } = await rateLimiter.schedule('openai', () =>
           filter2GPTWithReason(fetched.content, {
@@ -341,6 +369,31 @@ export async function runFilter2WithEmbedding(
       } catch (err) {
         return { tipo: 'erro', url: fetched.url, msg: (err as Error).message };
       }
+    }
+  };
+
+  const resultados = await asyncPool<FetchedContent, ItemFilter2>(
+    contents,
+    FILTER2_CONCURRENCY,
+    async (fetched): Promise<ItemFilter2> => {
+      const r = await analisarUm(fetched);
+      // Conta rejeitado e erro tambem: e andamento. Contar so o que deu certo
+      // faria a barra parecer travada exatamente na busca que mais rejeita.
+      feitos++;
+      try {
+        onProgress?.(
+          feitos,
+          contents.length,
+          r.tipo === 'ok'
+            ? {
+                tipo_crime: r.extraction.tipo_crime,
+                bairro: r.extraction.bairro ?? null,
+                data_ocorrencia: r.extraction.data_ocorrencia,
+              }
+            : undefined,
+        );
+      } catch { /* progresso nunca derruba o stage */ }
+      return r;
     },
   );
 
