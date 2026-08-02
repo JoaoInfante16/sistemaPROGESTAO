@@ -23,16 +23,18 @@ import {
   runFilter2WithEmbedding,
   runIntraBatchDedup,
   deduplicateResults,
+  diasAtrasISO,
   searchProvider,
   RejectedUrl,
 } from '../pipeline/pipelineCore';
+import { SearchResult } from '../../services/search/SearchProvider';
+import { newsMaxPorQuery, analiseMaxPorBusca } from '../../services/search/manualSearchCaps';
 
 export const manualSearchQueue = new Queue(queueName('manual-search-queue'), { connection: redis });
 
-// Teto do ramo news POR QUERY (nao por cidade). Desde 2026-08-01 a busca manual
-// dispara varias queries curtas em vez de uma longa — ver queryTemplates.ts.
-// 20 = ate 2 paginas, e a paginacao para sozinha ao sair da janela.
-const MANUAL_NEWS_MAX_PER_QUERY = 20;
+// Tetos de coleta e de analise vem de manualSearchCaps.ts — sao funcoes
+// continuas do periodo, sem faixas. Ficam la, e nao aqui, porque este modulo
+// cria uma Queue do BullMQ no import.
 
 // Ramo web (indice organico). Mesma SERP paginada do news: ~10 por pagina,
 // 7-12s cada. 30 = 3 paginas, ~30s. Subir daqui vira custo de tempo linear.
@@ -89,11 +91,11 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     // os filtros baratos triam, e o teto se aplica a quem sobreviveu. Efeito
     // colateral bom: o custo vira previsivel — o numero que chega no Jina e
     // exatamente este teto, nao um resultado incerto das taxas de rejeicao.
-    const maxResultsKey = periodoDias <= 30 ? 'manual_search_max_results_30d'
-      : periodoDias <= 60 ? 'manual_search_max_results_60d'
-      : 'manual_search_max_results_90d';
-
-    const maxArticlesToAnalyze = await configManager.getNumber(maxResultsKey);
+    // Uma base so, escalada pelo periodo — ver analiseMaxPorBusca. As antigas
+    // `manual_search_max_results_60d` e `_90d` ficaram sem uso (registradas na
+    // divida tecnica do ROADMAP junto das outras configs mortas).
+    const base30d = await configManager.getNumber('manual_search_max_results_30d');
+    const maxArticlesToAnalyze = analiseMaxPorBusca(periodoDias, base30d);
     const pipelineConfig = {
       contentFetchConcurrency: await configManager.getNumber('content_fetch_concurrency'),
       filter2ConfidenceMin: await configManager.getNumber('filter2_confidence_min'),
@@ -120,16 +122,15 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     // 10 resultados por request. Web so conta se estiver ligado.
     // Brave: $0.005/query (sem paginacao interna)
     //
-    // Esta conta e o TETO, nao o real. Antes ela superestimava, porque a paginacao
-    // parava sozinha ao sair da janela. Com o lote de 8.1 ela ficou justa: como
-    // MANUAL_PAGE_CONCURRENCY (4) cobre as 2 paginas de MANUAL_NEWS_MAX_PER_QUERY,
-    // as duas sao sempre pedidas — a que o serial economizava agora e paga como
-    // pagina especulativa (o provider loga quantas foram). Em compensacao o retry
-    // de corpo vazio pode gastar 1 request a mais que o teto, entao numa falha
-    // rara isto subestima. Para o numero exato, `requestCount` do provider.
+    // Esta conta e o TETO, nao o real — e com a 8.4 voltou a superestimar bastante.
+    // O teto de coleta agora escala com o periodo (6 paginas em 30 dias, 25 em um
+    // ano), mas a paginacao para sozinha quando a pagina ja e toda anterior a
+    // janela: cidade pequena raramente chega perto do teto. O erro e sempre para
+    // cima, exceto pelo retry de corpo vazio, que numa falha rara gasta 1 request
+    // alem. Para o numero exato, `requestCount` do provider.
     const isBrightData = config.searchBackend === 'brightdata';
     const queriesPorCidade = buildManualSearchQueries('x', tipoCrime).length;
-    const newsReqs = queriesPorCidade * Math.ceil(MANUAL_NEWS_MAX_PER_QUERY / 10);
+    const newsReqs = queriesPorCidade * Math.ceil(newsMaxPorQuery(periodoDias) / 10);
     const webReqs = webEnabled ? Math.ceil(MANUAL_WEB_MAX_RESULTS / 10) : 0;
     const requestsPerCity = isBrightData ? newsReqs + webReqs : 1;
     const costPerRequest = isBrightData ? 0.0015 : 0.005;
@@ -178,15 +179,28 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
 
     // Freio de custo — aplicado aqui, na fronteira entre o barato e o caro.
     // Tudo acima deste ponto custa quase nada; tudo abaixo custa ~$0.0025/artigo.
-    // O teto e por busca (nao por cidade), entao busca multi-cidade nao multiplica
-    // a conta: 1 cidade e 5 cidades gastam o mesmo no Jina + Filter2.
     const totalCap = maxArticlesToAnalyze * cidades.length;
-    const toAnalyze = afterFilter1.slice(0, totalCap);
-    if (afterFilter1.length > totalCap) {
-      for (const dropped of afterFilter1.slice(totalCap)) {
+
+    // ORDENAR ANTES DE CORTAR. O teto cai aqui, mas a classificacao em baldes so
+    // acontece no Filter2 — sem ordenar, materia velha consome a cota e mata uma
+    // do periodo pedido. So importa com horizonte longo, que e o que a 8.4 abre.
+    //
+    // Sem data conhecida NAO e penalizado: nao saber nao e motivo pra descer na
+    // fila. Dentro de cada grupo a ordem original e preservada (sort estavel), e
+    // ela ja vem util — com `sbd:1` a SERP chega ordenada da mais nova pra mais
+    // velha.
+    const inicioJanela = diasAtrasISO(periodoDias);
+    const prioridade = (r: { publishedAt?: string }): number =>
+      r.publishedAt && r.publishedAt < inicioJanela ? 1 : 0;
+    const ordenado = [...afterFilter1].sort((a, b) => prioridade(a) - prioridade(b));
+
+    const toAnalyze = ordenado.slice(0, totalCap);
+    if (ordenado.length > totalCap) {
+      for (const dropped of ordenado.slice(totalCap)) {
         rejectedUrls.push({ url: dropped.url, stage: 'cap', reason: `acima do teto de ${totalCap} artigos` });
       }
-      logger.info(`${LOG_PREFIX} teto de analise: ${afterFilter1.length} → ${totalCap} artigos (${afterFilter1.length - totalCap} cortados)`);
+      const cortadosDentroDaJanela = ordenado.slice(totalCap).filter((r) => prioridade(r) === 0).length;
+      logger.info(`${LOG_PREFIX} teto de analise: ${afterFilter1.length} → ${totalCap} artigos (${afterFilter1.length - totalCap} cortados, ${cortadosDentroDaJanela} deles dentro da janela)`);
     }
 
     // STAGE 4: Content Fetch
@@ -333,21 +347,20 @@ async function collectManualSearchUrls(
   params: { estado: string; cidades: string[]; periodoDias: number; tipoCrime?: string },
   logPrefix: string,
   webEnabled: boolean,
-): Promise<{ searchResults: Array<{ url: string; title: string; snippet: string }>; sourceTypeMap: Map<string, string> }> {
+): Promise<{ searchResults: SearchResult[]; sourceTypeMap: Map<string, string> }> {
   const { estado, cidades, periodoDias, tipoCrime } = params;
   const sourceTypeMap = new Map<string, string>();
-  const allResults: Array<{ url: string; title: string; snippet: string }> = [];
+  const allResults: SearchResult[] = [];
   const seenUrls = new Set<string>();
+  const newsMax = newsMaxPorQuery(periodoDias);
 
-  const dateRestrict = periodoDias <= 1 ? 'd1'
-    : periodoDias <= 7 ? 'd7'
-    : periodoDias <= 30 ? 'd30'
-    : periodoDias <= 60 ? 'd60'
-    : `d${periodoDias}`;
+  // Sem arredondar para faixa: uma busca de 45 dias virava `d60` e paginava 15
+  // dias a mais do que o pedido. O periodo e livre, o dateRestrict acompanha.
+  const dateRestrict = `d${periodoDias}`;
 
   // 1 + 2 em PARALELO por cidade: Web Top100 (volume) + News paginado (qualidade)
   const cityPromises = cidades.map(async (cidade) => {
-    const cityResults: Array<{ url: string; title: string; snippet: string; source: string }> = [];
+    const cityResults: Array<SearchResult & { source: string }> = [];
 
     // Queries curtas e SEM o estado — ver o cabecalho de queryTemplates.ts para
     // as medicoes. Resumo: `polícia São José` trouxe materia de 44 minutos atras;
@@ -394,7 +407,7 @@ async function collectManualSearchUrls(
           queries.map((q) =>
             rateLimiter.schedule(config.searchBackend, () =>
               searchProvider.search(q, {
-                maxResults: MANUAL_NEWS_MAX_PER_QUERY,
+                maxResults: newsMax,
                 dateRestrict,
                 searchMode: 'news',
                 pageConcurrency: MANUAL_PAGE_CONCURRENCY,
@@ -406,7 +419,7 @@ async function collectManualSearchUrls(
 
         // Uma query ruim nao pode derrubar as outras — por isso allSettled e nao
         // all. Era o que o try/catch dentro do for garantia antes.
-        const acumulado: Array<{ url: string; title: string; snippet: string }> = [];
+        const acumulado: SearchResult[] = [];
         settled.forEach((s, i) => {
           if (s.status === 'fulfilled') {
             acumulado.push(...s.value);
@@ -443,7 +456,9 @@ async function collectManualSearchUrls(
       if (!seenUrls.has(r.url)) {
         seenUrls.add(r.url);
         sourceTypeMap.set(r.url, r.source);
-        allResults.push({ url: r.url, title: r.title, snippet: r.snippet });
+        // `source` fica de fora (vive no sourceTypeMap); `publishedAt` viaja
+        // junto — e o que permite priorizar a janela antes do teto de analise.
+        allResults.push({ url: r.url, title: r.title, snippet: r.snippet, ...(r.publishedAt ? { publishedAt: r.publishedAt } : {}) });
       }
     }
   }

@@ -204,7 +204,7 @@ export interface Filter2StageResult {
 const FILTER2_CONCURRENCY = 5;
 
 /** Data de N dias atras em YYYY-MM-DD, pra comparar com `data_ocorrencia` sem timezone. */
-function diasAtrasISO(dias: number): string {
+export function diasAtrasISO(dias: number): string {
   const d = new Date();
   d.setDate(d.getDate() - dias);
   return d.toISOString().split('T')[0];

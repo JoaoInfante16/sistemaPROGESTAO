@@ -134,6 +134,76 @@ resolve, é o algoritmo que precisa mudar (ver ROADMAP).
 
 ---
 
+## 2026-08-02 — 8.4: período livre e respeitado ✅ (backend)
+
+Feito **antes da 8.3**, por decisão do João: o dedup perde 26→13, mas o teto de
+coleta estava perdendo **semanas inteiras**. Buraco maior primeiro.
+
+**Medido**, Salvador / 30 dias, mesma query, só mudando o teto de coleta:
+
+| | antes | depois |
+|---|---|---|
+| URLs únicas | 59 | **156** |
+| alcance da coleta | 30/07 (**3 dias**) | 05/07 (**29 de 30 dias**) |
+| passaram no Filter1 | ~68 | 142 |
+
+### Sem degraus — pedido explícito do João
+
+> *"se é possível fazer 1 ano, então o usuário deveria poder escolher o período
+> que quiser, esse período pode ficar preparado pra ficar flexível e não hardcoded"*
+
+A primeira versão que escrevi tinha escada (30/60/90/180/365) e foi refeita. Hoje
+**não existe faixa em lugar nenhum** do caminho: se o usuário pedir 47 dias, 47
+dias tem teto próprio.
+
+Três lugares tinham degrau escondido, todos removidos:
+
+1. teto de coleta — era a constante `20` para qualquer período
+2. teto de análise — eram 3 configs por faixa (`_30d`, `_60d`, `_90d`)
+3. `dateRestrict` — arredondava para cima: 45 dias virava `d60` e paginava 15
+   dias a mais do que o pedido
+
+Ambos os tetos agora são **funções contínuas da raiz do período** — o índice do
+Google rareia conforme se volta no tempo, então dobrar o período não dobra o que
+existe pra achar.
+
+```
+dias | coleta/query | análise | custo/cidade
+  30 |           70 |      50 |  $0,16
+  90 |          110 |      87 |  $0,27
+ 180 |          150 |     122 |  $0,37
+ 365 |          220 |     174 |  $0,53
+```
+
+**Uma alavanca só no admin:** `manual_search_max_results_30d` passa a ser a
+**base** (quantos artigos valem 30 dias) e todo o resto escala dela. `_60d` e
+`_90d` ficaram sem uso — entraram na lista de configs mortas do ROADMAP.
+
+### Prioridade antes do corte
+
+O teto cai depois do Filter1, mas a classificação em baldes só acontece no
+Filter2 — sem ordenar, matéria de oito meses consumia a cota e matava uma do
+período pedido. O `publishedAt` da SERP (já lido para cortar a paginação e antes
+descartado) passa a viajar no `SearchResult` e ordena dentro-da-janela primeiro.
+Quem não tem data **não é penalizado**: não saber não é motivo pra descer na fila.
+
+### Onde o gargalo foi parar
+
+Não sumiu — **mudou de lugar**, e agora está no teto de análise: 142 candidatos
+dentro da janela para uma cota de 50. Isso é escolha de custo, não bug, e é
+ajustável numa config. A diferença é que antes o limite era invisível e mentia
+sobre o período; agora ele é explícito e o log diz quantos cortados estavam
+dentro da janela.
+
+`manualSearchCaps.ts` ficou em módulo próprio **sem efeito colateral**: importar
+o `manualSearchWorker` cria uma Queue do BullMQ, então um script que só quisesse
+consultar os números abria conexão com o Redis e travava. Aconteceu comigo.
+
+⚠️ **Não testado com 365 dias ainda** — o João vai testar no app. A curva está
+dimensionada mas o alcance real de um ano não foi medido.
+
+---
+
 ## 2026-08-02 — 8.2: parar de descartar ✅
 
 Os dois maiores motivos de rejeição do Filter2 (cidade vizinha e data fora da

@@ -74,31 +74,31 @@ João pediu explicitamente para não encostar nele. Criar **função nova**, usa
 pelo `manualSearchWorker`. A antiga fica intacta e o auto-scan segue no caminho
 que já funciona. Mesma regra vale para qualquer outro ponto compartilhado.
 
-### 8.4 — Escada de períodos até 1 ano ⬆️ virou pré-requisito
+### ✅ 8.4 — Período livre e respeitado — FEITO em 02/08 (backend)
 
-30 / 60 / 90 / **180** / **365**. Coletar fundo é barato (~$0,04); o caro é
-analisar (~$0,0025/artigo).
+Feito **antes da 8.3**: o dedup perde 26→13, mas o teto de coleta perdia semanas
+inteiras.
 
-🔴 **Descoberto no teste da 8.2: o período de hoje não é respeitado em capital.**
-`MANUAL_NEWS_MAX_PER_QUERY = 20` é constante e limita a **coleta**. Com `sbd:1`
-ordenando por data, 20 resultados numa capital cobrem uns poucos dias — em
-Salvador, uma busca de 30 dias trouxe até 30/07, **3 dias**. Pedir 30 ou 90
-devolve a mesma coisa. Consequência: o teto de coleta tem de escalar com o
-período, senão o seletor é decorativo e `fora_do_periodo` nasce vazio.
+**Não há escada.** O João pediu período de escolha livre, não faixas fixas — os
+dois tetos viraram funções contínuas da raiz do período, e os três degraus
+escondidos (teto de coleta constante, 3 configs por faixa, `dateRestrict`
+arredondando 45→60) saíram.
 
-- `periodo_dias` em [validation.ts](../backend/src/middleware/validation.ts) **já aceita até 365** (`.max(365)`) — nada a fazer aqui
-- Tetos por período (ajustáveis no admin, sobem menos que proporcionalmente porque o índice do Google rareia para trás):
+- [x] Teto de **coleta** derivado do período — Salvador/30d passou de 3 para **29 dias** de alcance (59 → 156 URLs)
+- [x] Teto de **análise** derivado de uma base única (`manual_search_max_results_30d`), ajustável no admin
+- [x] `publishedAt` da SERP no `SearchResult` + priorização dentro-da-janela antes do corte
+- [x] `manual_search_horizon_days` (365)
+- [ ] **Testar 365 dias de ponta a ponta** — João vai testar no app
 
-| período | teto | ~custo de análise |
-|---|---|---|
-| 30d | 80 | $0,20 |
-| 60d | 80 | $0,20 |
-| 90d | 120 | $0,30 |
-| 180d | 150 | $0,38 |
-| 365d | 200 | $0,50 |
+| dias | coleta/query | análise | custo/cidade |
+|---|---|---|---|
+| 30 | 70 | 50 | $0,16 |
+| 90 | 110 | 87 | $0,27 |
+| 180 | 150 | 122 | $0,37 |
+| 365 | 220 | 174 | $0,53 |
 
-- `manual_search_horizon_days`, default `365`
-- **Ordenar antes do teto:** o teto é aplicado depois do Filter1, mas a classificação em baldes só acontece no Filter2 — sem ordenar, notícia de 8 meses atrás consome a cota e mata uma do período pedido. O `parseSerpDate` já lê a data de publicação no estágio 1 e hoje a descarta; carregá-la em `SearchResult` e priorizar o que está dentro da janela
+**O gargalo mudou de lugar:** agora é o teto de análise (142 candidatos dentro da
+janela para uma cota de 50). É escolha de custo, não bug — sobe numa config.
 
 ### 8.5 — Progresso granular + 409 informativo
 
@@ -115,6 +115,14 @@ período, senão o seletor é decorativo e `fora_do_periodo` nasce vazio.
 Três telas e um card compartilhado com feed e favoritos — merece sessão dedicada.
 
 ### Conceito de UI do João
+
+**Cards ficam** (02/08) — o `NewsCard` compartilhado continua sendo a unidade. O
+layout da seção o João vai desenhar; o backend não pressupõe nada além de
+`results` + `extras`.
+
+**Seletor de período: escolha livre, não botões fixos** (02/08). O backend já
+aceita qualquer inteiro de 1 a 365 e os tetos acompanham sem faixas — então o app
+pode usar slider, campo, calendário, o que a UI pedir. Nada a mudar no servidor.
 
 No feed as notícias já são separadas por data com uma linha divisória no rolamento
 (`_DateHeader`, [feed_screen.dart:278](../mobile-app/lib/features/feed/screens/feed_screen.dart#L278), padrão `Divider — LABEL — Divider`).
@@ -266,7 +274,7 @@ execução real delas é **segunda 03/08** — o "antes/depois" desta fase come�
 - `try/catch` no `queue.add` — se o enfileiramento falhar, marcar `failed` em vez de deixar linha órfã
 - Checar `is_admin` no middleware do admin panel (hoje só checa se há sessão)
 - Timeouts em Jina e OpenAI (Bright Data já tem)
-- Limpar 5 configs mortas (`scan_cron_schedule`, `worker_concurrency`, `worker_max_per_minute`, `scan_lock_ttl_minutes`, `budget_warning_threshold`) — ou ligá-las
+- Limpar 7 configs mortas (`scan_cron_schedule`, `worker_concurrency`, `worker_max_per_minute`, `scan_lock_ttl_minutes`, `budget_warning_threshold`, e desde a 8.4 `manual_search_max_results_60d` e `_90d`) — ou ligá-las
 - `openai` ^4.24.1 → v6; Flutter: `fl_chart` 0.70→1.x, `share_plus` 10→12, `flutter_map` 7→8, `sentry_flutter` 8→9
 - **Renomear "Netrios News" para "SIMEops"** (diretório e repo)
 

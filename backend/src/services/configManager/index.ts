@@ -30,7 +30,12 @@ const DEFAULTS: Record<string, string> = {
   // dataset (que saltou de 17-70s pra 660-978s e travava a busca). Religado ao
   // migrar pra SERP API, medida em 5/5 tentativas: 24-27 resultados em 4-19s.
   manual_search_web_enabled: 'true',
+  // Teto de ARTIGOS ANALISADOS (Jina + GPT, ~$0.0025 cada). O `_30d` e a BASE:
+  // o teto de qualquer outro periodo e derivado dele por raiz quadrada, sem
+  // faixas (ver analiseMaxPorBusca no manualSearchWorker). Uma alavanca so.
   manual_search_max_results_30d: '50',
+  // ⚠️ Sem uso desde a 8.4 — o teto deixou de ser por faixa. Continuam aqui so
+  // porque existem no banco; entram na limpeza de configs mortas do ROADMAP.
   manual_search_max_results_60d: '50',
   manual_search_max_results_90d: '80',
   // Ate quantos dias atras uma noticia fora da janela ainda entra como "fora do

@@ -18,12 +18,14 @@ import { rateLimiter } from '../src/services/rateLimiter';
 import { config } from '../src/config';
 import { buildManualSearchQueries } from '../src/services/search/queryTemplates';
 import { getMetroRegionForCities } from '../src/services/location/metroRegion';
+import { newsMaxPorQuery } from '../src/services/search/manualSearchCaps';
 
 const cidade = process.argv[2] || 'Salvador';
 const estado = process.argv[3] || 'Bahia';
 const periodoDias = parseInt(process.argv[4] || '30', 10);
 const TETO = parseInt(process.argv[5] || '25', 10);
 const HORIZONTE = 365;
+const NEWS_MAX = newsMaxPorQuery(periodoDias);
 
 async function main(): Promise<void> {
   const rejected: RejectedUrl[] = [];
@@ -44,7 +46,7 @@ async function main(): Promise<void> {
     queries.map((q) =>
       rateLimiter.schedule(config.searchBackend, () =>
         searchProvider.search(q, {
-          maxResults: 20, dateRestrict: `d${periodoDias}`, searchMode: 'news',
+          maxResults: NEWS_MAX, dateRestrict: `d${periodoDias}`, searchMode: 'news',
           pageConcurrency: 4,
           location: { city: cidade, state: estado, country: 'BR' },
         }),
@@ -61,7 +63,19 @@ async function main(): Promise<void> {
     }
   });
   const urls = deduplicateResults(brutos);
-  console.log(`\n1) BUSCA .............. ${brutos.length} brutos → ${urls.length} unicos`);
+  console.log(`\n1) BUSCA .............. ${brutos.length} brutos → ${urls.length} unicos (teto ${NEWS_MAX}/query)`);
+
+  // ALCANCE DA COLETA — a pergunta que a 8.4 existe pra responder: a busca chegou
+  // mesmo ao periodo pedido, ou parou uns dias atras e chamou de 30?
+  const datas = urls.map((u) => u.publishedAt).filter((d): d is string => !!d).sort();
+  const janelaInicio = new Date(Date.now() - periodoDias * 86400_000).toISOString().split('T')[0];
+  if (datas.length > 0) {
+    const maisVelha = datas[0];
+    const diasCobertos = Math.round((Date.now() - new Date(maisVelha).getTime()) / 86400_000);
+    const cobriu = maisVelha <= janelaInicio;
+    console.log(`   alcance: ${maisVelha} a ${datas[datas.length - 1]} → ${diasCobertos}d de ${periodoDias}d pedidos ${cobriu ? '✅' : `⚠️ FALTOU (janela comeca em ${janelaInicio})`}`);
+    console.log(`   ${urls.length - datas.length} sem data na SERP`);
+  }
 
   // STAGE 2 — Filter0
   const f0 = runFilter0(urls, true, rejected, LOG);
@@ -71,8 +85,16 @@ async function main(): Promise<void> {
   const f1 = (await runFilter1(f0, rejected, LOG)).passed;
   console.log(`3) FILTER1 (GPT) ...... ${f0.length} → ${f1.length}`);
 
-  const analisar = f1.slice(0, TETO);
-  if (f1.length > TETO) console.log(`   (teto: analisando so ${TETO} de ${f1.length})`);
+  // Ordena dentro-da-janela primeiro, igual ao worker (8.4)
+  const foraDaJanela = (r: { publishedAt?: string }): number =>
+    r.publishedAt && r.publishedAt < janelaInicio ? 1 : 0;
+  const ordenado = [...f1].sort((a, b) => foraDaJanela(a) - foraDaJanela(b));
+
+  const analisar = ordenado.slice(0, TETO);
+  if (ordenado.length > TETO) {
+    const cortadosDentro = ordenado.slice(TETO).filter((r) => foraDaJanela(r) === 0).length;
+    console.log(`   (teto: analisando so ${TETO} de ${ordenado.length} — ${cortadosDentro} cortados estavam dentro da janela)`);
+  }
 
   // STAGE 4 — Jina
   const conteudos = await runContentFetch(analisar, 10, rejected, LOG);

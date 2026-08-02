@@ -8,6 +8,13 @@ export interface SearchResult {
   url: string;
   title: string;
   snippet: string;
+  /**
+   * Data de publicacao lida da SERP (YYYY-MM-DD), quando o Google a informa.
+   * Nao e a data da OCORRENCIA — quem extrai aquela e o Filter2, lendo o texto.
+   * Serve pra ordenar prioridade antes do teto de analise: sem isso, materia de
+   * oito meses atras consome a cota e mata uma do periodo pedido.
+   */
+  publishedAt?: string;
 }
 
 export interface SearchOptions {

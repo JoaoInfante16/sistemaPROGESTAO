@@ -310,27 +310,28 @@ export class BrightDataSERPProvider implements SearchProvider {
   private parseNewsResults(data: SERPResponse): SearchResult[] {
     const results: SearchResult[] = [];
 
+    // A data ja era lida aqui pra cortar a paginacao (dataMaisNova) e depois
+    // jogada fora. Agora viaja junto: e o que permite priorizar quem esta dentro
+    // da janela antes de aplicar o teto de analise.
+    const paraResult = (item: SERPItem): SearchResult => {
+      const d = parseSerpDate(item.date);
+      return {
+        url: item.link!,
+        title: item.title || '',
+        snippet: item.description || item.snippet || item.title || '',
+        ...(d ? { publishedAt: d.toISOString().split('T')[0] } : {}),
+      };
+    };
+
     if (data.news && Array.isArray(data.news)) {
       for (const item of data.news) {
-        if (item.link) {
-          results.push({
-            url: item.link,
-            title: item.title || '',
-            snippet: item.description || item.snippet || item.title || '',
-          });
-        }
+        if (item.link) results.push(paraResult(item));
       }
     }
 
     if (results.length === 0 && data.organic && Array.isArray(data.organic)) {
       for (const item of data.organic) {
-        if (item.link) {
-          results.push({
-            url: item.link,
-            title: item.title || '',
-            snippet: item.description || item.snippet || item.title || '',
-          });
-        }
+        if (item.link) results.push(paraResult(item));
       }
     }
 
