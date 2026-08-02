@@ -62,6 +62,12 @@ export async function getSearchMapPointsRaw(searchId: string): Promise<MapPointR
     const items = (row.results as Array<Record<string, unknown>> | null) || [];
     for (const r of items) {
       if ((r.natureza as string) === 'estatistica') continue;
+      // Extras da 8.2 ficam fora do radar. Cidade vizinha e o caso grave: o
+      // geocode roda contra a cidade PESQUISADA (buildMapPoints passa `cidade`
+      // da requisicao, nao a do item), entao um bairro de Camacari viraria pino
+      // dentro de Salvador. Fora do periodo sai junto porque o mapa segue o
+      // recorte do relatorio.
+      if (r.fora_do_periodo || r.cidade_vizinha) continue;
       points.push({
         id: (r.id as string) || (r.url as string) || `${points.length}`,
         tipo_crime: r.tipo_crime as TipoCrime,
@@ -290,7 +296,17 @@ export async function getSearchResultsAnalytics(searchId: string): Promise<Searc
   const allResults: Array<Record<string, unknown>> = [];
   for (const row of resultRows || []) {
     const items = row.results as Array<Record<string, unknown>> | null;
-    if (items) allResults.push(...items);
+    if (!items) continue;
+    // Desde a 8.2 a mesma linha guarda tambem cidade vizinha e materia fora da
+    // janela, marcadas. O relatorio e do periodo e da cidade que o usuario pediu
+    // — deixar os extras entrarem aqui mudaria donut, ranking de bairro e
+    // tendencia sem ninguem pedir. Filtrar na leitura mantem o relatorio honesto.
+    // (Quando o app ganhar o recorte por periodo/regiao, este filtro vira
+    // parametro — ver Fase 10 no ROADMAP.)
+    for (const item of items) {
+      if (item.fora_do_periodo || item.cidade_vizinha) continue;
+      allResults.push(item);
+    }
   }
 
   // Aggregate (estatisticas nao entram nos totais de ocorrencia — sao indicadores separados)

@@ -102,8 +102,27 @@ router.get(
   requireSearchPermission,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const results = await db.getSearchResults(req.params.id);
-      res.json({ results });
+      const todos = (await db.getSearchResults(req.params.id)) as Array<Record<string, unknown>>;
+
+      // CONTRATO RETROCOMPATIVEL (8.2) — nao mexer sem olhar o app.
+      //
+      // O Flutter le `body['results']` como a lista da tela. Se os extras
+      // entrassem ai, o APK que ja esta na mao do cliente passaria a exibir
+      // cidade vizinha e materia velha misturadas no meio, e a conta-las nas
+      // estatisticas. Entao `results` continua sendo SO o principal, identico ao
+      // de antes, e o que a 8.2 acrescentou vai pendurado em `extras`.
+      //
+      // Cada item aparece em exatamente um lugar. Quem e vizinha E velha conta
+      // como vizinha — os dois sinalizadores viajam no proprio item, entao o app
+      // sabe a verdade completa de qualquer forma.
+      const results = todos.filter((r) => !r.fora_do_periodo && !r.cidade_vizinha);
+      const regiao = todos.filter((r) => r.cidade_vizinha);
+      const foraDoPeriodo = todos.filter((r) => r.fora_do_periodo && !r.cidade_vizinha);
+
+      res.json({
+        results,
+        extras: { regiao, fora_do_periodo: foraDoPeriodo },
+      });
     } catch (error) {
       logger.error('[ManualSearch] Results error:', error);
       res.status(500).json({ error: 'Failed to get results' });

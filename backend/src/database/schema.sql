@@ -228,7 +228,8 @@ INSERT INTO system_config (key, value, description, category, value_type) VALUES
   -- Busca manual por período
   ('manual_search_max_results_30d', '50', 'URLs por query na busca manual — 30 dias', 'pipeline', 'number'),
   ('manual_search_max_results_60d', '50', 'URLs por query na busca manual — 60 dias', 'pipeline', 'number'),
-  ('manual_search_max_results_90d', '80', 'URLs por query na busca manual — 90 dias', 'pipeline', 'number');
+  ('manual_search_max_results_90d', '80', 'URLs por query na busca manual — 90 dias', 'pipeline', 'number'),
+  ('manual_search_horizon_days', '365', 'Ate quantos dias atras aceitar noticia como "fora do periodo" em vez de descartar', 'pipeline', 'number');
 
 -- ============================================
 -- 11. UX: Notícias lidas + Favoritos (FASE 8.5)

@@ -42,16 +42,18 @@ cada bloco é commit próprio, para ter rollback.
 **Medido:** Salvador / 30 dias, 23,7s → **9,0s (2,6x)** com saída idêntica (59 URLs,
 6 requests nos dois). Detalhes no [DEV_LOG](./DEV_LOG.md).
 
-### 8.2 — Parar de descartar (região metropolitana + fora do período)
+### ✅ 8.2 — Parar de descartar — FEITO em 02/08
 
-As duas maiores causas de rejeição do Filter2 são data e cidade vizinha — e as
-duas são informação útil. Salvador descartou Camaçari e Lauro de Freitas.
+- [x] Contrato retrocompatível: `results` só o principal + `extras: { regiao, fora_do_periodo }`
+- [x] Sinalizadores `fora_do_periodo` / `cidade_vizinha` + campo `estado`
+- [x] Classificar em vez de rejeitar — **opt-in `classificar`**, porque o auto-scan chama a mesma função
+- [x] `services/location/metroRegion.ts` — GPT + cache Redis 30d
+- [x] Filtro nos **outros dois** leitores de `search_results` (analytics e map points)
+- [x] Sem migration
 
-- **Contrato retrocompatível primeiro** (é o que torna o resto seguro): a rota mantém `results` com só o balde principal e pendura `extras: { regiao, fora_do_periodo }` ao lado. O app atual lê `body['results']` e **não regride**.
-- Dois sinalizadores no resultado (`fora_do_periodo`, `cidade_vizinha`) + o campo `estado`, hoje descartado na montagem
-- Classificar em vez de rejeitar nos pós-filtros de [pipelineCore.ts](../backend/src/jobs/pipeline/pipelineCore.ts); o embedding passa a ser gerado **depois** da classificação
-- Novo `services/location/metroRegion.ts` — GPT (`gpt-4o-mini`, **nunca** gpt-5-nano) resolve os municípios da região metropolitana, cache no Redis com TTL de 30 dias, uma chamada por busca. Falha → array vazio, comportamento de hoje
-- `search_results.results` é JSONB livre: **sem migration**
+**Medido:** Salvador / 30 dias — 21 principal + **3 extras que antes eram jogados
+fora** (Camaçari ×2, Lauro de Freitas). Feira de Santana seguiu rejeitada, correto.
+Detalhes no [DEV_LOG](./DEV_LOG.md).
 
 ### 8.3 — Dedup em camadas
 
@@ -72,10 +74,17 @@ João pediu explicitamente para não encostar nele. Criar **função nova**, usa
 pelo `manualSearchWorker`. A antiga fica intacta e o auto-scan segue no caminho
 que já funciona. Mesma regra vale para qualquer outro ponto compartilhado.
 
-### 8.4 — Escada de períodos até 1 ano
+### 8.4 — Escada de períodos até 1 ano ⬆️ virou pré-requisito
 
 30 / 60 / 90 / **180** / **365**. Coletar fundo é barato (~$0,04); o caro é
 analisar (~$0,0025/artigo).
+
+🔴 **Descoberto no teste da 8.2: o período de hoje não é respeitado em capital.**
+`MANUAL_NEWS_MAX_PER_QUERY = 20` é constante e limita a **coleta**. Com `sbd:1`
+ordenando por data, 20 resultados numa capital cobrem uns poucos dias — em
+Salvador, uma busca de 30 dias trouxe até 30/07, **3 dias**. Pedir 30 ou 90
+devolve a mesma coisa. Consequência: o teto de coleta tem de escalar com o
+período, senão o seletor é decorativo e `fora_do_periodo` nasce vazio.
 
 - `periodo_dias` em [validation.ts](../backend/src/middleware/validation.ts) **já aceita até 365** (`.max(365)`) — nada a fazer aqui
 - Tetos por período (ajustáveis no admin, sobem menos que proporcionalmente porque o índice do Google rareia para trás):
@@ -241,7 +250,7 @@ por `operation_logs` e notícias salvas por scan. **Sem esse número, nada se me
 ⚠️ Herança a não esquecer: quatro mudanças de 01/08 **já** afetam o auto-scan
 (templates, `sbd:1` + parada de paginação, Filter2 paralelo, sufixo de fila). Estão
 listadas no [DEV_LOG](./DEV_LOG.md), bloco *"Auto-scan: não encostar"*. A primeira
-execução real delas é segunda 04/08 — o "antes/depois" desta fase começa ali.
+execução real delas é **segunda 03/08** — o "antes/depois" desta fase começa ali.
 
 ---
 

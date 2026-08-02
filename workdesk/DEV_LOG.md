@@ -134,6 +134,82 @@ resolve, é o algoritmo que precisa mudar (ver ROADMAP).
 
 ---
 
+## 2026-08-02 — 8.2: parar de descartar ✅
+
+Os dois maiores motivos de rejeição do Filter2 (cidade vizinha e data fora da
+janela) deixam de virar descarte e viram **sinalizador** no resultado.
+
+**Medido** (`scripts/diagnostico-funil.ts "Salvador" "Bahia" 30 30`):
+
+```
+região metropolitana resolvida: 12 municípios (GPT, cacheado 30d)
+PRINCIPAL ............. 21
+EXTRAS — antes eram descartados:
+  região metropolitana .. 3   (Camaçari ×2, Lauro de Freitas)
+  fora do período ....... 0
+```
+
+Feira de Santana (3 matérias) **continuou rejeitada** — não é região
+metropolitana. É o comportamento certo: vizinha não virou "qualquer cidade da BA".
+
+### 🔴 Achado do teste: o período não está sendo respeitado em capital
+
+A notícia mais antiga do principal é de **30/07** — numa busca de **30 dias**.
+Cobriu 3 dias e chamou de 30.
+
+Causa: `MANUAL_NEWS_MAX_PER_QUERY = 20` é constante e limita a **coleta**, não a
+análise. Com `sbd:1` ordenando por data, 20 resultados numa capital não passam de
+uns poucos dias. **Em Salvador, pedir 30 ou 90 dias devolve a mesma coisa.**
+
+Não é regressão da 8.2 (é anterior, e a 8.1 não mexe nisso), e não é bug de
+código — é teto mal dimensionado. É exatamente o que a **8.4** conserta, e sobe
+de "melhoria" para **pré-requisito**: sem isso o seletor de período é decorativo
+em cidade grande, e `fora_do_periodo` nasce vazio porque a coleta nem chega lá.
+
+### O que mudou
+
+1. **`classificar` é opt-in** em `PostFilter2Options`. ⚠️ O auto-scan chama a
+   **mesma** `runFilter2WithEmbedding` passando `postFilter` — sem o opt-in ele
+   passaria a gravar cidade vizinha e notícia velha na tabela `news`, a mesma
+   poluição de escanear `type='state'`. Sem a opção, o caminho é byte a byte o de antes.
+2. **Dois sinalizadores + `estado`** no resultado (`estado` vinha do Filter2 e era
+   descartado na montagem). Booleanos independentes, porque Camaçari de três meses
+   atrás é as duas coisas.
+3. **`metroRegion.ts`** — GPT (`gpt-4o-mini`) + cache no Redis, TTL 30 dias, uma
+   chamada por busca. Cacheia **inclusive lista vazia**. Qualquer falha → lista
+   vazia e a busca segue como antes. Teto de 45 municípios contra alucinação.
+4. **Vizinha ainda exige o estado bater** — sem isso Camaçari/SP entraria como
+   vizinha de Salvador/BA, o mesmo erro de homônima que o filtro existe pra evitar.
+5. **Horizonte** (`manual_search_horizon_days`, 365) é o descarte de verdade.
+
+### Três leitores de `search_results`, não um
+
+O contrato retrocompatível (`results` só o principal + `extras` ao lado) não
+bastava: existem **três** caminhos de leitura, e os outros dois regrediriam calados.
+
+| leitor | o que aconteceria | feito |
+|---|---|---|
+| rota `/results` | extras na lista do APK atual | `results` intacto, extras em `extras` |
+| `getSearchResultsAnalytics` | donut, bairros e tendência contando extras | filtra na leitura |
+| `getSearchMapPointsRaw` | **pino no lugar errado** | filtra na leitura |
+
+O do mapa era o pior: `buildMapPoints` geocodifica contra a cidade **da
+requisição**, não a do item — bairro de Camaçari viraria pino dentro de Salvador.
+
+### Dedup por balde (provisório, e por quê)
+
+`runIntraBatchDedup` elege o líder do cluster por confiança. Deduplicando tudo
+junto, uma notícia principal podia se fundir com uma de cidade vizinha e **sumir**
+do principal. Por balde isso é impossível.
+
+O preço é matéria repetida entre principal e extras — visível só numa seção
+recolhida, e bem menos grave que perder resultado. A **8.3** resolve com a trava
+geo-temporal. 🚫 `runIntraBatchDedup` **não foi alterada** (compartilhada com o auto-scan).
+
+Sem migration: `search_results.results` é JSONB livre.
+
+---
+
 ## 2026-08-02 — 8.1: paralelizar de volta ✅
 
 Desfeita a serialização de 01/08. Ela tinha sido feita com base na suspeita

@@ -45,6 +45,15 @@ export interface ExtractedNews extends NewsExtraction {
   embedding: number[];
   sourceUrl: string;
   sourceType: string;
+  /**
+   * Sinalizadores de balde. Ausentes = resultado principal, que e o caso de
+   * TODO item do auto-scan (ele nao liga a classificacao — ver PostFilter2Options).
+   *
+   * Sao dois booleanos e nao um `bucket` string porque as condicoes sao
+   * independentes: noticia de Camacari de tres meses atras e as duas coisas.
+   */
+  fora_do_periodo?: boolean;
+  cidade_vizinha?: boolean;
 }
 
 export interface ConsolidatedNews extends ExtractedNews {
@@ -56,6 +65,27 @@ export interface PostFilter2Options {
   periodoDias?: number;
   estado?: string;
   cidades?: string[];
+
+  /**
+   * OPT-IN. Ligado, os dois maiores motivos de rejeicao (data fora da janela e
+   * cidade vizinha) deixam de virar descarte e viram sinalizador no resultado.
+   *
+   * ⚠️ NAO ligar no auto-scan. Ele passa `postFilter` com periodoDias/estado/
+   * cidades e grava direto na tabela `news`; classificar ali faria o CRON salvar
+   * cidade vizinha e noticia velha como se fossem da cidade monitorada — a mesma
+   * poluicao de banco que escanear `type='state'` causa. Default (ausente) =
+   * descarta, exatamente como sempre foi.
+   */
+  classificar?: boolean;
+
+  /** Municipios aceitos como vizinhos. So tem efeito com `classificar`. */
+  cidadesRegiao?: string[];
+
+  /**
+   * Ate quantos dias atras aceitar noticia fora da janela. Alem disso, descarta
+   * de verdade. So tem efeito com `classificar`.
+   */
+  horizonteDias?: number;
 }
 
 export interface PipelineStageResult {
@@ -173,6 +203,13 @@ export interface Filter2StageResult {
 // de fato governa a vazao; o pool so precisa ser grande o bastante pra satura-lo.
 const FILTER2_CONCURRENCY = 5;
 
+/** Data de N dias atras em YYYY-MM-DD, pra comparar com `data_ocorrencia` sem timezone. */
+function diasAtrasISO(dias: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - dias);
+  return d.toISOString().split('T')[0];
+}
+
 /** Resultado de um item, resolvido em paralelo e agregado depois em ordem. */
 type ItemFilter2 =
   | { tipo: 'ok'; extraction: ExtractedNews; f2: number; emb: number }
@@ -219,17 +256,32 @@ export async function runFilter2WithEmbedding(
           };
         }
 
+        // Os dois pos-filtros abaixo sao os maiores motivos de descarte da busca
+        // manual — e os dois descartam informacao que o usuario quer ver. Com
+        // `classificar` ligado eles marcam em vez de jogar fora. Sem ele, o
+        // comportamento e byte a byte o de sempre (caminho do auto-scan).
+        const classificar = postFilter?.classificar === true;
+        let foraDoPeriodo = false;
+        let cidadeVizinha = false;
+
         // Post-filter: date range (comparar só YYYY-MM-DD, sem timezone)
         if (postFilter?.periodoDias) {
-          const cutoff = new Date();
-          cutoff.setDate(cutoff.getDate() - postFilter.periodoDias);
-          const cutoffStr = cutoff.toISOString().split('T')[0]; // YYYY-MM-DD
+          const cutoffStr = diasAtrasISO(postFilter.periodoDias);
           if (extracted.data_ocorrencia < cutoffStr) {
-            return {
-              tipo: 'rejeitado', f2: f2tokens,
-              rejeicao: { url: fetched.url, stage: 'filter2_date', reason: `Data antiga: ${extracted.data_ocorrencia}` },
-              log: `filter2 data fora: ${extracted.data_ocorrencia} (cutoff: ${cutoffStr}) → ${fetched.url.substring(0, 80)}`,
-            };
+            // O horizonte e o descarte de verdade: fora da janela ainda interessa,
+            // fora do horizonte nao. Sem horizonte definido, nada e mantido.
+            const horizonteStr = classificar && postFilter.horizonteDias
+              ? diasAtrasISO(postFilter.horizonteDias)
+              : null;
+
+            if (!horizonteStr || extracted.data_ocorrencia < horizonteStr) {
+              return {
+                tipo: 'rejeitado', f2: f2tokens,
+                rejeicao: { url: fetched.url, stage: 'filter2_date', reason: `Data antiga: ${extracted.data_ocorrencia}` },
+                log: `filter2 data fora: ${extracted.data_ocorrencia} (cutoff: ${cutoffStr}) → ${fetched.url.substring(0, 80)}`,
+              };
+            }
+            foraDoPeriodo = true;
           }
         }
 
@@ -247,11 +299,22 @@ export async function runFilter2WithEmbedding(
           const estadoBate = estadoExtraido.length > 0 && estadoExtraido.includes(estadoEsperado);
 
           if (!((cidadeExata || cidadeParcial) && estadoBate)) {
-            return {
-              tipo: 'rejeitado', f2: f2tokens,
-              rejeicao: { url: fetched.url, stage: 'filter2_location', reason: `Local errado: ${extracted.cidade}/${extracted.estado || '?'} (esperado: ${postFilter.estado})` },
-              log: `filter2 cidade/estado fora: ${extracted.cidade}/${extracted.estado || '?'} (esperado: ${postFilter.cidades.join(', ')}, ${postFilter.estado}) → ${fetched.url.substring(0, 80)}`,
-            };
+            // Vizinha ainda exige o estado bater. Sem isso, Camacari/SP entraria
+            // como vizinha de Salvador/BA — o mesmo erro de cidade homonima que
+            // o filtro existe pra evitar.
+            const regiaoLower = (postFilter.cidadesRegiao || []).map(normalizeText);
+            const ehVizinha = classificar && estadoBate && regiaoLower.some(
+              (c) => cidadeExtraida === c || cidadeExtraida.includes(c) || c.includes(cidadeExtraida)
+            );
+
+            if (!ehVizinha) {
+              return {
+                tipo: 'rejeitado', f2: f2tokens,
+                rejeicao: { url: fetched.url, stage: 'filter2_location', reason: `Local errado: ${extracted.cidade}/${extracted.estado || '?'} (esperado: ${postFilter.estado})` },
+                log: `filter2 cidade/estado fora: ${extracted.cidade}/${extracted.estado || '?'} (esperado: ${postFilter.cidades.join(', ')}, ${postFilter.estado}) → ${fetched.url.substring(0, 80)}`,
+              };
+            }
+            cidadeVizinha = true;
           }
         }
 
@@ -270,6 +333,9 @@ export async function runFilter2WithEmbedding(
             embedding: embeddingResult.embedding,
             sourceUrl: fetched.url,
             sourceType: sourceTypeMap?.get(fetched.url) || 'google',
+            // So aparecem quando true — item do auto-scan sai limpo, sem campo novo.
+            ...(foraDoPeriodo ? { fora_do_periodo: true } : {}),
+            ...(cidadeVizinha ? { cidade_vizinha: true } : {}),
           },
         };
       } catch (err) {
@@ -312,7 +378,13 @@ export async function runFilter2WithEmbedding(
     });
   }
 
-  logger.info(`${logPrefix} filter2: ${contents.length} → ${extractions.length} (${contents.length - extractions.length} rejeitadas${erros ? `, ${erros} por erro` : ''}) [filter2: ${filter2Tokens} tokens, embedding: ${embeddingTokens} tokens]`);
+  const nForaPeriodo = extractions.filter((e) => e.fora_do_periodo).length;
+  const nVizinha = extractions.filter((e) => e.cidade_vizinha).length;
+  const baldes = nForaPeriodo || nVizinha
+    ? ` | salvos em vez de descartados: ${nForaPeriodo} fora do periodo, ${nVizinha} de cidade vizinha`
+    : '';
+
+  logger.info(`${logPrefix} filter2: ${contents.length} → ${extractions.length} (${contents.length - extractions.length} rejeitadas${erros ? `, ${erros} por erro` : ''})${baldes} [filter2: ${filter2Tokens} tokens, embedding: ${embeddingTokens} tokens]`);
   return { extractions, tokensUsed: { filter2: filter2Tokens, embedding: embeddingTokens } };
 }
 

@@ -14,6 +14,7 @@ import { rateLimiter } from '../../services/rateLimiter';
 import { configManager } from '../../services/configManager';
 import { sendPushToUser } from '../../services/notifications/pushService';
 import { buildManualSearchQueries } from '../../services/search/queryTemplates';
+import { getMetroRegionForCities } from '../../services/location/metroRegion';
 import { queueName } from '../queueNames';
 import {
   runFilter0,
@@ -99,6 +100,9 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       filter2MaxContentChars: await configManager.getNumber('filter2_max_content_chars'),
       filter0RegexEnabled: await configManager.getBoolean('filter0_regex_enabled'),
       dedupSimilarityThreshold: await configManager.getNumber('dedup_similarity_threshold'),
+      // Ate onde "fora do periodo" ainda vale a pena. Quem protege o orcamento e
+      // o teto de analise, nao o horizonte — por isso ele pode ser generoso.
+      horizonteDias: await configManager.getNumber('manual_search_horizon_days'),
     };
 
     // STAGE 1: Collect URLs
@@ -197,6 +201,13 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       details: { searchId, stage: 'fetch', count: validContents.length, tokensUsed: jinaTokensTotal },
     });
 
+    // Regiao metropolitana — uma chamada de GPT por busca, cacheada 30 dias no
+    // Redis. Falha aqui devolve lista vazia e a busca segue como antes da 8.2.
+    const cidadesRegiao = await getMetroRegionForCities(cidades, estado);
+    if (cidadesRegiao.length > 0) {
+      logger.info(`${LOG_PREFIX} regiao metropolitana: ${cidadesRegiao.length} municipios (${cidadesRegiao.slice(0, 6).join(', ')}${cidadesRegiao.length > 6 ? '...' : ''})`);
+    }
+
     // STAGE 5: Filter2 + Embedding (com filtro de cidade/estado e data)
     if (await isCancelled(searchId)) { logger.info(`${LOG_PREFIX} cancelled before stage 5`); return; }
     await db.updateSearchProgress(searchId, { stage: 'analyzing', stage_num: 5, total_stages: 7, details: `${validContents.length} conteudos` });
@@ -204,7 +215,9 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       validContents,
       { maxContentChars: pipelineConfig.filter2MaxContentChars, minConfidence: pipelineConfig.filter2ConfidenceMin },
       rejectedUrls, LOG_PREFIX,
-      { periodoDias, estado, cidades },
+      // `classificar` so aqui: o auto-scan chama a MESMA funcao sem esta opcao e
+      // segue descartando igual a sempre.
+      { periodoDias, estado, cidades, classificar: true, cidadesRegiao, horizonteDias: pipelineConfig.horizonteDias },
       sourceTypeMap,
     );
     const extractions = filter2Result.extractions;
@@ -216,10 +229,29 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       details: { searchId, stage: 'filter2+embedding', analyzed: validContents.length, extracted: extractions.length, tokensUsed: f2tokens },
     });
 
-    // STAGE 6: Dedup intra-batch
+    // STAGE 6: Dedup intra-batch, POR BALDE
+    //
+    // Deduplicar tudo junto seria perigoso: o `runIntraBatchDedup` elege o lider
+    // do cluster por confianca, entao uma noticia principal poderia se fundir com
+    // uma de cidade vizinha e SUMIR do resultado principal, virando "extra". Por
+    // balde, isso e impossivel. O preco e uma materia repetida entre o principal
+    // e os extras — visivel so numa secao recolhida, e bem menos grave que perder
+    // resultado. A 8.3 resolve de verdade, com trava geo-temporal.
+    //
+    // 🚫 `runIntraBatchDedup` NAO foi alterada — ela e compartilhada com o auto-scan.
     if (await isCancelled(searchId)) { logger.info(`${LOG_PREFIX} cancelled before stage 6`); return; }
     await db.updateSearchProgress(searchId, { stage: 'dedup', stage_num: 6, total_stages: 7, details: `Consolidando ${extractions.length} resultados` });
-    const { consolidated } = runIntraBatchDedup(extractions, LOG_PREFIX, pipelineConfig.dedupSimilarityThreshold);
+
+    const baldes = new Map<string, typeof extractions>();
+    for (const e of extractions) {
+      const chave = `${e.cidade_vizinha ? 'v' : '-'}${e.fora_do_periodo ? 'f' : '-'}`;
+      const atual = baldes.get(chave);
+      if (atual) atual.push(e); else baldes.set(chave, [e]);
+    }
+
+    const consolidated = [...baldes.entries()].flatMap(([chave, itens]) =>
+      runIntraBatchDedup(itens, `${LOG_PREFIX} [${chave}]`, pipelineConfig.dedupSimilarityThreshold).consolidated
+    );
 
     // Build final results with sources array
     const finalResults = consolidated.map(news => ({
@@ -227,6 +259,9 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       natureza: news.natureza,
       categoria_grupo: news.categoria_grupo,
       cidade: news.cidade,
+      // `estado` vinha do Filter2 e era descartado aqui. Sem ele o app nao tem
+      // como mostrar a UF no card de cidade vizinha.
+      estado: news.estado ?? null,
       bairro: news.bairro ?? null,
       rua: news.rua ?? null,
       data_ocorrencia: news.data_ocorrencia,
@@ -235,7 +270,15 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       source_url: news.sourceUrl,
       source_type: news.sourceType,
       sources: news.sources,
+      // Ausentes quando falsos — resultado principal continua com o shape de antes.
+      ...(news.fora_do_periodo ? { fora_do_periodo: true } : {}),
+      ...(news.cidade_vizinha ? { cidade_vizinha: true } : {}),
     }));
+
+    // `total_results` conta SO o principal: alimenta o push, o historico e o
+    // contador da tela. Extra e bonus, nao pode inflar o numero que o cliente le.
+    const totalPrincipal = finalResults.filter((r) => !r.fora_do_periodo && !r.cidade_vizinha).length;
+    const totalExtras = finalResults.length - totalPrincipal;
 
     logger.info(`${LOG_PREFIX} total rejeitadas: ${rejectedUrls.length} | motivos: ${JSON.stringify(rejectedUrls.map(r => `${r.stage}:${r.reason}`))}`);
 
@@ -246,10 +289,10 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       await db.insertSearchResults(searchId, finalResults, 0);
     }
 
-    await db.updateSearchStatus(searchId, 'completed', finalResults.length);
+    await db.updateSearchStatus(searchId, 'completed', totalPrincipal);
 
     const duration = Date.now() - startTime;
-    logger.info(`${LOG_PREFIX} completed: ${finalResults.length} results in ${duration}ms`);
+    logger.info(`${LOG_PREFIX} completed: ${totalPrincipal} results${totalExtras ? ` (+${totalExtras} extras)` : ''} in ${duration}ms`);
 
     // Push notification
     try {
@@ -257,7 +300,7 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       logger.info(`${LOG_PREFIX} Sending push to user ${job.data.userId}`);
       const pushResult = await sendPushToUser(
         job.data.userId,
-        `Busca concluída — ${finalResults.length} resultado${finalResults.length !== 1 ? 's' : ''}`,
+        `Busca concluída — ${totalPrincipal} resultado${totalPrincipal !== 1 ? 's' : ''}`,
         `${cidadesLabel} (${estado}) · ${tipoCrime || 'todos os crimes'} · ${periodoDias} dias`,
         { search_id: searchId, type: 'manual_search_completed' }
       );
