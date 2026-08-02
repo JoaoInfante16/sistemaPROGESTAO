@@ -201,6 +201,50 @@ auto-scan e custo do mês. Verificado em 02/08:
 
 ---
 
+## 2026-08-02 — estágio 4: timeouts e o dobro da vazão
+
+### Correção de premissa, registrada porque a doc estava errada
+
+O [BACKEND_PENDENTE](./BACKEND_PENDENTE.md) dizia que sem timeout *"o usuário vê
+'estágio 4 de 7' parado sem nada acontecendo"*. **O João mediu e não é isso:** no
+último teste o estágio 4 andou normalmente, levando ~2 min.
+
+Isso muda o enquadramento do timeout — ele é **defesa preventiva**, não conserto
+de sintoma observado. O risco real continua de pé: sem `AbortSignal.timeout`, uma
+requisição pendurada ocupa uma vaga do pool **para sempre**, e duas URLs mortas
+comeriam 40% da vazão até o fim da busca. É a mesma falha que o `SERP_TIMEOUT_MS`
+existe para evitar — e lá ela já aconteceu de verdade.
+
+20s no Jina (o normal é ~3s), 30s no fallback do Web Unlocker (mais lento por
+natureza — ele só entra quando o Jina já falhou). Timeout **não** cai no
+fallback de propósito: se o Jina levou 20s, o Unlocker levaria mais.
+
+### O que de fato encurta os 2 minutos
+
+O pool estava em **5** enquanto `api_rate_limits.jina.max_concurrent` já era
+**10** (conferido no banco). O gargalo era o pool, não o rate limiter — metade da
+vazão já permitida estava parada na mesa.
+
+`manual_search_fetch_concurrency` (default 10), chave **separada** da
+`content_fetch_concurrency`: aquela é lida também pelo `scanPipeline` e vive no
+banco compartilhado, então subi-la mexeria no auto-scan e na produção junto.
+Mesmo padrão da `manual_search_analysis_cap`.
+
+### OpenAI: o timeout default era de 10 minutos
+
+Havia `new OpenAI(...)` em **seis** arquivos, cada um se configurando sozinho —
+e o default do SDK é `timeout: 600000` (10 min) com `maxRetries: 2`, ou seja,
+**30 minutos** de pior caso numa busca que o app abandona em 10.
+
+Client único em `services/openaiClient.ts`, com 60s. Centralizar é o que garante
+que a próxima opção não entre em cinco arquivos e falte no sexto — que é
+exatamente o que tinha acontecido com o timeout. `maxRetries` fica no default: o
+problema nunca foi repetir, foi o tempo de cada tentativa.
+
+Regressões depois da troca: dedup 10/10, assuntos 10/10, cidade 21/21.
+
+---
+
 ## 2026-08-02 — assuntos configuráveis: a alavanca que faz 90 dias render mais que 30
 
 Pergunta do João: *"você tem certeza que esse teto é do Google e existe por

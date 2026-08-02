@@ -11,13 +11,12 @@
 //  - Busca manual: direto no /analytics/report (sem cache separado; cacheia no report)
 // Custo registrado em budget_tracking com details.stage='executive'.
 
-import OpenAI from 'openai';
+import { openai } from '../openaiClient';
 import { config } from '../../config';
 import { logger } from '../../middleware/logger';
 import { db } from '../../database/queries';
 import type { ExecutiveData } from '../../database/queries';
 
-const openai = new OpenAI({ apiKey: config.openaiApiKey });
 
 export interface StatisticInput {
   resumo: string;

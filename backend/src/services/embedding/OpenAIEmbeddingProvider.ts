@@ -1,13 +1,12 @@
-import OpenAI from 'openai';
 import { EmbeddingProvider, EmbeddingResult } from './EmbeddingProvider';
 import { config } from '../../config';
+import { openai } from '../openaiClient';
 
 export class OpenAIEmbeddingProvider implements EmbeddingProvider {
-  private client: OpenAI;
+  private client = openai;
   private model: string;
 
   constructor() {
-    this.client = new OpenAI({ apiKey: config.openaiApiKey });
     this.model = config.openaiEmbeddingModel;
   }
 

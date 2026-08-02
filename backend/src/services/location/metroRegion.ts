@@ -12,13 +12,11 @@
 // JSON invalido, Redis mudo) devolve lista vazia e a busca segue exatamente como
 // se a feature nao existisse.
 
-import OpenAI from 'openai';
+import { openai } from '../openaiClient';
 import { redis } from '../../config/redis';
-import { config } from '../../config';
 import { logger } from '../../middleware/logger';
 import { normalizeText } from '../../utils/helpers';
 
-const openai = new OpenAI({ apiKey: config.openaiApiKey });
 
 // 30 dias. Regiao metropolitana muda por lei estadual, na ordem de anos.
 const TTL_SEGUNDOS = 30 * 24 * 60 * 60;

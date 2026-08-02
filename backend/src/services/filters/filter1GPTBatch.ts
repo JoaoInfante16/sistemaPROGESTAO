@@ -5,11 +5,10 @@
 // Economia: ~90% em API calls, ~84% em latência.
 
 import * as Sentry from '@sentry/node';
-import OpenAI from 'openai';
+import { openai } from '../openaiClient';
 import { config } from '../../config';
 import { logger } from '../../middleware/logger';
 
-const openai = new OpenAI({ apiKey: config.openaiApiKey });
 
 /**
  * Analisa TODOS os snippets em uma única chamada GPT.

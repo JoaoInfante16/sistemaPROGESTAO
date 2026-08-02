@@ -39,6 +39,19 @@ export const DEFAULTS: Record<string, string> = {
   dedup_gpt_confirm_enabled: 'false',
   filter2_confidence_min: '0.7',
   content_fetch_concurrency: '5',
+  // Quantos artigos a BUSCA MANUAL baixa em paralelo no estágio 4.
+  //
+  // Chave separada da `content_fetch_concurrency` de propósito: aquela é lida
+  // também pelo `scanPipeline` e vive no banco compartilhado, então subi-la
+  // mudaria o auto-scan e a produção junto. Mesmo padrão da
+  // `manual_search_analysis_cap`.
+  //
+  // 10 casa com `api_rate_limits.jina.max_concurrent`, que já é 10 (conferido no
+  // banco em 02/08) — o pool em 5 era o gargalo, não o rate limiter, e usava
+  // metade da vazão já permitida. Medido pelo João no mesmo dia: o estágio 4 de
+  // uma busca real levou ~2 min, andando normalmente. Isso é o que esse número
+  // encurta.
+  manual_search_fetch_concurrency: '10',
   search_max_results: '15',
   // Ramo web (indice organico) da busca manual — portais locais, prefeitura,
   // comunicado de policia. Conteudo que NAO aparece no indice de noticias.

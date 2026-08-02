@@ -5,6 +5,22 @@ import { logger } from '../../middleware/logger';
 
 const BRIGHTDATA_API_URL = 'https://api.brightdata.com/request';
 
+// Defesa preventiva, NAO conserto de sintoma observado: no teste do Joao em
+// 02/08 o estagio 4 andou normalmente, levando ~2 min. O risco e outro — sem
+// timeout, uma requisicao pendurada ocupa uma vaga do pool PARA SEMPRE, e o
+// pool tem 5 vagas. Duas URLs mortas comeriam 40% da vazao do estagio ate o
+// fim da busca. E a mesma falha que o SERP_TIMEOUT_MS do provider da SERP
+// existe pra evitar, e la ela ja aconteceu.
+//
+// 20s no Jina: o normal e ~3s por artigo; passou muito disso, o artigo nao vem.
+// 30s no fallback: o Web Unlocker e mais lento por natureza (ele existe pra
+// URLs que o Jina ja nao conseguiu — SSL quebrado, .gov.br).
+//
+// Timeout NAO cai no fallback do Bright Data de proposito (o catch do fetch()
+// so desvia em 422/503/SSL/403): se o Jina levou 20s, o Unlocker levaria mais.
+const JINA_TIMEOUT_MS = 20_000;
+const UNLOCKER_TIMEOUT_MS = 30_000;
+
 export class JinaContentFetcher implements ContentFetcher {
   private apiKey: string;
 
@@ -38,6 +54,7 @@ export class JinaContentFetcher implements ContentFetcher {
         Authorization: `Bearer ${this.apiKey}`,
         'X-Return-Format': 'text',
       },
+      signal: AbortSignal.timeout(JINA_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -106,6 +123,7 @@ export class JinaContentFetcher implements ContentFetcher {
         url,
         format: 'raw',
       }),
+      signal: AbortSignal.timeout(UNLOCKER_TIMEOUT_MS),
     });
 
     if (!response.ok) {

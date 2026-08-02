@@ -5,14 +5,13 @@
 // Camada 2: Embedding Similarity (cosine, <200ms, 92% precisão)
 // Camada 3: GPT Confirmation (caro, 98% precisão, só ~5% dos casos)
 
-import OpenAI from 'openai';
+import { openai } from '../openaiClient';
 import { config } from '../../config';
 import { logger } from '../../middleware/logger';
 import { db } from '../../database/queries';
 import { cosineSimilarity } from '../../utils/helpers';
 import { NewsExtraction } from '../../utils/types';
 
-const openai = new OpenAI({ apiKey: config.openaiApiKey });
 
 const DEFAULT_SIMILARITY_THRESHOLD = 0.85;
 

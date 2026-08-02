@@ -157,7 +157,10 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     const base30d = await configManager.getNumber('manual_search_analysis_cap');
     const maxArticlesToAnalyze = analiseMaxPorBusca(periodoDias, base30d);
     const pipelineConfig = {
-      contentFetchConcurrency: await configManager.getNumber('content_fetch_concurrency'),
+      // Chave PRÓPRIA da busca manual (default 10). A `content_fetch_concurrency`
+      // (5) é lida também pelo scanPipeline e mora no banco compartilhado —
+      // subir aquela mexeria no auto-scan e na produção junto.
+      contentFetchConcurrency: await configManager.getNumber('manual_search_fetch_concurrency'),
       filter2ConfidenceMin: await configManager.getNumber('filter2_confidence_min'),
       filter2MaxContentChars: await configManager.getNumber('filter2_max_content_chars'),
       filter0RegexEnabled: await configManager.getBoolean('filter0_regex_enabled'),

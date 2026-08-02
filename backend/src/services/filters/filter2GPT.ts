@@ -5,12 +5,11 @@
 // Recebe conteúdo completo da Jina, retorna NewsExtraction ou null.
 
 import * as Sentry from '@sentry/node';
-import OpenAI from 'openai';
+import { openai } from '../openaiClient';
 import { config } from '../../config';
 import { logger } from '../../middleware/logger';
 import { NewsExtraction, TipoCrime, TIPO_CRIME_GRUPO, Natureza } from '../../utils/types';
 
-const openai = new OpenAI({ apiKey: config.openaiApiKey });
 
 export interface Filter2Result {
   extraction: NewsExtraction | null;
