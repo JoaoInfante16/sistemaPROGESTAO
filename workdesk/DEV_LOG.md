@@ -121,6 +121,28 @@ Verificado em 02/08: migrations 019, 020, 021b, 022 aplicadas; **021, 023, 024 e
 
 ---
 
+## 2026-08-02 — Relatório web: o mapa entra no PDF (decisão do João)
+
+O PDF real sempre foi `window.print()` na página pública do relatório — e o
+mapa estava `print:hidden`, então o item mais visual nunca chegava no
+documento que o cliente compartilha. Decisão do João: **o mapa vai no PDF**.
+
+- **Captura no clique de "Baixar PDF"**: html2canvas (já instalado) fotografa
+  só o container do mapa (`useCORS` — o TileLayer já tinha
+  `crossOrigin="anonymous"` de um plano antigo abandonado) e injeta um
+  `<img>` print-only; aí sim `window.print()`. Falhou a captura → fallback
+  textual ("N ocorrências geolocalizadas — mapa na versão web"), o PDF nunca
+  quebra inteiro. Botão mostra "Preparando…" durante a captura.
+- **`break-inside-avoid` em todas as seções** — gráfico não é mais fatiado no
+  meio da quebra de página.
+- **`pdf-export.ts` deletado** — html2canvas+jsPDF do dashboard inteiro,
+  exportado e nunca importado. `jspdf` desinstalado junto (18 pacotes a
+  menos); html2canvas fica, é o motor da captura do mapa.
+
+`npx tsc --noEmit` limpo.
+
+---
+
 ## 2026-08-02 — Mapa: os pontos ganham voz (tap, legenda, enquadramento)
 
 `CrimeRadarMap` (city_detail + report):

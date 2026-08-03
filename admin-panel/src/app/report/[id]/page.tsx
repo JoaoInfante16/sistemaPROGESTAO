@@ -17,6 +17,10 @@ export default function PublicReportPage() {
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Snapshot do mapa capturado no clique de "Baixar PDF" — o mapa interativo
+  // não imprime bem, mas o João decidiu que o mapa VAI no PDF (02/08).
+  const [mapSnapshot, setMapSnapshot] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     async function loadReport() {
@@ -32,11 +36,33 @@ export default function PublicReportPage() {
     loadReport();
   }, [reportId]);
 
-  // window.print() usa o "Salvar como PDF" nativo do browser — 100% confiavel,
-  // sem as armadilhas do html2canvas (canvas tainted por tiles de mapa, fontes
-  // externas, SVG quirks, etc.). CSS @media print no globals/layout cuida de
-  // esconder top-bar. User seleciona "Salvar como PDF" como destino.
-  function handleExportPDF() {
+  // window.print() usa o "Salvar como PDF" nativo do browser — confiável.
+  // O mapa interativo (Leaflet) não imprime; antes do print, captura-se só o
+  // container do mapa com html2canvas (tiles da CartoCDN têm CORS — o
+  // TileLayer já está com crossOrigin="anonymous") e injeta-se um <img>
+  // print-only. Se a captura falhar, o PDF sai com fallback textual em vez
+  // de quebrar inteiro.
+  async function handleExportPDF() {
+    setExporting(true);
+    try {
+      const el = document.getElementById('map-capture');
+      if (el) {
+        const html2canvas = (await import('html2canvas')).default;
+        const canvas = await html2canvas(el, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: false,
+          logging: false,
+        });
+        setMapSnapshot(canvas.toDataURL('image/png'));
+        // dá um tick pro <img> print-only montar antes do print
+        await new Promise(r => setTimeout(r, 200));
+      }
+    } catch {
+      setMapSnapshot(null); // cai no fallback textual print-only
+    } finally {
+      setExporting(false);
+    }
     window.print();
   }
 
@@ -89,10 +115,11 @@ export default function PublicReportPage() {
         </div>
         <button
           onClick={handleExportPDF}
-          className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium"
+          disabled={exporting}
+          className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium disabled:opacity-60"
         >
           <Download className="h-4 w-4" />
-          Baixar PDF
+          {exporting ? 'Preparando…' : 'Baixar PDF'}
         </button>
       </div>
 
@@ -114,7 +141,7 @@ export default function PublicReportPage() {
         </div>
 
         {/* 1. Resumo - 3 cards */}
-        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6 break-inside-avoid">
           <SummaryCard label="Total de Ocorrências" value={String(rd.summary.totalCrimes)} />
           <SummaryCard label="Bairros Afetados" value={String(rd.topBairros?.length || 0)} />
           <SummaryCard label="Tipos de Crime" value={String(rd.byCrimeType?.length || 0)} />
@@ -122,24 +149,40 @@ export default function PublicReportPage() {
 
         {/* 2. Donut por CATEGORIA */}
         <div className="grid lg:grid-cols-2 gap-6 mb-8">
-          <div className="rounded-xl border p-4 sm:p-6">
+          <div className="rounded-xl border p-4 sm:p-6 break-inside-avoid">
             <h2 className="text-lg font-semibold mb-4">Distribuição por Categoria</h2>
             <CrimePieChart byCategory={byCategory} sourceNote={sourceNoteText} />
           </div>
         </div>
 
-        {/* 3. Radar de Ocorrências — print:hidden porque mapa interativo vira
-            imagem estática borrada no PDF. Quem abrir o link web vê normal. */}
+        {/* 3. Radar de Ocorrências — interativo na web; no PDF entra o
+            snapshot capturado no clique de "Baixar PDF" (fallback textual
+            se a captura falhar). */}
         {mapPoints.length > 0 && (
-          <div className="mb-8 print:hidden">
+          <div className="mb-8 break-inside-avoid">
             <h2 className="text-lg font-semibold mb-4">Mapa de Ocorrências</h2>
-            <CrimeRadarMap points={mapPoints} cidade={rd.cidade} />
+            <div id="map-capture" className="print:hidden">
+              <CrimeRadarMap points={mapPoints} cidade={rd.cidade} />
+            </div>
+            {mapSnapshot ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={mapSnapshot}
+                alt={`Mapa de ocorrências — ${rd.cidade}`}
+                className="hidden print:block w-full rounded-xl border"
+              />
+            ) : (
+              <p className="hidden print:block text-sm text-muted-foreground">
+                {mapPoints.length} ocorrências geolocalizadas — mapa interativo
+                disponível na versão web deste relatório.
+              </p>
+            )}
           </div>
         )}
 
         {/* 4. Bairros ranking */}
         {rd.topBairros && rd.topBairros.length > 0 && (
-          <div className="rounded-xl border p-6 mb-8">
+          <div className="rounded-xl border p-6 mb-8 break-inside-avoid">
             <h2 className="text-lg font-semibold mb-4">Bairros com Maior Incidência</h2>
             <div className="space-y-2">
               {rd.topBairros.map((b, i) => (
@@ -168,7 +211,7 @@ export default function PublicReportPage() {
             Estatísticas individuais ficam condensadas no resumo_complementar do
             Executive — evita poluir o relatório com cards longos de texto. */}
         {hasIndicadoresRegiao && (
-          <div className="rounded-xl border p-6 mb-8 space-y-6">
+          <div className="rounded-xl border p-6 mb-8 space-y-6 break-inside-avoid">
             <h2 className="text-lg font-semibold">Indicadores da Região</h2>
 
             {executive && <ExecutiveSection data={executive} />}
@@ -183,7 +226,7 @@ export default function PublicReportPage() {
         )}
 
         {/* 6. Fontes */}
-        <div className="rounded-xl border p-6">
+        <div className="rounded-xl border p-6 break-inside-avoid">
           <h2 className="text-lg font-semibold mb-4">Fontes Analisadas</h2>
           <SourcesSection sources={sources} sourcesOficial={sourcesOficial} sourcesMedia={sourcesMedia} />
         </div>
