@@ -995,7 +995,8 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            const Icon(Icons.error_outline,
+                size: 64, color: SIMEopsColors.alert),
             const SizedBox(height: 16),
             const Text('A busca falhou'),
             const SizedBox(height: 16),

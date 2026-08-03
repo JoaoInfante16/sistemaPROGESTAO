@@ -18,6 +18,7 @@ import 'features/dashboard/screens/city_detail_screen.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/change_password_screen.dart';
 import 'features/feed/screens/main_screen.dart';
+import 'features/search/screens/manual_search_screen.dart';
 
 /// Navigator key global pra push service navegar sem BuildContext
 final navigatorKey = GlobalKey<NavigatorState>();
@@ -202,6 +203,14 @@ class SIMEopsApp extends StatelessWidget {
             final cidade = settings.arguments as String;
             return MaterialPageRoute(
               builder: (_) => _CityRouteWrapper(cidade: cidade),
+            );
+          }
+          // Deep link do push de busca manual: abre o resultado direto
+          // (a tela já sabe retomar/carregar pelo resumeSearchId).
+          if (settings.name == '/search') {
+            final searchId = settings.arguments as String;
+            return MaterialPageRoute(
+              builder: (_) => ManualSearchScreen(resumeSearchId: searchId),
             );
           }
           return null;

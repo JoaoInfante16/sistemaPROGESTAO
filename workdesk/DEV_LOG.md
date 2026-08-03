@@ -121,6 +121,23 @@ Verificado em 02/08: migrations 019, 020, 021b, 022 aplicadas; **021, 023, 024 e
 
 ---
 
+## 2026-08-02 — 9.7: o push abre direto o resultado da busca
+
+O push de conclusão/falha sempre mandou `search_id`
+(`manualSearchWorker.ts` → `{ search_id, type: 'manual_search_*' }`) e o app
+ignorava. Agora `_handleNotificationTap` reconhece `search_id` e navega para
+a rota nova `/search` (padrão da `/city` que já existia), que abre
+`ManualSearchScreen(resumeSearchId: ...)` — a tela já sabia retomar, faltava
+o caminho. Com isso a Fase 9 (9.1 a 9.7) está **toda implementada**; falta o
+teste no device físico contra staging.
+
+QA de cores fechado por grep: `Colors.red` do estado de falha da busca virou
+`alert`. Restam `Colors.*` crus só em telas fora do escopo desta rodada
+(login, settings, history_card, risk/credibility widgets) — anotado no
+ROADMAP como acabamento.
+
+---
+
 ## 2026-08-02 — Relatório web: o mapa entra no PDF (decisão do João)
 
 O PDF real sempre foi `window.print()` na página pública do relatório — e o

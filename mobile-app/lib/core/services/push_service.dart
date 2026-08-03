@@ -95,10 +95,28 @@ class PushService {
   }
 
   void _handleNotificationTap(RemoteMessage message) {
+    // Push de busca manual (concluída ou falha) carrega search_id —
+    // abre direto o resultado, sem navegar pelo histórico na mão.
+    final searchId = message.data['search_id'] as String?;
+    if (searchId != null && searchId.isNotEmpty) {
+      _navigateToSearch(searchId);
+      return;
+    }
+
     final cidade = message.data['cidade'] as String?;
     if (cidade != null && cidade.isNotEmpty) {
       // Import lazily to avoid circular deps
       _navigateToCity(cidade);
+    }
+  }
+
+  void _navigateToSearch(String searchId) {
+    try {
+      final nav = navigatorKey.currentState;
+      if (nav == null) return;
+      nav.pushNamed('/search', arguments: searchId);
+    } catch (e) {
+      debugPrint('[Push] Navigate to search error: $e');
     }
   }
 
