@@ -1,27 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../../core/models/city_overview.dart';
 import '../../../core/theme/simeops_colors.dart';
+import '../../../core/utils/crime_labels.dart';
 
-const crimeLabels = {
-  'roubo_furto': 'Roubo/Furto',
-  'vandalismo': 'Vandalismo',
-  'invasao': 'Invasão',
-  'homicidio': 'Homicídio',
-  'latrocinio': 'Latrocínio',
-  'lesao_corporal': 'Lesão Corporal',
-  'trafico': 'Tráfico',
-  'operacao_policial': 'Op. Policial',
-  'manifestacao': 'Manifestação',
-  'bloqueio_via': 'Bloqueio Via',
-  'estelionato': 'Estelionato',
-  'receptacao': 'Receptação',
-  'crime_ambiental': 'Crime Ambiental',
-  'trabalho_irregular': 'Trab. Irregular',
-  'estatistica': 'Estatística',
-  'outros': 'Outros',
-};
-
-
+// Card de cidade/grupo do dashboard. O CityOverview chega com tendência,
+// crime predominante e última atividade — o card mostra tudo isso como
+// readouts, não só o total (antes metade do modelo era jogada fora).
 class CityCard extends StatelessWidget {
   final CityOverview city;
   final VoidCallback onTap;
@@ -33,6 +18,14 @@ class CityCard extends StatelessWidget {
 
     final n = c.cityCount ?? 0;
     final cityWord = n == 1 ? 'cidade' : 'cidades';
+
+    // Preview dos nomes: "Florianópolis, São José +3"
+    final names = c.cityNames ?? const [];
+    if (names.isNotEmpty) {
+      final preview = names.take(2).join(', ');
+      final extra = names.length - 2;
+      return extra > 0 ? '$preview +$extra' : preview;
+    }
 
     if (c.parentState != null) {
       return '${c.parentState} · $n $cityWord';
@@ -47,87 +40,146 @@ class CityCard extends StatelessWidget {
     return '$n $cityWord';
   }
 
+  // "há 2h" / "há 3d" / "agora" — última ocorrência registrada.
+  String? get _lastActivity {
+    final t = city.lastNewsAt;
+    if (t == null) return null;
+    final diff = DateTime.now().difference(t);
+    if (diff.inMinutes < 60) return 'agora';
+    if (diff.inHours < 24) return 'há ${diff.inHours}h';
+    return 'há ${diff.inDays}d';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final trend = city.trendPercent;
+    final hasTrend = trend != 0;
+    // Mais crime = ruim (alert); menos = bom (official).
+    final trendColor = city.trendUp
+        ? SIMEopsColors.alert
+        : city.trendDown
+            ? SIMEopsColors.official
+            : SIMEopsColors.muted;
+    final trendText = hasTrend
+        ? '${city.trendUp ? '▲' : '▼'} ${trend.abs().toStringAsFixed(0)}%'
+        : '—';
+
+    final topCrime = city.topCrimeType;
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      elevation: city.hasUnread ? 3 : 1,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header: name + badges
+              // Header: ícone + nome + badge de não lidas
               Row(
                 children: [
-                  // City/group icon
                   Icon(
                     city.isGroup ? Icons.layers : Icons.location_city,
                     size: 16,
-                    color: city.isGroup ? SIMEopsColors.teal : Colors.grey[500],
+                    color: city.isGroup
+                        ? SIMEopsColors.teal
+                        : SIMEopsColors.muted.withValues(alpha: 0.7),
                   ),
                   const SizedBox(width: 8),
-                  // Name
                   Expanded(
                     child: Text(
                       city.name,
-                      style: const TextStyle(
+                      style: GoogleFonts.exo2(
                         fontWeight: FontWeight.w700,
                         fontSize: 16,
+                        color: SIMEopsColors.white,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  // Unread badge
                   if (city.hasUnread)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.circular(8),
+                        color: SIMEopsColors.alert.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         '${city.unreadCount} NOVA${city.unreadCount > 1 ? 'S' : ''}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
+                        style: GoogleFonts.rajdhani(
+                          color: SIMEopsColors.alert,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1,
                         ),
                       ),
                     ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
 
-              // Stats row
+              // Readouts: total · tendência · crime predominante
               Row(
                 children: [
-                  _StatChip(
-                    icon: Icons.article_outlined,
-                    label: '${city.totalCrimes} ocorrência${city.totalCrimes != 1 ? 's' : ''}',
+                  _Readout(
+                    value: '${city.totalCrimes}',
+                    label: 'OCORRÊNCIAS',
                   ),
+                  _dividerVertical(),
+                  _Readout(
+                    value: trendText,
+                    label: '30 DIAS',
+                    valueColor: trendColor,
+                  ),
+                  if (topCrime != null && topCrime.isNotEmpty) ...[
+                    _dividerVertical(),
+                    Expanded(
+                      child: _Readout(
+                        value: crimeTypeLabel(topCrime),
+                        label:
+                            'PREDOMINANTE${city.topCrimePercent > 0 ? ' · ${city.topCrimePercent.toStringAsFixed(0)}%' : ''}',
+                        compactValue: true,
+                      ),
+                    ),
+                  ],
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
 
-              // Footer: subtitle + arrow
+              // Footer: contexto + última atividade + chevron
               Row(
                 children: [
-                  Icon(Icons.location_on, size: 14, color: Colors.grey[400]),
+                  Icon(Icons.location_on,
+                      size: 12,
+                      color: SIMEopsColors.muted.withValues(alpha: 0.6)),
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
                       _footerText(city),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.grey[500],
-                          ),
+                      style: GoogleFonts.exo2(
+                        fontSize: 11.5,
+                        color: SIMEopsColors.muted,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  Icon(Icons.chevron_right, size: 18, color: Colors.grey[600]),
+                  if (_lastActivity != null) ...[
+                    Text(
+                      _lastActivity!,
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 10,
+                        color: SIMEopsColors.muted.withValues(alpha: 0.7),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  Icon(Icons.chevron_right,
+                      size: 18,
+                      color: SIMEopsColors.muted.withValues(alpha: 0.6)),
                 ],
               ),
             ],
@@ -136,38 +188,65 @@ class CityCard extends StatelessWidget {
       ),
     );
   }
-}
 
-class _StatChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-
-  const _StatChip({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _dividerVertical() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: SIMEopsColors.teal.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: SIMEopsColors.teal),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: SIMEopsColors.tealLight,
-            ),
-          ),
-        ],
-      ),
+      width: 1,
+      height: 26,
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      color: SIMEopsColors.teal.withValues(alpha: 0.15),
     );
   }
 }
 
+class _Readout extends StatelessWidget {
+  final String value;
+  final String label;
+  final Color? valueColor;
+  // Valor textual (nome de crime) usa fonte menor que os numéricos.
+  final bool compactValue;
+
+  const _Readout({
+    required this.value,
+    required this.label,
+    this.valueColor,
+    this.compactValue = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          value,
+          style: compactValue
+              ? GoogleFonts.exo2(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: valueColor ?? SIMEopsColors.white,
+                )
+              : GoogleFonts.jetBrainsMono(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: valueColor ?? SIMEopsColors.tealLight,
+                ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: GoogleFonts.rajdhani(
+            fontSize: 9,
+            letterSpacing: 1.2,
+            fontWeight: FontWeight.w600,
+            color: SIMEopsColors.muted.withValues(alpha: 0.6),
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+}

@@ -121,6 +121,23 @@ Verificado em 02/08: migrations 019, 020, 021b, 022 aplicadas; **021, 023, 024 e
 
 ---
 
+## 2026-08-02 — CityCard: o dashboard para de jogar fora metade do modelo
+
+`CityOverview` sempre trouxe `trendPercent`, `topCrimeType`, `topCrimePercent`,
+`lastNewsAt` e `cityNames` — e o card só mostrava o total. Agora:
+
+- **Linha de readouts**: total (mono teal) · **tendência 30 dias** (▲12% em
+  `alert` quando sobe, ▼ em `official` quando cai) · **crime predominante**
+  com percentual.
+- **Última atividade** no rodapé, mono ("há 2h" / "há 3d").
+- **Grupos mostram preview dos nomes** ("Florianópolis, São José +3"), não só
+  a contagem.
+- Badge NOVAS no tom `alert` da paleta (era `Colors.red` chapado).
+- Mapa `crimeLabels` local deletado — era código morto (definido e nunca
+  usado); labels vêm de `crime_labels.dart`.
+
+---
+
 ## 2026-08-02 — NewsCard e detail sheet: o tipo granular vira o título
 
 O card compartilhado (feed, favoritos, busca) foi redesenhado:
