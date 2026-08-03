@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../core/data/brazilian_locations.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/utils/crime_labels.dart';
 import '../../../core/widgets/grid_background.dart';
 import '../../../core/widgets/simeops_title.dart';
 import '../../../main.dart';
@@ -511,15 +512,19 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     );
   }
 
-  static const _pipelineStages = [
-    ('searching', 'Pesquisando na web', Icons.travel_explore),
-    ('filter0', 'Filtro de relevância', Icons.filter_list),
-    ('filter1', 'Análise de títulos (IA)', Icons.smart_toy),
-    ('fetching', 'Baixando artigos', Icons.cloud_download),
-    ('analyzing', 'Extraindo dados (IA)', Icons.psychology),
-    ('dedup', 'Consolidando resultados', Icons.compress),
-    ('saving', 'Salvando', Icons.check_circle),
+  // Funil de exibição — os 7 estágios do backend colapsados em 5 blocos.
+  // Decisão de UI do briefing: mostrar o funil ao vivo, não 7 passos com check.
+  // Estágios 4 (LEITURA) e 5 (ANÁLISE) são 85% do tempo e têm contador
+  // feitos/total no /status; os demais só mudam de details.
+  static const _funnelGroups = [
+    ('BUSCANDO', [1]),
+    ('TRIAGEM RÁPIDA', [2, 3]),
+    ('LEITURA', [4]),
+    ('ANÁLISE', [5]),
+    ('AGRUPAMENTO', [6, 7]),
   ];
+
+  static const _totalStages = 7;
 
   // Formata Duration como "2.3s", "1m 12s", "0.4s"
   String _fmtDuration(Duration d) {
@@ -538,19 +543,64 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     return '[${two(t.hour)}:${two(t.minute)}:${two(t.second)}]';
   }
 
-  // Duração de cada stage concluído (tempo até próximo começar).
-  // Stage corrente: agora - início. Pendente: null.
-  Duration? _stageDuration(int stageNum, int currentStageNum) {
-    final start = _stageStartTimes[stageNum];
-    if (start == null) return null;
-    if (stageNum < currentStageNum) {
-      final nextStart = _stageStartTimes[stageNum + 1];
-      if (nextStart != null) return nextStart.difference(start);
+  // Início de um grupo do funil = início do primeiro estágio dele que rodou.
+  DateTime? _groupStart(List<int> stages) {
+    for (final s in stages) {
+      final t = _stageStartTimes[s];
+      if (t != null) return t;
     }
-    if (stageNum == currentStageNum) {
+    return null;
+  }
+
+  // Details mais recente dentro do grupo (o backend escreve por estágio).
+  String? _groupDetail(List<int> stages) {
+    for (final s in stages.reversed) {
+      final d = _stageDetails[s];
+      if (d != null) return d;
+    }
+    return null;
+  }
+
+  // Duração do grupo: concluído = início do próximo - início dele;
+  // corrente = agora - início; pendente = null.
+  Duration? _groupDuration(int groupIndex, int currentStageNum) {
+    final stages = _funnelGroups[groupIndex].$2;
+    final start = _groupStart(stages);
+    if (start == null) return null;
+    if (currentStageNum > stages.last) {
+      // Concluído — procura o início do grupo seguinte que já rodou.
+      for (var i = groupIndex + 1; i < _funnelGroups.length; i++) {
+        final nextStart = _groupStart(_funnelGroups[i].$2);
+        if (nextStart != null) return nextStart.difference(start);
+      }
+      return null;
+    }
+    if (stages.contains(currentStageNum)) {
       return DateTime.now().difference(start);
     }
     return null;
+  }
+
+  // Estimativa de término do estágio corrente pela taxa observada.
+  String? _etaText(DateTime start, int feitos, int total) {
+    if (feitos < 5 || total <= feitos) return null;
+    final elapsed = DateTime.now().difference(start).inSeconds;
+    if (elapsed < 5) return null;
+    final restante = ((total - feitos) * elapsed / feitos).round();
+    return '~${_fmtDuration(Duration(seconds: restante))}';
+  }
+
+  // "hoje" / "ontem" / "há N dias" — usado nos achados ao vivo.
+  static String _relativeDate(String? iso) {
+    final d = DateTime.tryParse(iso ?? '');
+    if (d == null) return '';
+    final now = DateTime.now();
+    final diff = DateTime(now.year, now.month, now.day)
+        .difference(DateTime(d.year, d.month, d.day))
+        .inDays;
+    if (diff <= 0) return 'hoje';
+    if (diff == 1) return 'ontem';
+    return 'há $diff dias';
   }
 
   Widget _metadataCard(String label, String value) {
@@ -620,9 +670,30 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
   Widget _buildProgressStepper() {
     final currentStageNum = (_progress?['stage_num'] as int?) ?? 0;
-    final totalStages = _pipelineStages.length;
-    final progressValue = currentStageNum / totalStages;
-    final stageCounter = currentStageNum > 0 ? '$currentStageNum/$totalStages' : '—';
+    final feitos = (_progress?['feitos'] as num?)?.toInt();
+    final total = (_progress?['total'] as num?)?.toInt();
+    final achados = (_progress?['achados'] as List<dynamic>?) ?? const [];
+    final hasCounter = feitos != null && total != null && total > 0;
+
+    // Barra geral: 7 estágios, com fração dentro dos que têm contador (4 e 5).
+    double progressValue = 0;
+    if (currentStageNum > 0) {
+      final fraction = hasCounter
+          ? (feitos / total).clamp(0.0, 1.0).toDouble()
+          : 0.0;
+      progressValue = ((currentStageNum - 1) + fraction) / _totalStages;
+    }
+
+    // Índice do bloco corrente do funil (pro metadata card).
+    var currentGroup = 0;
+    for (var i = 0; i < _funnelGroups.length; i++) {
+      if (_funnelGroups[i].$2.contains(currentStageNum)) {
+        currentGroup = i + 1;
+        break;
+      }
+    }
+    final groupCounter =
+        currentGroup > 0 ? '$currentGroup/${_funnelGroups.length}' : '—';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
@@ -632,7 +703,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
           // Header com metadata
           Row(
             children: [
-              _metadataCard('ETAPA', stageCounter),
+              _metadataCard('ETAPA', groupCounter),
               const SizedBox(width: 8),
               _metadataCard('TEMPO', _elapsedText),
             ],
@@ -655,29 +726,74 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
           ),
           const SizedBox(height: 24),
 
-          // Lista de stages
-          ...List.generate(totalStages, (index) {
-            final (_, label, _) = _pipelineStages[index];
-            final stageNum = index + 1;
-            final isCompleted = stageNum < currentStageNum;
-            final isCurrent = stageNum == currentStageNum;
-            final startTime = _stageStartTimes[stageNum];
-            final duration = _stageDuration(stageNum, currentStageNum);
-            final detail = _stageDetails[stageNum];
+          // O funil: 5 blocos, contador vivo dentro do corrente
+          ...List.generate(_funnelGroups.length, (index) {
+            final (label, stages) = _funnelGroups[index];
+            final isCompleted = currentStageNum > stages.last;
+            final isCurrent = stages.contains(currentStageNum);
+            final startTime = _groupStart(stages);
+            final duration = _groupDuration(index, currentStageNum);
+            final detail = _groupDetail(stages);
+            final showCounter = isCurrent && hasCounter;
 
-            // Cor do texto principal por estado
             final labelColor = isCompleted
                 ? SIMEopsColors.white
                 : isCurrent
                     ? SIMEopsColors.tealLight
                     : SIMEopsColors.muted.withValues(alpha: 0.45);
 
+            // Direita: contador vivo no corrente, duração no concluído.
+            Widget trailing;
+            if (showCounter) {
+              final eta =
+                  startTime != null ? _etaText(startTime, feitos, total) : null;
+              trailing = Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '$feitos de $total',
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: SIMEopsColors.tealLight,
+                    ),
+                  ),
+                  if (eta != null)
+                    Text(
+                      eta,
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 10,
+                        color: SIMEopsColors.muted.withValues(alpha: 0.7),
+                      ),
+                    ),
+                ],
+              );
+            } else if (duration != null) {
+              trailing = Text(
+                _fmtDuration(duration),
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 10,
+                  color: isCompleted
+                      ? SIMEopsColors.muted.withValues(alpha: 0.7)
+                      : SIMEopsColors.tealLight.withValues(alpha: 0.8),
+                ),
+              );
+            } else {
+              trailing = Text(
+                '—',
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 10,
+                  color: SIMEopsColors.muted.withValues(alpha: 0.35),
+                ),
+              );
+            }
+
             return Padding(
-              padding: const EdgeInsets.only(bottom: 14),
+              padding: const EdgeInsets.only(bottom: 16),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Timestamp monospace (só quando stage já aconteceu)
+                  // Timestamp monospace (só quando o bloco já começou)
                   SizedBox(
                     width: 72,
                     child: startTime != null
@@ -691,61 +807,117 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
                         : const SizedBox.shrink(),
                   ),
                   const SizedBox(width: 10),
-                  // Status indicator (círculo)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
                     child: _stageIndicator(done: isCompleted, current: isCurrent),
                   ),
                   const SizedBox(width: 10),
-                  // Label + detail
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                label,
-                                style: GoogleFonts.exo2(
-                                  fontSize: 13,
-                                  color: labelColor,
-                                  fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                            if (duration != null)
-                              Text(
-                                _fmtDuration(duration),
-                                style: GoogleFonts.jetBrainsMono(
-                                  fontSize: 10,
-                                  color: isCompleted
-                                      ? SIMEopsColors.muted.withValues(alpha: 0.7)
-                                      : SIMEopsColors.tealLight.withValues(alpha: 0.8),
-                                ),
-                              ),
-                          ],
+                        Text(
+                          label,
+                          style: GoogleFonts.rajdhani(
+                            fontSize: 13,
+                            letterSpacing: 1.5,
+                            color: labelColor,
+                            fontWeight:
+                                isCurrent ? FontWeight.w700 : FontWeight.w600,
+                          ),
                         ),
-                        if (detail != null)
+                        if (detail != null && (isCompleted || isCurrent))
                           Padding(
                             padding: const EdgeInsets.only(top: 2),
                             child: Text(
                               detail,
                               style: GoogleFonts.exo2(
                                 fontSize: 11,
-                                color: SIMEopsColors.muted.withValues(alpha: isCompleted ? 0.7 : 0.9),
+                                color: SIMEopsColors.muted
+                                    .withValues(alpha: isCompleted ? 0.7 : 0.9),
                               ),
                             ),
                           ),
                       ],
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  trailing,
                 ],
               ),
             );
           }),
 
+          // Achados ao vivo — chegam no estágio 5 (análise), os 5 mais recentes
+          if (achados.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _sectionLabel('ÚLTIMOS ACHADOS'),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: SIMEopsColors.navyLight.withValues(alpha: 0.5),
+                border: Border.all(
+                    color: SIMEopsColors.teal.withValues(alpha: 0.15)),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Column(
+                children: achados.whereType<Map<String, dynamic>>().map((a) {
+                  final tipo = crimeTypeLabel(a['tipo_crime'] as String?);
+                  final bairro = a['bairro'] as String?;
+                  final quando = _relativeDate(a['data_ocorrencia'] as String?);
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 5,
+                          height: 5,
+                          decoration: const BoxDecoration(
+                            color: SIMEopsColors.tealLight,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            bairro != null && bairro.isNotEmpty
+                                ? '$tipo · $bairro'
+                                : tipo,
+                            style: GoogleFonts.exo2(
+                              fontSize: 12.5,
+                              color: SIMEopsColors.white,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          quando,
+                          style: GoogleFonts.jetBrainsMono(
+                            fontSize: 10,
+                            color: SIMEopsColors.muted.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+
           const SizedBox(height: 24),
+
+          // A busca é job no servidor e sobrevive a fechar o app.
+          Text(
+            'Pode fechar o app — avisamos quando terminar.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.exo2(
+              fontSize: 12,
+              color: SIMEopsColors.muted.withValues(alpha: 0.6),
+            ),
+          ),
+          const SizedBox(height: 14),
 
           // Botão cancelar (estilo tático — borda teal, texto caps, letter-spacing)
           Center(

@@ -121,6 +121,31 @@ Verificado em 02/08: migrations 019, 020, 021b, 022 aplicadas; **021, 023, 024 e
 
 ---
 
+## 2026-08-02 — 9.2 + 9.5: a tela de carregamento vira funil ao vivo
+
+O "passo 4 de 7" parado por 3 minutos morreu. A tela de progresso agora segue o
+desenho que o João aprovou no briefing:
+
+- **7 estágios colapsados em 5 blocos** (`BUSCANDO`, `TRIAGEM RÁPIDA`,
+  `LEITURA`, `ANÁLISE`, `AGRUPAMENTO`) — funil, não checklist.
+- **Contador vivo** nos blocos 4 e 5: `34 de 241` (mono, teal) direto de
+  `progress.feitos/total`, com **ETA** estimada pela taxa observada
+  (`~2min`, só aparece com ≥5 feitos pra não chutar no escuro).
+- **Barra de progresso fracionária**: avança DENTRO dos estágios com contador
+  (`(stage-1 + feitos/total)/7`), não só na troca de estágio.
+- **Achados ao vivo**: `progress.achados` (5 mais recentes) numa caixa
+  "ÚLTIMOS ACHADOS" — tipo · bairro + data relativa ("há 2 dias").
+- **"Pode fechar o app — avisamos quando terminar."** acima do CANCELAR (o
+  push de conclusão já existia; agora a tela diz isso).
+- Novo `core/utils/crime_labels.dart` — labels de tipo_crime, fonte única
+  (era pré-requisito dos achados; detail sheet e city_card migram na etapa
+  dos cards).
+
+Timestamps `[HH:MM:SS]` e durações por bloco mantidos — é a parte "sala de
+operações" que já funcionava.
+
+---
+
 ## 2026-08-02 — Fase 9 em execução: 9.1, os três baldes chegam ao app
 
 Plano da fase fechado com o João nesta sessão (decisões: feed e busca juntos,
