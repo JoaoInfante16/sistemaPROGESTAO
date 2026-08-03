@@ -3,8 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../core/data/brazilian_locations.dart';
+import '../../../core/models/manual_search_results.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/utils/category_colors.dart';
 import '../../../core/utils/crime_labels.dart';
+import '../../../core/utils/date_grouping.dart';
+import '../../../core/widgets/category_filter_bar.dart';
+import '../../../core/widgets/group_header.dart';
 import '../../../core/widgets/grid_background.dart';
 import '../../../core/widgets/simeops_title.dart';
 import '../../../core/theme/simeops_colors.dart';
@@ -35,13 +40,17 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   String? _searchId;
   String? _reportId;
   String _searchStatus = 'idle'; // idle, processing, completed, failed
-  List<Map<String, dynamic>> _results = [];
-  // Baldes extras do /results — cidades vizinhas e itens mais antigos que a
-  // janela. Ficam SEMPRE separados de _results (regra do contrato).
-  // ignore: unused_field — a UI das seções expansíveis consome estes na 9.4
-  List<Map<String, dynamic>> _regiao = [];
-  // ignore: unused_field
-  List<Map<String, dynamic>> _foraDoPeriodo = [];
+  // Resposta crua do /results, com os três baldes SEMPRE separados (regra do
+  // contrato). O ReportScreen recebe .results como veio; .foraDoPeriodo cru
+  // alimenta o re-fatiamento por período (9.6).
+  ManualSearchResults _searchData = const ManualSearchResults();
+  // Os mesmos baldes convertidos uma vez (não por itemBuilder).
+  List<NewsItem> _items = [];
+  List<NewsItem> _regiaoItems = [];
+  List<NewsItem> _foraItems = [];
+  // Recorte da lista: categorias (vazio = todas) + seções com toggle invertido.
+  final Set<String> _filterCats = {};
+  final Set<String> _toggledSections = {};
   Map<String, dynamic>? _progress;
   Timer? _pollTimer;
   DateTime? _searchStartTime;
@@ -65,11 +74,9 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   // quando user retomava busca via histórico durante warm-up do backend.
   static const _maxConsecutiveErrors = 20;
 
-  static const _periodos = {
-    30: 'Ultimos 30 dias',
-    60: 'Ultimos 60 dias',
-    90: 'Ultimos 90 dias',
-  };
+  // Presets rápidos; o slider aceita qualquer inteiro de 1 a 180 (o backend
+  // valida a mesma faixa — decisão do briefing: escolha livre, não botões fixos).
+  static const _periodoPresets = [7, 30, 60, 90, 180];
 
   @override
   void initState() {
@@ -109,15 +116,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       }
 
       if (s == 'completed') {
-        final res = await api.getManualSearchResults(searchId);
-        if (mounted) {
-          setState(() {
-            _searchStatus = 'completed';
-            _results = res.results;
-            _regiao = res.regiao;
-            _foraDoPeriodo = res.foraDoPeriodo;
-          });
-        }
+        _ingestResults(await api.getManualSearchResults(searchId));
       } else if (s == 'failed') {
         if (mounted) setState(() => _searchStatus = 'failed');
       } else {
@@ -208,6 +207,19 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     }
   }
 
+  void _ingestResults(ManualSearchResults res) {
+    if (!mounted) return;
+    setState(() {
+      _searchStatus = 'completed';
+      _searchData = res;
+      _items = res.results.map(NewsItem.fromSearchResult).toList();
+      _regiaoItems = res.regiao.map(NewsItem.fromSearchResult).toList();
+      _foraItems = res.foraDoPeriodo.map(NewsItem.fromSearchResult).toList();
+      _filterCats.clear();
+      _toggledSections.clear();
+    });
+  }
+
   // Popula _stageStartTimes + _stageDetails do `history` persistido no backend.
   // Roda tanto no polling normal quanto no _resumeSearch — quando user volta
   // via histórico, reconstrói a cronologia completa dos stages anteriores.
@@ -291,15 +303,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
           _elapsedTimer?.cancel();
 
           if (s == 'completed') {
-            final res = await api.getManualSearchResults(_searchId!);
-            if (mounted) {
-              setState(() {
-                _searchStatus = 'completed';
-                _results = res.results;
-                _regiao = res.regiao;
-                _foraDoPeriodo = res.foraDoPeriodo;
-              });
-            }
+            _ingestResults(await api.getManualSearchResults(_searchId!));
           } else {
             if (mounted) setState(() => _searchStatus = 'failed');
           }
@@ -335,7 +339,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
               : [_selectedEstado!],
           estado: _selectedEstado!,
           periodoDias: _periodoDias,
-          results: _results,
+          results: _searchData.results,
         ),
       ),
     );
@@ -370,9 +374,12 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       _searchId = null;
       _reportId = null;
       _searchStatus = 'idle';
-      _results = [];
-      _regiao = [];
-      _foraDoPeriodo = [];
+      _searchData = const ManualSearchResults();
+      _items = [];
+      _regiaoItems = [];
+      _foraItems = [];
+      _filterCats.clear();
+      _toggledSections.clear();
       _progress = null;
       _searchStartTime = null;
       _elapsedText = '0s';
@@ -464,16 +471,53 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         ),
         const SizedBox(height: 18),
 
-        // PERIODO — chips
+        // PERIODO — slider livre (1–180) + presets rápidos
         _sectionLabel('PERIODO'),
+        Row(
+          children: [
+            Expanded(
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  activeTrackColor: SIMEopsColors.teal,
+                  inactiveTrackColor:
+                      SIMEopsColors.navyLight.withValues(alpha: 0.9),
+                  thumbColor: SIMEopsColors.tealLight,
+                  overlayColor: SIMEopsColors.teal.withValues(alpha: 0.15),
+                  trackHeight: 3,
+                ),
+                child: Slider(
+                  value: _periodoDias.toDouble(),
+                  min: 1,
+                  max: 180,
+                  divisions: 179,
+                  onChanged: (v) =>
+                      setState(() => _periodoDias = v.round()),
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 76,
+              child: Text(
+                '$_periodoDias DIAS',
+                textAlign: TextAlign.right,
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: SIMEopsColors.tealLight,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
         Wrap(
           spacing: 8,
-          children: _periodos.entries.map((e) {
-            final selected = _periodoDias == e.key;
+          children: _periodoPresets.map((dias) {
+            final selected = _periodoDias == dias;
             return ChoiceChip(
-              label: Text('${e.key} dias'),
+              label: Text('$dias dias'),
               selected: selected,
-              onSelected: (_) => setState(() => _periodoDias = e.key),
+              onSelected: (_) => setState(() => _periodoDias = dias),
               selectedColor: SIMEopsColors.teal.withValues(alpha: 0.15),
               side: BorderSide(
                 color: selected
@@ -963,88 +1007,167 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       );
     }
 
-    // completed
-    return Column(
-      children: [
-        // Header
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${_results.length} resultado${_results.length != 1 ? 's' : ''} encontrado${_results.length != 1 ? 's' : ''}',
-                      style: Theme.of(context).textTheme.titleMedium,
+    // completed — o dossiê: sumário, recorte, grupos por data e seções extras
+    final ocorrencias =
+        _items.where((n) => n.natureza != 'estatistica').toList();
+    final indicadores =
+        _items.where((n) => n.natureza == 'estatistica').toList();
+
+    // Contagens por categoria (só ocorrências — estatística NÃO conta).
+    final catCounts = <String, int>{};
+    for (final n in ocorrencias) {
+      final cat = n.categoriaGrupo ?? 'institucional';
+      catCounts[cat] = (catCounts[cat] ?? 0) + 1;
+    }
+
+    final visiveis = _filterCats.isEmpty
+        ? ocorrencias
+        : ocorrencias
+            .where((n) =>
+                _filterCats.contains(n.categoriaGrupo ?? 'institucional'))
+            .toList();
+
+    final groups = groupNewsByDate(visiveis);
+
+    final rows = <Widget>[];
+
+    // Sumário — readouts
+    rows.add(Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: Row(
+        children: [
+          _metadataCard('OCORRÊNCIAS', '${ocorrencias.length}'),
+          const SizedBox(width: 8),
+          _metadataCard('PERÍODO', '${_periodoDias}d'),
+          if (indicadores.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            _metadataCard('INDICADORES', '${indicadores.length}'),
+          ],
+        ],
+      ),
+    ));
+
+    // Ações: relatório (primária) + nova busca (terciária)
+    rows.add(Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Row(
+        children: [
+          if (_items.isNotEmpty)
+            Expanded(
+              child: _reportId != null
+                  ? FilledButton.icon(
+                      onPressed: () => _openReport(),
+                      icon: const Icon(Icons.description, size: 18),
+                      label: const Text('Ver Relatório de Risco'),
+                    )
+                  : FilledButton.tonalIcon(
+                      onPressed: (_selectedEstado != null) ? () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ReportScreen(
+                              searchId: _searchId,
+                              cidades: _selectedCidades.isNotEmpty
+                                  ? _selectedCidades.toList()
+                                  : [_selectedEstado!],
+                              estado: _selectedEstado!,
+                              periodoDias: _periodoDias,
+                              results: _searchData.results,
+                            ),
+                          ),
+                        );
+                        // Após voltar da tela de relatório, checar se foi gerado
+                        _checkForReport();
+                      } : null,
+                      icon: const Icon(Icons.bar_chart, size: 18),
+                      label: const Text('Gerar Relatório de Risco'),
                     ),
-                  ),
-                  TextButton.icon(
-                    onPressed: _resetSearch,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Nova busca'),
-                  ),
-                ],
-              ),
-              if (_results.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: _reportId != null
-                      ? FilledButton.icon(
-                          onPressed: () => _openReport(),
-                          icon: const Icon(Icons.description),
-                          label: const Text('Ver Relatório de Risco'),
-                        )
-                      : FilledButton.tonalIcon(
-                          onPressed: (_selectedEstado != null) ? () async {
-                            await Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => ReportScreen(
-                                  searchId: _searchId,
-                                  cidades: _selectedCidades.isNotEmpty
-                                      ? _selectedCidades.toList()
-                                      : [_selectedEstado!],
-                                  estado: _selectedEstado!,
-                                  periodoDias: _periodoDias,
-                                  results: _results,
-                                ),
-                              ),
-                            );
-                            // Após voltar da tela de relatório, checar se foi gerado
-                            _checkForReport();
-                          } : null,
-                          icon: const Icon(Icons.bar_chart),
-                          label: const Text('Gerar Relatório de Risco'),
-                        ),
-                ),
-              ],
-            ],
+            ),
+          const SizedBox(width: 4),
+          TextButton.icon(
+            onPressed: _resetSearch,
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('Nova'),
+          ),
+        ],
+      ),
+    ));
+
+    // Recorte por categoria
+    rows.add(Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: CategoryFilterBar(
+        counts: catCounts,
+        selected: _filterCats,
+        onToggle: (cat) => setState(() {
+          if (!_filterCats.add(cat)) _filterCats.remove(cat);
+        }),
+      ),
+    ));
+
+    if (_items.isEmpty) {
+      rows.add(Padding(
+        padding: const EdgeInsets.only(top: 60),
+        child: Center(
+          child: Text(
+            'Nenhuma notícia encontrada para os filtros selecionados',
+            style: GoogleFonts.exo2(fontSize: 13, color: SIMEopsColors.muted),
+            textAlign: TextAlign.center,
           ),
         ),
-        // Results list
-        Expanded(
-          child: _results.isEmpty
-              ? Center(
-                  child: Text(
-                    'Nenhuma notícia encontrada para os filtros selecionados',
-                    style: TextStyle(color: Colors.grey[500]),
-                    textAlign: TextAlign.center,
-                  ),
-                )
-              : ListView.builder(
-                  itemCount: _results.length,
-                  itemBuilder: (context, index) {
-                    final item = NewsItem.fromSearchResult(_results[index]);
-                    return NewsCard(
-                      news: item,
-                      onTap: () => NewsDetailSheet.show(context, item),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
+      ));
+    }
+
+    // Grupos por data (últimos 7 dias por dia, resto por semana)
+    for (final g in groups) {
+      final expanded = _sectionExpanded(g.key, g.defaultExpanded);
+      rows.add(GroupHeader(
+        label: g.label,
+        count: g.items.length,
+        expanded: expanded,
+        onTap: () => _toggleSection(g.key),
+      ));
+      if (expanded) rows.addAll(g.items.map(_buildCard));
+    }
+
+    // Seções especiais — recolhidas por padrão, cor destacada
+    void addSection(String key, String label, List<NewsItem> items,
+        {Color? accent}) {
+      if (items.isEmpty) return;
+      final expanded = _sectionExpanded(key, false);
+      rows.add(GroupHeader(
+        label: label,
+        count: items.length,
+        expanded: expanded,
+        accent: accent,
+        onTap: () => _toggleSection(key),
+      ));
+      if (expanded) rows.addAll(items.map(_buildCard));
+    }
+
+    addSection('sec:indicadores', 'INDICADORES', indicadores,
+        accent: categoryColor('institucional'));
+    addSection('sec:regiao', 'REGIÃO METROPOLITANA', _regiaoItems,
+        accent: SIMEopsColors.tealLight);
+    addSection('sec:fora', 'MAIS OCORRÊNCIAS', _foraItems,
+        accent: SIMEopsColors.tealLight);
+
+    rows.add(const SizedBox(height: 48));
+
+    return ListView(children: rows);
   }
+
+  bool _sectionExpanded(String key, bool defaultExpanded) =>
+      _toggledSections.contains(key) ? !defaultExpanded : defaultExpanded;
+
+  void _toggleSection(String key) {
+    setState(() {
+      if (!_toggledSections.add(key)) _toggledSections.remove(key);
+    });
+  }
+
+  Widget _buildCard(NewsItem item) => NewsCard(
+        news: item,
+        onTap: () => NewsDetailSheet.show(context, item),
+      );
 }
 

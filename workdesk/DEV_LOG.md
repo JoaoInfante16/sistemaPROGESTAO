@@ -121,6 +121,37 @@ Verificado em 02/08: migrations 019, 020, 021b, 022 aplicadas; **021, 023, 024 e
 
 ---
 
+## 2026-08-02 — O recorte único: grupos colapsáveis + filtros no feed e na busca (inclui 9.4)
+
+A tese do 9.6 ("lista e relatório viram função de um recorte") virou a espinha
+das duas listas. Três peças novas compartilhadas em `core/`:
+
+- **`date_grouping.dart`** — últimos 7 dias agrupam por DIA (HOJE, ONTEM,
+  SEXTA...), o resto por SEMANA ("21–27 JUL"); semanas nascem recolhidas.
+- **`group_header.dart`** — o `Divider — LABEL — Divider` do feed, agora
+  tocável, com contagem e chevron; `accent` para seções destacadas.
+- **`category_filter_bar.dart`** — chips por categoria com contagem, mesma
+  linguagem dos chips do mapa. Vazio = tudo; some quando só há 1 categoria.
+
+**Busca (o dossiê):** sumário em readouts (OCORRÊNCIAS · PERÍODO ·
+INDICADORES — estatística NÃO conta como ocorrência), chips de recorte,
+grupos por data colapsáveis, e três seções recolhidas no fim: INDICADORES
+(slate), REGIÃO METROPOLITANA e MAIS OCORRÊNCIAS (teal) — **o 9.4 saiu junto**,
+alimentado pelos baldes da 9.1. Conversão `fromSearchResult` agora é 1x no
+ingest, não por itemBuilder. Estado cru consolidado num `ManualSearchResults`
+(o `.foraDoPeriodo` cru fica à mão pro re-fatiamento da 9.6).
+
+**Feed:** mesmos grupos colapsáveis + chips de categoria + toggle "Não lidas".
+Callbacks de ler/favoritar passaram de índice para ITEM — com filtro ativo os
+índices da lista visível não batem com os do estado (bug latente que o filtro
+exporia). Indicadores continuam inline no feed (cronologia importa lá; a
+separação em seção é da busca, onde há contagem).
+
+**Form:** período virou **slider livre 1–180** com readout mono + presets
+(7/30/60/90/180) — decisão do briefing, chips fixos 30/60/90 morreram.
+
+---
+
 ## 2026-08-02 — CityCard: o dashboard para de jogar fora metade do modelo
 
 `CityOverview` sempre trouxe `trendPercent`, `topCrimeType`, `topCrimePercent`,

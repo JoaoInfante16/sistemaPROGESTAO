@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../core/models/news_item.dart';
-import '../../../core/theme/simeops_colors.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/services/local_db_service.dart';
+import '../../../core/theme/simeops_colors.dart';
+import '../../../core/utils/date_grouping.dart';
+import '../../../core/widgets/category_filter_bar.dart';
+import '../../../core/widgets/group_header.dart';
 import '../widgets/news_card.dart';
 import '../widgets/news_detail_sheet.dart';
 
@@ -30,6 +34,12 @@ class _FeedScreenState extends State<FeedScreen> {
   late final String? _cidadeFilter = widget.cityFilter;
   late final List<String>? _cidadesFilter = widget.citiesFilter;
   bool _markedAllRead = false;
+
+  // Recorte: categorias selecionadas (vazio = todas) + só não lidas.
+  final Set<String> _selectedCats = {};
+  bool _unreadOnly = false;
+  // Grupos cujo estado expandido o usuário inverteu (toggle sobre o default).
+  final Set<String> _toggledGroups = {};
 
   @override
   void initState() {
@@ -148,18 +158,18 @@ class _FeedScreenState extends State<FeedScreen> {
     }
   }
 
-  Future<void> _markAsRead(int index) async {
-    final item = _news[index];
+  // Callbacks por ITEM (não por índice) — com filtro ativo os índices da
+  // lista visível não batem com os de _news.
+  Future<void> _markAsRead(NewsItem item) async {
     if (!item.isUnread) return;
     final api = context.read<ApiService>();
     try {
       await api.markAsRead(item.id);
-      setState(() => _news[index].isUnread = false);
+      setState(() => item.isUnread = false);
     } catch (e) { debugPrint('[Feed] Mark read error: $e'); }
   }
 
-  Future<void> _toggleFavorite(int index) async {
-    final item = _news[index];
+  Future<void> _toggleFavorite(NewsItem item) async {
     final api = context.read<ApiService>();
     try {
       if (item.isFavorite) {
@@ -167,9 +177,27 @@ class _FeedScreenState extends State<FeedScreen> {
       } else {
         await api.addFavorite(item.id);
       }
-      setState(() => _news[index].isFavorite = !item.isFavorite);
+      setState(() => item.isFavorite = !item.isFavorite);
     } catch (e) { debugPrint('[Feed] Toggle favorite error: $e'); }
   }
+
+  bool _groupExpanded(NewsGroup g) =>
+      _toggledGroups.contains(g.key) ? !g.defaultExpanded : g.defaultExpanded;
+
+  void _toggleGroup(String key) {
+    setState(() {
+      if (!_toggledGroups.add(key)) _toggledGroups.remove(key);
+    });
+  }
+
+  List<NewsItem> get _visibleNews => _news.where((n) {
+        if (_unreadOnly && !n.isUnread) return false;
+        if (_selectedCats.isNotEmpty &&
+            !_selectedCats.contains(n.categoriaGrupo ?? 'institucional')) {
+          return false;
+        }
+        return true;
+      }).toList();
 
   @override
   Widget build(BuildContext context) {
@@ -182,23 +210,23 @@ class _FeedScreenState extends State<FeedScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
           const SizedBox(height: 80),
-          Icon(Icons.newspaper, size: 64, color: Colors.grey[400]),
+          Icon(Icons.newspaper,
+              size: 64, color: SIMEopsColors.muted.withValues(alpha: 0.4)),
           const SizedBox(height: 16),
           Center(
             child: Text(
               'Nenhuma notícia ainda',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Colors.grey[600],
-                  ),
+              style: GoogleFonts.exo2(
+                  fontSize: 15, color: SIMEopsColors.muted),
             ),
           ),
           const SizedBox(height: 8),
           Center(
             child: Text(
               'Puxe para baixo para atualizar',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey[500],
-                  ),
+              style: GoogleFonts.exo2(
+                  fontSize: 12,
+                  color: SIMEopsColors.muted.withValues(alpha: 0.6)),
             ),
           ),
           const SizedBox(height: 24),
@@ -214,46 +242,117 @@ class _FeedScreenState extends State<FeedScreen> {
 
     final hasUnread = _news.any((n) => n.isUnread);
 
+    // Contagens por categoria sobre o que está carregado.
+    final catCounts = <String, int>{};
+    for (final n in _news) {
+      final cat = n.categoriaGrupo ?? 'institucional';
+      catCounts[cat] = (catCounts[cat] ?? 0) + 1;
+    }
+
+    final groups = groupNewsByDate(_visibleNews);
+
+    final rows = <Widget>[];
+    for (final g in groups) {
+      final expanded = _groupExpanded(g);
+      rows.add(GroupHeader(
+        label: g.label,
+        count: g.items.length,
+        expanded: expanded,
+        onTap: () => _toggleGroup(g.key),
+      ));
+      if (expanded) {
+        for (final item in g.items) {
+          rows.add(NewsCard(
+            news: item,
+            onTap: () {
+              _markAsRead(item);
+              NewsDetailSheet.show(context, item);
+            },
+            onMarkRead: () => _markAsRead(item),
+            onToggleFavorite: () => _toggleFavorite(item),
+          ));
+        }
+      }
+    }
+    if (_hasMore) {
+      rows.add(const Padding(
+        padding: EdgeInsets.all(16),
+        child: Center(child: CircularProgressIndicator()),
+      ));
+    }
+
     return Stack(
       children: [
         Column(
           children: [
+            // Barra de recorte: categorias + só não lidas
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: CategoryFilterBar(
+                      counts: catCounts,
+                      selected: _selectedCats,
+                      onToggle: (cat) => setState(() {
+                        if (!_selectedCats.add(cat)) {
+                          _selectedCats.remove(cat);
+                        }
+                      }),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 16, left: 6),
+                    child: FilterChip(
+                      label: Text(
+                        'Não lidas',
+                        style: GoogleFonts.exo2(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: _unreadOnly
+                              ? Colors.white
+                              : SIMEopsColors.tealLight,
+                        ),
+                      ),
+                      selected: _unreadOnly,
+                      showCheckmark: false,
+                      selectedColor: SIMEopsColors.teal,
+                      backgroundColor:
+                          SIMEopsColors.teal.withValues(alpha: 0.12),
+                      side: BorderSide(
+                        color: SIMEopsColors.teal
+                            .withValues(alpha: _unreadOnly ? 0 : 0.4),
+                      ),
+                      onSelected: (_) =>
+                          setState(() => _unreadOnly = !_unreadOnly),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _refresh,
-                child: ListView.builder(
-                  controller: _scrollCtrl,
-                  itemCount: _news.length + (_hasMore ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    if (index == _news.length) {
-                      return const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Center(child: CircularProgressIndicator()),
-                      );
-                    }
-
-                    final item = _news[index];
-                    final showDateHeader = index == 0 ||
-                        _dateKey(item.dataOcorrencia) != _dateKey(_news[index - 1].dataOcorrencia);
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (showDateHeader)
-                          _DateHeader(date: item.dataOcorrencia),
-                        NewsCard(
-                          news: item,
-                          onTap: () {
-                            _markAsRead(index);
-                            NewsDetailSheet.show(context, item);
-                          },
-                          onMarkRead: () => _markAsRead(index),
-                          onToggleFavorite: () => _toggleFavorite(index),
-                        ),
-                      ],
-                    );
-                  },
-                ),
+                child: rows.isEmpty || (rows.length == 1 && _hasMore)
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          const SizedBox(height: 80),
+                          Center(
+                            child: Text(
+                              'Nada no recorte atual',
+                              style: GoogleFonts.exo2(
+                                  fontSize: 13, color: SIMEopsColors.muted),
+                            ),
+                          ),
+                        ],
+                      )
+                    : ListView(
+                        controller: _scrollCtrl,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.only(bottom: 80),
+                        children: rows,
+                      ),
               ),
             ),
           ],
@@ -270,55 +369,6 @@ class _FeedScreenState extends State<FeedScreen> {
             ),
           ),
       ],
-    );
-  }
-
-  String _dateKey(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-}
-
-class _DateHeader extends StatelessWidget {
-  final DateTime date;
-  const _DateHeader({required this.date});
-
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final d = DateTime(date.year, date.month, date.day);
-    final diff = today.difference(d).inDays;
-
-    String label;
-    if (diff == 0) {
-      label = 'Hoje';
-    } else if (diff == 1) {
-      label = 'Ontem';
-    } else if (diff < 7) {
-      const weekdays = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
-      label = weekdays[date.weekday - 1];
-    } else {
-      label = '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-      child: Row(
-        children: [
-          Expanded(child: Divider(color: Colors.white.withValues(alpha: 0.08))),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: SIMEopsColors.muted.withValues(alpha: 0.75),
-                letterSpacing: 1.2,
-              ),
-            ),
-          ),
-          Expanded(child: Divider(color: Colors.white.withValues(alpha: 0.08))),
-        ],
-      ),
     );
   }
 }
