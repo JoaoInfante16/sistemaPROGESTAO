@@ -135,11 +135,14 @@ export async function buildQueries(
  * de parede), entao o preco de um assunto extra e so o da SERP: ~$0.0015 por
  * pagina, mais Jina+GPT do que sobreviver aos filtros.
  *
- * Com `tipoCrime` escolhido o usuario ja restringiu o assunto — uma query focada
- * basta, e a lista fica de fora.
+ * `assuntos` vem da TELA desde 03/08: o usuario escolhe quais perguntas fazer
+ * (templates da taxonomia + palavra-chave livre) e paga o tempo da propria
+ * escolha. Sem escolha, cai na lista do painel — o comportamento de antes.
+ *
+ * ⚠️ Cada assunto e ~1 min a mais de busca numa capital. Quem decide isso e a
+ * tela, mostrando a estimativa antes de disparar; aqui a lista chega pronta.
  */
-export async function buildManualSearchQueries(cidade: string, tipoCrime?: string): Promise<string[]> {
-  if (tipoCrime) return [`${tipoCrime} ${cidade}`];
-  const assuntos = await getAssuntos();
-  return assuntos.map((a) => `${a} ${cidade}`);
+export async function buildManualSearchQueries(cidade: string, assuntos?: string[]): Promise<string[]> {
+  const escolhidos = assuntos && assuntos.length > 0 ? assuntos : await getAssuntos();
+  return escolhidos.map((a) => `${a} ${cidade}`);
 }

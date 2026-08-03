@@ -1,6 +1,7 @@
 // ============================================
 // Settings Routes - Rate Limits, Budget, Config, Stats
 // ============================================
+// GET    /settings/taxonomia         - Catálogo de assuntos + cores (app)
 // GET    /settings/rate-limits       - Listar rate limits (admin)
 // PATCH  /settings/rate-limits/:id   - Atualizar rate limit (admin)
 // GET    /settings/budget/summary    - Resumo orçamento mês atual (admin)
@@ -18,6 +19,13 @@ import { db } from '../database/queries';
 import { supabase } from '../config/database';
 import { configManager } from '../services/configManager';
 import { logger } from '../middleware/logger';
+import {
+  ASSUNTOS_CATALOGO,
+  ASSUNTOS_ESSENCIAIS,
+  CATEGORIA_CORES,
+  CATEGORIA_LABELS,
+  CATEGORIA_ORDEM,
+} from '../utils/taxonomia';
 
 const router = Router();
 
@@ -35,6 +43,46 @@ router.get(
     } catch (error) {
       logger.error('[Settings] Auth config error:', error);
       res.status(500).json({ error: 'Failed to fetch auth config' });
+    }
+  }
+);
+
+// ============================================
+// Taxonomia — o catalogo de assuntos que a tela de busca oferece
+// ============================================
+
+/**
+ * GET /settings/taxonomia
+ *
+ * Serve o catalogo de assuntos (termo, label, tipo, categoria) mais as cores e
+ * os rotulos de categoria. E o que o app usa pra montar os templates da busca
+ * manual.
+ *
+ * ⚠️ EXISTE PRA NAO NASCER HARDCODED NO DART. Se a lista morasse no app,
+ * acrescentar um assunto viraria build de APK — e a taxonomia e justamente a
+ * coisa que a gente quer poder mexer. Servida daqui, o app ganha assunto novo
+ * no proximo open.
+ *
+ * `requireAuth` e nao `requireAdmin`: quem consome e o app do cliente.
+ */
+router.get(
+  '/settings/taxonomia',
+  requireAuth,
+  async (_req: Request, res: Response): Promise<void> => {
+    try {
+      res.json({
+        assuntos: ASSUNTOS_CATALOGO,
+        categorias: CATEGORIA_ORDEM.map((c) => ({
+          id: c,
+          label: CATEGORIA_LABELS[c],
+          cor: CATEGORIA_CORES[c],
+        })),
+        // O preset rapido. Mandado pronto pra tela nao ter que saber a regra.
+        essenciais: ASSUNTOS_ESSENCIAIS,
+      });
+    } catch (error) {
+      logger.error('[Settings] Taxonomia error:', error);
+      res.status(500).json({ error: 'Failed to fetch taxonomia' });
     }
   }
 );

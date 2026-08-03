@@ -31,12 +31,22 @@ router.post(
   validateBody(schemas.triggerManualSearch),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { estado, cidades, periodo_dias, tipo_crime } = req.body as {
+      const { estado, cidades, periodo_dias, assuntos, tipo_crime } = req.body as {
         estado: string;
         cidades: string[];
         periodo_dias: number;
+        assuntos?: string[];
         tipo_crime?: string;
       };
+
+      // Uma lista so daqui pra frente. `tipo_crime` (uma string) era o formato
+      // antigo e vira lista de um item — assim o worker, as queries e os prompts
+      // dos filtros tem um caminho unico.
+      const assuntosEscolhidos = assuntos?.length
+        ? assuntos
+        : tipo_crime
+          ? [tipo_crime]
+          : undefined;
 
       const userId = req.user?.id || 'anonymous';
 
@@ -77,9 +87,12 @@ router.post(
       }
 
       // Criar registro na search_cache
+      // `params` alimenta o card do historico no app. Guarda os assuntos pra
+      // uma busca antiga poder dizer o que perguntou — sem isso, duas buscas da
+      // mesma cidade com escolhas diferentes ficam indistinguiveis na lista.
       const searchId = await db.createSearchCache({
         user_id: userId,
-        params: { estado, cidades, periodo_dias, tipo_crime },
+        params: { estado, cidades, periodo_dias, assuntos: assuntosEscolhidos, tipo_crime },
       });
 
       // Enfileirar job
@@ -98,7 +111,7 @@ router.post(
             estado,
             cidades,
             periodoDias: periodo_dias,
-            tipoCrime: tipo_crime,
+            assuntos: assuntosEscolhidos,
           },
           {
             attempts: 2,

@@ -53,6 +53,17 @@ export interface ManualSearchJobData {
   estado: string;
   cidades: string[];
   periodoDias: number;
+  /**
+   * Assuntos escolhidos na tela (03/08). Cada um vira uma query e um teto novo
+   * no indice. Ausente = a lista do painel (`search_subjects`).
+   */
+  assuntos?: string[];
+  /**
+   * ⚠️ FORMATO ANTIGO — nao usar em codigo novo. Fica porque o Redis e
+   * compartilhado e um job enfileirado antes deste deploy chega aqui com o campo
+   * velho; sem isto, ele rodaria a lista inteira em vez do tipo que o usuario
+   * escolheu. Normalizado logo na entrada de `processManualSearch`.
+   */
   tipoCrime?: string;
 }
 
@@ -122,9 +133,18 @@ async function isCancelled(searchId: string): Promise<boolean> {
 }
 
 async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void> {
-  const { searchId, estado, cidades, periodoDias, tipoCrime } = job.data;
+  const { searchId, estado, cidades, periodoDias } = job.data;
   const startTime = Date.now();
   const LOG_PREFIX = `[ManualSearch] ${searchId}`;
+
+  // Normaliza o formato antigo (`tipoCrime`, uma string) no novo (`assuntos`,
+  // lista). Job enfileirado antes do deploy de 03/08 chega com o campo velho —
+  // o Redis e compartilhado e a fila nao esvazia no deploy.
+  const assuntos: string[] | undefined = job.data.assuntos?.length
+    ? job.data.assuntos
+    : job.data.tipoCrime
+      ? [job.data.tipoCrime]
+      : undefined;
 
   try {
     // Budget check
@@ -179,7 +199,7 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
 
     const webEnabled = await configManager.getBoolean('manual_search_web_enabled');
     const { searchResults, sourceTypeMap, requestCount } = await collectManualSearchUrls(
-      { estado, cidades, periodoDias, tipoCrime },
+      { estado, cidades, periodoDias, assuntos },
       LOG_PREFIX,
       webEnabled,
     );
@@ -195,8 +215,9 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     const isBrightData = config.searchBackend === 'brightdata';
     const costPerRequest = isBrightData ? 0.0015 : 0.005;
     // Uma chamada só: as queries são as mesmas para todas as cidades (só muda o
-    // nome no fim), e a lista de assuntos vem do banco desde 02/08.
-    const queriesDaBusca = await buildManualSearchQueries(cidades[0], tipoCrime);
+    // nome no fim). A lista vem da tela desde 03/08, ou do painel se a tela não
+    // mandou nada.
+    const queriesDaBusca = await buildManualSearchQueries(cidades[0], assuntos);
     await db.trackCost({
       source: 'manual_search',
       provider: config.searchBackend as 'google' | 'perplexity' | 'brave' | 'brightdata',
@@ -226,7 +247,7 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     // STAGE 3: Filter1
     if (await isCancelled(searchId)) { logger.info(`${LOG_PREFIX} cancelled before stage 3`); return; }
     await db.updateSearchProgress(searchId, { stage: 'filtering', stage_num: 3, total_stages: 7, details: `${afterFilter0.length} URLs no GPT` });
-    const filter1Result = await runFilter1(afterFilter0, rejectedUrls, LOG_PREFIX);
+    const filter1Result = await runFilter1(afterFilter0, rejectedUrls, LOG_PREFIX, assuntos);
     const afterFilter1 = filter1Result.passed;
 
     await db.trackCost({
@@ -313,7 +334,7 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     await db.updateSearchProgress(searchId, { ...baseAnalise, feitos: 0, total: validContents.length });
     const filter2Result = await runFilter2WithEmbedding(
       validContents,
-      { maxContentChars: pipelineConfig.filter2MaxContentChars, minConfidence: pipelineConfig.filter2ConfidenceMin },
+      { maxContentChars: pipelineConfig.filter2MaxContentChars, minConfidence: pipelineConfig.filter2ConfidenceMin, assuntos },
       rejectedUrls, LOG_PREFIX,
       // `classificar` so aqui: o auto-scan chama a MESMA funcao sem esta opcao e
       // segue descartando igual a sempre.
@@ -428,7 +449,9 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       const pushResult = await sendPushToUser(
         job.data.userId,
         `Busca concluída — ${totalPrincipal} resultado${totalPrincipal !== 1 ? 's' : ''}`,
-        `${cidadesLabel} (${estado}) · ${tipoCrime || 'todos os crimes'} · ${periodoDias} dias`,
+        // Com ate 20 assuntos escolhidos, listar todos estouraria a linha do
+        // push. Um so cabe e diz mais que "3 assuntos"; acima disso, a contagem.
+        `${cidadesLabel} (${estado}) · ${assuntosLabel(assuntos)} · ${periodoDias} dias`,
         { search_id: searchId, type: 'manual_search_completed' }
       );
       logger.info(`${LOG_PREFIX} Push result: sent=${pushResult.sent}, devices=${pushResult.deviceCount}, reason=${pushResult.reason || 'ok'}`);
@@ -452,16 +475,23 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
   }
 }
 
+/** Rotulo curto dos assuntos, pro corpo do push. */
+function assuntosLabel(assuntos?: string[]): string {
+  if (!assuntos || assuntos.length === 0) return 'todos os assuntos';
+  if (assuntos.length === 1) return assuntos[0];
+  return `${assuntos.length} assuntos`;
+}
+
 // ============================================
 // URL Collection (manual search specific)
 // ============================================
 
 async function collectManualSearchUrls(
-  params: { estado: string; cidades: string[]; periodoDias: number; tipoCrime?: string },
+  params: { estado: string; cidades: string[]; periodoDias: number; assuntos?: string[] },
   logPrefix: string,
   webEnabled: boolean,
 ): Promise<{ searchResults: SearchResult[]; sourceTypeMap: Map<string, string>; requestCount: number }> {
-  const { estado, cidades, periodoDias, tipoCrime } = params;
+  const { estado, cidades, periodoDias, assuntos } = params;
   const sourceTypeMap = new Map<string, string>();
   const allResults: SearchResult[] = [];
   const seenUrls = new Set<string>();
@@ -494,7 +524,7 @@ async function collectManualSearchUrls(
     // `polícia São José SC` parou em 3 semanas. E a query longa que se usava aqui
     // (`notícias policiais ocorrências crime <cidade> <estado>`) rendia 4 de 10
     // dentro da janela contra 10 de 10 da curta.
-    const queries = await buildManualSearchQueries(cidade, tipoCrime);
+    const queries = await buildManualSearchQueries(cidade, assuntos);
     const webQuery = queries[0];
 
     logger.info(`${logPrefix} [${cidade}] ${queries.length} query(s) news${webEnabled ? ' + web' : ''} | ${dateRestrict} | ${JSON.stringify(queries)}`);

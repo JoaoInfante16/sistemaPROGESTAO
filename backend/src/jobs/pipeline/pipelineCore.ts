@@ -128,16 +128,25 @@ export function runFilter0(
 // Stage 2: Filter1 — GPT Batch
 // ============================================
 
+/**
+ * `assuntos` = o que o usuario escolheu na tela. Vai pro prompt como contexto:
+ * sem ele, o Filter1 mata `greve`/`bloqueio` pacifico (a lista de `true` so
+ * aceita "protesto VIOLENTO") e o usuario recebe zero sem explicacao.
+ *
+ * Ausente no auto-scan, de proposito — la ninguem escolheu nada e o prompt fica
+ * exatamente como sempre foi.
+ */
 export async function runFilter1(
   urls: SearchResult[],
   rejectedUrls: RejectedUrl[],
   logPrefix: string,
+  assuntos?: string[],
 ): Promise<{ passed: SearchResult[]; tokensUsed: number }> {
   if (urls.length === 0) return { passed: [], tokensUsed: 0 };
 
   const snippets = urls.map((r) => r.snippet);
   const { results: batchResults, tokensUsed } = await rateLimiter.schedule('openai', () =>
-    filter1GPTBatch(snippets)
+    filter1GPTBatch(snippets, assuntos)
   );
 
   const passed: SearchResult[] = [];
@@ -245,7 +254,8 @@ type ItemFilter2 =
 
 export async function runFilter2WithEmbedding(
   contents: FetchedContent[],
-  cfg: { maxContentChars: number; minConfidence: number },
+  /** `assuntos`: mesma razao do `runFilter1` — o que o usuario pediu vale. */
+  cfg: { maxContentChars: number; minConfidence: number; assuntos?: string[] },
   rejectedUrls: RejectedUrl[],
   logPrefix: string,
   postFilter?: PostFilter2Options,
@@ -272,6 +282,7 @@ export async function runFilter2WithEmbedding(
           filter2GPTWithReason(fetched.content, {
             maxContentChars: cfg.maxContentChars,
             minConfidence: cfg.minConfidence,
+            assuntos: cfg.assuntos,
           })
         );
 

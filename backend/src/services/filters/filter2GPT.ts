@@ -111,6 +111,15 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
 interface Filter2Options {
   maxContentChars?: number;
   minConfidence?: number;
+  /**
+   * Assuntos que o usuario escolheu na tela (03/08). Presentes, viram a regra 0
+   * do prompt: o que ele pediu e relevante, mesmo sem crime.
+   *
+   * Ausentes (auto-scan e busca sem escolha), o prompt fica identico ao de
+   * sempre — este e o segundo portao, e o primeiro e o Filter1, que recebe o
+   * mesmo contexto.
+   */
+  assuntos?: string[];
 }
 
 export async function filter2GPT(content: string, options: Filter2Options = {}): Promise<NewsExtraction | null> {
@@ -119,13 +128,21 @@ export async function filter2GPT(content: string, options: Filter2Options = {}):
 }
 
 export async function filter2GPTWithReason(content: string, options: Filter2Options = {}): Promise<Filter2Result> {
-  const { maxContentChars = 4000, minConfidence = 0.7 } = options;
+  const { maxContentChars = 4000, minConfidence = 0.7, assuntos } = options;
   const truncated = content.substring(0, maxContentChars);
+
+  // Regra 0 quando o usuario escolheu os assuntos: o que ele perguntou vale,
+  // ainda que nao seja crime. Sem isso, greve pacifica e materia fora do
+  // vocabulario de crime chegam ate aqui (ja pagas em SERP + Jina) e sao
+  // descartadas no ultimo metro — o pior lugar possivel pra perder.
+  const contextoUsuario = assuntos?.length
+    ? `\n0. THE USER EXPLICITLY SEARCHED FOR: ${assuntos.join(', ')}. An article about ANY of these subjects IS relevant — set "is_crime": true even when no crime occurred (a peaceful strike, a labor stoppage, a road blockade, a protest). Classify it with the closest "crime_type" below, or "outros" when none fits. This rule wins over rule 2.`
+    : '';
 
   const prompt = `Analyze the following news article and extract structured data as JSON.
 
-RULES:
-1. "is_crime": true for ANY public safety content: police occurrences, crimes, operations, crime statistics, protests, road blockades.
+RULES:${contextoUsuario}
+1. "is_crime": true for ANY public safety content: police occurrences, crimes, operations, crime statistics, protests, strikes, labor stoppages, road blockades.
 2. "is_crime": false ONLY for: academic essays, opinion editorials, category/tag pages, or content unrelated to public safety.
 3. "nature": "occurrence" for individual events (robbery at store X, murder in neighborhood Y). "statistic" for aggregated data (robberies up 20%, violence index drops).
 4. "date": MUST be the article's PUBLICATION DATE, not dates mentioned in the article body. Look for date in the header, byline, or URL. If unsure, use today's date.
@@ -139,7 +156,7 @@ MANDATORY CATEGORIES for "crime_type" (use EXACTLY one):
 - lesao_corporal: assault, fight, attempted murder
 - trafico: drug trafficking, drug seizure
 - operacao_policial: police operation, raid, warrant, arrest, weapon seizure
-- manifestacao: protest, demonstration, riot
+- manifestacao: protest, demonstration, riot, strike, labor stoppage
 - bloqueio_via: road blockade, street interdiction
 - estelionato: scam, fraud
 - receptacao: receiving stolen goods, chop shop

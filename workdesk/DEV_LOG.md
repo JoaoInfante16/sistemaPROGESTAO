@@ -121,6 +121,77 @@ Verificado em 02/08: migrations 019, 020, 021b, 022 aplicadas; **021, 023, 024 e
 
 ---
 
+## 2026-08-03 — quem escolhe o que perguntar passa a ser o usuário (backend)
+
+### A decisão
+
+Vinha de "vamos adicionar greve e manifestação aos assuntos". Investigando,
+apareceu que **9 dos 16 tipos da taxonomia nunca viram query** — só entram de
+carona nas 5 perguntas existentes. E como o índice do Google tem teto **por
+query**, cada assunto que não se pergunta é um teto de 60-70 itens que se
+deixa na mesa.
+
+O caminho óbvio era engordar `search_subjects`. O João propôs outro: **a escolha
+sobe pra tela**, com templates da taxonomia + palavra-chave livre, e o usuário
+paga o tempo da própria escolha.
+
+**É melhor por um motivo que não é de UX:** `search_subjects` é config no banco
+compartilhado — mexer nela muda o auto-scan do cliente na hora, sem deploy (a
+armadilha nº 1 deste projeto). Escolha por busca não toca config nenhuma.
+
+### O que já existia — e estava mudo
+
+`tipo_crime` já viajava de ponta a ponta: `api_service.dart` → `validation.ts` →
+worker → `buildManualSearchQueries`. **Ninguém nunca preenchia**, e quando
+preenchesse rodaria **uma query só**. Não foi feature nova; foi destravar
+encanamento parado.
+
+| antes | agora |
+|---|---|
+| `tipo_crime?: string` → 1 query | `assuntos?: string[]` → N queries, até 20 |
+| lista fixa do painel | lista da tela, painel como fallback |
+
+O formato antigo continua aceito na rota e no worker — o Redis é compartilhado e
+não esvazia no deploy, então job enfileirado antes chegaria com o campo velho.
+
+### A armadilha que quase custou a feature inteira
+
+O plano dizia "corrigir o Filter2 pra aceitar greve". **O Filter2 nem seria
+alcançado.** O [Filter1](../backend/src/services/filters/filter1GPTBatch.ts#L66)
+é o portão anterior e mais restritivo: aceita `protesto **violento**`. Greve de
+ônibus, bloqueio pacífico ou qualquer termo fora do vocabulário de crime morre
+ali — **antes do Jina**, barato e em silêncio. Adicionaríamos o assunto e
+concluiríamos que "greve não rende".
+
+A correção não foi engordar a lista de palavras dos dois prompts, e sim
+**passar os assuntos escolhidos como contexto** — "o usuário pediu por: greve,
+bloqueio". Vale pra qualquer termo que ele digite, hoje e no futuro, sem
+precisar adivinhar. Sem assuntos escolhidos (auto-scan), o prompt fica idêntico
+ao de sempre — mesmo padrão opt-in do `classificar`.
+
+Independente disso, `manifestacao` no Filter2 ganhou `strike, labor stoppage`, e
+a regra 1 ganhou greve: o auto-scan também vai coletar isso.
+
+### [taxonomia.ts](../backend/src/utils/taxonomia.ts) — catálogo novo
+
+17 assuntos (termo curto, label, tipo, categoria) + cores e ordem das
+categorias, servidos em **`GET /settings/taxonomia`**. A relação assunto→tipo é
+N:1 de propósito: "greve" e "manifestação" são perguntas diferentes que
+classificam no mesmo `manifestacao`.
+
+Existe **pra não nascer hardcoded no Dart** — se a lista morasse no app,
+acrescentar assunto viraria build de APK, e a taxonomia é justamente o que se
+quer poder mexer. Torná-la editável no painel (hoje é default de código) é o
+próximo passo, no ROADMAP.
+
+### Ainda não medido
+
+Se 17 assuntos rendem o volume esperado, e quanto isso custa em minutos. A busca
+de baseline (Goiânia/30d com os 5 assuntos atuais) roda antes, pra não mudar
+duas variáveis de uma vez.
+
+---
+
 ## 2026-08-03 — o funil ganha memória (e um documento)
 
 ### O que disparou

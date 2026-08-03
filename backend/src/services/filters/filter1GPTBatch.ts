@@ -24,12 +24,12 @@ export interface Filter1Result {
   tokensUsed: number;
 }
 
-export async function filter1GPTBatch(snippets: string[]): Promise<Filter1Result> {
+export async function filter1GPTBatch(snippets: string[], assuntos?: string[]): Promise<Filter1Result> {
   if (snippets.length === 0) return { results: [], tokensUsed: 0 };
 
   // Se só tem 1 snippet, não precisa de batch
   if (snippets.length === 1) {
-    const { result, tokensUsed } = await filter1Single(snippets[0]);
+    const { result, tokensUsed } = await filter1Single(snippets[0], assuntos);
     return { results: [result], tokensUsed };
   }
 
@@ -40,17 +40,37 @@ export async function filter1GPTBatch(snippets: string[]): Promise<Filter1Result
     let totalTokens = 0;
     for (let i = 0; i < snippets.length; i += BATCH_CHUNK_SIZE) {
       const chunk = snippets.slice(i, i + BATCH_CHUNK_SIZE);
-      const chunkResult = await filter1GPTBatchSingle(chunk);
+      const chunkResult = await filter1GPTBatchSingle(chunk, assuntos);
       results.push(...chunkResult.results);
       totalTokens += chunkResult.tokensUsed;
     }
     return { results, tokensUsed: totalTokens };
   }
 
-  return filter1GPTBatchSingle(snippets);
+  return filter1GPTBatchSingle(snippets, assuntos);
 }
 
-async function filter1GPTBatchSingle(snippets: string[]): Promise<Filter1Result> {
+/**
+ * Linha extra do prompt quando o usuario escolheu os assuntos na tela (03/08).
+ *
+ * ⚠️ E o que faz a busca por palavra-chave livre nao ser uma promessa quebrada.
+ * Sem isto, o Filter1 mata o que o usuario pediu ANTES do Jina: a lista de
+ * `true` aceita "protesto VIOLENTO", entao `greve` de onibus, `bloqueio de
+ * rodovia` pacifico ou qualquer termo fora do vocabulario de crime volta
+ * `false`. O usuario pede uma coisa, recebe zero, e nao ha como saber por que.
+ *
+ * Preferido a engordar a lista fixa de palavras: assim vale pra qualquer termo
+ * que o usuario digite, hoje e no futuro, sem a gente ter que adivinhar.
+ *
+ * Vazio quando ninguem escolheu nada — o prompt do auto-scan continua identico
+ * ao que sempre foi.
+ */
+function contextoDosAssuntos(assuntos?: string[]): string {
+  if (!assuntos || assuntos.length === 0) return '';
+  return `\n- O USUARIO PEDIU ESPECIFICAMENTE por: ${assuntos.join(', ')}. Trecho sobre qualquer um desses assuntos = true, MESMO que nao seja crime nenhum (ex: greve de onibus, manifestacao pacifica, bloqueio de rodovia, acidente). Foi ele quem perguntou — nao descarte por "nao e seguranca publica".`;
+}
+
+async function filter1GPTBatchSingle(snippets: string[], assuntos?: string[]): Promise<Filter1Result> {
   // Prompt em pt-BR (mesma lingua dos snippets) + exemplos few-shot cobrindo
   // casos de borda onde o modelo tende a errar sem contexto: crimes em
   // ambiente esportivo/cultural, apreensoes pela Receita, jogo do bicho,
@@ -66,7 +86,7 @@ REGRAS:
 - true = conteudo de segurança pública: roubo, furto, homicidio, latrocinio, lesao, trafico, receptacao, estelionato, operacao policial, apreensao, prisao, protesto violento, bloqueio, tiroteio, estatistica de crimes, contravencao (ex: jogo do bicho).
 - false = NAO eh seguranca publica: esporte (jogo, resultado, transferencia), novela, fofoca, horoscopo, resenha de filme/show, cotacao financeira, previsao do tempo, concurso publico, nota tecnica sem dado, entretenimento em geral.
 - Crimes em ambiente de entretenimento/esporte CONTAM: "torcedor morto em briga" = true, "assalto interrompe show" = true, "Receita Federal apreende drogas" = true, "jogo do bicho movimenta milhoes" = true.
-- Se for operacao/apreensao mesmo sem mencionar suspeito preso, CONTA = true.
+- Se for operacao/apreensao mesmo sem mencionar suspeito preso, CONTA = true.${contextoDosAssuntos(assuntos)}
 
 EXEMPLOS:
 Trecho: "Torcedor do Flamengo morre apos briga em estadio"
@@ -158,13 +178,13 @@ ${snippets.map((snippet, index) => `${index}. "${snippet}"`).join('\n')}`;
 /**
  * Fallback para snippet único (evita overhead do batch com 1 item).
  */
-async function filter1Single(snippet: string): Promise<{ result: boolean; tokensUsed: number }> {
+async function filter1Single(snippet: string, assuntos?: string[]): Promise<{ result: boolean; tokensUsed: number }> {
   const prompt = `O trecho abaixo é sobre SEGURANÇA PÚBLICA (crime, polícia, operação, apreensão, estatistica de criminalidade, contravencao)?
 
 REGRAS:
 - Crime em ambiente de entretenimento/esporte CONTA (ex: "torcedor morto" = SIM, "assalto em show" = SIM).
 - Apreensao/operacao da Receita Federal ou PF CONTA.
-- Esporte puro, novela, fofoca, horoscopo, cotacao, previsao do tempo, concurso publico = NAO.
+- Esporte puro, novela, fofoca, horoscopo, cotacao, previsao do tempo, concurso publico = NAO.${contextoDosAssuntos(assuntos)}
 
 Trecho: "${snippet}"
 

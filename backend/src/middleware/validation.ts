@@ -133,6 +133,20 @@ export const schemas = {
     // numa capital passa disso. Subir pra 365 depois da 8.5 (desistir por
     // estagnacao, nao por relogio) e so mudar este numero.
     periodo_dias: z.number().int().min(1).max(180).default(30),
+    // ASSUNTOS ESCOLHIDOS NA TELA (03/08). Cada um vira uma query `<assunto>
+    // <cidade>` e um teto novo de ~60-70 itens no indice do Google. Sao termos
+    // livres de proposito: os templates da taxonomia sao so uma sugestao boa, e
+    // o usuario pode digitar o que quiser (`greve`, `queda de energia`).
+    //
+    // Ausente = a lista do painel (`search_subjects`), que e o comportamento de
+    // antes — o APK que o cliente tem hoje nao manda nada e continua igual.
+    //
+    // Teto de 20: cada assunto custa ~1 min de busca numa capital. Nao e limite
+    // de custo (a SERP e ~$0.0015 por pagina) — e limite de paciencia. Quem
+    // mostra o preco em minutos e a tela, antes de disparar.
+    assuntos: z.array(z.string().min(2).max(60)).min(1).max(20).optional(),
+    // Compat: a versao anterior mandava UM tipo. Continua aceito e vira uma
+    // lista de um item na rota.
     tipo_crime: z.string().min(2).max(50).optional(),
   }),
 
