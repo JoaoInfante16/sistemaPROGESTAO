@@ -36,15 +36,32 @@ export async function filter1GPTBatch(snippets: string[], assuntos?: string[]): 
   // Dividir em chunks pra não estourar context window do GPT
   if (snippets.length > BATCH_CHUNK_SIZE) {
     logger.info(`[Filter1Batch] Splitting ${snippets.length} snippets into chunks of ${BATCH_CHUNK_SIZE}`);
-    const results: boolean[] = [];
-    let totalTokens = 0;
+
+    const pedacos: string[][] = [];
     for (let i = 0; i < snippets.length; i += BATCH_CHUNK_SIZE) {
-      const chunk = snippets.slice(i, i + BATCH_CHUNK_SIZE);
-      const chunkResult = await filter1GPTBatchSingle(chunk, assuntos);
-      results.push(...chunkResult.results);
-      totalTokens += chunkResult.tokensUsed;
+      pedacos.push(snippets.slice(i, i + BATCH_CHUNK_SIZE));
     }
-    return { results, tokensUsed: totalTokens };
+
+    // EM PARALELO, e não em série como até 03/08.
+    //
+    // O `for` com `await` fazia os chunks esperarem uns aos outros sem motivo:
+    // quem controla a vazão da OpenAI é o `rateLimiter` (Bottleneck), uma camada
+    // acima — o serial aqui só desperdiçava a concorrência que já estava
+    // permitida. Com 5 assuntos isso custava segundos; com a lista inteira da
+    // taxonomia são ~30 chunks, e o desperdício vira minutos.
+    //
+    // `Promise.all` e não `allSettled` de propósito: `filter1GPTBatchSingle` já
+    // trata erro internamente e só lança depois de 2 tentativas, e nesse caso o
+    // certo é a busca inteira falhar pro BullMQ re-enfileirar — engolir aqui
+    // descartaria snippets em silêncio.
+    const resultados = await Promise.all(
+      pedacos.map((chunk) => filter1GPTBatchSingle(chunk, assuntos))
+    );
+
+    return {
+      results: resultados.flatMap((r) => r.results),
+      tokensUsed: resultados.reduce((soma, r) => soma + r.tokensUsed, 0),
+    };
   }
 
   return filter1GPTBatchSingle(snippets, assuntos);

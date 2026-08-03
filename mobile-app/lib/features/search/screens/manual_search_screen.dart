@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../core/data/brazilian_locations.dart';
+import '../../../core/models/assunto.dart';
 import '../../../core/models/manual_search_results.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/utils/category_colors.dart';
@@ -14,6 +15,7 @@ import '../../../core/widgets/group_header.dart';
 import '../../../core/widgets/grid_background.dart';
 import '../../../core/widgets/simeops_title.dart';
 import '../../../core/theme/simeops_colors.dart';
+import '../widgets/assuntos_field.dart';
 import '../widgets/multi_city_search_field.dart';
 import '../../feed/widgets/news_card.dart';
 import '../../feed/widgets/news_detail_sheet.dart';
@@ -36,6 +38,11 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   Set<String> _selectedCidades = {};
   int _periodoDias = 30;
   bool _loadingLocations = true;
+
+  // Assuntos: o que perguntar ao Google. Catálogo vem do backend; a falha ao
+  // buscá-lo não impede de pesquisar (o backend cai na lista do painel).
+  Taxonomia _taxonomia = const Taxonomia();
+  List<String> _assuntos = [];
 
   // Search state
   String? _searchId;
@@ -75,16 +82,31 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   // quando user retomava busca via histórico durante warm-up do backend.
   static const _maxConsecutiveErrors = 20;
 
-  // Presets rápidos; o slider aceita qualquer inteiro de 1 a 180 (o backend
-  // valida a mesma faixa — decisão do briefing: escolha livre, não botões fixos).
-  static const _periodoPresets = [7, 30, 60, 90, 180];
+  // Marcas do slider de período. Os chips de preset saíram em 03/08 (pedido do
+  // João): viraram marcas na própria régua, que ocupam menos e mostram a escala.
+  // O slider continua livre entre elas — o backend aceita qualquer inteiro de 1
+  // a 180, e travar em 4 valores jogaria fora capacidade que já existe.
+  static const _periodoMarcas = [7, 30, 60, 90, 180];
 
   @override
   void initState() {
     super.initState();
     _loadLocations();
+    _loadTaxonomia();
     if (widget.resumeSearchId != null) {
       _resumeSearch(widget.resumeSearchId!);
+    }
+  }
+
+  /// Catálogo de assuntos. Falhar aqui NÃO pode impedir de buscar: sem
+  /// taxonomia, o seletor some e o backend usa a lista do painel — que é
+  /// exatamente o comportamento anterior a esta tela existir.
+  Future<void> _loadTaxonomia() async {
+    try {
+      final tax = await context.read<ApiService>().getTaxonomia();
+      if (mounted) setState(() => _taxonomia = tax);
+    } catch (e) {
+      debugPrint('[ManualSearch] taxonomia indisponível: $e');
     }
   }
 
@@ -193,6 +215,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         estado: _selectedEstado!,
         cidades: _selectedCidades.toList(),
         periodoDias: _periodoDias,
+        assuntos: _assuntos,
       );
 
       setState(() => _searchId = searchId);
@@ -475,71 +498,86 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         ),
         const SizedBox(height: 18),
 
-        // PERIODO — slider livre (1–180) + presets rápidos
-        _sectionLabel('PERIODO'),
+        // O QUE BUSCAR — cada assunto é uma pergunta a mais ao Google, e um
+        // teto novo de ~60 notícias. O preço é tempo, e ele fica visível.
         Row(
           children: [
-            Expanded(
-              child: SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  activeTrackColor: SIMEopsColors.teal,
-                  inactiveTrackColor:
-                      SIMEopsColors.navyLight.withValues(alpha: 0.9),
-                  thumbColor: SIMEopsColors.tealLight,
-                  overlayColor: SIMEopsColors.teal.withValues(alpha: 0.15),
-                  trackHeight: 3,
-                ),
-                child: Slider(
-                  value: _periodoDias.toDouble(),
-                  min: 1,
-                  max: 180,
-                  divisions: 179,
-                  onChanged: (v) =>
-                      setState(() => _periodoDias = v.round()),
-                ),
-              ),
-            ),
-            SizedBox(
-              width: 76,
-              child: Text(
-                '$_periodoDias DIAS',
-                textAlign: TextAlign.right,
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: SIMEopsColors.tealLight,
-                ),
-              ),
+            _sectionLabel('O QUE BUSCAR'),
+            const Spacer(),
+            IconButton(
+              onPressed: _explicarAssuntos,
+              icon: Icon(Icons.help_outline,
+                  size: 18, color: SIMEopsColors.muted.withValues(alpha: 0.7)),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              tooltip: 'Por que escolher assuntos',
             ),
           ],
         ),
-        const SizedBox(height: 6),
-        Wrap(
-          spacing: 8,
-          children: _periodoPresets.map((dias) {
-            final selected = _periodoDias == dias;
-            return ChoiceChip(
-              label: Text('$dias dias'),
-              selected: selected,
-              onSelected: (_) => setState(() => _periodoDias = dias),
-              selectedColor: SIMEopsColors.teal.withValues(alpha: 0.15),
-              side: BorderSide(
-                color: selected
-                    ? SIMEopsColors.teal
-                    : SIMEopsColors.teal.withValues(alpha: 0.15),
-              ),
-              labelStyle: GoogleFonts.exo2(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: selected ? SIMEopsColors.tealLight : SIMEopsColors.muted,
-              ),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
-              backgroundColor: SIMEopsColors.navyLight.withValues(alpha: 0.8),
-            );
-          }).toList(),
+        const SizedBox(height: 4),
+        AssuntosField(
+          taxonomia: _taxonomia,
+          periodoDias: _periodoDias,
+          onChanged: (lista) => setState(() => _assuntos = lista),
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 20),
+
+        // PERIODO — slider livre (1–180) com marcas nos valores usuais
+        _sectionLabel('PERIODO'),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: SIMEopsColors.teal,
+            inactiveTrackColor: SIMEopsColors.navyLight.withValues(alpha: 0.9),
+            thumbColor: SIMEopsColors.tealLight,
+            overlayColor: SIMEopsColors.teal.withValues(alpha: 0.15),
+            trackHeight: 3,
+            tickMarkShape: SliderTickMarkShape.noTickMark,
+          ),
+          child: Slider(
+            value: _periodoDias.toDouble(),
+            min: 1,
+            max: 180,
+            divisions: 179,
+            onChanged: (v) => setState(() => _periodoDias = v.round()),
+          ),
+        ),
+        // Marcas dos valores usuais. Tocáveis — substituem os chips que estavam
+        // aqui e mostram a escala do slider ao mesmo tempo.
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: _periodoMarcas.map((dias) {
+              final ativo = _periodoDias == dias;
+              return GestureDetector(
+                onTap: () => setState(() => _periodoDias = dias),
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: Text(
+                    '$dias',
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 11,
+                      fontWeight: ativo ? FontWeight.w700 : FontWeight.w400,
+                      color: ativo
+                          ? SIMEopsColors.tealLight
+                          : SIMEopsColors.muted.withValues(alpha: 0.55),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 18),
+
+        // A CONTA — assuntos × período em minutos. Fica aqui, logo abaixo do
+        // slider, pra arrastar o período mexer no número na frente do usuário:
+        // é o único lugar onde o custo de uma busca maior fica visível ANTES
+        // de ela começar.
+        _caixaEstimativa(),
+        const SizedBox(height: 20),
 
         // INICIAR BUSCA — estilo vem inteiro do FilledButtonTheme (primária teal)
         SizedBox(
@@ -562,6 +600,114 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// A conta da busca: quantos assuntos, quantos dias, quantos minutos.
+  Widget _caixaEstimativa() {
+    final n = _assuntos.length;
+    final dur = estimativaBusca(n, _periodoDias);
+    // Acima de ~12 min a espera deixa de ser "alguns instantes" e vira decisão
+    // consciente — o aviso é o que transforma isso em escolha, não surpresa.
+    final longa = dur.inMinutes >= 12;
+
+    final cor = longa ? const Color(0xFFF59E0B) : SIMEopsColors.teal;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: cor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cor.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(longa ? Icons.schedule : Icons.bolt, size: 17, color: cor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  n == 0
+                      ? 'Nenhum assunto escolhido'
+                      : '$n assunto${n == 1 ? '' : 's'} · $_periodoDias dias · '
+                          '${formatarEstimativa(dur)}',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: longa ? cor : SIMEopsColors.tealLight,
+                  ),
+                ),
+                if (longa) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    'Busca longa — pode fechar o app, o push avisa quando terminar.',
+                    style: GoogleFonts.exo2(
+                      fontSize: 11.5,
+                      color: SIMEopsColors.muted.withValues(alpha: 0.8),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _explicarAssuntos() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: SIMEopsColors.navyMid,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 14, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: SIMEopsColors.muted.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Text(
+              'Por que escolher assuntos',
+              style: GoogleFonts.exo2(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Cada assunto é uma pergunta separada ao Google, e o Google '
+              'devolve no máximo ~60 notícias por pergunta — pedir mais páginas '
+              'da mesma pergunta não traz nada de novo.\n\n'
+              'Por isso perguntar mais coisas é a única forma de encontrar '
+              'mais. O preço é tempo: cada assunto acrescenta cerca de 45 '
+              'segundos à busca.\n\n'
+              'A palavra-chave livre busca qualquer coisa, mesmo fora da lista '
+              '— greve, acidente numa rodovia, o que você precisar.',
+              style: GoogleFonts.exo2(
+                fontSize: 14,
+                height: 1.55,
+                color: SIMEopsColors.muted,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

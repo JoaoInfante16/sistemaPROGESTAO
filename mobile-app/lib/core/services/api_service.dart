@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/env.dart';
+import '../models/assunto.dart';
 import '../models/manual_search_results.dart';
 import '../models/news_item.dart';
 import '../utils/type_helpers.dart';
@@ -190,20 +191,36 @@ class ApiService {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  // ── Taxonomia (catálogo de assuntos da busca) ──
+
+  /// Catálogo servido pelo backend. Falha aqui não pode impedir de buscar — a
+  /// tela cai numa taxonomia vazia e a busca roda com a lista do painel, que é
+  /// exatamente o comportamento anterior a esta tela existir.
+  Future<Taxonomia> getTaxonomia() async {
+    final res = await _client
+        .get(Uri.parse('$_baseUrl/settings/taxonomia'), headers: _headers)
+        .timeout(_timeout);
+    _checkResponse(res);
+    return Taxonomia.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
   // ── Manual Search (pipeline individual) ──
 
+  /// `assuntos`: o que perguntar ao Google, escolhido na tela. Cada um vira uma
+  /// query e um teto novo de ~60-70 itens no índice — e ~47s a mais de busca.
+  /// Lista vazia = o backend usa a lista do painel.
   Future<String> triggerManualSearch({
     required String estado,
     required List<String> cidades,
     int periodoDias = 30,
-    String? tipoCrime,
+    List<String>? assuntos,
   }) async {
     final bodyMap = <String, dynamic>{
       'estado': estado,
       'cidades': cidades,
       'periodo_dias': periodoDias,
     };
-    if (tipoCrime != null) bodyMap['tipo_crime'] = tipoCrime;
+    if (assuntos != null && assuntos.isNotEmpty) bodyMap['assuntos'] = assuntos;
 
     final res = await _client.post(
       Uri.parse('$_baseUrl/manual-search'),

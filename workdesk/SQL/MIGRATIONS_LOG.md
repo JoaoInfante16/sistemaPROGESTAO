@@ -33,6 +33,8 @@
 
 | 026 | 026_rejected_urls_search_id.sql | ADD COLUMN `search_id` (nullable) + index parcial em `pipeline_rejected_urls`. Aditiva e reversivel, nao toca linha existente. Sem ela a busca manual **nao consegue** persistir por que rejeitou — a tabela so aceitava `location_id`, e busca manual roda em cidade fora de `monitored_locations`. Motivador: Goiania/30d levou 74 conteudos a 27 extracoes em 03/08 e a unica forma de saber o motivo era re-rodar o pipeline **pagando Jina + GPT** | **NAO aplicada — aguarda autorizacao** (o codigo que grava ja esta em `develop`; sem a coluna, o insert falha e cai no catch, sem quebrar a busca) |
 
+| 027 | 027_openai_concorrencia.sql | `api_rate_limits.openai.max_concurrent` **5 -> 20** (e `min_time_ms` 200 -> 50). O 5 era chute conservador de fev/2026, nunca revisado, e e o gargalo mais apertado do sistema: estrangula o estagio 5 da busca manual (~6 min para 450 artigos, contra ~1,5 min com 20) e, por ser o mesmo Bottleneck, deixa o **auto-scan do cliente na fila** enquanto uma busca longa roda. Nao descarta nada — so aumenta vazao. ⚠️ Afeta producao na hora (banco compartilhado), mas so pra acelerar | **Pendente — o Joao vai rodar** (autorizada em 03/08) |
+
 > ⚠️ Este log e preenchido a mao e ja desatualizou (019 e 020 estavam marcadas
 > como pendentes e ja tinham sido rodadas). Antes de confiar nele, rodar
 > **`npx tsx scripts/diagnostico-banco.ts`** — ele olha o estado REAL do banco

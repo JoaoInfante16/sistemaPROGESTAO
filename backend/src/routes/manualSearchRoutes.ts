@@ -114,8 +114,17 @@ router.post(
             assuntos: assuntosEscolhidos,
           },
           {
-            attempts: 2,
-            backoff: { type: 'exponential', delay: 3000 },
+            // UMA tentativa (era 2, mudado em 03/08).
+            //
+            // O retry re-roda o job INTEIRO, do estágio 1. Quando a busca levava
+            // 3 minutos e $0,06 isso era barato; com a lista inteira de assuntos
+            // ela passa de 15 minutos e $1, e uma falha no fim cobraria tudo de
+            // novo — o dobro do tempo e do dinheiro pelo mesmo resultado.
+            //
+            // O usuário perde menos: ele vê a falha na hora (o app desiste por
+            // estagnação) e pode disparar de novo sabendo o que aconteceu, em
+            // vez de esperar em silêncio por uma segunda rodada que ninguém pediu.
+            attempts: 1,
           }
         );
       } catch (enqueueError) {
