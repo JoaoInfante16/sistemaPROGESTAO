@@ -340,6 +340,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
           estado: _selectedEstado!,
           periodoDias: _periodoDias,
           results: _searchData.results,
+          foraDoPeriodo: _searchData.foraDoPeriodo,
         ),
       ),
     );
@@ -1072,6 +1073,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
                               estado: _selectedEstado!,
                               periodoDias: _periodoDias,
                               results: _searchData.results,
+                              foraDoPeriodo: _searchData.foraDoPeriodo,
                             ),
                           ),
                         );

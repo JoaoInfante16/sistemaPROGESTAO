@@ -121,6 +121,26 @@ Verificado em 02/08: migrations 019, 020, 021b, 022 aplicadas; **021, 023, 024 e
 
 ---
 
+## 2026-08-02 — 9.6: o relatório vira função do recorte (re-fatiar de graça)
+
+`_computeAnalytics` deixou de ser `late final` calculado 1x no `initState` —
+agora é função de um subconjunto, recalculada a cada mudança de recorte:
+
+- **Chips de período no relatório** (7d/15d/30d/... + o período completo):
+  re-fatiam client-side o que a busca já trouxe. **"+ antigas (N)"** inclui o
+  balde `fora_do_periodo` — é o que paga a busca longa: gasta-se uma vez,
+  re-fatia infinitas vezes.
+- **Legenda do donut tocável**: selecionar categorias re-computa bairros,
+  tendência, fontes e o total. O donut continua mostrando TODAS as categorias
+  (senão a filtrada some da legenda e não volta); fatias não selecionadas
+  ficam esmaecidas.
+- ReportScreen ganhou o parâmetro `foraDoPeriodo` (cru, separado — nunca
+  concatenado em results).
+- ⚠️ Mapa e executivo seguem o recorte FIXO da busca de propósito (armadilha
+  6.5: geocode roda contra a cidade da requisição). Comentado no código.
+
+---
+
 ## 2026-08-02 — O recorte único: grupos colapsáveis + filtros no feed e na busca (inclui 9.4)
 
 A tese do 9.6 ("lista e relatório viram função de um recorte") virou a espinha

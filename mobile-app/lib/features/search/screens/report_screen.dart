@@ -19,6 +19,9 @@ class ReportScreen extends StatefulWidget {
   final String estado;
   final int periodoDias;
   final List<Map<String, dynamic>> results;
+  // Balde fora_do_periodo cru — itens mais antigos que a janela pedida, que a
+  // busca coletou no caminho. É o pool do re-fatiamento "+ antigas".
+  final List<Map<String, dynamic>> foraDoPeriodo;
 
   const ReportScreen({
     super.key,
@@ -27,6 +30,7 @@ class ReportScreen extends StatefulWidget {
     required this.estado,
     required this.periodoDias,
     required this.results,
+    this.foraDoPeriodo = const [],
   });
 
   @override
@@ -36,16 +40,23 @@ class ReportScreen extends StatefulWidget {
 class _ReportScreenState extends State<ReportScreen> {
   bool _generatingLink = false;
 
-  // Computed
-  late final Map<String, int> _crimeTypeCounts;
-  late final Map<String, int> _categoryCounts;
-  late final Map<String, int> _bairroCounts;
-  late final List<Map<String, dynamic>> _byDate;
-  late final int _totalOcorrencias;
-  late final int _totalEstatisticas;
-  late final List<Map<String, dynamic>> _estatisticas;
-  late final List<Map<String, String>> _sourcesOficial;
-  late final List<Map<String, String>> _sourcesMedia;
+  // Recorte client-side — re-fatiar é de graça, o dado já veio na busca.
+  // null = período completo pedido; _includeOld inclui o balde fora_do_periodo.
+  int? _sliceDias;
+  bool _includeOld = false;
+  final Set<String> _cats = {};
+
+  // Computed — função do recorte, recalculado a cada setState de filtro
+  // (era late final, calculado 1x no initState sem filtro nenhum).
+  Map<String, int> _crimeTypeCounts = {};
+  Map<String, int> _categoryCounts = {};
+  Map<String, int> _bairroCounts = {};
+  List<Map<String, dynamic>> _byDate = [];
+  int _totalOcorrencias = 0;
+  int _totalEstatisticas = 0;
+  List<Map<String, dynamic>> _estatisticas = [];
+  List<Map<String, String>> _sourcesOficial = [];
+  List<Map<String, String>> _sourcesMedia = [];
 
   // Radar — pontos vêm do backend já geocodados
   List<CrimePoint> _mapPoints = [];
@@ -106,6 +117,9 @@ class _ReportScreenState extends State<ReportScreen> {
   String _dateStr(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  // ⚠️ Mapa e executivo seguem o recorte FIXO da busca (armadilha 6.5 do
+  // briefing): o geocode roda contra a cidade da requisição — re-fatiar o
+  // mapa client-side pintaria bairro de Camaçari dentro de Salvador.
   Future<void> _loadMapPoints() async {
     if (widget.cidades.isEmpty) {
       if (mounted) setState(() => _mapLoading = false);
@@ -136,7 +150,28 @@ class _ReportScreenState extends State<ReportScreen> {
     }
   }
 
+  // Pool com o recorte de PERÍODO aplicado (categoria é aplicada depois,
+  // dentro do _computeAnalytics, pra o donut continuar mostrando todas).
+  List<Map<String, dynamic>> get _dateSubset {
+    final pool = [
+      ...widget.results,
+      if (_includeOld) ...widget.foraDoPeriodo,
+    ];
+    final dias = _sliceDias;
+    if (dias == null) return pool;
+
+    final now = DateTime.now();
+    final cut = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: dias));
+    return pool.where((r) {
+      final d = DateTime.tryParse(r['data_ocorrencia'] as String? ?? '');
+      return d == null || !d.isBefore(cut);
+    }).toList();
+  }
+
   void _computeAnalytics() {
+    final subset = _dateSubset;
+
     _crimeTypeCounts = {};
     _categoryCounts = {};
     _bairroCounts = {};
@@ -144,7 +179,11 @@ class _ReportScreenState extends State<ReportScreen> {
     final estatisticas = <Map<String, dynamic>>[];
     int ocorrencias = 0;
 
-    for (final r in widget.results) {
+    bool inCats(Map<String, dynamic> r) =>
+        _cats.isEmpty ||
+        _cats.contains(r['categoria_grupo'] as String? ?? 'institucional');
+
+    for (final r in subset) {
       final natureza = r['natureza'] as String? ?? 'ocorrencia';
 
       if (natureza == 'estatistica') {
@@ -152,13 +191,16 @@ class _ReportScreenState extends State<ReportScreen> {
         continue;
       }
 
+      // Donut vê todas as categorias do período (senão uma categoria
+      // filtrada some da legenda e não dá pra reativar).
+      final categoria = r['categoria_grupo'] as String? ?? 'institucional';
+      _categoryCounts[categoria] = (_categoryCounts[categoria] ?? 0) + 1;
+
+      if (!inCats(r)) continue;
+
       ocorrencias++;
       final tipo = r['tipo_crime'] as String? ?? 'outros';
       _crimeTypeCounts[tipo] = (_crimeTypeCounts[tipo] ?? 0) + 1;
-
-      // Categoria vem direto do backend (populada no pipeline). Fallback 'institucional'.
-      final categoria = r['categoria_grupo'] as String? ?? 'institucional';
-      _categoryCounts[categoria] = (_categoryCounts[categoria] ?? 0) + 1;
 
       final bairro = r['bairro'] as String?;
       if (bairro != null && bairro.isNotEmpty) {
@@ -187,7 +229,8 @@ class _ReportScreenState extends State<ReportScreen> {
     final hostCountOficial = <String, int>{};
     final hostCountMedia = <String, int>{};
 
-    for (final r in widget.results) {
+    for (final r in subset) {
+      if (!inCats(r)) continue;
       final url = r['source_url'] as String? ?? r['url'] as String? ?? '';
       if (url.isEmpty) continue;
       String host;
@@ -229,9 +272,11 @@ class _ReportScreenState extends State<ReportScreen> {
                   PieChartData(
                     sections: sorted.map((e) {
                       final color = categoryColor(e.key);
+                      final dimmed =
+                          _cats.isNotEmpty && !_cats.contains(e.key);
                       return PieChartSectionData(
                         value: e.value.toDouble(),
-                        color: color,
+                        color: color.withValues(alpha: dimmed ? 0.25 : 1),
                         radius: 18,
                         showTitle: false,
                       );
@@ -265,20 +310,97 @@ class _ReportScreenState extends State<ReportScreen> {
               children: sorted.map((e) {
                 final color = categoryColor(e.key);
                 final label = categoryLabel(e.key);
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Row(
-                    children: [
-                      Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(label, style: GoogleFonts.exo2(fontSize: 12, color: SIMEopsColors.muted))),
-                      Text('${e.value}', style: GoogleFonts.rajdhani(fontSize: 14, fontWeight: FontWeight.w700, color: SIMEopsColors.white)),
-                    ],
+                final dimmed = _cats.isNotEmpty && !_cats.contains(e.key);
+                // Tocar aplica o recorte: bairros, tendência e fontes viram
+                // função da(s) categoria(s) selecionada(s).
+                return InkWell(
+                  onTap: () => setState(() {
+                    if (!_cats.add(e.key)) _cats.remove(e.key);
+                    _computeAnalytics();
+                  }),
+                  borderRadius: BorderRadius.circular(6),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Opacity(
+                      opacity: dimmed ? 0.4 : 1,
+                      child: Row(
+                        children: [
+                          Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(label, style: GoogleFonts.exo2(fontSize: 12, color: SIMEopsColors.muted))),
+                          Text('${e.value}', style: GoogleFonts.rajdhani(fontSize: 14, fontWeight: FontWeight.w700, color: SIMEopsColors.white)),
+                        ],
+                      ),
+                    ),
                   ),
                 );
               }).toList(),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  String get _periodoLabel {
+    if (_includeOld) return 'Tudo coletado';
+    final d = _sliceDias ?? widget.periodoDias;
+    return 'Ultimos $d dias';
+  }
+
+  Widget _buildSliceChips() {
+    final presets = const [7, 15, 30, 60, 90]
+        .where((d) => d < widget.periodoDias)
+        .toList();
+    final hasOld = widget.foraDoPeriodo.isNotEmpty;
+    if (presets.isEmpty && !hasOld) return const SizedBox.shrink();
+
+    ChoiceChip chip(String label, bool selected, VoidCallback apply) {
+      return ChoiceChip(
+        label: Text(label),
+        selected: selected,
+        onSelected: (_) => setState(() {
+          apply();
+          _computeAnalytics();
+        }),
+        selectedColor: SIMEopsColors.teal.withValues(alpha: 0.15),
+        side: BorderSide(
+          color: selected
+              ? SIMEopsColors.teal
+              : SIMEopsColors.teal.withValues(alpha: 0.15),
+        ),
+        labelStyle: GoogleFonts.exo2(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: selected ? SIMEopsColors.tealLight : SIMEopsColors.muted,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: SIMEopsColors.navyLight.withValues(alpha: 0.8),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final d in presets)
+            chip('${d}d', _sliceDias == d && !_includeOld, () {
+              _sliceDias = d;
+              _includeOld = false;
+            }),
+          chip('${widget.periodoDias}d', _sliceDias == null && !_includeOld,
+              () {
+            _sliceDias = null;
+            _includeOld = false;
+          }),
+          if (hasOld)
+            chip('+ antigas (${widget.foraDoPeriodo.length})', _includeOld,
+                () {
+              _sliceDias = null;
+              _includeOld = true;
+            }),
         ],
       ),
     );
@@ -437,7 +559,7 @@ class _ReportScreenState extends State<ReportScreen> {
                                 color: SIMEopsColors.muted.withValues(alpha: 0.6))),
                         const SizedBox(height: 2),
                         Text(
-                          'Ultimos ${widget.periodoDias} dias',
+                          _periodoLabel,
                           style: GoogleFonts.exo2(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
@@ -448,6 +570,9 @@ class _ReportScreenState extends State<ReportScreen> {
                   ],
                 ),
               ),
+
+              // Re-fatiamento por período — client-side, custo zero
+              _buildSliceChips(),
 
               // Resumo numerico
               _sectionTitle('Resumo'),
