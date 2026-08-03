@@ -51,9 +51,15 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   // Timestamp de quando cada stage começou — usado pra mostrar
   // [HH:MM:SS] + duração por stage na progress view.
   final Map<int, DateTime> _stageStartTimes = {};
-  int _pollCount = 0;
   int _consecutiveErrors = 0;
-  static const _maxPolls = 200; // ~10 min at 3s intervals
+  // Desistir por ESTAGNAÇÃO, não por relógio (regra do briefing/contrato):
+  // enquanto stage_num, feitos ou atualizado_em avançarem, a busca está viva —
+  // não importa se leva 5 ou 40 minutos. Parada real por 2 min = falha.
+  // (Era _maxPolls = 200 → desistia em 10 min mesmo andando; esse número
+  // mágico era o que travava período de 365 dias e multi-cidade no backend.)
+  DateTime? _lastAdvanceAt;
+  String? _lastProgressSig;
+  static const _stallTimeout = Duration(minutes: 2);
   // 20 erros * 3s = 60s de tolerância — cobre cold-start do Render e flaps
   // de rede transitórios. Antes era 5 (~15s) → dava "Erro de conexão" falso
   // quando user retomava busca via histórico durante warm-up do backend.
@@ -234,23 +240,11 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
   void _startPolling() {
     _pollTimer?.cancel();
-    _pollCount = 0;
     _consecutiveErrors = 0;
+    _lastAdvanceAt = DateTime.now();
+    _lastProgressSig = null;
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       if (_searchId == null) return;
-
-      _pollCount++;
-      if (_pollCount > _maxPolls) {
-        _pollTimer?.cancel();
-        _elapsedTimer?.cancel();
-        if (mounted) {
-          setState(() => _searchStatus = 'failed');
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Busca demorou demais. Verifique o histórico.')),
-          );
-        }
-        return;
-      }
 
       final api = context.read<ApiService>();
 
@@ -264,6 +258,32 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         if (mounted && progress != null) {
           _ingestProgressHistory(progress);
           setState(() => _progress = progress);
+        }
+
+        // Detecção de estagnação: assinatura do que deveria estar se mexendo.
+        if (progress != null) {
+          final sig = '${progress['stage_num']}'
+              '|${progress['feitos']}'
+              '|${progress['atualizado_em']}';
+          if (sig != _lastProgressSig) {
+            _lastProgressSig = sig;
+            _lastAdvanceAt = DateTime.now();
+          }
+        }
+        final stalled = _lastAdvanceAt != null &&
+            DateTime.now().difference(_lastAdvanceAt!) > _stallTimeout;
+        if (stalled && s == 'processing') {
+          _pollTimer?.cancel();
+          _elapsedTimer?.cancel();
+          if (mounted) {
+            setState(() => _searchStatus = 'failed');
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text(
+                      'A busca parou de avançar. Tente novamente ou veja o histórico.')),
+            );
+          }
+          return;
         }
 
         if (s == 'completed' || s == 'failed') {
@@ -358,8 +378,9 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       _elapsedText = '0s';
       _stageDetails.clear();
       _stageStartTimes.clear();
-      _pollCount = 0;
       _consecutiveErrors = 0;
+      _lastAdvanceAt = null;
+      _lastProgressSig = null;
     });
   }
 

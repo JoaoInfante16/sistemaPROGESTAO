@@ -121,6 +121,23 @@ Verificado em 02/08: migrations 019, 020, 021b, 022 aplicadas; **021, 023, 024 e
 
 ---
 
+## 2026-08-02 — 9.3: o polling desiste por estagnação, não por relógio
+
+`_maxPolls = 200` (10 min de relógio) morreu. Regra nova no
+`manual_search_screen`: a cada poll bem-sucedido monta-se a assinatura
+`stage_num|feitos|atualizado_em`; se mudou, a busca está viva. Parada por
+**2 min** com status ainda `processing` → falha, com mensagem apontando o
+histórico. Erros de rede continuam no contador próprio (60s de tolerância,
+que cobre cold-start do Render — inalterado).
+
+⚠️ **O que NÃO foi feito de propósito:** subir os limites do backend
+(`periodo_dias` 180→365, cidades 1→10 em `validation.ts`). Backend e APK
+têm que subir **juntos** — o APK do cliente deixa escolher 10 cidades e
+tomaria 400 se o backend continuar em max(1). Fica para um deploy
+coordenado com aval do João.
+
+---
+
 ## 2026-08-02 — 9.2 + 9.5: a tela de carregamento vira funil ao vivo
 
 O "passo 4 de 7" parado por 3 minutos morreu. A tela de progresso agora segue o
