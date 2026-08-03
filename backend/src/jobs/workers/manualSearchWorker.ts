@@ -389,6 +389,26 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
 
     logger.info(`${LOG_PREFIX} total rejeitadas: ${rejectedUrls.length} | motivos: ${JSON.stringify(rejectedUrls.map(r => `${r.stage}:${r.reason}`))}`);
 
+    // Persistir os motivos de rejeição (o auto-scan já fazia; a busca manual só
+    // logava e perdia). Sem isto, descobrir POR QUE uma busca rendeu pouco exige
+    // re-rodar o pipeline pagando Jina + GPT — foi o que aconteceu com
+    // Goiânia/30d em 03/08 (74 conteúdos → 27 extrações, motivo desconhecido).
+    //
+    // Best-effort: falha aqui não pode derrubar uma busca que já deu certo.
+    try {
+      await db.insertRejectedUrls(
+        rejectedUrls.map((r) => ({
+          url: r.url,
+          title: '',
+          stage: r.stage,
+          reason: r.reason || '',
+          search_id: searchId,
+        }))
+      );
+    } catch (rejErr) {
+      logger.warn(`${LOG_PREFIX} Falha ao persistir rejeicoes: ${(rejErr as Error).message}`);
+    }
+
     // STAGE 7: Save
     await db.updateSearchProgress(searchId, { stage: 'saving', stage_num: 7, total_stages: 7 });
 

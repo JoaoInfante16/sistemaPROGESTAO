@@ -121,6 +121,70 @@ Verificado em 02/08: migrations 019, 020, 021b, 022 aplicadas; **021, 023, 024 e
 
 ---
 
+## 2026-08-03 — o funil ganha memória (e um documento)
+
+### O que disparou
+
+Primeira busca no app novo: **Goiânia/30d → 11 resultados**. Pergunta do João:
+*"cadê aquele monte que tava vindo antes?"*. A investigação achou a resposta e,
+no caminho, uma lacuna de observabilidade que já custava dinheiro.
+
+### Duas correções factuais que a investigação produziu
+
+1. **Não existe dedup contra o banco na busca manual.** Eu tinha afirmado que
+   buscar Porto Alegre renderia menos por já ter 88 notícias no banco — **errado**,
+   e o João corrigiu na hora. Verificado no
+   `manualSearchWorker`: os dois dedups (`deduplicateResults` e
+   `runIntraBatchDedupLayered`) olham só o próprio lote. O dedup contra `news` é
+   do auto-scan.
+2. **Goiânia entregou 19, não 11.** São 11 principal + 8 de cidade vizinha
+   (6 Aparecida de Goiânia, 1 Pontalina, 1 Caldas Novas). Os 8 estão na seção
+   REGIÃO METROPOLITANA que a 9.4 criou — recolhida, então parecem não existir.
+
+### Onde a diferença nasce (medido, não estimado)
+
+| | coleta (URLs) | conteúdo → extração | entregue |
+|---|---|---|---|
+| Salvador 30d | 202 | 159 → 125 (**79%**) | 54 |
+| Goiânia 30d | **106** | 74 → **27** (**36%**) | 11 |
+
+Dois lugares distintos: metade da **coleta** (teto do índice do Google por
+cidade) e menos da metade do aproveitamento na **extração** — e o segundo era
+inexplicável, porque:
+
+### A lacuna: a busca manual jogava fora os motivos de rejeição
+
+`rejectedUrls[]` era preenchido por todos os stages e **descartado no fim** —
+só o auto-scan persistia em `pipeline_rejected_urls`. Descobrir onde uma busca
+perdeu exigia `scripts/diagnostico-funil.ts`, que **re-roda o pipeline pagando
+Jina + GPT**. O dado já estava em memória; gravar é de graça.
+
+**Feito:**
+- `RejectedUrl` ganhou `search_id` (e `location_id` virou opcional) — uma
+  rejeição vem OU do auto-scan OU da busca manual, nunca das duas.
+- O worker persiste ao fim do pipeline, em `try/catch` best-effort: falhar aqui
+  não pode derrubar busca que já deu certo.
+- [Migration 026](./SQL/migrations/026_rejected_urls_search_id.sql) — `ADD COLUMN`
+  nullable + índice parcial. Aditiva e reversível, **não aplicada** (aguarda
+  autorização). Sem a coluna o insert cai no catch e nada quebra.
+
+⚠️ A tabela amarrava tudo a `location_id` (FK para `monitored_locations`) — e
+busca manual roda em cidade **fora** do monitoramento. Era por isso que não
+persistia: não havia onde pendurar a linha.
+
+### [FUNIL.md](./FUNIL.md) — documento vivo novo
+
+Pedido do João: *"quero dar uma olhada geral nesse funil, fizemos muitas
+mudanças"*. Reúne os 7 estágios com custo e contador, os **números reais de 5
+buscas** medidas, todos os motivos de descarte de cada estágio, o diagrama de
+decisão do pós-filtro (principal / vizinha / fora do período / descarte) e a
+tabela de qual alavanca mexe em quê.
+
+Registra também o que **não** se deve tentar: mais página do mesmo assunto não
+traz nada (teto por query), e nunca retry por contagem baixa.
+
+---
+
 ## 2026-08-02 — 9.7: o push abre direto o resultado da busca
 
 O push de conclusão/falha sempre mandou `search_id`

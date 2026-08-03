@@ -707,12 +707,16 @@ export async function getRecentLogs(limit: number = 50): Promise<Array<Record<st
 // Rejected URLs (dashboard)
 // ============================================
 
+// Uma rejeição vem OU do auto-scan (tem location_id) OU da busca manual (tem
+// search_id) — nunca das duas, porque a busca manual roda em cidade que não
+// está em monitored_locations e não teria location_id para gravar.
 export interface RejectedUrl {
   url: string;
   title?: string;
   stage: string;
   reason?: string;
-  location_id: string;
+  location_id?: string;
+  search_id?: string;
 }
 
 export async function insertRejectedUrls(urls: RejectedUrl[]): Promise<void> {
