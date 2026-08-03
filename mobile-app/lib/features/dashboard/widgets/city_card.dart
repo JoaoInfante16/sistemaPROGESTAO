@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/models/city_overview.dart';
-import '../../../main.dart';
+import '../../../core/theme/simeops_colors.dart';
 
 const crimeLabels = {
   'roubo_furto': 'Roubo/Furto',

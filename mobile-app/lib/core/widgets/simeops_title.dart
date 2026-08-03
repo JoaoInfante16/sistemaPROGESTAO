@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../main.dart';
+import '../theme/simeops_colors.dart';
 
 // Título branded "SIMEops" (SIME branco + OPS verde) usado no AppBar.
 // Fonte única pra manter consistência visual em qualquer tela que mostre

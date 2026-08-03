@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../core/models/city_overview.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/widgets/grid_background.dart';
-import '../../../main.dart';
+import '../../../core/theme/simeops_colors.dart';
 import '../widgets/city_card.dart';
 import 'city_detail_screen.dart';
 

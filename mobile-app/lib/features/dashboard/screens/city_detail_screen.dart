@@ -13,7 +13,7 @@ import '../../../core/widgets/executive_indicators.dart';
 import '../../../core/widgets/fontes_analisadas.dart';
 import '../../../core/widgets/grid_background.dart';
 import '../../../core/widgets/weekly_trend_bars.dart';
-import '../../../main.dart';
+import '../../../core/theme/simeops_colors.dart';
 import '../../feed/screens/feed_screen.dart';
 
 class CityDetailScreen extends StatefulWidget {

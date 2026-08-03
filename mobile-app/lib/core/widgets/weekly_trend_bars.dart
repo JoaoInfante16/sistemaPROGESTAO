@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../main.dart';
+import '../theme/simeops_colors.dart';
 import '../utils/type_helpers.dart';
 
 // Bar chart de tendência semanal — compartilhado entre auto-scan (city_detail)

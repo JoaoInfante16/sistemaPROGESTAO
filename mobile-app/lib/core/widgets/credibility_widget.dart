@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../main.dart';
+import '../theme/simeops_colors.dart';
 
 class CredibilityBadge extends StatelessWidget {
   final int officialCount;

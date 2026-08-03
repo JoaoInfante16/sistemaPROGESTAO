@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/executive_data.dart';
-import '../../main.dart';
+import '../theme/simeops_colors.dart';
 
 // Seção "INDICADORES DA REGIÃO" no topo do relatório.
 // Cards visuais + parágrafo complementar + fontes consolidadas.

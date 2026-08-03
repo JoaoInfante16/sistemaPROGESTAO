@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/api_service.dart';
-import '../../../main.dart';
+import '../../../core/theme/simeops_colors.dart';
 import '../widgets/history_card.dart';
 import 'manual_search_screen.dart';
 

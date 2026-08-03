@@ -7,7 +7,7 @@ import '../../../core/services/api_service.dart';
 import '../../../core/utils/crime_labels.dart';
 import '../../../core/widgets/grid_background.dart';
 import '../../../core/widgets/simeops_title.dart';
-import '../../../main.dart';
+import '../../../core/theme/simeops_colors.dart';
 import '../widgets/multi_city_search_field.dart';
 import '../../feed/widgets/news_card.dart';
 import '../../feed/widgets/news_detail_sheet.dart';
@@ -493,29 +493,13 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         ),
         const SizedBox(height: 28),
 
-        // INICIAR BUSCA
+        // INICIAR BUSCA — estilo vem inteiro do FilledButtonTheme (primária teal)
         SizedBox(
           width: double.infinity,
           height: 52,
           child: FilledButton(
             onPressed: canSearch ? _startSearch : null,
-            style: FilledButton.styleFrom(
-              backgroundColor:
-                  canSearch ? SIMEopsColors.teal : SIMEopsColors.navyLight,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-            ),
-            child: Text(
-              'INICIAR BUSCA',
-              style: GoogleFonts.rajdhani(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 2,
-                color: canSearch
-                    ? Colors.white
-                    : SIMEopsColors.muted.withValues(alpha: 0.4),
-              ),
-            ),
+            child: const Text('INICIAR BUSCA'),
           ),
         ),
         const SizedBox(height: 14),
@@ -940,24 +924,15 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
           ),
           const SizedBox(height: 14),
 
-          // Botão cancelar (estilo tático — borda teal, texto caps, letter-spacing)
+          // Botão cancelar — secundária (OutlinedButtonTheme: borda/texto teal)
           Center(
             child: OutlinedButton(
               onPressed: _resetSearch,
               style: OutlinedButton.styleFrom(
-                side: BorderSide(color: SIMEopsColors.teal.withValues(alpha: 0.6)),
-                padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 36, vertical: 12),
               ),
-              child: Text(
-                'CANCELAR',
-                style: GoogleFonts.rajdhani(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 3,
-                  color: SIMEopsColors.teal,
-                ),
-              ),
+              child: const Text('CANCELAR'),
             ),
           ),
         ],

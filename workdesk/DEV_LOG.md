@@ -121,6 +121,32 @@ Verificado em 02/08: migrations 019, 020, 021b, 022 aplicadas; **021, 023, 024 e
 
 ---
 
+## 2026-08-02 — Linguagem visual: tokens, escala única de categoria, hierarquia de botões
+
+Fundação do redesign (tom definido pelo João: **corporativo operacional** —
+tecnológico e tático sem estética de jogo).
+
+- **`core/theme/simeops_colors.dart`** — a paleta sai do `main.dart` (15
+  arquivos importavam `../main.dart` só pra pegar cor; dois deles com
+  `../../../main.dart` que resolvia por acaso). Ganhou semânticas: `alert`
+  (vermelho dessaturado pro navy, substitui `Colors.red` do badge NOVA),
+  `official` (=green) e `bookmark` (teal, substitui o indigo).
+- **Escala de categoria unificada**: `category_colors.dart` adota os hexes
+  refinados que só o report tinha (`#EF4444`, `#F97316`, `#3B82F6`, `#8B5CF6`,
+  `#64748B`); o report deleta os mapas locais e consome a fonte única. Chips,
+  mapa e donut agora pintam igual.
+- **Hierarquia de botões no tema, uma regra só**: primária = FilledButton
+  **teal** (era verde no tema e metade do app sobrescrevia pra teal);
+  secundária = OutlinedButton teal (tema novo); terciária = TextButton muted.
+  INICIAR BUSCA e CANCELAR perderam os overrides locais.
+- Hexes hardcoded do feed (FAB `0xFF1A8F9A`, `_DateHeader` `0xFF5A6A7A`)
+  viraram tokens.
+
+Cards e detail sheet ainda têm `Colors.*` cru — morrem nas etapas de redesign
+deles (próximas). QA final da varredura: grep por `Colors\.` no fim do bloco B.
+
+---
+
 ## 2026-08-02 — 9.3: o polling desiste por estagnação, não por relógio
 
 `_maxPolls = 200` (10 min de relógio) morreu. Regra nova no

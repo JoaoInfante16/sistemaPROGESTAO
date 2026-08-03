@@ -6,11 +6,12 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/models/crime_point.dart';
 import '../../../core/models/executive_data.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/utils/category_colors.dart';
 import '../../../core/widgets/crime_radar_map.dart';
 import '../../../core/widgets/executive_indicators.dart';
 import '../../../core/widgets/fontes_analisadas.dart';
 import '../../../core/widgets/weekly_trend_bars.dart';
-import '../../../main.dart';
+import '../../../core/theme/simeops_colors.dart';
 
 class ReportScreen extends StatefulWidget {
   final String? searchId;
@@ -211,22 +212,6 @@ class _ReportScreenState extends State<ReportScreen> {
       ..sort((a, b) => int.parse(b['count']!).compareTo(int.parse(a['count']!)));
   }
 
-  static const _categoryColors = <String, Color>{
-    'patrimonial': Color(0xFFF97316),
-    'seguranca': Color(0xFFEF4444),
-    'operacional': Color(0xFF3B82F6),
-    'fraude': Color(0xFF8B5CF6),
-    'institucional': Color(0xFF64748B),
-  };
-
-  static const _categoryLabels = <String, String>{
-    'patrimonial': 'Patrimonial',
-    'seguranca': 'Segurança',
-    'operacional': 'Operacional',
-    'fraude': 'Fraude',
-    'institucional': 'Institucional',
-  };
-
   Widget _buildCategoryDonut() {
     final cats = _categoryCounts;
     final sorted = cats.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
@@ -243,7 +228,7 @@ class _ReportScreenState extends State<ReportScreen> {
                 PieChart(
                   PieChartData(
                     sections: sorted.map((e) {
-                      final color = _categoryColors[e.key] ?? const Color(0xFF64748B);
+                      final color = categoryColor(e.key);
                       return PieChartSectionData(
                         value: e.value.toDouble(),
                         color: color,
@@ -278,8 +263,8 @@ class _ReportScreenState extends State<ReportScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: sorted.map((e) {
-                final color = _categoryColors[e.key] ?? const Color(0xFF64748B);
-                final label = _categoryLabels[e.key] ?? e.key;
+                final color = categoryColor(e.key);
+                final label = categoryLabel(e.key);
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Row(

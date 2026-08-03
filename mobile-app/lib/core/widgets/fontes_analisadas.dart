@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../main.dart';
+import '../theme/simeops_colors.dart';
 
 // Seção "Fontes Analisadas" compartilhada entre city_detail (auto-scan) e
 // report_screen (busca manual). Agrupa fontes por hostname com count,

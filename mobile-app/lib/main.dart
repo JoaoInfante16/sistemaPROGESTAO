@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'firebase_options.dart';
 import 'core/config/env.dart';
+import 'core/theme/simeops_colors.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/api_service.dart';
 import 'core/services/local_db_service.dart';
@@ -65,19 +66,6 @@ void main() async {
   }
 }
 
-// Cores do design SIMEops
-class SIMEopsColors {
-  static const navy = Color(0xFF060D18);
-  static const navyMid = Color(0xFF0A1828);
-  static const navyLight = Color(0xFF112233);
-  static const teal = Color(0xFF1A8F9A);
-  static const tealLight = Color(0xFF22B5C4);
-  static const green = Color(0xFF7AB648);
-  static const greenLight = Color(0xFF92D050);
-  static const white = Color(0xFFF0F4F8);
-  static const muted = Color(0xFF8FA9C0);
-}
-
 class SIMEopsApp extends StatelessWidget {
   const SIMEopsApp({super.key});
 
@@ -123,9 +111,13 @@ class SIMEopsApp extends StatelessWidget {
         indicatorColor: SIMEopsColors.teal.withValues(alpha: 0.2),
       ),
       textTheme: GoogleFonts.exo2TextTheme(base.textTheme),
+      // Hierarquia de botões (uma regra só, sem overrides locais):
+      //   primária    = FilledButton teal
+      //   secundária  = OutlinedButton borda teal, texto teal
+      //   terciária   = TextButton muted
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: SIMEopsColors.green,
+          backgroundColor: SIMEopsColors.teal,
           foregroundColor: Colors.white,
           textStyle: GoogleFonts.rajdhani(
             fontSize: 16,
@@ -134,6 +126,29 @@ class SIMEopsApp extends StatelessWidget {
           ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: SIMEopsColors.teal,
+          side: BorderSide(color: SIMEopsColors.teal.withValues(alpha: 0.6)),
+          textStyle: GoogleFonts.rajdhani(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 2,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: isDark ? SIMEopsColors.muted : null,
+          textStyle: GoogleFonts.exo2(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),

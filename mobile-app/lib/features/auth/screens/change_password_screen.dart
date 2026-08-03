@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/services/auth_service.dart';
-import '../../../main.dart';
+import '../../../core/theme/simeops_colors.dart';
 import '../../../core/widgets/grid_background.dart';
 
 class ChangePasswordScreen extends StatefulWidget {

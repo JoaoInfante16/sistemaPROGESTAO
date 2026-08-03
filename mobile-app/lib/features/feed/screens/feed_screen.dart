@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/models/news_item.dart';
+import '../../../core/theme/simeops_colors.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/services/local_db_service.dart';
 import '../widgets/news_card.dart';
@@ -262,7 +263,7 @@ class _FeedScreenState extends State<FeedScreen> {
             right: 16,
             bottom: 16,
             child: FloatingActionButton.small(
-              backgroundColor: const Color(0xFF1A8F9A),
+              backgroundColor: SIMEopsColors.teal,
               onPressed: _markAllAsRead,
               tooltip: 'Marcar todas como lidas',
               child: const Icon(Icons.done_all, color: Colors.white, size: 20),
@@ -307,10 +308,10 @@ class _DateHeader extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF5A6A7A),
+                color: SIMEopsColors.muted.withValues(alpha: 0.75),
                 letterSpacing: 1.2,
               ),
             ),
