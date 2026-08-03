@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../core/models/news_item.dart';
+import '../../../core/theme/simeops_colors.dart';
 import '../../../core/utils/category_colors.dart';
+import '../../../core/utils/crime_labels.dart';
 
+// Card compartilhado — feed, favoritos e busca manual.
+// Hierarquia: trilho de cor à esquerda carrega a CATEGORIA; o título é o
+// TIPO granular (Homicídio · Kobrasol) — a informação que o usuário escaneia.
+// Badges no orçamento de dois discretos (NOVA, OFICIAL); dado em mono.
 class NewsCard extends StatelessWidget {
   final NewsItem news;
   final VoidCallback? onTap;
@@ -23,16 +30,47 @@ class NewsCard extends StatelessWidget {
     final today = DateTime(now.year, now.month, now.day);
     final dateOnly = DateTime(date.year, date.month, date.day);
 
-    if (dateOnly == today) return 'Hoje';
+    if (dateOnly == today) return 'hoje';
 
     final yesterday = today.subtract(const Duration(days: 1));
-    if (dateOnly == yesterday) return 'Ontem';
+    if (dateOnly == yesterday) return 'ontem';
 
-    return DateFormat('dd/MM/yyyy').format(date);
+    return DateFormat('dd/MM/yy').format(date);
   }
+
+  // "g1 +2" — nome do primeiro veículo (ou hostname) e quantas fontes a mais.
+  String? get _sourcesLabel {
+    if (news.sources.isEmpty) return null;
+    final first = news.sources.first;
+    var name = first.sourceName ?? '';
+    if (name.isEmpty) {
+      try {
+        name = Uri.parse(first.url).host.replaceFirst('www.', '');
+      } catch (_) {
+        name = 'fonte';
+      }
+    }
+    final extra = news.sources.length - 1;
+    return extra > 0 ? '$name +$extra' : name;
+  }
+
+  // Local do rodapé: cidade/UF (o bairro já mora no título).
+  String get _footerLocal {
+    final uf = news.estadoUf;
+    return uf != null && uf.isNotEmpty ? '${news.cidade}/$uf' : news.cidade;
+  }
+
+  bool get _isIndicador => news.natureza == 'estatistica';
 
   @override
   Widget build(BuildContext context) {
+    final catColor = _isIndicador
+        ? categoryColor('institucional')
+        : categoryColor(news.categoriaGrupo);
+    final tipoLabel = _isIndicador
+        ? 'INDICADOR'
+        : crimeTypeLabel(news.tipoCrime).toUpperCase();
+
     return Slidable(
       // Swipe pra direita: salvar/remover
       startActionPane: ActionPane(
@@ -41,8 +79,10 @@ class NewsCard extends StatelessWidget {
         children: [
           SlidableAction(
             onPressed: (_) => onToggleFavorite?.call(),
-            backgroundColor: news.isFavorite ? Colors.grey : Colors.indigo,
-            foregroundColor: Colors.white,
+            backgroundColor:
+                news.isFavorite ? SIMEopsColors.navyLight : SIMEopsColors.bookmark,
+            foregroundColor:
+                news.isFavorite ? SIMEopsColors.muted : Colors.white,
             icon: news.isFavorite ? Icons.bookmark_remove : Icons.bookmark_add,
             label: news.isFavorite ? 'Remover' : 'Salvar',
           ),
@@ -50,136 +90,126 @@ class NewsCard extends StatelessWidget {
       ),
       child: Card(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        elevation: news.isUnread ? 3 : 1,
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Header: crime type + badges + date
-                Row(
-                  children: [
-                    Flexible(
-                      child: _CrimeBadge(categoriaGrupo: news.categoriaGrupo),
-                    ),
-                    if (news.natureza == 'estatistica') ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.blueGrey.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          'INDICADOR',
-                          style: TextStyle(
-                            color: Colors.blueGrey,
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                    if (news.isUnread) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          'NOVA',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                    if (news.isFavorite) ...[
-                      const SizedBox(width: 4),
-                      const Icon(Icons.bookmark, color: Colors.indigo, size: 16),
-                    ],
-                    if (news.hasOfficialSource) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                // Trilho de categoria
+                Container(width: 4, color: catColor),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header: tipo · bairro + badges
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.shield, size: 10, color: Colors.green[700]),
-                            const SizedBox(width: 3),
+                            Expanded(
+                              child: Text.rich(
+                                TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: tipoLabel,
+                                      style: GoogleFonts.rajdhani(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 1,
+                                        color: SIMEopsColors.white,
+                                      ),
+                                    ),
+                                    if (news.bairro != null &&
+                                        news.bairro!.isNotEmpty)
+                                      TextSpan(
+                                        text: ' · ${news.bairro}',
+                                        style: GoogleFonts.exo2(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w500,
+                                          color: SIMEopsColors.muted,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (news.isUnread) ...[
+                              const SizedBox(width: 6),
+                              const _Tag('NOVA', SIMEopsColors.alert),
+                            ],
+                            if (news.hasOfficialSource) ...[
+                              const SizedBox(width: 6),
+                              const _Tag('OFICIAL', SIMEopsColors.official),
+                            ],
+                            if (news.isFavorite) ...[
+                              const SizedBox(width: 6),
+                              const Icon(Icons.bookmark,
+                                  color: SIMEopsColors.bookmark, size: 14),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Resumo
+                        Text(
+                          news.resumo,
+                          style: GoogleFonts.exo2(
+                            fontSize: 13,
+                            height: 1.35,
+                            color: SIMEopsColors.white.withValues(alpha: 0.85),
+                          ),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Footer: local · veículo · data (mono)
+                        Row(
+                          children: [
+                            Icon(Icons.location_on,
+                                size: 12,
+                                color:
+                                    SIMEopsColors.muted.withValues(alpha: 0.6)),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                _footerLocal,
+                                style: GoogleFonts.exo2(
+                                  fontSize: 11.5,
+                                  color: SIMEopsColors.muted,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (_sourcesLabel != null) ...[
+                              Text(
+                                _sourcesLabel!,
+                                style: GoogleFonts.exo2(
+                                  fontSize: 11,
+                                  color:
+                                      SIMEopsColors.muted.withValues(alpha: 0.8),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                            ],
                             Text(
-                              'OFICIAL',
-                              style: TextStyle(
-                                color: Colors.green[700],
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
+                              _formatDate(news.dataOcorrencia),
+                              style: GoogleFonts.jetBrainsMono(
+                                fontSize: 10,
+                                color:
+                                    SIMEopsColors.muted.withValues(alpha: 0.7),
                               ),
                             ),
                           ],
                         ),
-                      ),
-                    ],
-                    const SizedBox(width: 8),
-                    Text(
-                      _formatDate(news.dataOcorrencia),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.grey[500],
-                          ),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-
-                // Resumo
-                Text(
-                  news.resumo,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 10),
-
-                // Footer: location + sources count
-                Row(
-                  children: [
-                    Icon(Icons.location_on, size: 14, color: Colors.grey[400]),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        news.localFormatted,
-                        style:
-                            Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Colors.grey[600],
-                                ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (news.sources.isNotEmpty) ...[
-                      Icon(Icons.link, size: 14, color: Colors.grey[400]),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${news.sources.length} fonte${news.sources.length > 1 ? 's' : ''}',
-                        style:
-                            Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Colors.grey[500],
-                                ),
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
               ],
             ),
@@ -190,31 +220,28 @@ class NewsCard extends StatelessWidget {
   }
 }
 
-class _CrimeBadge extends StatelessWidget {
-  final String? categoriaGrupo;
+class _Tag extends StatelessWidget {
+  final String text;
+  final Color color;
 
-  const _CrimeBadge({required this.categoriaGrupo});
-
-  Color get _color => categoryColor(categoriaGrupo);
-  String get _label => categoryLabel(categoriaGrupo);
+  const _Tag(this.text, this.color);
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: _color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(12),
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
-        _label.toUpperCase(),
-        style: TextStyle(
-          color: _color,
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
+        text,
+        style: GoogleFonts.rajdhani(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1,
         ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
       ),
     );
   }

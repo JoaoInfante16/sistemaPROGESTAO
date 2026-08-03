@@ -121,6 +121,25 @@ Verificado em 02/08: migrations 019, 020, 021b, 022 aplicadas; **021, 023, 024 e
 
 ---
 
+## 2026-08-02 — NewsCard e detail sheet: o tipo granular vira o título
+
+O card compartilhado (feed, favoritos, busca) foi redesenhado:
+
+- **Título = tipo granular + bairro** (`HOMICÍDIO · Kobrasol`, Rajdhani caps).
+  Antes o card liderava com a categoria genérica ("SEGURANÇA") e o tipo só
+  aparecia abrindo o detalhe — era a informação errada em destaque.
+- **Trilho de cor de 4px à esquerda** carrega a categoria (substitui o badge).
+- **Badges no orçamento de dois**: NOVA (`alert`) e OFICIAL (`official`).
+  `estatistica` vira título "INDICADOR" com trilho slate — some o badge azul.
+- **Rodapé denso**: cidade/UF · veículo (`g1 +2`, via `sourceName`/hostname —
+  antes era "3 fontes") · data em mono.
+- Detail sheet na mesma língua: fundo navyMid, tag do tipo na cor da
+  categoria, data mono, fontes por NOME de veículo (não URL crua), GOV verde
+  `official`, régua teal nas seções. Mapa local de labels deletado —
+  `crime_labels.dart` é a fonte.
+
+---
+
 ## 2026-08-02 — Linguagem visual: tokens, escala única de categoria, hierarquia de botões
 
 Fundação do redesign (tom definido pelo João: **corporativo operacional** —
