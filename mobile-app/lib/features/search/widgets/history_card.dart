@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/utils/datas.dart';
+
 class HistoryCard extends StatelessWidget {
   final Map<String, dynamic> search;
   final VoidCallback onTap;
@@ -22,10 +24,8 @@ class HistoryCard extends StatelessWidget {
         [];
     final tipoCrime = params['tipo_crime'] as String?;
 
-    DateTime? date;
-    try {
-      date = DateTime.parse(createdAt);
-    } catch (e) { debugPrint('[HistoryCard] Date parse error: $e'); }
+    // `created_at` vem do Postgres SEM sufixo de fuso — ver parseApiDate.
+    final date = parseApiDate(createdAt);
 
     final statusColor = switch (status) {
       'completed' => Colors.green,

@@ -134,6 +134,67 @@ hoje o usuário navega até o histórico na mão. A tela já sabe retomar por
 
 ---
 
+## 🗺️ Onde buscar — a alavanca que o funil revelou (03/08)
+
+O baseline de Goiás mostrou que **57% das rejeições são de cidade** (55 de 96), e
+que **32 delas são cidades do próprio Goiás** — Goiatuba 14, Luziânia 4,
+Anápolis 3, Formosa, Itumbiara, Catalão, Crixás… Notícia real de crime,
+coletada, baixada, analisada, **paga**, e jogada fora por não ser a capital.
+
+A seção REGIÃO METROPOLITANA não pega essas: Goiatuba fica a 200 km, Luziânia é
+Entorno do DF. Recuperá-las **não custa nada** — o dinheiro já foi gasto.
+
+### 1. Abrangência na tela de busca
+
+`Só a cidade` · `+ Região metropolitana` · `Raio de N km` · `Estado inteiro`.
+O encanamento existe: `cidadesRegiao` + `classificar` já são parâmetros do
+pós-filtro ([pipelineCore](../backend/src/jobs/pipeline/pipelineCore.ts)).
+
+⚠️ Isto é **recuperação, não coleta**. Um raio maior não faz o Google devolver
+mais — faz o pós-filtro guardar mais do que já veio. Buscar *também* nas cidades
+do raio é outra coisa, mais cara em tempo, e tem que ser escolha separada.
+
+### 2. Mapa com raio (ideia do João, 03/08)
+
+Arrastar um raio no mapa em vez de escolher "região metropolitana". Melhor que a
+lista atual em dois sentidos: é exato (hoje é uma pergunta ao GPT com guarda de
+alucinação e teto de 45 municípios) e se explica sozinho na tela.
+
+**O que falta:** uma tabela de municípios com lat/lng. O pipeline filtra por
+**nome** (`mesmaCidade`), não por coordenada — o artigo só é geocodificado
+depois, pro mapa. Então o raio não filtra artigo: ele **produz a lista de nomes**
+que vira `cidadesRegiao`.
+
+⚠️ **Não estender o GPT pra isso.** `metroRegion` funciona porque região
+metropolitana é um fato jurídico que o modelo memorizou; "municípios num raio de
+100 km" é uma **conta**, e o modelo erra conta. O caminho é dataset estático
+(5.570 municípios, ~300 KB, não mudam) + haversine.
+
+### 3. Coerência entre a busca e o feed — verificar
+
+Hoje **são dois comportamentos diferentes**, e isso é o que parece bagunça:
+
+| | cidade vizinha |
+|---|---|
+| busca manual | vira `extras.regiao`, seção recolhida (9.4) |
+| feed / auto-scan | **descartada, some** (`classificar` é opt-in e fica off) |
+
+O motivo do opt-in está no [pipelineCore](../backend/src/jobs/pipeline/pipelineCore.ts):
+o auto-scan grava direto em `news`, e classificar ali faria o CRON salvar cidade
+vizinha como se fosse a monitorada — a mesma poluição de escanear `type='state'`.
+
+Para o feed mostrar região sem poluir, `news` precisaria carregar o sinalizador
+(coluna nova + migration), não só deixar de descartar. **Decisão de produto antes
+de código.**
+
+### 4. Região metropolitana mais aparente (pedido do João)
+
+Hoje ela é uma seção recolhida no fim — foi por isso que "Goiânia deu 11" quando
+tinham 19. Falta: indicativo no próprio card, contagem no sumário
+(`11 + 8 na região`) e uma entrada própria nos filtros, não só o acordeão.
+
+---
+
 ## ⚡ Fase 10 — Acelerar o estágio 4 (backend, decidido em 02/08)
 
 Ideia levantada pelo João logo depois do primeiro teste real: *"não tem jeito de

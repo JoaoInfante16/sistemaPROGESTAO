@@ -7,6 +7,7 @@ import '../../../core/models/manual_search_results.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/utils/category_colors.dart';
 import '../../../core/utils/crime_labels.dart';
+import '../../../core/utils/datas.dart';
 import '../../../core/utils/date_grouping.dart';
 import '../../../core/widgets/category_filter_bar.dart';
 import '../../../core/widgets/group_header.dart';
@@ -234,8 +235,10 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
       final startedStr = raw['started_at'] as String?;
       if (startedStr != null && !_stageStartTimes.containsKey(n)) {
-        final parsed = DateTime.tryParse(startedStr);
-        if (parsed != null) _stageStartTimes[n] = parsed.toLocal();
+        // `started_at` é escrito pelo Node e já vem com `Z`, mas passa pelo
+        // mesmo helper das outras datas — um caminho só pra ler data da API.
+        final parsed = parseApiDate(startedStr);
+        if (parsed != null) _stageStartTimes[n] = parsed;
       }
 
       final d = raw['details'] as String?;

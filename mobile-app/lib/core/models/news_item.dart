@@ -1,3 +1,4 @@
+import '../utils/datas.dart';
 import '../utils/state_utils.dart';
 import '../utils/type_helpers.dart';
 
@@ -68,7 +69,9 @@ class NewsItem {
       dataOcorrencia: DateTime.parse(json['data_ocorrencia'] as String),
       resumo: json['resumo'] as String,
       confianca: safeDoubleOrNull(json['confianca']),
-      createdAt: DateTime.parse(json['created_at'] as String),
+      // `created_at` do Postgres vem sem sufixo de fuso — ver parseApiDate.
+      // `data_ocorrencia` é só data (YYYY-MM-DD) e não tem esse problema.
+      createdAt: parseApiDate(json['created_at'] as String?) ?? DateTime.now(),
       sources: (json['news_sources'] as List<dynamic>?)
               ?.map((s) => NewsSource.fromJson(s as Map<String, dynamic>))
               .toList() ??

@@ -1,3 +1,5 @@
+import '../utils/datas.dart';
+
 class CityOverview {
   final String id;
   final String name;
@@ -67,9 +69,9 @@ class CityOverview {
       topCrimeType: json['topCrimeType'] as String?,
       topCrimePercent: _toDouble(json['topCrimePercent']),
       unreadCount: _toInt(json['unreadCount']),
-      lastNewsAt: json['lastNewsAt'] != null
-          ? DateTime.tryParse(json['lastNewsAt'].toString())
-          : null,
+      // Vem de `news.created_at`, que o Postgres serializa sem fuso — sem o
+      // parseApiDate, "há 2 horas" virava "há 5 horas".
+      lastNewsAt: parseApiDate(json['lastNewsAt']?.toString()),
     );
   }
 }
