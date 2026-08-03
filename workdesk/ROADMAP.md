@@ -47,7 +47,23 @@ Requer autorização explícita (a CLAUDE.md proíbe merge direto em `main`).
 
 ## 📱 Fase 9 — O app
 
-Ordem sugerida, do que destrava mais para o que é acabamento. Detalhe de cada
+> **02/08: 9.1 a 9.7 IMPLEMENTADOS** (11 commits em `develop`, um por etapa —
+> ver DEV_LOG). Além do planejado: linguagem visual (tokens/botões/tipografia),
+> NewsCard e CityCard redesenhados, recorte único com grupos colapsáveis +
+> filtros no feed e na busca, mapa com tap/legenda/fit-to-bounds, e o mapa
+> dentro do PDF do relatório web.
+>
+> **Falta para fechar a fase:**
+> - ✅→📱 **Testar no device físico contra staging** (`run-dev.bat`, `flutter
+>   clean` antes) — nada foi validado visualmente ainda, só analyzer/tsc.
+> - **Deploy coordenado backend+APK** para destravar 365 dias / 10 cidades
+>   (`validation.ts`) — requer aval do João.
+> - Acabamento de cores nas telas fora do escopo (login, settings,
+>   history_card, risk/credibility widgets) — `Colors.*` cru ainda vive lá.
+> - Gap multi-cidade do relatório: `_loadMapPoints`/`_loadExecutive` usam
+>   `cidades.first`; resolver quando multi-cidade destravar.
+
+Ordem original, do que destrava mais para o que é acabamento. Detalhe de cada
 item, com pontos de encaixe e armadilhas, no
 [FRONTEND_BRIEFING.md](./FRONTEND_BRIEFING.md).
 
