@@ -121,6 +121,26 @@ Verificado em 02/08: migrations 019, 020, 021b, 022 aplicadas; **021, 023, 024 e
 
 ---
 
+## 2026-08-02 — Mapa: os pontos ganham voz (tap, legenda, enquadramento)
+
+`CrimeRadarMap` (city_detail + report):
+
+- **Tap no ponto → mini-card** com tipo, bairro/rua e data. O `CircleLayer`
+  não tem onTap; resolve-se pelo ponto visível mais próximo do toque, com
+  raio de acerto de ~24px convertido pra metros no zoom atual. Anel branco
+  marca o selecionado. Antes o mapa mostrava ONDE mas não O QUÊ.
+- **Fit-to-bounds** (`CameraFit.coordinates`, maxZoom 15) no lugar do zoom
+  fixo 12 centrado na média — que errava feio com pontos espalhados.
+- **Legenda da precisão**: RUA/BAIRRO/CIDADE com os três tamanhos de ponto.
+  A codificação tamanho/brilho existia e o usuário não tinha como saber.
+- Esconder uma categoria nos chips limpa a seleção se o ponto era dela.
+
+Fica anotado (já estava no plano): `_loadMapPoints`/`_loadExecutive` usam
+`cidades.first` — quando multi-cidade destravar, mapa e executivo precisam
+iterar ou agregar. Não mexi: hoje toda busca é de 1 cidade.
+
+---
+
 ## 2026-08-02 — 9.6: o relatório vira função do recorte (re-fatiar de graça)
 
 `_computeAnalytics` deixou de ser `late final` calculado 1x no `initState` —
