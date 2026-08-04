@@ -13,13 +13,13 @@ vivo (📌) ou da fase (🗂️).
 
 | doc | tipo | responde |
 |---|---|---|
-| [DEV_LOG.md](./DEV_LOG.md) | 🗂️ | o que foi feito nesta fase, e por quê |
+| [DEV_LOG.md](./DEV_LOG.md) | 🗂️ | o que foi feito nesta fase, e por quê — **começa aqui** |
 | [ROADMAP.md](./ROADMAP.md) | 🗂️ | o que ainda vai ser feito |
-| [FRONTEND_BRIEFING.md](./FRONTEND_BRIEFING.md) | 🗂️ | briefing do trabalho da Fase 9 |
-| [ARQUITETURA.md](./ARQUITETURA.md) | 📌 | como o sistema funciona hoje |
-| [API_CONTRATO.md](./API_CONTRATO.md) | 📌 | o que cada rota recebe e devolve |
+| [ARQUITETURA.md](./ARQUITETURA.md) | 📌 | como o sistema funciona e **por quê** |
+| [API_CONTRATO.md](./API_CONTRATO.md) | 📌 | as decisões de contrato que não podem ser desfeitas |
+| [FUNIL.md](./FUNIL.md) | 📌 | onde cada item da busca morre, com números |
 | [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md) | 📌 | o que falta no backend, por consequência |
-| [WORKFLOW.md](./WORKFLOW.md) | 📌 | como João e Claude trabalham juntos |
+| [WORKFLOW.md](./WORKFLOW.md) | 📌 | procedimento (o resto está no [CLAUDE.md](../CLAUDE.md)) |
 | [SQL/](./SQL/) | 📌 | migrations + o log de quais foram aplicadas |
 
 **📌 vivo** = descreve o estado atual, é editado no lugar e **continua na raiz**
@@ -28,10 +28,30 @@ depois do encerramento. Se estiver desatualizado, é bug de documentação.
 **🗂️ da fase** = só faz sentido no recorte de tempo dela; é **recortado** da raiz
 no encerramento.
 
-O `FRONTEND_BRIEFING` é da fase porque descreve um estado que **deixa de ser
-verdade** quando o trabalho termina: hoje ele diz "o app ignora oito campos", e no
-dia em que o app parar de ignorar a frase vira mentira. O `API_CONTRATO`, por
-contraste, continua verdadeiro depois de pronto.
+O `FRONTEND_BRIEFING` da Fase 9 é o exemplo perfeito de 🗂️ — e do que acontece
+quando se demora a arquivar. Ele dizia *"o app ignora oito campos"*; no dia em que
+o app parou de ignorar, a frase virou mentira, e ele ficou meses na raiz sendo
+apontado como "documento de entrada". Foi arquivado em 04/08. O `API_CONTRATO`,
+por contraste, continua verdadeiro depois de pronto.
+
+---
+
+## A regra que veio depois (04/08)
+
+**Nenhum documento vivo copia o que o código já diz.** Sem stack, sem árvore de
+arquivos, sem lista de chaves de config, sem shapes de request. Isso se lê na
+fonte, em dois segundos, e sempre certo.
+
+O motivo não é economia de espaço — é que a cópia **apodrece calada**. A revisão
+de 04/08 encontrou o `ARQUITETURA` afirmando ao mesmo tempo que a busca aceitava
+10 cidades (aceita 1), que o Stage 5 rodava em série (foi paralelizado) e que
+nenhuma chamada externa tinha timeout — enquanto o próprio cabeçalho, 470 linhas
+acima, listava os timeouts. A parte errada estava dentro de uma caixa escrita
+"LEIA ANTES DE MEXER".
+
+Aqui fica o que **custa dinheiro ou tempo para redescobrir**: medições, o porquê
+das decisões, o que já foi tentado e falhou, e o estado de coisas que não se
+enxerga do código (qual migration rodou, o que o APK do cliente faz).
 
 ---
 

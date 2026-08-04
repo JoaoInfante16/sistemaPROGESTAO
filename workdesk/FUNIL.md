@@ -61,7 +61,34 @@ errada:
 1. **Coleta** — Goiânia rendeu 106 URLs contra 202 de Salvador. Metade. É o teto
    do índice do Google por cidade: menos matéria indexada para as queries atuais.
 2. **Extração** — dos conteúdos lidos, Salvador manteve 79% (159 → 125) e Goiânia
-   só 36% (74 → 27). Aqui **não sabemos o motivo** — ver a seção 6.
+   só 36% (74 → 27). O motivo foi medido em 03/08 — **é geográfico, não de
+   qualidade**. Ver a seção 6.
+
+### O mesmo funil depois dos assuntos na tela (Goiânia, 34 dias, 17 assuntos)
+
+```
+619 URLs  →  393 baixados  →  77 resultados
+```
+
+Contra as **106 URLs / 11 resultados** da linha da tabela acima, com 5 assuntos.
+**5,8x mais matéria-prima**, porque cada assunto é um teto novo de ~60-70 itens
+no índice do Google.
+
+| estágio | custo | tempo |
+|---|---|---|
+| coleta (BrightData) | $0,1275 | — |
+| Filter1 (619 snippets) | $0,0055 | 7s |
+| **Jina (393 artigos)** | $0,0386 | **327s — 63% do total** |
+| Filter2 + embedding | $0,1235 | 188s |
+| **total** | **~$0,295** | ~11 min |
+
+**$0,0038 por notícia entregue**, contra $0,0058 na busca de 11 resultados: mais
+volume **e** mais barato por resultado. Foi esse 327s do Jina que motivou a
+migration 028 (concorrência 10 → 20).
+
+⚠️ Esse tempo é **anterior** à 028. O esperado agora é ~7 min, **ainda não
+medido** — é o número que recalibra `_segundosPorAssunto` (hoje 36) em
+`assuntos_field.dart`, a estimativa que a tela promete ao usuário.
 
 E o número final não é o total útil:
 
@@ -168,18 +195,12 @@ na 23. **Mais assuntos é a única alavanca real de alcance.**
 
 ---
 
-## 6. A lacuna: não sabemos por que os 47 de Goiânia morreram
+## 6. Por que os de Goiânia morreram — respondido
 
 O worker da busca manual **coletava** os motivos em `rejectedUrls[]` e os
-**descartava** no fim — só o auto-scan persistia, em `pipeline_rejected_urls`.
-Por isso a única forma de descobrir onde uma busca perdeu era rodar
-`scripts/diagnostico-funil.ts`, que **re-executa o pipeline pagando Jina + GPT
-de novo**.
-
-**Corrigido em 03/08** (aguardando a migration): o worker agora grava os motivos
-com o `search_id` da busca. Depois de aplicada a
-[migration 026](./SQL/migrations/026_rejected_urls_search_id.sql), o funil de
-qualquer busca sai com uma query e custo zero:
+**descartava** no fim; só o auto-scan persistia. Corrigido em 03/08, e com a
+[migration 026](./SQL/migrations/026_rejected_urls_search_id.sql) aplicada em
+04/08 o funil de qualquer busca sai com uma query e custo zero:
 
 ```sql
 SELECT stage, reason, count(*)
@@ -189,12 +210,25 @@ SELECT stage, reason, count(*)
  ORDER BY count(*) DESC;
 ```
 
-Até lá, o insert falha e cai no `catch` — a busca não quebra, só não registra.
+### A resposta (Goiás, 96 rejeições medidas)
 
-**A pergunta que isso vai responder:** dos 47 artigos de Goiânia que sumiram
-entre "74 conteúdos" e "27 extrações", quantos foram `confianca<0.7`, quantos
-`filter2_location` (e quantos desses com `[parcial]`), e quantos `e_crime=false`.
-Cada resposta aponta para uma alavanca diferente — e hoje escolheríamos no chute.
+**57% são `filter2_location`** — e **32 dessas são cidades do próprio Goiás**:
+
+```
+Goiatuba  14  |  Luziânia  4  |  Anápolis  3  |  ...
+```
+
+**A perda é geográfica, não de qualidade de extração.** São notícias reais, já
+coletadas, já lidas pelo Jina, já extraídas pelo GPT — e descartadas só por não
+serem a capital. Isso muda a alavanca inteira: não adianta afrouxar `confianca`
+nem trocar prompt. **Recuperá-las custa zero**, porque já foram pagas.
+
+É daqui que nasce a decisão do **raio geográfico** substituindo a região
+metropolitana do GPT (ver [ARQUITETURA](./ARQUITETURA.md)).
+
+⚠️ **Goiatuba com 14 resultados numa cidade de 35 mil habitantes é anômalo** —
+ou é um portal regional muito indexado, ou o Filter2 está lendo cidade errada.
+**Não investigado.**
 
 ---
 

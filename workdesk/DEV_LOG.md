@@ -18,43 +18,58 @@
 > Bloco de orientação para instâncias novas do Claude (ou para o João depois de
 > um tempo longe). Atualizar quando mudar.
 
-### Em que pé está o projeto
+### Em que pé está o projeto (04/08)
 
-**A Fase 8 fechou o backend.** A busca manual saiu de 1 resultado para **77**
-(validado no app em 02/08), o auto-scan teve os quatro achados da auditoria
-corrigidos, e o painel admin passou a expor todas as configs vivas.
-
-**A Fase 9 é o app.** O backend entrega oito campos que o Flutter ignora. O
-trabalho agora é de frontend, e o material completo está em
-[FRONTEND_BRIEFING.md](./FRONTEND_BRIEFING.md).
-
-### Onde cada ambiente está (02/08)
+**A Fase 8 fechou o backend** (busca manual de 1 para 77 resultados) e **a Fase 9
+fechou o app**: os oito campos que o Flutter ignorava são todos consumidos, os
+assuntos passaram a ser escolhidos na tela, o fuso foi corrigido e o relatório
+declara o próprio recorte.
 
 | ambiente | branch | situação |
 |---|---|---|
-| local + staging | `develop` / `staging` | ✅ Fase 8 completa — **77 resultados validados no app** |
-| **produção** | `main` | 🔴 **junho, quebrada em 4 lugares — é o que o cliente usa** |
+| local + staging | `develop` = `staging` = **`9874639`** | ✅ no ar, validado |
+| **produção** | `main` | 🔴 **75 commits atrás, de junho — é o que o cliente usa** |
 
-**Produção é a maior dívida aberta.** Ver [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md),
-item 2 — inclui o checklist de promoção.
+Migrations **026, 027 e 028 aplicadas** e verificadas no banco (`openai` e `jina`
+com `max_concurrent` 20). Custo do mês: **$1,75 de $100**.
 
-### As duas coisas que exigem decisão do João
+**A validação que fecha a fase** — Goiânia, 34 dias, 17 assuntos:
+
+```
+619 URLs (eram ~106)  →  393 baixados  →  77 resultados (eram 11)
+~$0,295 total  =  $0,0038 por notícia, contra $0,0058 antes
+```
+
+Mais volume **e** mais barato por resultado. O tempo (~11 min) é **anterior à
+migration 028**; o esperado agora é ~7 min, **ainda não medido** — é o número que
+recalibra `_segundosPorAssunto` (hoje 36) em `assuntos_field.dart`.
+
+### As três coisas que exigem decisão do João
 
 1. 🚨 **Migration 025** — o banco aceita leitura **e escrita** pela chave anon,
    que é pública (está no APK e no bundle do admin). Escrita e **não rodada**;
    afeta produção na hora. Ver [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md), item 1.
-2. **Promover `main`** — a CLAUDE.md proíbe merge direto.
+2. **Promover `main`** — autorizado em princípio, não executado; a CLAUDE.md
+   proíbe merge direto. ⚠️ Risco aceito por ele: o APK do cliente deixa escolher
+   10 cidades e o backend novo aceita 1 → **400** na janela entre promover e ele
+   instalar o app novo.
+3. **APK de produção** — `env/prod.json` pronto (git-ignored, com a DSN do
+   Sentry mobile). Falta buildar.
 
 ### Documentos vivos — ler antes de reconstruir contexto
 
 | doc | para quê |
 |---|---|
-| [FRONTEND_BRIEFING.md](./FRONTEND_BRIEFING.md) | **entrada da Fase 9** — contexto, números, armadilhas do app |
-| [API_CONTRATO.md](./API_CONTRATO.md) | shapes exatos de cada rota |
+| [ARQUITETURA.md](./ARQUITETURA.md) | como o sistema funciona e **por quê** |
+| [API_CONTRATO.md](./API_CONTRATO.md) | as decisões de contrato que não podem ser desfeitas |
+| [FUNIL.md](./FUNIL.md) | onde cada item morre, com números |
 | [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md) | o que falta no backend, por consequência |
-| [ARQUITETURA.md](./ARQUITETURA.md) | como o sistema funciona hoje |
 | `scripts/diagnostico-banco.ts` | estado REAL do banco (só leitura) — o MIGRATIONS_LOG já mentiu |
 | `scripts/diagnostico-funil.ts` | funil da busca manual com motivos de rejeição |
+
+⚠️ **Esses documentos não repetem o código.** Config, shapes e árvore de arquivos
+se leem na fonte — a regra está no topo do ARQUITETURA, e nasceu de uma revisão
+em que ele se contradizia sozinho.
 
 ### Como saber QUAL código está rodando (não deduzir — ler)
 
@@ -103,6 +118,30 @@ produção **na hora, sem deploy**. Quando o significado de uma config mudar,
   fonte.
 - **Nunca fazer retry por contagem baixa.** Retry só sobre **sinal explícito**
   (corpo de 0 bytes, `x-brd-err-code`).
+- **A "região metropolitana" do GPT alucina** (medido no cache do Redis, 04/08):
+  Goiânia → **Mara Rosa, a 350 km**, Jussara (~300), Caldas Novas (~170); Porto
+  Alegre → **Maricá, que fica no Rio**; Campo Grande → **Cristalina, que fica em
+  Goiás**. São Paulo e Salvador saem certas (o modelo memorizou as famosas). As
+  de outro estado são inofensivas — o pós-filtro exige o estado bater; as do
+  mesmo estado, longe, **passam e já foram mostradas ao usuário**.
+- **O funil do baseline perde por GEOGRAFIA, não por extração** (Goiás, 96
+  rejeições): **57% são `filter2_location`**, e **32 dessas são cidades do
+  próprio Goiás** — Goiatuba 14, Luziânia 4, Anápolis 3. Notícia real, coletada,
+  paga e descartada por não ser a capital. Recuperar custa **zero**.
+
+### Decisões que não se reabrem
+
+1. **`manual_search_analysis_cap` fica em 0 = SEM TETO.** Propus fechá-lo para
+   ganhar tempo; o João barrou e tinha razão — com cota 50, eram **142
+   candidatos dentro da janela virando 50** (Fase 8/ROADMAP:133). **Tempo se
+   ataca por vazão, nunca por descarte.**
+2. **Multi-cidade não vale a pena.** `1 cidade + região` custa o mesmo que
+   `1 cidade`; permitir 10 seria pagar N vezes por algo que já vem junto.
+3. **Data de INÍCIO, não intervalo fechado.** O Google só pagina de hoje pra
+   trás: "1 a 31 de março" custaria os mesmos 5 meses. O recorte fechado vive no
+   relatório, depois, de graça.
+4. **Não estender o GPT para raio.** Região metropolitana é fato jurídico
+   memorizável; "municípios a 100 km" é conta, e o modelo erra conta.
 
 ### O funil de hoje (Campo Grande, 60 dias, medido em 02/08)
 
@@ -116,8 +155,86 @@ produção **na hora, sem deploy**. Quando o significado de uma config mudar,
 `workdesk/SQL/MIGRATIONS_LOG.md` é preenchido à mão e **já desatualizou**.
 
 **`npx tsx scripts/diagnostico-banco.ts`** — só leitura, olha o estado real.
-Verificado em 02/08: migrations 019, 020, 021b, 022 aplicadas; **021, 023, 024 e
-025 não**. Custo do mês: **$0,12** de $100.
+
+Verificado em **04/08**: 026, 027 e 028 aplicadas (`openai` e `jina` com
+`max_concurrent` 20). **024 e 025 seguem não rodadas.** Custo do mês: **$1,75**
+de $100.
+
+---
+
+## 2026-08-04 — a workdesk para de copiar o código
+
+### A pergunta do João
+
+*"Você tem memória interna no Claude. Então minha pasta workdesk acaba sendo
+inútil, certo? Tô anotando tudo..."*
+
+Não é inútil, mas ele estava certo sobre o desperdício. Os números:
+a memória tem **15 arquivos, ~350 linhas**; a raiz da workdesk tinha **~150 KB**.
+São órgãos diferentes — a memória guarda quem ele é e como trabalhar com ele, e
+**não está no git** (troca de máquina, some). A workdesk guarda o raciocínio do
+projeto, versionado junto com o código que explica.
+
+**A prova de que ela se paga:** foi `Fases/Fase 8/ROADMAP.md:133` que me impediu
+de fechar o teto de análise em 03/08. A memória não tinha isso e nunca teria.
+
+### O que a auditoria encontrou
+
+**As seções que copiavam o código eram exatamente as apodrecidas.** A caixa
+`PERFORMANCE — LEIA ANTES DE MEXER` do ARQUITETURA afirmava, em sequência: que a
+busca aceitava 10 cidades (aceita 1), que o Stage 5 rodava em série (foi
+paralelizado), e que **nenhuma chamada externa tinha timeout** — enquanto o
+cabeçalho do mesmo arquivo, 470 linhas acima, listava os timeouts. O documento se
+contradizia sozinho, e a parte errada era a que gritava "LEIA ANTES DE MEXER".
+
+Mais: `manual 30d: 50 | 60d: 50 | 90d: 80` (são por raiz quadrada, e a linha 410
+do próprio arquivo dizia isso), `fetch_concurrency 10` (é 20 desde a 028),
+`15 cats` de tipo_crime (a taxonomia tem 17 assuntos), e uma tabela de custo
+baseada no **Brave**, que está fora do caminho ativo — errada por 3,7x contra a
+medição de 03/08.
+
+E o `MIGRATIONS_LOG` mentia **de novo, em tempo real**: 026, 027 e 028 marcadas
+como "Pendente — o João vai rodar", todas aplicadas. É a armadilha nº 1
+documentada acontecendo enquanto se lia a documentação dela.
+
+### A regra nova
+
+**Documento vivo não copia o que o código já diz.** Sem stack, árvore de
+arquivos, lista de chaves de config ou shapes de request — isso se lê na fonte,
+em dois segundos, e sempre certo. O motivo não é espaço: **a cópia apodrece
+calada**, e uma segunda fonte da verdade me faz errar com confiança.
+
+Fica o que **custa dinheiro ou tempo para redescobrir**: medições, o porquê das
+decisões, o que foi tentado e falhou, e o estado do que não se enxerga do código.
+
+Achado que reforça: os comentários do `validation.ts` explicam o porquê de
+`cidades: max(1)` **melhor** do que o API_CONTRATO explicava. **O porquê que é
+sobre uma linha mora colado nela.** A workdesk guarda o porquê que atravessa
+arquivos.
+
+### O que mudou
+
+| doc | antes | depois | o que saiu |
+|---|---|---|---|
+| ARQUITETURA | 659 | **360** | stack, árvore, chaves de config, custos do Brave, a caixa PERFORMANCE inteira |
+| API_CONTRATO | 243 | **162** | shapes de request, lista de rotas, a tabela "o que o app ainda ignora" (a Fase 9 implementou tudo) |
+| WORKFLOW | 112 | **81** | filosofia e segurança, que já estão no CLAUDE.md |
+| FUNIL | 216 | **250** | *ganhou* a tabela de custo por estágio e a resposta da lacuna |
+| DEV_LOG | — | — | intocado abaixo do ESTADO DO MUNDO: é o único 100% irrecuperável |
+
+**Estado num lugar só.** O bloco `Estado em 04/08` do ROADMAP foi absorvido pelo
+`ESTADO DO MUNDO` do DEV_LOG, e o handoff em `~/.claude/plans/` foi apagado —
+eram quatro cópias do mesmo estado, prontas para divergir. O ROADMAP volta a ser
+só futuro.
+
+**`FRONTEND_BRIEFING` arquivado** em `Fases/Fase 9/`. Ele dizia "o app ignora
+oito campos"; o app consome todos desde hoje. Documento que descreve problema
+resolvido é pior que documento nenhum — e ele ainda era apontado como "documento
+de entrada" em três lugares.
+
+**Lacunas fechadas de quebra:** o FUNIL agora tem a resposta dos 47 de Goiânia
+(57% `filter2_location`, 32 do próprio Goiás — perda **geográfica**, não de
+extração) e a tabela de custo por estágio que só existia no handoff.
 
 ---
 
@@ -829,7 +946,7 @@ Os antigos blocos "Fase 9/10" (Flutter e calendário) viraram **9.1 a 9.7**, na
 ordem em que destravam uns aos outros — e o 9.1 (`getManualSearchResults`
 devolver os três baldes) é pré-requisito de dois outros.
 
-### [FRONTEND_BRIEFING.md](./FRONTEND_BRIEFING.md) — o entregável principal
+### [FRONTEND_BRIEFING.md](./Fases/Fase%209/FRONTEND_BRIEFING.md) — o entregável principal
 
 Documento de entrada para quem for desenhar o app. O que ele tem que o
 API_CONTRATO não tinha:

@@ -1,243 +1,162 @@
-# Contrato da API — o que cada rota recebe e devolve
+# Contrato da API — as decisoes de contrato
 
-> 📌 **Documento vivo** — descreve o contrato atual e é atualizado sempre que a
-> API muda. Não é arquivado com a fase. Ver [README](./README.md).
+> 📌 **Documento vivo** — atualizado sempre que uma *decisao* de contrato muda.
+> Nao e arquivado com a fase. Ver [README](./README.md).
 >
-> Última revisão: 2026-08-02. Descreve **o que o backend entrega hoje** — não o
-> que seria bom ter.
+> Ultima revisao: **2026-08-04**.
 >
-> Backend staging: `https://simeops-backend.onrender.com`
-> Backend produção: `https://sistemaprogestao-7fzs.onrender.com`
->
-> ⚠️ **Produção ainda roda código de junho** (`main`). Tudo marcado com 🆕 existe
-> só em `staging`/`develop`. Ver [ROADMAP](./ROADMAP.md), Prioridade 0.
+> Staging: `https://simeops-backend.onrender.com`
+> Producao: `https://sistemaprogestao-7fzs.onrender.com`
+> ⚠️ Producao ainda roda codigo de junho (`main`). Ver [ROADMAP](./ROADMAP.md).
 
 ---
 
-## Regra que não pode ser quebrada
+## O que esta aqui e o que nao esta
 
-**`body['results']` é a lista que o app já renderiza.** Ela continua sendo
-**apenas o balde principal**, com o mesmo shape de sempre. Tudo que a Fase 8
-acrescentou vai pendurado em `extras`, ao lado.
+**A lista de rotas esta em [`backend/src/routes/`](../backend/src/routes/) e os
+shapes de request em [`validation.ts`](../backend/src/middleware/validation.ts).**
+Copiar isso pra ca so cria uma segunda verdade que envelhece — foi o que
+aconteceu com a tabela "o que o app ainda ignora", que sobreviveu meses depois da
+Fase 9 ter implementado tudo.
 
-Se algum dia os extras forem misturados em `results`, o APK que está na mão do
-cliente passa a exibi-los na lista e a contá-los nas estatísticas, sem ninguém
-perceber. Foi por isso que o contrato ficou assim.
+Melhor ainda: os comentarios do `validation.ts` **ja explicam o porque** de cada
+limite, colados na linha que o aplica. Leia la.
+
+Aqui ficam so as decisoes de contrato: as que, se alguem desfizer sem saber,
+quebram o app na mao do cliente.
 
 ---
 
-## Fluxo da busca manual
+## A regra que nao pode ser quebrada
 
-```
-POST /manual-search            → cria e enfileira, devolve searchId
-GET  /manual-search/:id/status → polling (o app faz a cada 3s)
-GET  /manual-search/:id/results→ resultado final
-POST /manual-search/:id/cancel → cancela
-GET  /manual-search/history    → últimas 20 buscas do usuário
-DELETE /manual-search          → { ids: [...] }
-```
-
-### POST /manual-search
-
-```jsonc
-// request
-{
-  "estado": "Bahia",
-  "cidades": ["Salvador"],   // 🆕 EXATAMENTE 1 — ver nota abaixo
-  "periodo_dias": 30,        // 1 a 180, qualquer inteiro
-  "tipo_crime": "homicidio"  // opcional
-}
-```
-
-**🆕 `cidades` aceita exatamente 1.** A região metropolitana entra sozinha, e o
-custo é o mesmo. Mandar 2 devolve **400**. O widget do app já foi ajustado
-(`MultiCitySearchField`, `maxCities: 1`) — **backend e APK precisam subir juntos.**
-
-**`periodo_dias` é livre**, não uma lista de opções: 1 a 180, qualquer inteiro.
-Slider, campo, calendário — o que o design pedir. Os tetos internos acompanham
-sem faixas. O limite de 180 é temporário (por causa do polling de 10 min); volta
-a 365 depois que o app desistir por estagnação.
-
-| resposta | quando | corpo |
-|---|---|---|
-| `201` | ok | `{ searchId, status: "processing" }` |
-| `409` | já há busca rodando | 🆕 `{ error, searchId, params, progress }` |
-| `400` | validação | erro do zod |
-
-**🆕 O 409 agora é acionável.** Traz `searchId` e o `progress` da busca em curso —
-dá para oferecer *"Salvador em andamento (42%) — ver progresso / cancelar"* em vez
-de um erro seco. Só acrescentou campos; o app atual não quebra.
-
-Se a busca anterior morreu (sem avanço de progresso há 20 min), o backend a marca
-como `failed` sozinho e **deixa a nova passar** — não devolve 409.
-
-### GET /manual-search/:id/status
+**`body['results']` e a lista que o app renderiza — e continua sendo APENAS o
+balde principal.** Tudo que a Fase 8 acrescentou vai pendurado em `extras`, ao
+lado:
 
 ```jsonc
 {
-  "status": "processing",       // processing | completed | failed | cancelled
-  "total_results": null,        // só o PRINCIPAL, quando completed
-  "report_id": null,            // se já existe relatório gerado
-  "params": { "estado": "...", "cidades": ["..."], "periodo_dias": 30 },
-  "progress": {
-    "stage": "fetching",
-    "stage_num": 4,
-    "total_stages": 7,
-    "details": "155 artigos",
-
-    // 🆕 contador DENTRO do estágio — estágios 4 e 5 apenas
-    "feitos": 34,
-    "total": 155,
-
-    // 🆕 últimos 5 achados, mais recente primeiro (só no estágio 5)
-    "achados": [
-      { "tipo_crime": "homicidio", "bairro": "Cabula", "data_ocorrencia": "2026-07-31" }
-    ],
-
-    // 🆕 ISO. Última vez que ALGO se mexeu — base para "desistir por estagnação"
-    "atualizado_em": "2026-08-02T18:31:04.221Z",
-
-    "history": [ { "stage_num": 1, "details": "...", "started_at": "..." } ]
-  }
-}
-```
-
-Os 7 estágios:
-
-| # | `stage` | o que faz | tem contador? |
-|---|---|---|---|
-| 1 | `searching` | coleta na SERP | não |
-| 2 | `filtering` | Filter0 (regex) | não |
-| 3 | `filtering` | Filter1 (GPT em lote) | não |
-| 4 | `fetching` | baixa o texto (Jina) | 🆕 **sim** |
-| 5 | `analyzing` | Filter2 + embedding | 🆕 **sim** + achados |
-| 6 | `dedup` | consolida | não |
-| 7 | `saving` | grava | não |
-
-**Os estágios 4 e 5 são os longos** — juntos, a maior parte do tempo. São
-exatamente os que ganharam contador, porque é neles que parecia travado.
-
-Escrita estrangulada em ~1 a cada 2s (o polling é de 3s, mais que isso não
-apareceria). O último item de cada estágio sempre escreve, então a barra fecha
-em 100%.
-
-**Sugestão para o app:** trocar `_maxPolls = 200` (desiste em 10 min de relógio)
-por **desistir por estagnação** — enquanto `feitos` ou `atualizado_em` avançam,
-seguir esperando; parado há ~2 min, aí é falha. Some o número mágico.
-
-### GET /manual-search/:id/results
-
-```jsonc
-{
-  "results": [ /* SÓ o principal — shape idêntico ao de sempre */ ],
-  "extras": {                                    // 🆕
+  "results": [ /* SO o principal, no shape de sempre */ ],
+  "extras": {
     "regiao":          [ /* cidades vizinhas */ ],
-    "fora_do_periodo": [ /* mais antigas que a janela */ ]
+    "fora_do_periodo": [ /* mais antigas que a janela pedida */ ]
   }
 }
 ```
 
-Cada item aparece em **exatamente um** dos três. Quem é vizinha *e* velha conta
-como vizinha — mas os dois sinalizadores viajam no item, então dá para saber a
-verdade completa.
+Se um dia os extras forem misturados em `results`, **o APK que esta na mao do
+cliente passa a exibi-los na lista e a conta-los nas estatisticas, sem ninguem
+perceber.** O usuario veria "47 ocorrencias em Salvador" quando 12 sao de
+Camacari e 9 sao de tres meses atras. Foi por isso que o contrato ficou assim, e
+e por isso que ele nao muda.
 
-Shape do item:
-
-```jsonc
-{
-  "tipo_crime": "homicidio",
-  "natureza": "ocorrencia",        // "estatistica" NÃO é ocorrência — ver nota
-  "categoria_grupo": "seguranca",
-  "cidade": "Camaçari",
-  "estado": "Bahia",               // 🆕 antes era descartado; use para a UF do card
-  "bairro": "Gleba B",
-  "rua": null,
-  "data_ocorrencia": "2026-07-31",
-  "resumo": "...",
-  "confianca": 0.9,
-  "source_url": "https://...",
-  "source_type": "news",           // "news" | "web" — hoje o app descarta
-  "sources": [ { "url": "...", "type": "news" } ],   // todas as fontes do cluster
-
-  "cidade_vizinha": true,          // 🆕 só aparece quando true
-  "fora_do_periodo": true          // 🆕 só aparece quando true
-}
-```
-
-⚠️ **`natureza: "estatistica"` não é ocorrência.** São indicadores ("homicídios
-caíram 12% no semestre"). O backend já os separa nos agregados; a lista precisa
-tratá-los diferente ou eles inflam a contagem.
+**Cada item aparece em exatamente um dos tres baldes.** Quem e vizinha *e* velha
+conta como vizinha — mas os dois sinalizadores (`cidade_vizinha`,
+`fora_do_periodo`) viajam dentro do item, entao da pra reconstruir a verdade
+completa sem depender do balde.
 
 ---
 
-## Relatório e mapa
+## `natureza: "estatistica"` nao e ocorrencia
 
-```
-POST /analytics/report          → gera/retorna o relatório de uma busca
-GET  /analytics/executive       → resumo executivo (GPT, cacheado)
-POST /analytics/map-points      → { cidade, estado, dateFrom, dateTo, searchId? }
-GET  /public/report/:id         → relatório compartilhável, sem auth
-```
-
-**Os dois filtram os extras**, de propósito: o relatório e o radar seguem o
-recorte que o usuário pediu. No mapa isso é crítico — o geocode roda contra a
-cidade **da requisição**, então um bairro de Camaçari viraria pino dentro de
-Salvador.
-
-📌 Quando o app ganhar o filtro por período/região (calendário), esses endpoints
-precisam ganhar o mesmo recorte — hoje é fixo. Ver 9.6 no [ROADMAP](./ROADMAP.md).
+Sao indicadores — *"homicidios cairam 12% no semestre"*. O backend ja os separa
+nos agregados, mas **a lista precisa trata-los diferente ou eles inflam a
+contagem**: uma materia de balanco anual viraria "1 ocorrencia" no card.
 
 ---
 
-## Feed, favoritos, devices
+## O relatorio e o mapa filtram os extras — de proposito
 
-```
-GET    /news/feed              → feed principal
-GET    /news?cidades=A,B,C     → filtrado (aceita lista separada por vírgula)
-GET    /news/favorites
-POST   /news/:id/favorite      /  DELETE /news/:id/favorite
-POST   /news/:id/read          /  POST /news/mark-all-read
-GET    /news/unread-count
-POST   /devices                → registra o token FCM
-DELETE /devices
-```
+`POST /analytics/report`, `GET /analytics/executive` e `POST /analytics/map-points`
+seguem o recorte que o usuario pediu, sem regiao e sem fora-do-periodo.
 
-## Auth e público
+**No mapa isso e critico:** o geocode roda contra a cidade **da requisicao**,
+entao um bairro de Camacari viraria pino dentro de Salvador. Nao e cosmetico — e
+informacao falsa num mapa de criminalidade.
 
-```
-GET  /auth/me                  POST /auth/change-password
-POST /auth/request-reset
-GET  /public/auth-required     → se o app deve exigir login
-GET  /public/locations         → cidades disponíveis, sem auth
-```
-
-## Push
-
-O push de conclusão **já existe e já manda o `search_id`**:
-
-```jsonc
-{ "search_id": "...", "type": "manual_search_completed" }   // ou _failed
-```
-
-📌 Falta o **deep link** abrir o resultado direto. Hoje o push chega e o usuário
-tem que navegar até o histórico. A tela já sabe retomar por `resumeSearchId`.
+Desde 04/08 o relatorio **declara o proprio recorte** em datas concretas e traz a
+regiao como toggle explicito, justamente pra que o usuario nao leia o total como
+se fosse tudo do periodo que ele pediu.
 
 ---
 
-## O que o backend manda e o app ainda ignora
+## O 409 e acionavel
 
-Matéria-prima pronta, esperando UI:
+Busca ja rodando devolve `409` **com `searchId`, `params` e `progress`** — da pra
+oferecer *"Salvador em andamento (42%) — ver progresso / cancelar"* em vez de um
+erro seco.
 
-| dado | onde | serve para |
-|---|---|---|
-| `extras.regiao` | results | seção "região metropolitana" |
-| `extras.fora_do_periodo` | results | seção "mais ocorrências" |
-| `estado` | cada item | UF no card de cidade vizinha |
-| `source_type` | cada item | distinguir portal de veículo |
-| `progress.feitos/total` | status | contador real no lugar de "passo 4 de 7" |
-| `progress.achados` | status | achados aparecendo ao vivo |
-| `progress.atualizado_em` | status | desistir por estagnação |
-| `sources[]` | cada item | "coberto por 3 veículos" |
+E se a busca anterior morreu (sem avanco de progresso ha 20 min), o backend a
+marca como `failed` sozinho e **deixa a nova passar**. Sem isso, uma busca
+travada bloquearia o usuario pra sempre.
 
-Conceito de UI que o João já definiu, e os pontos de encaixe verificados no
-código Flutter, estão no [FRONTEND_BRIEFING.md](./FRONTEND_BRIEFING.md).
+---
+
+## Progresso: por que os estagios 4 e 5 tem contador
+
+Os sete estagios do `progress` acompanham o funil
+(ver [ARQUITETURA](./ARQUITETURA.md)). Sao **4 (Jina) e 5 (Filter2)** que levam a
+maior parte do tempo — e sao exatamente os que ganharam `feitos`/`total` e
+`achados`, porque eram neles que a tela *parecia travada*.
+
+A escrita e estrangulada em ~1 a cada 2s (o polling e de 3s; mais que isso nao
+apareceria), mas **o ultimo item de cada estagio sempre escreve**, senao a barra
+nunca fecharia em 100%.
+
+**`atualizado_em` existe para o app desistir por ESTAGNACAO, nao por relogio.**
+O `_maxPolls = 200` antigo desistia em 10 min mesmo com a busca andando — e era
+esse o bug que o cliente reportava. Ja trocado no app (04/08). Nao voltar a
+cravar numero magico de timeout: buscas longas sao legitimas.
+
+---
+
+## Assuntos: termos livres, de proposito
+
+`assuntos: string[]` (ate 20) substituiu o `tipo_crime` (uma string, uma query).
+Cada assunto vira uma query `<assunto> <cidade>` — **e um teto novo de ~60-70
+itens no indice do Google**, que e a unica alavanca real de alcance.
+
+Sao termos **livres**: a taxonomia
+([`taxonomia.ts`](../backend/src/utils/taxonomia.ts), servida por
+`GET /settings/taxonomia`) e so uma sugestao boa, e o usuario pode digitar
+`greve` ou `queda de energia`.
+
+**Ausente = a lista do painel (`search_subjects`)** — que e o comportamento
+antigo. Foi assim de proposito: o APK que o cliente tem hoje nao manda `assuntos`
+e continua funcionando igual.
+
+⚠️ Os assuntos escolhidos **entram como contexto nos prompts do Filter1 e do
+Filter2**. Sem isso o Filter1 mata `greve`/`bloqueio` pacifico antes do Jina, em
+silencio, por "nao ser seguranca publica". Quem mexer nos prompts precisa
+preservar essa regra.
+
+---
+
+## Uma cidade por busca
+
+`cidades` aceita exatamente **1**. A regiao metropolitana ja vem junto, das
+**mesmas** queries, marcada como `cidade_vizinha` — entao `1 cidade + regiao`
+custa o mesmo que `1 cidade` custava. Permitir N seria pagar N vezes por algo que
+ja esta incluso.
+
+⚠️ **O APK que o cliente tem hoje deixa escolher ate 10.** Enquanto ele nao
+atualizar, escolher 2+ da **400**. Backend e app precisam subir juntos — ou
+aceitar essa janela conscientemente (foi o que o Joao escolheu em 04/08).
+
+---
+
+## Push de conclusao
+
+Ja manda `search_id` e `type: manual_search_completed | _failed`, e o app ja abre
+o resultado direto (9.7, 02/08).
+
+---
+
+## Onde procurar o resto
+
+| pergunta | onde |
+|---|---|
+| que rotas existem | [`backend/src/routes/`](../backend/src/routes/) |
+| o que cada rota aceita, e **por que** aquele limite | [`validation.ts`](../backend/src/middleware/validation.ts) |
+| como o item de resultado e montado | [`manualSearchWorker.ts`](../backend/src/jobs/workers/manualSearchWorker.ts) |
+| como o app le tudo isso | [`news_item.dart`](../mobile-app/lib/core/models/news_item.dart) |
+| onde cada item do funil morre | [FUNIL.md](./FUNIL.md) |

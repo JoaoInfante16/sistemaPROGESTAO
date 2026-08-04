@@ -1,659 +1,360 @@
 
-# SIMEops / PROGESTAO - ARQUITETURA DO SISTEMA
-## Documento Tecnico — revisado em 2026-08-02 (fim da Fase 8)
+# SIMEops / PROGESTAO — ARQUITETURA DO SISTEMA
+## Documento tecnico — revisado em 2026-08-04
 
 > 📌 **Documento vivo** — descreve o **presente**: como o sistema funciona hoje.
-> Editado in-place quando algo estrutural muda, nunca arquivado com a fase. O
-> historico de *como se chegou aqui* e o DEV_LOG. Ver [README](./README.md).
->
-> **O que mudou nesta revisao** (reforma do backend, 02/08):
-> - os assuntos pesquisados sairam do codigo e viraram config editavel no painel
->   (`search_subjects`) — a busca manual roda todos, o auto-scan em rodizio
-> - peneira no STAGE 1.5 do auto-scan: URL ja salva e materia velha nao descem
->   mais pro Jina
-> - dedup em camadas ligado no auto-scan (era so cosine)
-> - contabilidade unica de custo — `calculateCost()` removida
-> - concorrencia separada por caminho + timeouts em Jina (20s) e OpenAI (60s)
->
-> **Numeros reais medidos em 02/08** (Campo Grande / 60 dias, pelo app):
-> `269 URLs -> 241 baixadas -> 151 extraidas -> 77 entregues`, em 5min31s.
-> O estagio 4 (Jina) e ~54% do tempo, a ~7,4s por artigo com pool de 10.
->
-> Historico e medicoes anteriores: [Fases/](./Fases/). O que falta:
-> [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md).
-
-```
-+==============================================================================+
-|                                                                              |
-|     S I M E o p s  -  P R O G E S T A O                                     |
-|     Sistema de Monitoramento de Ocorrencias Policiais                       |
-|                                                                              |
-|     "Monitoramento automatico 24/7 de ocorrencias policiais em cidades      |
-|      brasileiras, usando IA para coletar, filtrar e entregar noticias       |
-|      relevantes direto no celular."                                         |
-|                                                                              |
-+==============================================================================+
-```
+> Editado in-place quando algo estrutural muda, nunca arquivado com a fase.
+> O historico de *como se chegou aqui* e o [DEV_LOG](./DEV_LOG.md).
+> Ver [README](./README.md).
 
 ---
 
-## O QUE O SISTEMA FAZ (Resumo Executivo)
+## Regra deste documento (2026-08-04)
 
-```
-   O SIMEops e um "robo jornalista" que:
+**Aqui NAO entra o que o codigo ja diz.** Nada de stack, arvore de arquivos,
+lista de chaves de config, shapes de rota ou valores numericos que vivem no
+`configManager`. Isso se le na fonte, em dois segundos, e sempre certo.
 
-   1. VARRE a internet brasileira atras de noticias de ocorrencias policiais
-   2. FILTRA o que e relevante usando IA (elimina lixo, spam, categorias)
-   3. CONSOLIDA mesma ocorrencia de fontes diferentes (dedup embedding)
-   4. ENVIA alerta no celular do usuario em tempo real
-   5. PERMITE busca manual por cidade, palavra-chave e periodo
+O motivo nao e economia de espaco — e que a copia **apodrece calada**. Na revisao
+de 04/08 este documento afirmava, ao mesmo tempo, que a busca aceitava 10 cidades
+(aceita 1), que o Stage 5 rodava em serie (foi paralelizado), que nenhuma chamada
+externa tinha timeout (o proprio cabecalho, 470 linhas acima, listava os
+timeouts) e que os tetos eram por faixa 30d/60d/90d (sao por raiz quadrada). Tudo
+isso estava dentro de uma caixa escrita **"LEIA ANTES DE MEXER"**.
 
-   Tudo isso rodando AUTOMATICAMENTE, 24 horas por dia.
-```
+Entao a regra e:
 
----
+| entra | fica de fora |
+|---|---|
+| **por que** algo e assim | o que a linha de codigo faz |
+| o que foi tentado e **falhou** | a lista de arquivos e pastas |
+| medicoes que custaram dinheiro | valores de config (leia o `configManager`) |
+| armadilhas que ja custaram tempo | shapes de request/response (leia o zod) |
+| coisas que eu **nao enxergo** do codigo | versoes de dependencia (leia o package.json) |
 
-## VISAO GERAL - MAPA DO SISTEMA
-
-```
-+-------------------------------------------------------------------------+
-|                          INTERNET                                       |
-|                                                                         |
-|   [Bright Data]   [Google News]   [Brave News]                          |
-|   SERP API        RSS Feed        Search API                            |
-|   (PRINCIPAL)     Gratis          (legado/fallback)                     |
-|   news + web      complementar    so se SEARCH_BACKEND=brave            |
-|      |            |               |                                     |
-+------+------------+---------------+-------------------------------------+
-       |            |
-       v            v
-+-------------------------------------------------------------------------+
-|                                                                         |
-|   Backend (Node.js + TypeScript + Express + BullMQ)                     |
-|                                                                         |
-|   +--------------------------------------------------------------+     |
-|   |              PIPELINE CORE (pipelineCore.ts)                  |     |
-|   |  "Stages compartilhados entre auto-scan e busca manual"      |     |
-|   |                                                               |     |
-|   |  URL -> Filter0 -> Filter1 -> Jina -> Filter2+Embed -> Dedup |     |
-|   |         (regex)   (GPT batch) (read)  (GPT full)   (cluster) |     |
-|   +--------------------------------------------------------------+     |
-|                          |                                              |
-+------+-------------------+------+---------------------------------------+
-       |                   |      |
-       v                   v      v
-   +-----------+   +-----------+  +--------------+
-   |  SUPABASE |   |   APP     |  | ADMIN PANEL  |
-   | PostgreSQL|   |  MOBILE   |  | Next.js 16   |
-   | + pgvector|   | (Flutter) |  | (webpack)    |
-   +-----------+   +-----------+  +--------------+
-```
+Quando um numero for indispensavel para o raciocinio, ele vem **com a data da
+medicao** e com o ponteiro pra fonte viva.
 
 ---
 
-## INFRAESTRUTURA - SERVICOS EXTERNOS
+## O que o sistema faz
 
-```
-+---------------------------------------------------------------------+
-|                                                                     |
-|  SUPABASE (supabase.com)                                            |
-|  - PostgreSQL + pgvector (busca por similaridade)                   |
-|  - Autenticacao (JWT para admins e usuarios)                        |
-|  - API automatica                                                   |
-|                                                                     |
-+---------------------------------------------------------------------+
-|                                                                     |
-|  FIREBASE (firebase.google.com)                                     |
-|  - Push notifications no celular (mesmo com app fechado)            |
-|  - Gratis ate 10.000 mensagens/mes                                  |
-|                                                                     |
-+---------------------------------------------------------------------+
-|                                                                     |
-|  OPENAI / GPT (openai.com)                                         |
-|  - Filter1: Le titulos em lote, decide "e ocorrencia?" (toggle)    |
-|  - Filter2: Le artigo inteiro, extrai dados estruturados            |
-|    (tipo_crime livre, cidade, bairro, data, resumo, confianca)      |
-|  - Embeddings: text-embedding-3-small (1536 dims, dedup)           |
-|  - Dedup GPT: confirma duplicatas quando similarity >= 0.85        |
-|  Modelo: GPT-4o-mini                                                |
-|                                                                     |
-+---------------------------------------------------------------------+
-|                                                                     |
-|  JINA AI (jina.ai)                                                  |
-|  - Acessa URL e extrai SO o conteudo util (sem ads/menus)           |
-|  - Cache inteligente: NAO cacheia <100 chars                        |
-|  - Custo: $0.002 por pagina                                        |
-|                                                                     |
-+---------------------------------------------------------------------+
-|                                                                     |
-|  BRIGHT DATA SERP API (api.brightdata.com)  — PROVIDER PRINCIPAL    |
-|  Selecionado por env SEARCH_BACKEND=brightdata                      |
-|                                                                     |
-|  Modo NEWS (auto-scan) — API sincrona:                              |
-|  - tbm=nws, qdr:d, ~20 resultados por pagina                        |
-|  - Rapido (segundos). Custo: $0.0015 por request                    |
-|                                                                     |
-|  Modo WEB (busca manual) — Dataset API "Top 100":                   |
-|  - trigger -> polling -> download de snapshot                       |
-|  - ATENCAO: polling de ate 60 x 3s = 180s, com retry 1x             |
-|    => ate ~6 MINUTOS por cidade no pior caso                        |
-|  - 1 request = ate 100 resultados                                   |
-|                                                                     |
-|  Tambem usado como fallback do Jina (Web Unlocker) quando o Jina    |
-|  falha com 403/422/503/SSL — ex: dominios .gov.br                   |
-|                                                                     |
-|  Config de max_results por periodo (admin panel):                    |
-|    auto-scan: 15 | manual 30d: 50 | 60d: 50 | 90d: 80              |
-|                                                                     |
-+---------------------------------------------------------------------+
-|                                                                     |
-|  Google News RSS (complementar, gratis):                            |
-|  - Feed RSS sem API key, date pre-filter por pubDate                |
-|  - Agrega 1-5 URLs extras por busca                                |
-|                                                                     |
-|  Brave News Search (legado — so se SEARCH_BACKEND=brave):           |
-|  - Ate 50 resultados/request. Custo: $0.005 por query               |
-|  - Codigo mantido em BraveNewsProvider.ts, fora do caminho ativo    |
-|                                                                     |
-+---------------------------------------------------------------------+
-|                                                                     |
-|  NOMINATIM / OpenStreetMap (geocoding)                              |
-|  - Converte bairro/rua em lat/lon pro CrimeRadarMap                 |
-|  - Fallback em cascata: rua -> bairro -> cidade                     |
-|  - Campo `precisao` persistido no CrimePoint (rua = ponto destacado)|
-|  - Gratis, sem API key                                              |
-|                                                                     |
-+---------------------------------------------------------------------+
-|                                                                     |
-|  REDIS / Upstash                                                    |
-|  - Fila de tarefas (BullMQ)                                        |
-|  - Cache de configs (5 min refresh)                                 |
-|  - Cache de conteudo Jina (24h, so se >100 chars)                   |
-|  - Cache de embeddings (30 dias, valida dim=1536)                   |
-|                                                                     |
-+---------------------------------------------------------------------+
-```
+Um robo jornalista: varre a imprensa brasileira atras de ocorrencias policiais,
+filtra com IA, consolida a mesma ocorrencia vinda de veiculos diferentes, e
+entrega no celular — por push automatico (auto-scan) ou sob demanda (busca
+manual).
+
+**O que o produto entrega e "o que a imprensa publicou sobre criminalidade na
+cidade", NAO "a criminalidade da cidade".** Sao coisas diferentes, e a segunda e
+muito maior. Isso precisa estar alinhado com o cliente, porque e a origem de toda
+frustracao com volume baixo.
 
 ---
 
-## PIPELINE CORE (pipelineCore.ts)
-
-> Atualizado em **2026-04-16** apos sessao de fixes (Fase 2).
-> Stages compartilhados entre AUTO-SCAN e BUSCA MANUAL — cada pipeline chama essas
-> funcoes e customiza via parametros. Setas laterais [X->] indicam rejeicoes.
-
-### Funil de filtros — mapa detalhado
+## Mapa do sistema
 
 ```
-                +--------------------------------------+
-                |  SEARCH PROVIDER (BrightData/Brave)  |
-                |  Auto-scan: dateRestrict='d1'        |
-                |  Manual:    searchMode web + news    |
-                +--------------------------------------+
-                                 |
-                                 v
-                    +--------------------------+
-                    |  URL DEDUP               |  [X->] URL ja vista neste batch
-                    |  (urlDeduplicator.ts)    |
-                    +--------------------------+
-                                 |
-                                 v
-    +----------------------------------------------------------------+
-    |  STAGE 1  FILTER 0 (regex, local, $0)                          |
-    |  -------------------------------------------------             |
-    |  Bloqueia URL se:                                              |
-    |  - dominio de rede social / video (11 dominios)                |
-    |    facebook, twitter/x, tiktok, linkedin, pinterest,           |  [X->] dominio bloqueado
-    |    reddit, whatsapp, INSTAGRAM, YOUTUBE/youtu.be, globoplay   |
-    |  - URL de categoria/listagem (18 padroes regex)                |  [X->] pagina de categoria
-    |    /tag/, /category/, /editorias/, /policia/, etc              |
-    |  - snippet contem keyword nao-crime (17 palavras)              |  [X->] keyword nao-crime
-    |    novela, futebol, receita, jogo, tempo, musica...            |
-    |                                                                 |
-    |  Toggle: filter0_regex_enabled (admin panel)                   |
-    +----------------------------------------------------------------+
-                                 |
-                                 v
-    +----------------------------------------------------------------+
-    |  STAGE 2  FILTER 1 (GPT-4o-mini batch, ~$0.0002/lote de 30)   |
-    |  -------------------------------------------------             |
-    |  1 chamada pra cada lote de ate 30 snippets                    |
-    |  Pergunta: "each is public safety? YES/NO"                     |
-    |  Resposta: array boolean na ordem dos snippets                 |  [X->] GPT diz "nao e crime"
-    |                                                                 |
-    |  Robustez:                                                      |
-    |  - Retry 1x em erro                                             |
-    |  - Parse JSON invalido/length mismatch: padding true (safe)    |
-    |  - API exception pos retry: THROW (BullMQ retry 5x ate 31min)  |
-    |    Nao faz fallback "all true" (explodiria budget downstream)  |
-    +----------------------------------------------------------------+
-                                 |
-                                 v
-    +----------------------------------------------------------------+
-    |  STAGE 3  CONTENT FETCH (Jina Reader, ~$0.002/artigo)         |
-    |  -------------------------------------------------             |
-    |  Baixa e extrai texto limpo de cada URL aprovada               |
-    |  Concorrencia: auto-scan  content_fetch_concurrency ...... 5   |
-    |                busca man. manual_search_fetch_concurrency  10  |
-    |  Timeout: 20s no Jina, 30s no fallback Web Unlocker            |
-    |  Cache Redis 24h (so se >100 chars)                             |
-    |                                                                 |  [X->] fetch falhou
-    |  Rejeita:                                                       |  [X->] conteudo <100 chars
-    |  - fetch falhou (timeout, 404, etc)                             |
-    |  - conteudo < 100 chars (pagina vazia ou categoria)             |
-    +----------------------------------------------------------------+
-                                 |
-                                 v
-    +----------------------------------------------------------------+
-    |  STAGE 4  FILTER 2 (GPT-4o-mini full, ~$0.0005/artigo)        |
-    |  -------------------------------------------------             |
-    |  Envia ate 8000 chars do conteudo (config filter2_max_*)       |
-    |  GPT extrai JSON estruturado:                                   |
-    |  - is_crime, tipo_crime (15 cats + aliases)                    |
-    |  - natureza (ocorrencia | estatistica)                         |  [X->] is_crime=false
-    |  - cidade, estado, bairro, rua                                  |  [X->] confianca < 0.7
-    |  - data_ocorrencia (YYYY-MM-DD, nao pode ser futura)           |  [X->] tipo_crime invalido
-    |  - resumo (1-2 frases PT-BR)                                    |  [X->] data invalida/futura
-    |  - confianca (>= filter2_confidence_min, 0.7 default)           |
-    |                                                                 |
-    |  Aliases aceitos (mapeamento feito no filter2GPT.ts):          |
-    |  feminicidio->homicidio, estupro/tortura->lesao_corporal,      |
-    |  sequestro->outros, corrupcao/extorsao->estelionato,           |
-    |  incendio->vandalismo, porte_arma->operacao_policial           |
-    +----------------------------------------------------------------+
-                                 |
-                                 v
-    +----------------------------------------------------------------+
-    |  STAGE 4.5  POST-FILTER em memoria                             |
-    |  -------------------------------------------------             |
-    |  (a) Data:                                                      |  [X->] data_ocorrencia antiga
-    |      rejeita se data_ocorrencia < hoje - periodoDias            |
-    |      auto-scan: 2 dias / manual: periodoDias do user            |
-    |                                                                 |
-    |  (b) Cidade + Estado:   [FIX 2026-04-16]                       |
-    |      (cidadeExata || cidadeParcial) && estadoBate              |  [X->] cidade/estado fora
-    |      Sempre exige estado — evita homonimas (SJ/SC vs SJ/SP).   |
-    +----------------------------------------------------------------+
-                                 |
-                                 v
-    +----------------------------------------------------------------+
-    |  STAGE 5  EMBEDDING 1536-dim (OpenAI text-embedding-3-small)   |
-    |  -------------------------------------------------             |
-    |  Gera embedding do resumo so das noticias aprovadas            |
-    |  Cache Redis 30 dias                                            |
-    +----------------------------------------------------------------+
-                                 |
-                                 v
-    +----------------------------------------------------------------+
-    |  STAGE 6  DEDUP INTRA-BATCH (embedding clustering, $0)         |
-    |  -------------------------------------------------             |
-    |  Compara todos do batch atual entre si                          |
-    |  Threshold: dedup_similarity_threshold (0.85 default, config)  |
-    |  [FIX 2026-04-16: era hardcoded, agora usa mesma config da L2] |
-    |                                                                 |
-    |  Clusteriza: lead = maior confianca, outros viram sources[]    |
-    |  Ex: 34 noticias -> 28 cards (6 mergeadas)                    |
-    +----------------------------------------------------------------+
-                                 |
-                                 v
-              +------------------+------------------+
-              |                                     |
-          AUTO-SCAN                             BUSCA MANUAL
-          (STAGE 7 abaixo)                      (salva direto em search_results)
-```
-
-### STAGE 7: DEDUP CONTRA DB (so auto-scan, 3 camadas)
-
-```
-  +-----------------------------------------------------------------+
-  |  LAYER 1  Geo-temporal (SQL, $0)                                |
-  |  Busca em `news`: mesma cidade + estado + tipo + data+-1d       |
-  |  + bairro tolerante a NULL  [FIX 2026-04-16]                    |
-  |  Limit 200 [FIX 2026-04-16: era 50 — cortava cidades grandes]   |
-  |  Sem candidatos -> NEW, insert.                                 |
-  +-----------------------------------------------------------------+
-                            |
+   Bright Data SERP API  ---+
+   (PRINCIPAL: news + web)  |
+   Google News RSS ---------+
+   (complementar, gratis)   |
                             v
-  +-----------------------------------------------------------------+
-  |  LAYER 2  Embedding similarity (cosine, <200ms, $0)             |
-  |  Filtra candidatos com embedding dim=1536 valido                |
-  |  Calcula cosine contra todos, pega top match                    |
-  |  Se score < threshold (0.85, config) -> NEW, insert.            |
-  +-----------------------------------------------------------------+
-                            |
-                            v
-  +-----------------------------------------------------------------+
-  |  LAYER 3  GPT confirma (so ~5% chegam aqui, ~$0.001)            |
-  |  "These two summaries describe the SAME criminal event? YES/NO" |
-  |  Prompt validado com scripts/test-dedup-prompt.ts (9/10).       |
-  |                                                                  |
-  |  Se DUPLICATE:                                                   |
-  |  - insere sourceUrl + extraSourceUrls[] como fontes alternativas |
-  |    [FIX 2026-04-16: antes perdia extras do cluster intra-batch] |
-  |  Se NEW:                                                         |
-  |  - insert news + sources + push notification por categoria      |
-  +-----------------------------------------------------------------+
+        +-------------------------------------------------------+
+        |   Backend (Node + TypeScript + Express + BullMQ)      |
+        |                                                        |
+        |   PIPELINE CORE — compartilhado pelos dois caminhos    |
+        |   URL -> Filter0 -> Filter1 -> Jina -> Filter2 -> Dedup|
+        |          (regex)   (GPT lote) (read) (GPT full)        |
+        +-------------------------------------------------------+
+             |                  |                 |
+             v                  v                 v
+        Supabase           App Flutter       Admin Next.js
+        (PG + pgvector)    (Android)         (configuracao)
 ```
 
-### Trocas de prompt testadas (e descartadas)
-
-Durante a sessao 2026-04-16 tentei reescrever o prompt da Layer 3 pra reduzir um
-suposto vies pro "YES". Teste com 10 pares (script acima) mostrou **regressao**:
-prompt novo rigoroso demais, dava NO em casos de mesmo evento com escritas
-diferentes (valor core do sistema). Revertido. Prompt antigo validado como base.
+`BraveNewsProvider.ts` existe mas esta **fora do caminho ativo** (so com
+`SEARCH_BACKEND=brave`). Se voce achar o Brave citado em algum calculo de custo,
+o calculo e velho.
 
 ---
 
-## AUTO-SCAN (scanPipeline.ts)
+## Servicos externos — so o que surpreende
 
-```
-  Disparado por CRON — schedule vem da env SCAN_CRON_SCHEDULE (*/5 em prod).
-  ATENCAO: a config `scan_cron_schedule` no DB e IGNORADA pelo scheduler.
-  Usa pipelineCore + dedup contra DB + push por noticia.
+O que cada servico *e* esta no proprio nome. O que morde:
 
-  JANELA DE OPERACAO (timezone America/Sao_Paulo, forcado via Intl):
-  - seg-sex 6h-18h ligado | sab-dom desligado por default
-  - Fora da janela o tick inteiro e pulado (nada enfileira, nada e marcado)
-  - Configs: scan_weekday_start/end, scan_weekend_enabled/start/end
+**Bright Data — dois modos com custo e latencia muito diferentes.**
+O modo *news* (`tbm=nws`) e sincrono e responde em segundos. O modo *web* ("Top
+100") e uma Dataset API: trigger, polling, download de snapshot. **O polling vai
+a ate 60 tentativas de 3s, com 1 retry — ou seja, ate ~6 minutos por cidade no
+pior caso.** Esse e o maior sumidouro de tempo isolado do sistema.
 
-  Fontes: Bright Data (modo news) + Google News RSS
-  Query: assuntos do painel (config `search_subjects`), em rodizio
-         - o rodizio anda 1 por execucao (scanIndex / scan_frequency_minutes),
-           entao cobre a lista inteira ao longo do dia
-         - location com mode='keywords' usa as palavras dela, nao a lista
-  Multi-query: 2 assuntos por scan (search_queries_per_scan)
-  Periodo de busca: scan_period_days (4 dias — cobre recuperacao de fim de semana)
+**O teto do indice do Google e por QUERY, e nao e regulavel.** Medido com
+paginacao correta (Floripa, 30 dias): 10, 10, 10, 1, 0, 0 = **31 noticias
+unicas**. Aumentar config alem disso nao cria noticia que nao existe. **Mais
+assuntos e a unica alavanca real de alcance** — cada assunto e um teto novo. Foi
+isso que levou a taxonomia inteira para a busca (03/08).
 
-  STAGE 1.5 — peneira barata, antes de qualquer GPT (02/08):
-    - URL ja em news_sources ......... descartada (ja virou noticia salva)
-    - publicada antes da janela ...... descartada (com 1 dia de folga;
-                                       sem data legivel, MANTEM)
-    Metricas em budget_tracking.details: jaVistas / ineditas /
-    velhasPelaSerp / analisaveis
+**Paginacao do news:** `num` foi deprecado pelo Google (set/2025) e a SERP
+devolve ~10 por pagina — paginar com `start` de 10 em 10. Com incremento de 20 o
+codigo **pula as posicoes 10-19 de cada pagina** e perde ~1/3 do material. E
+`brd_json=1` e OBRIGATORIO na URL: sem ele vem HTML bruto e o `JSON.parse` falha
+em silencio.
 
-  Apos pipelineCore:
-  +==================================================================+
-  |  STAGE 5.5: DEDUP INTRA-BATCH EM CAMADAS (desde 02/08)           |
-  |  runIntraBatchDedupLayered — o mesmo da busca manual (8.3)       |
-  |  Layer 1: trava geo-temporal em memoria ($0)                     |
-  |  Layer 2: cosine com dedup_similarity_threshold                  |
-  |  Layer 3: GPT so na faixa duvidosa, atras de config (off)        |
-  |  (era runIntraBatchDedup, so cosine — fundia crimes de datas     |
-  |   diferentes e deixava passar o mesmo evento por 2 veiculos)     |
-  +==================================================================+
-  |  STAGE 6: DEDUP CONTRA DB (3 camadas)                            |
-  |  Layer 1: Geo-temporal (SQL, $0) — mesma cidade+crime+data       |
-  |  Layer 2: Embedding similarity (cosine >= 0.85, $0)              |
-  |  Layer 3: GPT confirma (~5% dos casos, cobrado por TOKEN real)   |
-  |  Se duplicata: adiciona URL como fonte extra                      |
-  |  Se nova: salva + push notification                               |
-  +==================================================================+
+**Jina** e o fallback Web Unlocker (Bright Data) para quando o Jina leva
+403/422/503/SSL — tipicamente dominios `.gov.br`. O cache **nao guarda respostas
+com menos de 100 chars**, senao uma pagina vazia envenenaria o cache por 24h.
+Desde 04/08 trata `429` lendo o `Retry-After`.
 
-  CUSTO — uma contabilidade so (desde 02/08):
-    `custoDoRun` acumula exatamente o que cada estagio grava em
-    budget_tracking, e e ele que vai pro operation_logs.cost_usd.
-    A funcao `calculateCost()` (formula paralela, taxas fixas a mao)
-    foi REMOVIDA — os dois numeros discordavam por construcao.
-```
+**Nominatim/OpenStreetMap** e gratis e a politica de uso e **1 requisicao por
+segundo** — nao paralelizavel. Foi isso que fez o mapa do relatorio nunca
+carregar: geocode sequencial x 1,1s x ate 3 lookups por ponto dava 85-254s contra
+um timeout de 15s no cliente. Corrigido em 04/08 com cache em duas camadas
+(memoria + Redis, 90 dias) e aquecimento **depois** da entrega.
+
+**Redis/Upstash** carrega fila (BullMQ), cache de config, de conteudo e de
+embedding. Os TTLs estao no codigo.
 
 ---
 
-## BUSCA MANUAL (manualSearchWorker.ts)
+## Pipeline core — o funil
+
+Este desenho e o **modelo mental** do sistema: onde cada item morre. Os valores
+de corte sao config e mudam; a **ordem** e a **razao de cada estagio** nao.
 
 ```
-  Disparada pelo usuario no app mobile.
-  Usa pipelineCore + filtro cidade/estado + progress tracking.
+  SEARCH PROVIDER
+        |
+        v
+  URL DEDUP ............................. [X] URL repetida no batch
+        |
+        v
+  STAGE 1  FILTER 0 — regex local, $0 ... [X] dominio social/video
+        |                                 [X] pagina de categoria/listagem
+        |                                 [X] snippet com keyword nao-crime
+        v
+  STAGE 2  FILTER 1 — GPT em lote ....... [X] "nao e ocorrencia"
+        |
+        v
+  STAGE 3  CONTENT FETCH — Jina ......... [X] fetch falhou
+        |                                 [X] conteudo < 100 chars
+        v
+  STAGE 4  FILTER 2 — GPT artigo inteiro  [X] is_crime = false
+        |    extrai: tipo_crime, cidade,  [X] confianca abaixo do minimo
+        |    estado, bairro, rua, data,   [X] tipo_crime invalido
+        |    resumo, confianca            [X] data ausente ou futura
+        v
+  STAGE 4.5  POST-FILTER em memoria ..... [X] data fora do periodo pedido
+        |    (a) data  (b) cidade+estado  [X] cidade/estado nao batem
+        v
+  STAGE 5  EMBEDDING (1536-dim)
+        |
+        v
+  STAGE 6  DEDUP INTRA-BATCH em camadas
+        |    lead = maior confianca; os outros viram sources[]
+        v
+   +----+----------------------------+
+   |                                 |
+  AUTO-SCAN                     BUSCA MANUAL
+  (+ dedup contra DB, + push)   (salva em search_results)
+```
 
-  Diferencas do auto-scan:
-  - Filtro de cidade/estado pos-Filter2 (a busca traz noticias nacionais)
-  - Roda TODOS os assuntos de `search_subjects` (o auto-scan roda N por vez)
-  - Tetos derivados do periodo por raiz quadrada, SEM faixas
-    (manualSearchCaps.ts). Teto de analise: manual_search_analysis_cap,
-    0 = sem teto, que e o default desde 02/08
-  - Concorrencia propria no estagio 4 (manual_search_fetch_concurrency = 10)
-  - Resultados salvos em search_results (JSONB, com sources[])
-  - Dedup intra-batch com embedding (consolida fontes no mesmo card)
-  - SEM dedup contra DB (por enquanto)
-  - Push "busca concluida" pro usuario
-  - Progress tracking persistido (JSONB `progress` com history de stages)
+### Por que cada regra do funil existe
 
-  DUAL-SOURCE por cidade, em PARALELO (Promise.allSettled):
-  - Web Top 100 (volume):   allintext:"{cidade}" (ocorrencia OR crime OR ...)
-  - News paginado (qualidade): "noticias policiais ... {cidade} {estado}"
-  Ate 80 URLs por cidade (50 web + 30 news no periodo de 30d).
+**Filter1 nunca faz fallback "aprova tudo".** Se a API falhar depois do retry,
+ele **lanca** e deixa o BullMQ retentar. Aprovar tudo por seguranca explodiria o
+orcamento nos estagios seguintes, que sao os caros. Ja parse invalido ou tamanho
+de array errado faz padding `true` — ali o custo de errar e um artigo a mais, nao
+o orcamento inteiro.
 
-  Pipeline: 7 stages
-  1. Search (Bright Data web + news, 2 queries paralelas por cidade)
-  2. Filter0 (regex)
-  3. Filter1 (GPT batch)
-  4. Fetch (Jina)
-  5. Filter2 + Embedding (GPT + filtro cidade/data)
-  6. Dedup intra-batch (embedding clustering)
-  7. Save (search_results)
+**O Filter2 SEMPRE exige cidade + estado juntos.** Sem o estado, Sao Jose (SC)
+vira Sao Jose (SP). Nao relaxar isso.
 
+**Os assuntos escolhidos pelo usuario entram como contexto nos prompts do Filter1
+e do Filter2** (03/08). Sem isso o Filter1 matava `greve` e `bloqueio` pacifico
+**antes do Jina**, em silencio: sao assuntos que o modelo nao considera
+"seguranca publica". A regra do usuario vence a regra de crime.
+
+**Dedup contra DB tem 3 camadas por custo, nao por precisao:** geo-temporal em
+SQL ($0) elimina a maioria, cosine ($0) resolve quase todo o resto, e o GPT so
+ve os ~5% duvidosos.
+
+### Trocas de prompt testadas e DESCARTADAS
+
+Em 16/04 tentei reescrever o prompt da Layer 3 do dedup para reduzir um suposto
+vies pro "YES". O teste com 10 pares (`scripts/test-dedup-prompt.ts`) mostrou
+**regressao**: o prompt novo, mais rigoroso, dava NO para o mesmo evento escrito
+de formas diferentes — que e exatamente o valor central do sistema. Revertido.
+
+---
+
+## Auto-scan
+
+Disparado por CRON. **A config `scan_cron_schedule` no banco e IGNORADA** — quem
+manda e a env `SCAN_CRON_SCHEDULE`.
+
+Roda so em **janela de operacao** (timezone `America/Sao_Paulo` forcado via
+`Intl`): dias uteis, horario comercial, fim de semana desligado por default.
+Fora da janela o tick inteiro e pulado — nada enfileira, nada e marcado.
+
+**Escaneia apenas `type='city'`.** Escanear `state` polui o banco com cidades
+erradas.
+
+Os assuntos rodam **em rodizio**, alguns por execucao, cobrindo a lista inteira
+ao longo do dia. Por isso levar a taxonomia inteira para `search_subjects` (03/08)
+**nao aumenta o custo recorrente** — aumenta a cobertura ao longo do dia.
+
+**STAGE 1.5 — peneira barata antes de qualquer GPT** (02/08): URL que ja esta em
+`news_sources` cai fora, e materia publicada antes da janela cai fora com 1 dia
+de folga. **Sem data legivel, MANTEM** — na duvida paga-se o Jina, nao se perde a
+noticia. As metricas vao em `budget_tracking.details`.
+
+**Contabilidade de custo e uma so** (02/08): `custoDoRun` acumula exatamente o
+que cada estagio grava em `budget_tracking`. A antiga `calculateCost()`, que
+recalculava por formula com taxas fixas na mao, foi **removida** — os dois
+numeros discordavam por construcao.
+
+---
+
+## Busca manual
+
+Disparada pelo usuario no app. Mesmo pipeline core, mais: filtro de cidade/estado
+pos-Filter2, progress persistido em JSONB, push de conclusao, e **sem** dedup
+contra o banco.
+
+**Dual-source por cidade, em paralelo** (`Promise.allSettled`): Web Top 100 para
+volume, News paginado para qualidade.
+
+```
   +==================================================================+
-  |  DUAS FONTES, CONFIABILIDADES DIFERENTES (medido em 2026-07-30)  |
+  |  AS DUAS FONTES TEM CONFIABILIDADES DIFERENTES (medido 30/07)    |
   |                                                                   |
-  |  NEWS (tbm=nws, via zone) = ALICERCE                              |
-  |    Estavel: 20 resultados por cidade em TODAS as medicoes.        |
-  |    E o que sustenta o auto-scan e o piso da busca manual.         |
+  |  NEWS = ALICERCE. Estavel: 20 resultados por cidade em TODAS as   |
+  |  medicoes. Sustenta o auto-scan e e o piso da busca manual.       |
   |                                                                   |
-  |  WEB (organico, via scraper) = BONUS                              |
-  |    Erratico: 85, 10, 1, 11, 98... com requisicao IDENTICA.        |
-  |    NAO e instabilidade — e o Google BLOQUEANDO trafego raspado    |
-  |    (respondeu results_cnt=1 pra query com 61500 resultados).      |
-  |    O indice organico e o dado mais raspado da internet (SEO),     |
-  |    entao e o que o Google mais defende. Independe do transporte:  |
-  |    scraper e zone oscilam igual.                                  |
+  |  WEB = LOTERIA. Erratico: 85, 10, 1, 11, 98... com requisicao     |
+  |  IDENTICA. NAO e instabilidade — e o Google BLOQUEANDO trafego    |
+  |  raspado (respondeu results_cnt=1 pra query com 61500            |
+  |  resultados). O indice organico e o dado mais raspado da          |
+  |  internet, entao e o que o Google mais defende.                   |
   |                                                                   |
   |  >>> NAO ADICIONAR RETRY POR CONTAGEM BAIXA <<<                   |
   |  Nao da pra distinguir "fui bloqueado" de "essa cidade nao tem    |
   |  noticia": Florianopolis ~26/mes, Santos 1, Aguas da Prata 1.     |
   |  Gatilho apertado queima dinheiro em cidade pequena; frouxo nao   |
-  |  dispara quando precisa. Regra: repetir sobre SINAL explicito     |
+  |  dispara quando precisa. Repetir sobre SINAL explicito            |
   |  (x-brd-err-code), nunca sobre suspeita.                          |
-  |                                                                   |
-  |  PAGINACAO DO NEWS: `num` foi deprecado pelo Google (set/2025) e  |
-  |  a SERP devolve ~10 por pagina. Paginar com `start` de 10 em 10.  |
-  |  Com incremento de 20 o codigo PULA as posicoes 10-19 de cada     |
-  |  pagina — perde ~1/3 do material. E `brd_json=1` e OBRIGATORIO    |
-  |  na URL, senao vem HTML bruto e o JSON.parse falha em silencio.   |
-  |                                                                   |
-  |  TETO DE MATERIA-PRIMA (medido com paginacao correta, Floripa,    |
-  |  30 dias): 10, 10, 10, 1, 0, 0 = **31 noticias unicas**.          |
-  |  Aumentar config alem disso nao cria noticia que nao existe.      |
-  |  O produto entrega "o que a imprensa publicou sobre criminalidade |
-  |  na cidade", NAO "a criminalidade da cidade". Sao coisas          |
-  |  diferentes, e a segunda e muito maior. Alinhar isso com cliente. |
-  +==================================================================+
-
-  +==================================================================+
-  |  PERFORMANCE — LEIA ANTES DE MEXER  (auditoria 2026-07-30)       |
-  |                                                                   |
-  |  A validacao aceita ATE 10 CIDADES por busca (validation.ts).     |
-  |  10 cidades = ate 800 URLs = 200+ artigos chegando ao Filter2.    |
-  |                                                                   |
-  |  O STAGE 5 RODA EM SERIE: o `for` em pipelineCore.ts faz 2 awaits |
-  |  OpenAI por artigo, um de cada vez. O rate limiter permite 5      |
-  |  simultaneas — a capacidade existe e NAO e usada.                 |
-  |    30 artigos ~3min | 60 ~6min | 150 ~15min | 250 ~25min          |
-  |                                                                   |
-  |  O Flutter desiste em 10 MIN (_maxPolls=200 x 3s). Busca          |
-  |  multi-cidade estoura isso => usuario ve "carregando" pra sempre. |
-  |  ESTE E O BUG REPORTADO PELO CLIENTE. Detalhes e plano de fix:    |
-  |  AUDITORIA_2026-07-30.md                                          |
-  |                                                                   |
-  |  Nenhuma chamada externa (Jina, Bright Data, OpenAI) tem timeout. |
   +==================================================================+
 ```
 
----
+**Os tetos derivam do periodo por raiz quadrada, sem faixas**
+(`manualSearchCaps.ts`).
 
-## CONFIGURACOES DO ADMIN PANEL
+**O teto de analise (`manual_search_analysis_cap`) e 0 = SEM TETO, e isso e
+deliberado.** Com cota de 50, mediu-se **142 candidatos dentro da janela virando
+50** (Fase 8). Tempo se ataca por **vazao**, nunca por descarte — quem descarta
+joga fora noticia que ja foi coletada e paga.
 
-```
-  +-------------------------------------------------------------+
-  |  CONFIG KEYS (configManager, cache 5 min)                    |
-  |                                                              |
-  |  Pipeline:                                                   |
-  |  - search_max_results ............. 15 (auto-scan)           |
-  |  - manual_search_analysis_cap ..... 0  (0 = SEM TETO)        |
-  |  - manual_search_horizon_days ..... 180                      |
-  |  - content_fetch_concurrency ...... 5  (auto-scan)           |
-  |  - manual_search_fetch_concurrency  10 (busca manual)        |
-  |  - filter0_regex_enabled .......... toggle                   |
-  |  - filter2_confidence_min ......... 0.7                      |
-  |  - filter2_max_content_chars ...... 8000                     |
-  |  - dedup_similarity_threshold ..... 0.85                     |
-  |  - dedup_gpt_confirm_enabled ...... false (camada 3)         |
-  |                                                              |
-  |  Fontes:                                                     |
-  |  - search_subjects ................ lista de assuntos,       |
-  |      um por linha. Busca manual roda TODOS; auto-scan roda   |
-  |      search_queries_per_scan por vez, em rodizio             |
-  |  - manual_search_web_enabled ...... true (indice organico)   |
-  |  - multi_query_enabled (auto-scan)                           |
-  |  - search_queries_per_scan ........ 2                        |
-  |  - google_news_rss_enabled ........ false                    |
-  |                                                              |
-  |  >>> O painel MESCLA banco + DEFAULTS desde 02/08. Chave     |
-  |  que so existe em codigo aparece marcada origem='default'.   |
-  |  Antes ela sumia da tela, e um toggle vazio lia como         |
-  |  DESLIGADO enquanto o backend a usava LIGADA.                |
-  |                                                              |
-  |  >>> `manual_search_max_results_30d/60d/90d` NAO sao mais    |
-  |  lidas por este codigo. Ficam no DEFAULTS porque a `main`    |
-  |  (producao) le a _30d como teto de COLETA — significado      |
-  |  diferente, mesmo banco. Somem quando a main for promovida.  |
-  |                                                              |
-  |  Janela do auto-scan (LIDAS, com UI no admin):               |
-  |  - scan_weekday_start / end ....... 6 / 18                   |
-  |  - scan_weekend_enabled ........... false                    |
-  |  - scan_weekend_start / end ....... 6 / 18                   |
-  |  - scan_period_days ............... 4                        |
-  |                                                              |
-  |  Sistema (LIDAS, mas SEM UI no admin — editar no Supabase):  |
-  |  - monthly_budget_usd ............. 100                      |
-  |  - push_enabled ................... true                     |
-  |  - search_permission .............. authorized               |
-  |  - auth_required .................. true  (tem UI)           |
-  |                                                              |
-  |  >>> CONFIGS MORTAS — existem no schema, NADA as le: <<<     |
-  |  - scan_cron_schedule ..... scheduler usa a ENV, nao o DB    |
-  |  - worker_concurrency ..... hardcoded 3 em scanWorker.ts     |
-  |  - worker_max_per_minute .. hardcoded 10 em scanWorker.ts    |
-  |  - scan_lock_ttl_minutes .. hardcoded 30min em cronScheduler |
-  |  - budget_warning_threshold ...... nada consome              |
-  |  (as 3 primeiras aparecem na lista `restartRequired` do      |
-  |   settingsRoutes — a mensagem "requer restart" e enganosa:   |
-  |   mesmo com restart, nao tem efeito nenhum)                  |
-  |                                                              |
-  +-------------------------------------------------------------+
-```
+**Quem escolhe os assuntos e o usuario, na tela** (03/08). O `tipo_crime` (uma
+string, uma query) virou `assuntos: string[]`. O catalogo unico vive em
+[`backend/src/utils/taxonomia.ts`](../backend/src/utils/taxonomia.ts) e e servido
+por `GET /settings/taxonomia` — a mesma lista alimenta as queries, a tela e a
+classificacao.
+
+**A validacao aceita 1 cidade por busca.** Nao vale a pena subir: `1 cidade +
+regiao` custa o mesmo que `1 cidade`, entao permitir N seria pagar N vezes por
+algo que ja vem junto. ⚠️ O APK que o cliente tem hoje ainda deixa escolher 10 —
+enquanto ele nao atualizar, 2+ cidades da **400**.
 
 ---
 
-## STACK TECNOLOGICO
+## Regiao metropolitana — hoje e por GPT, e ela alucina
 
-```
-  +-------------------------------------------------------------+
-  |                                                              |
-  |  Backend:  Node.js + TypeScript + Express + BullMQ           |
-  |  Admin:    Next.js 16.1.6 + shadcn/ui + Tailwind v4         |
-  |  Mobile:   Flutter / Android                                 |
-  |  DB:       Supabase PostgreSQL + pgvector                    |
-  |  Cache:    Redis (Upstash)                                   |
-  |  Push:     Firebase Cloud Messaging                          |
-  |  IA:       OpenAI GPT-4o-mini + text-embedding-3-small       |
-  |  Scraping: Jina AI Reader (+ Bright Data Unlocker fallback)  |
-  |  Busca:    Bright Data SERP API (PRINCIPAL — news + web)     |
-  |            Google News RSS (complementar, gratis)            |
-  |            Brave News Search (legado, fora do caminho ativo) |
-  |  Geocode:  Nominatim / OpenStreetMap (gratis)                |
-  |  Erros:    Sentry (backend + admin + mobile, so producao)    |
-  |                                                              |
-  |  Deploy:   Render — backend e admin, Starter $7 cada         |
-  |            develop (local) -> staging (free) -> main (prod)  |
-  |                                                              |
-  +-------------------------------------------------------------+
-```
+A lista de cidades vizinhas vem de um GPT com cache. Medido no cache do Redis
+(04/08):
+
+| capital | cidade devolvida | realidade |
+|---|---|---|
+| Goiania | Mara Rosa | **350 km** |
+| Goiania | Jussara / Caldas Novas | ~300 km / ~170 km |
+| Porto Alegre | Marica | fica no **Rio de Janeiro** |
+| Campo Grande | Cristalina | fica em **Goias** |
+
+Sao Paulo e Salvador saem corretas — o modelo memorizou as famosas. As de outro
+estado sao inofensivas (o pos-filtro exige o estado bater); as do mesmo estado,
+longe, **passam** e ja foram exibidas ao usuario como "regiao metropolitana".
+
+**Decidido: substituir por raio geografico** (dataset de municipios com lat/lng +
+haversine, ~30 km conurbacao, ~100 km regiao). **Nao estender o GPT pra isso** —
+regiao metropolitana e fato juridico memorizavel, "municipios a 100 km" e conta,
+e o modelo erra conta. O raio produz a **lista de nomes**; o pipeline continua
+comparando por nome, nao por coordenada.
 
 ---
 
-## CONTROLE DE CUSTOS
+## Configuracao — o que nao esta no codigo
 
-```
-  +-------------------------------------------------------------+
-  |  CUSTO ESTIMADO POR SCAN (auto-scan, 1 cidade)              |
-  |                                                              |
-  |  Brave News Search ......... $0.005  (1 query, 15 URLs)     |
-  |  Google News RSS ........... $0.000  (gratis)                |
-  |  Jina (leitura) ............ $0.014  (~7 artigos)            |
-  |  OpenAI Filtro 1 ........... $0.000  (~gratis)               |
-  |  OpenAI Filtro 2 ........... $0.004  (~7 artigos)            |
-  |  OpenAI Embeddings ......... $0.000  (~gratis)               |
-  |  -----------------------------------------------             |
-  |  TOTAL POR SCAN: ~$0.02                                      |
-  |                                                              |
-  |  CUSTO POR BUSCA MANUAL (50 URLs, 30d)                      |
-  |  Brave News Search ......... $0.005                          |
-  |  Jina ...................... $0.060  (~30 artigos)            |
-  |  OpenAI .................... $0.015                           |
-  |  -----------------------------------------------             |
-  |  TOTAL POR BUSCA: ~$0.08                                     |
-  |                                                              |
-  |  Protecoes: orcamento mensal, alerta 90%, pausa automatica   |
-  |                                                              |
-  +-------------------------------------------------------------+
-```
+As chaves e seus valores estao em
+[`backend/src/services/configManager/index.ts`](../backend/src/services/configManager/index.ts).
+O que **nao** da pra deduzir lendo aquele arquivo:
+
+**O painel MESCLA banco + DEFAULTS desde 02/08**, e marca `origem='default'` nas
+chaves que so existem em codigo. Antes elas sumiam da tela — e um toggle vazio
+lia como DESLIGADO enquanto o backend o usava LIGADO.
+
+**`manual_search_max_results_30d/60d/90d` nao sao mais lidas por este codigo, mas
+nao podem ser apagadas:** a `main` (producao) le a `_30d` como teto de **COLETA**
+— significado diferente, mesmo banco. Elas so somem quando a `main` for
+promovida.
+
+**As configs de rate limit vivem na tabela `api_rate_limits`**, por provider
+(`max_concurrent`, `min_time_ms`), e alimentam um Bottleneck cuja instancia e
+**unica e compartilhada** entre auto-scan e busca manual. Mexer ali afeta os dois
+caminhos ao mesmo tempo.
 
 ---
 
-## CODIGO — ARQUIVOS PRINCIPAIS
+## Armadilhas que ja custaram tempo
 
-```
-  backend/src/
-    jobs/pipeline/
-      pipelineCore.ts ......... Stages compartilhados (filter0-dedup)
-      scanPipeline.ts ......... Auto-scan (CRON + dedup DB + push)
-    jobs/workers/
-      manualSearchWorker.ts ... Busca manual (filtro cidade + progress)
-    jobs/scheduler/
-      cronScheduler.ts ........ CRON + janela de operacao + lock Redis
-      billingScheduler.ts ..... Fechamento mensal de custo
-    services/
-      search/
-        BrightDataSERPProvider.ts  PRINCIPAL — dual mode (news sync / web Top100)
-        BraveNewsProvider.ts .. Legado (so se SEARCH_BACKEND=brave)
-        GoogleNewsRSSProvider.ts  RSS gratis (date pre-filter)
-        queryTemplates.ts ..... Assuntos pesquisados (config search_subjects,
-                                editavel no painel). Fallback de fabrica em
-                                ASSUNTOS_PADRAO. Busca manual roda TODOS;
-                                auto-scan roda N por vez, em rodizio
-        urlDeduplicator.ts .... Normaliza e dedup URLs
-      executive/
-        index.ts .............. Resumo executivo via GPT (cards + paragrafo)
-                                Cache por cidade+estado+range e por searchId
-      geocoding/
-        nominatim.ts .......... lat/lon com fallback rua->bairro->cidade
-      notifications/
-        pushService.ts ........ Firebase FCM, filtro por categoria
-      rateLimiter/
-        DynamicRateLimiter.ts . Bottleneck por provider, configs do DB
-                                ATENCAO: instancia unica compartilhada
-                                entre auto-scan e busca manual
-      filters/
-        filter0Regex.ts ....... Regex local (domains, categorias)
-        filter1GPTBatch.ts .... GPT batch (titulos, toggle)
-        filter2GPT.ts ......... GPT full (extracao estruturada)
-      embedding/
-        OpenAIEmbeddingProvider.ts
-        CachedEmbeddingProvider.ts  (Redis, valida dim=1536)
-      deduplication/
-        index.ts .............. 3 camadas (geo+embed+GPT)
-      content/
-        JinaContentFetcher.ts
-        CachedContentFetcher.ts (NAO cacheia <100 chars)
-    database/
-      queries.ts .............. Embedding como pgvector string
-```
+**Infra compartilhada — a numero 1.** Staging, producao e dev usam o **mesmo**
+Redis e o **mesmo** Supabase. Mudar config atinge producao **na hora, sem
+deploy**. Producao chegou a roubar jobs de staging, ate o prefixo de fila.
+
+**Nao deduzir qual codigo esta rodando.** `/health` devolve o commit;
+`budget_tracking.details.commit` diz qual processo processou o job.
+
+**O `MIGRATIONS_LOG.md` ja mentiu.** Antes de assumir schema, rodar
+`scripts/diagnostico-banco.ts`.
+
+**`gpt-5-nano` nao funciona** (reasoning tokens) — manter `gpt-4o-mini`.
+
+**CORS no Render exige callback function**, nao array direto. Array nao funciona
+em producao.
+
+**Timestamps do Postgres vem sem fuso** (`TIMESTAMP` + `DEFAULT NOW()`), e o Dart
+parseia como local — dava 3h adiantado no app. Resolvido em
+`mobile-app/lib/core/utils/datas.dart`.
+
+**`--dart-define-from-file` e resolvido em tempo de COMPILACAO.** `flutter run`
+deixa instalado um APK apontando pro IP da LAN que **abre e loga normal** (o
+Supabase tem defaultValue) e so morre nas chamadas ao backend. Conferir com
+`adb shell dumpsys package com.netriosnews.netrios_news`.
+
+**Escrita direta no banco pelo Bash e bloqueada** pelo classificador de
+permissoes. Mudanca de schema vira migration em [SQL/migrations/](./SQL/migrations/)
++ entrada no [MIGRATIONS_LOG.md](./SQL/MIGRATIONS_LOG.md) no mesmo turno, e o
+Joao roda.
+
+**`.bat` via `cmd.exe /c` nao executa de verdade** neste ambiente — chamar o
+`flutter build` direto.
+
+---
+
+## Onde procurar o resto
+
+| pergunta | documento |
+|---|---|
+| o que cada rota recebe e devolve | [API_CONTRATO.md](./API_CONTRATO.md) |
+| onde cada item do funil morre, com numeros | [FUNIL.md](./FUNIL.md) |
+| o que falta fazer e o risco de cada item | [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md) |
+| **por que** cada decisao foi tomada | [DEV_LOG.md](./DEV_LOG.md) |
+| historico das fases fechadas | [Fases/](./Fases/) |

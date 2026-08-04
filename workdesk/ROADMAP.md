@@ -10,33 +10,15 @@
 > medições que não devem ser refeitas: bloco **ESTADO DO MUNDO** no
 > [DEV_LOG](./DEV_LOG.md).
 
-**A tese desta fase:** o backend ficou bom e o app não sabe disso. São **oito
-campos** já entregues que o Flutter descarta. Nada aqui pede backend novo.
+**A tese desta fase:** o backend ficou bom e o app não sabe disso. Eram **oito
+campos** já entregues que o Flutter descartava — todos consumidos desde 04/08.
+O briefing de entrada foi arquivado em
+[Fases/Fase 9/](./Fases/Fase%209/FRONTEND_BRIEFING.md) porque descreve um
+problema já resolvido.
 
-**Documento de entrada:** [FRONTEND_BRIEFING.md](./FRONTEND_BRIEFING.md) — leia
-antes de abrir qualquer arquivo `.dart`. Tem os números reais, o mapa dos
-arquivos, as decisões de UI que o João já tomou e as cinco armadilhas.
-
----
-
-## 📍 Estado em 04/08 (fim da sessão)
-
-`develop` = `staging` = **`ff7e9df`**, no ar. `main` **75 commits atrás**.
-Migrations **026, 027 e 028 aplicadas**. Custo do mês: **$1,75 de $100**.
-
-**A validação que fecha o argumento da fase** — Goiânia, 34 dias, 17 assuntos:
-
-```
-619 URLs (eram ~106)  →  393 baixados  →  77 resultados (eram 11)
-~$0,295 no total  =  $0,0038 por notícia entregue, contra $0,0058 antes
-```
-
-Mais volume **e** mais barato por resultado. O tempo (~11 min) é anterior à
-migration 028; o esperado agora é ~7 min, **ainda não medido** — é o número que
-recalibra `_segundosPorAssunto` (hoje 36) em `assuntos_field.dart`.
-
-**Falta para fechar:** promover `main` + APK de produção (`env/prod.json` já
-está pronto). Depois disso, o raio.
+> **Este documento é só o FUTURO.** Estado atual, medições e decisões fechadas
+> ficam no bloco **ESTADO DO MUNDO** do [DEV_LOG](./DEV_LOG.md) — um lugar só,
+> senão as cópias divergem.
 
 ---
 
@@ -85,8 +67,8 @@ Requer autorização explícita (a CLAUDE.md proíbe merge direto em `main`).
 >   `cidades.first`; resolver quando multi-cidade destravar.
 
 Ordem original, do que destrava mais para o que é acabamento. Detalhe de cada
-item, com pontos de encaixe e armadilhas, no
-[FRONTEND_BRIEFING.md](./FRONTEND_BRIEFING.md).
+item, com pontos de encaixe e armadilhas, no briefing arquivado em
+[Fases/Fase 9/](./Fases/Fase%209/FRONTEND_BRIEFING.md).
 
 ### 9.1 — `getManualSearchResults` devolve os três baldes
 
