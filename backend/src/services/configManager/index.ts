@@ -7,6 +7,7 @@
 
 import { supabase } from '../../config/database';
 import { logger } from '../../middleware/logger';
+import { ASSUNTOS_TODOS } from '../../utils/taxonomia';
 
 export interface ConfigEntry {
   key: string;
@@ -110,15 +111,24 @@ export const DEFAULTS: Record<string, string> = {
   //   - NUNCA pôr o estado — empurra pro institucional (quem desambigua cidade
   //     homônima é o pós-filtro do Filter2, lendo cidade e estado do corpo).
   //
-  // O default abaixo é exatamente o conjunto que estava hardcoded, pra ligar
-  // isto não mudar nada até alguém editar.
-  search_subjects: [
-    'polícia',
-    'homicídio morte tiros',
-    'roubo furto assalto',
-    'tráfico drogas apreensão armas',
-    'violência doméstica feminicídio',
-  ].join('\n'),
+  // 03/08: o default passou a ser a TAXONOMIA INTEIRA (17 assuntos), e não os 5
+  // de antes. O motivo é que os 5 cobriam 7 dos 16 tipos que o Filter2 sabe
+  // classificar — vandalismo, invasão, receptação, latrocínio, manifestação,
+  // bloqueio de via, estelionato, crime ambiental e trabalho irregular só
+  // entravam de carona, se por acaso aparecessem numa das 5 perguntas.
+  //
+  // ⚠️ O CUSTO RECORRENTE NÃO SOBE. O auto-scan roda `search_queries_per_scan`
+  // (=2) por vez, em RODÍZIO (ver buildQueries) — mais assuntos alargam o ciclo,
+  // não a conta: cada um passa a ser revisitado a cada ~8,5h em vez de ~2,5h. E
+  // como a janela do scan é de 2 dias, nada é perdido no intervalo.
+  //
+  // Quem roda a lista inteira de uma vez é a busca manual, e lá é exatamente
+  // onde se quer volume — mas desde 03/08 quem escolhe quantos assuntos rodar
+  // é o usuário, na tela, vendo o tempo estimado.
+  //
+  // A lista vem de `utils/taxonomia.ts` pra não haver duas verdades: a mesma
+  // fonte alimenta as queries, a tela do app e a classificação.
+  search_subjects: ASSUNTOS_TODOS.join('\n'),
   // Ingestão robusta - fontes
   multi_query_enabled: 'true',
   search_queries_per_scan: '2',

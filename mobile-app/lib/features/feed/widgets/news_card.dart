@@ -146,6 +146,14 @@ class NewsCard extends StatelessWidget {
                               const SizedBox(width: 6),
                               const _Tag('OFICIAL', SIMEopsColors.official),
                             ],
+                            // Município vizinho: sem isto, o card de uma
+                            // ocorrência de Aparecida de Goiânia era idêntico
+                            // ao de Goiânia, e só a seção onde ele estava
+                            // dizia a diferença.
+                            if (news.cidadeVizinha) ...[
+                              const SizedBox(width: 6),
+                              const _Tag('REGIÃO', SIMEopsColors.tealLight),
+                            ],
                             if (news.isFavorite) ...[
                               const SizedBox(width: 6),
                               const Icon(Icons.bookmark,

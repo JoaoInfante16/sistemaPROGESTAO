@@ -34,6 +34,15 @@ class NewsItem {
   final bool hasOfficialSource;
   final String? estadoUf;
   final String? sourceType; // 'news' | 'web' — só na busca manual
+
+  /// Ocorrência de município VIZINHO, não da cidade pedida (busca manual).
+  ///
+  /// Até 03/08 essa informação só existia na separação em baldes, e a seção
+  /// nascia recolhida: uma busca de Goiânia com 11 + 8 da região parecia ter
+  /// rendido 11. Como sinalizador no item, o card diz de onde a notícia é e a
+  /// contagem some do lugar errado.
+  final bool cidadeVizinha;
+
   bool isUnread;
   bool isFavorite;
 
@@ -53,6 +62,7 @@ class NewsItem {
     this.hasOfficialSource = false,
     this.estadoUf,
     this.sourceType,
+    this.cidadeVizinha = false,
     this.isUnread = true,
     this.isFavorite = false,
   });
@@ -84,7 +94,12 @@ class NewsItem {
   }
 
   /// Converte resultado de busca manual (Map) pra NewsItem.
-  factory NewsItem.fromSearchResult(Map<String, dynamic> json) {
+  ///
+  /// `cidadeVizinha` vem de quem chama porque a tela sabe de qual balde o item
+  /// saiu (`extras.regiao`) — informação que o JSON do balde principal não
+  /// carrega.
+  factory NewsItem.fromSearchResult(Map<String, dynamic> json,
+      {bool cidadeVizinha = false}) {
     final sourceUrl = json['source_url'] as String? ?? '';
     final sources = <NewsSource>[];
     // sources pode ser uma lista de maps OU so source_url
@@ -123,12 +138,16 @@ class NewsItem {
       sources: sources,
       estadoUf: estado != null && estado.isNotEmpty ? abbrState(estado) : null,
       sourceType: json['source_type'] as String?,
+      // O backend manda o sinalizador no próprio item desde a 8.2; o balde em
+      // que ele veio é a segunda confirmação, e vale como fallback porque o
+      // contrato deixa `results` sem os sinalizadores por retrocompat.
+      cidadeVizinha: json['cidade_vizinha'] as bool? ?? cidadeVizinha,
       isUnread: false,
       isFavorite: false,
     );
   }
 
-  /// Local formatado: "São José/SC - Kobrasol - Rua X"
+  /// Local formatado: "São José/SC - Kobrasol - Rua X" (ver `cidadeVizinha`)
   /// (UF junto da cidade quando disponivel; bairro e rua separados por " - ")
   String get localFormatted {
     final primeiro = estadoUf != null && estadoUf!.isNotEmpty

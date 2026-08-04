@@ -121,6 +121,115 @@ Verificado em 02/08: migrations 019, 020, 021b, 022 aplicadas; **021, 023, 024 e
 
 ---
 
+## 2026-08-03 — a tela, o tempo, e o funil que apontou pro lugar errado
+
+### O baseline respondeu a pergunta — e não era o que a gente supunha
+
+A busca das 22:02 (Goiás/30d) gravou **96 rejeições**, as primeiras desde que a
+migration 026 foi aplicada. O funil:
+
+| estágio | rejeitadas | |
+|---|---|---|
+| **filter2_location** | **55** | **57%** |
+| filter1 (`gpt_nao_crime`) | 31 | 32% |
+| filter2 | 5 | 5% |
+| filter2_date | 2 | 2% |
+| filter0 + fetch | 3 | 3% |
+
+**A perda de Goiânia é geográfica, não de qualidade de extração.** E dentro das
+55: **32 são cidades do próprio Goiás** — Goiatuba **14**, Luziânia 4, Anápolis
+3, Formosa 2, Itumbiara 2, Catalão, Crixás, Planaltina, Bom Jesus, Cocalzinho,
+Santo Antônio do Descoberto, Mozarlândia. As outras 23 são fora do estado (BH,
+Balsas/MA, Ilhéus, João Pessoa) e foram descartadas **corretamente**.
+
+Ou seja: 32 notícias reais de crime foram coletadas, baixadas, analisadas,
+**pagas** — e jogadas fora por não serem a capital. A seção REGIÃO
+METROPOLITANA não alcança nenhuma delas (Goiatuba fica a 200 km).
+
+Isso explica Salvador (79% de aproveitamento) contra Goiânia (36%) melhor que
+qualquer hipótese sobre o pipeline: a Bahia tem imprensa centrada na capital,
+Goiás tem imprensa espalhada pelo interior. **Recuperá-las custa zero** — está
+no ROADMAP como "abrangência".
+
+⚠️ **Goiatuba com 14 numa cidade de 35 mil é anômalo** e ficou em aberto —
+cheira a portal regional muito indexado, ou Filter2 lendo cidade errada.
+
+⚠️ A linha da busca em `search_cache` **não existe mais** (histórico apagado no
+app), mas as rejeições sobreviveram: `search_id` não tem FK com cascade. Salvou
+o dado desta vez; como regra, acumula lixo sem os params pra interpretar.
+
+### A tela: escolher assuntos, com o preço na frente
+
+Decisão do João: em vez de a gente escolher a lista, **o usuário escolhe** —
+templates da taxonomia + palavra-chave livre — e paga o tempo da própria
+escolha.
+
+O ganho não é de UX, é estrutural: escolher assunto deixa de ser mexer em
+`search_subjects`, que é config no banco compartilhado e muda o auto-scan do
+cliente na hora, sem deploy.
+
+Duas correções de layout vieram do João durante a construção:
+- **"Essencial" sozinho não informa nada** → cada preset mostra a própria conta
+  (`5 assuntos · ~4 min`) mais a linha do que inclui. O `(?)` ficou pro *porquê*.
+- **Chips de período viraram marcas na régua**, e a caixa da estimativa foi pra
+  logo abaixo do slider — arrastar o período mexe nos minutos na frente de quem
+  escolhe.
+
+Estimativa ancorada em medição: Campo Grande 60d/5 assuntos = 5min31 → **47s por
+assunto**, escalando por √(período/30), a mesma curva dos tetos do backend.
+
+### O erro que o João barrou
+
+Dimensionando 17 assuntos × 180 dias × capital, cheguei em **~20 min e ~$1,05**,
+e propus fechar o teto de análise (`manual_search_analysis_cap`). **O João
+lembrou que isso já tinha sido decidido ao contrário** e mandou procurar a doc.
+Estava em [Fase 8/ROADMAP.md:133](./Fases/Fase%208/ROADMAP.md#L133):
+
+> agora é o teto de análise (**142 candidatos dentro da janela para uma cota de
+> 50**)
+
+Com teto 50, **92 notícias dentro da janela pedida morriam sem ninguém olhar**.
+Proposta retirada. **O teto continua em 0.**
+
+O certo era atacar vazão, não descarte:
+
+| alavanca | ganho | perde notícia? |
+|---|---|---|
+| Filter1: chunks de 30 rodavam **em série** | ~3min → ~40s | não |
+| `openai.max_concurrent` 5 → 20 (migration 027) | ~6min → ~1,5min | não |
+| `attempts` 2 → 1 na busca manual | evita cobrar o dobro | não |
+
+O Filter1 serial era desperdício puro: quem controla a vazão da OpenAI é o
+`rateLimiter`, uma camada acima — o `for` com `await` só segurava chunks sem
+motivo. E `openai.max_concurrent = 5` era chute de fev/2026 nunca revisado, **e
+é o mesmo Bottleneck do auto-scan**: uma busca longa deixava o scan do cliente
+na fila o tempo todo.
+
+### Região metropolitana: de escondida a visível
+
+`REGIÃO +8` no sumário, tag `REGIÃO` no card, e a seção **nasce aberta**. Era o
+que fazia Goiânia com 19 resultados parecer ter 11.
+
+### Auto-scan
+
+`search_subjects` passa a ser a taxonomia inteira (17), vinda de `taxonomia.ts`
+pra não haver duas verdades. **O custo recorrente não sobe**: o scan roda 2 por
+vez em rodízio, então mais assuntos alargam o ciclo (~8,5h em vez de ~2,5h por
+assunto) e a janela de 2 dias cobre o intervalo.
+
+### Fuso horário: 3h adiantado
+
+As colunas `created_at` são `TIMESTAMP` (sem time zone) com `DEFAULT NOW()`, e o
+Supabase roda em UTC → o Postgres serializa `2026-07-21T15:43:54.493171`, **sem
+sufixo**. `DateTime.parse` de string sem sufixo devolve um DateTime marcado como
+LOCAL com os números de UTC dentro, e `.toLocal()` vira no-op.
+
+`parseApiDate` declara o UTC antes de converter e aceita os dois formatos que a
+API mistura (o `Z` do Node em `started_at`, o cru do Postgres em `created_at`).
+Corrigido no app e não no schema — as colunas vivem no banco que a `main` lê.
+
+---
+
 ## 2026-08-03 — quem escolhe o que perguntar passa a ser o usuário (backend)
 
 ### A decisão

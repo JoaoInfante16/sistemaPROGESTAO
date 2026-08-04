@@ -237,7 +237,9 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       _searchStatus = 'completed';
       _searchData = res;
       _items = res.results.map(NewsItem.fromSearchResult).toList();
-      _regiaoItems = res.regiao.map(NewsItem.fromSearchResult).toList();
+      _regiaoItems = res.regiao
+          .map((r) => NewsItem.fromSearchResult(r, cidadeVizinha: true))
+          .toList();
       _foraItems = res.foraDoPeriodo.map(NewsItem.fromSearchResult).toList();
       _filterCats.clear();
       _toggledSections.clear();
@@ -1188,6 +1190,13 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       child: Row(
         children: [
           _metadataCard('OCORRÊNCIAS', '${ocorrencias.length}'),
+          // A região entra no sumário, não só numa seção lá embaixo: Goiânia
+          // com "11 OCORRÊNCIAS" tinha 8 da região metropolitana logo abaixo,
+          // e a busca parecia ter rendido menos do que rendeu.
+          if (_regiaoItems.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            _metadataCard('REGIÃO', '+${_regiaoItems.length}'),
+          ],
           const SizedBox(width: 8),
           _metadataCard('PERÍODO', '${_periodoDias}d'),
           if (indicadores.isNotEmpty) ...[
@@ -1281,11 +1290,18 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       if (expanded) rows.addAll(g.items.map(_buildCard));
     }
 
-    // Seções especiais — recolhidas por padrão, cor destacada
+    // Seções especiais, com cor destacada.
+    //
+    // `aberta` decide o padrão. A região metropolitana nasce ABERTA desde
+    // 03/08: recolhida, ela escondia resultado pago e entregue — a busca de
+    // Goiânia tinha 8 ocorrências ali e parecia ter achado só 11. As outras
+    // duas continuam recolhidas porque são material de segunda ordem
+    // (indicador não é ocorrência; "mais ocorrências" está fora do período
+    // pedido).
     void addSection(String key, String label, List<NewsItem> items,
-        {Color? accent}) {
+        {Color? accent, bool aberta = false}) {
       if (items.isEmpty) return;
-      final expanded = _sectionExpanded(key, false);
+      final expanded = _sectionExpanded(key, aberta);
       rows.add(GroupHeader(
         label: label,
         count: items.length,
@@ -1299,7 +1315,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     addSection('sec:indicadores', 'INDICADORES', indicadores,
         accent: categoryColor('institucional'));
     addSection('sec:regiao', 'REGIÃO METROPOLITANA', _regiaoItems,
-        accent: SIMEopsColors.tealLight);
+        accent: SIMEopsColors.tealLight, aberta: true);
     addSection('sec:fora', 'MAIS OCORRÊNCIAS', _foraItems,
         accent: SIMEopsColors.tealLight);
 
