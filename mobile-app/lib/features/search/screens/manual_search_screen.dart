@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../core/data/brazilian_locations.dart';
 import '../../../core/models/assunto.dart';
@@ -37,6 +38,10 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   String? _selectedEstado;
   Set<String> _selectedCidades = {};
   int _periodoDias = 30;
+  /// Data escolhida no calendário; `null` = está num dos cinco pontos.
+  /// `_periodoDias` continua sendo a verdade que vai pro backend — isto só
+  /// guarda de onde o número veio, pra tela poder dizer "desde 12/03".
+  DateTime? _desdeQuando;
   bool _loadingLocations = true;
 
   // Assuntos: o que perguntar ao Google. Catálogo vem do backend; a falha ao
@@ -82,11 +87,14 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   // quando user retomava busca via histórico durante warm-up do backend.
   static const _maxConsecutiveErrors = 20;
 
-  // Marcas do slider de período. Os chips de preset saíram em 03/08 (pedido do
-  // João): viraram marcas na própria régua, que ocupam menos e mostram a escala.
-  // O slider continua livre entre elas — o backend aceita qualquer inteiro de 1
-  // a 180, e travar em 4 valores jogaria fora capacidade que já existe.
+  // Os cinco períodos de um toque. Sem valores intermediários: o slider livre
+  // que existia aqui até 03/08 errava no dedo — pedir 30 e sair com 34 foi o
+  // que o motivou a sair. Quem precisa de um número fora desses usa o
+  // calendário, que é preciso por natureza.
   static const _periodoMarcas = [7, 30, 60, 90, 180];
+
+  /// Teto do backend (`validation.ts`). Passar disso toma 400.
+  static const _periodoMaximoDias = 180;
 
   @override
   void initState() {
@@ -525,59 +533,22 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         ),
         const SizedBox(height: 20),
 
-        // PERIODO — slider livre (1–180) com marcas nos valores usuais
+        // PERIODO — cinco pontos e um calendário. Sem granulação.
+        //
+        // O slider livre de 1 a 180 saiu em 03/08: no device ele erra. O próprio
+        // João pediu 30 dias e a busca saiu com 34 — precisão que ninguém pediu
+        // custando a que todo mundo queria. Os cinco pontos resolvem o caso
+        // comum com um toque; o calendário cobre "desde o incidente tal".
         _sectionLabel('PERIODO'),
-        SliderTheme(
-          data: SliderTheme.of(context).copyWith(
-            activeTrackColor: SIMEopsColors.teal,
-            inactiveTrackColor: SIMEopsColors.navyLight.withValues(alpha: 0.9),
-            thumbColor: SIMEopsColors.tealLight,
-            overlayColor: SIMEopsColors.teal.withValues(alpha: 0.15),
-            trackHeight: 3,
-            tickMarkShape: SliderTickMarkShape.noTickMark,
-          ),
-          child: Slider(
-            value: _periodoDias.toDouble(),
-            min: 1,
-            max: 180,
-            divisions: 179,
-            onChanged: (v) => setState(() => _periodoDias = v.round()),
-          ),
-        ),
-        // Marcas dos valores usuais. Tocáveis — substituem os chips que estavam
-        // aqui e mostram a escala do slider ao mesmo tempo.
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: _periodoMarcas.map((dias) {
-              final ativo = _periodoDias == dias;
-              return GestureDetector(
-                onTap: () => setState(() => _periodoDias = dias),
-                behavior: HitTestBehavior.opaque,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  child: Text(
-                    '$dias',
-                    style: GoogleFonts.jetBrainsMono(
-                      fontSize: 11,
-                      fontWeight: ativo ? FontWeight.w700 : FontWeight.w400,
-                      color: ativo
-                          ? SIMEopsColors.tealLight
-                          : SIMEopsColors.muted.withValues(alpha: 0.55),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
+        const SizedBox(height: 10),
+        _pontosPeriodo(),
+        const SizedBox(height: 12),
+        _botaoCalendario(),
         const SizedBox(height: 18),
 
-        // A CONTA — assuntos × período em minutos. Fica aqui, logo abaixo do
-        // slider, pra arrastar o período mexer no número na frente do usuário:
-        // é o único lugar onde o custo de uma busca maior fica visível ANTES
-        // de ela começar.
+        // A CONTA — assuntos × período em minutos. Fica logo abaixo do período
+        // pra trocar de ponto mexer no número na frente do usuário: é o único
+        // lugar onde o custo de uma busca maior fica visível ANTES de começar.
         _caixaEstimativa(),
         const SizedBox(height: 20),
 
@@ -603,6 +574,155 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         ),
       ],
     );
+  }
+
+  /// Os cinco períodos que resolvem quase tudo, um toque cada.
+  Widget _pontosPeriodo() {
+    return Row(
+      children: _periodoMarcas.map((dias) {
+        final ativo = _periodoDias == dias;
+        return Expanded(
+          child: GestureDetector(
+            onTap: () => setState(() {
+              _periodoDias = dias;
+              _desdeQuando = null; // sair do modo calendário
+            }),
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              padding: const EdgeInsets.symmetric(vertical: 11),
+              decoration: BoxDecoration(
+                color: ativo
+                    ? SIMEopsColors.teal.withValues(alpha: 0.16)
+                    : SIMEopsColors.navyLight.withValues(alpha: 0.8),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: ativo
+                      ? SIMEopsColors.teal
+                      : SIMEopsColors.teal.withValues(alpha: 0.12),
+                  width: ativo ? 1.5 : 1,
+                ),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    '$dias',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: ativo
+                          ? SIMEopsColors.tealLight
+                          : SIMEopsColors.muted.withValues(alpha: 0.75),
+                    ),
+                  ),
+                  Text(
+                    'dias',
+                    style: GoogleFonts.exo2(
+                      fontSize: 9.5,
+                      color: SIMEopsColors.muted.withValues(alpha: 0.55),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  /// Data de início livre — "desde 12/03".
+  ///
+  /// ⚠️ É data de INÍCIO, e não intervalo fechado, por uma razão medida: o
+  /// Google só pagina de hoje pra trás. Buscar "1 a 31 de março" custaria os
+  /// mesmos cinco meses que buscar "desde março" — a busca varre tudo no
+  /// caminho de qualquer jeito (é o balde `fora_do_periodo`). Oferecer as duas
+  /// pontas sugeriria uma economia que não existe.
+  ///
+  /// O recorte fechado já existe onde é de graça: no relatório, depois da
+  /// busca, re-fatiando o que ela já trouxe (9.6).
+  Widget _botaoCalendario() {
+    final ativo = _desdeQuando != null;
+    return GestureDetector(
+      onTap: _escolherDataInicio,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: ativo
+              ? SIMEopsColors.teal.withValues(alpha: 0.12)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: ativo
+                ? SIMEopsColors.teal
+                : SIMEopsColors.teal.withValues(alpha: 0.18),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.calendar_month_outlined,
+                size: 17,
+                color: ativo
+                    ? SIMEopsColors.tealLight
+                    : SIMEopsColors.muted.withValues(alpha: 0.7)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                ativo
+                    ? 'Desde ${DateFormat('dd/MM/yyyy').format(_desdeQuando!)}'
+                        ' · $_periodoDias dias'
+                    : 'Escolher data de início',
+                style: GoogleFonts.exo2(
+                  fontSize: 13,
+                  fontWeight: ativo ? FontWeight.w600 : FontWeight.w400,
+                  color: ativo
+                      ? SIMEopsColors.tealLight
+                      : SIMEopsColors.muted.withValues(alpha: 0.75),
+                ),
+              ),
+            ),
+            if (ativo)
+              GestureDetector(
+                onTap: () => setState(() {
+                  _desdeQuando = null;
+                  _periodoDias = 30;
+                }),
+                child: Icon(Icons.close,
+                    size: 16, color: SIMEopsColors.muted.withValues(alpha: 0.8)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _escolherDataInicio() async {
+    final hoje = DateTime.now();
+    // 180 dias é o teto do backend (`validation.ts`), não um número de tela —
+    // pedir mais tomaria 400.
+    final maisAntiga = hoje.subtract(const Duration(days: _periodoMaximoDias));
+
+    final escolhida = await showDatePicker(
+      context: context,
+      initialDate: _desdeQuando ?? hoje.subtract(Duration(days: _periodoDias)),
+      firstDate: maisAntiga,
+      lastDate: hoje.subtract(const Duration(days: 1)),
+      helpText: 'BUSCAR DESDE',
+      fieldLabelText: 'Data de início',
+    );
+    if (escolhida == null) return;
+
+    // Só a parte da data importa — o backend conta em dias inteiros.
+    final dias = DateTime(hoje.year, hoje.month, hoje.day)
+        .difference(DateTime(escolhida.year, escolhida.month, escolhida.day))
+        .inDays;
+
+    setState(() {
+      _desdeQuando = escolhida;
+      _periodoDias = dias.clamp(1, _periodoMaximoDias);
+    });
   }
 
   /// A conta da busca: quantos assuntos, quantos dias, quantos minutos.
