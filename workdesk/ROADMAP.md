@@ -19,6 +19,27 @@ arquivos, as decisões de UI que o João já tomou e as cinco armadilhas.
 
 ---
 
+## 📍 Estado em 04/08 (fim da sessão)
+
+`develop` = `staging` = **`ff7e9df`**, no ar. `main` **75 commits atrás**.
+Migrations **026, 027 e 028 aplicadas**. Custo do mês: **$1,75 de $100**.
+
+**A validação que fecha o argumento da fase** — Goiânia, 34 dias, 17 assuntos:
+
+```
+619 URLs (eram ~106)  →  393 baixados  →  77 resultados (eram 11)
+~$0,295 no total  =  $0,0038 por notícia entregue, contra $0,0058 antes
+```
+
+Mais volume **e** mais barato por resultado. O tempo (~11 min) é anterior à
+migration 028; o esperado agora é ~7 min, **ainda não medido** — é o número que
+recalibra `_segundosPorAssunto` (hoje 36) em `assuntos_field.dart`.
+
+**Falta para fechar:** promover `main` + APK de produção (`env/prod.json` já
+está pronto). Depois disso, o raio.
+
+---
+
 ## 🚨 PRIORIDADE 0 — Duas decisões do João, travando tudo
 
 Nenhuma das duas é trabalho de código. As duas são risco parado.
