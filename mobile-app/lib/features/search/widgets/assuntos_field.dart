@@ -17,10 +17,26 @@ import '../../../core/theme/simeops_colors.dart';
 
 /// Segundos por assunto numa janela de 30 dias.
 ///
-/// Ancorado em medição real, não em chute: Campo Grande/60 dias com 5 assuntos
-/// levou 5min31 (331s) → 331 / 5 / √2 ≈ 47. Confere com Goiânia/30d, que previu
-/// ~4 min e levou ~3.
-const _segundosPorAssunto = 47;
+/// RECALIBRADO em 03/08 com a primeira busca de lista completa, que é o caso
+/// que este número existe pra prever:
+///
+/// | medição | assuntos | dias | tempo | → por assunto |
+/// |---|---|---|---|---|
+/// | Campo Grande (02/08) | 5 | 60 | 5min31 | 47s |
+/// | **Goiânia (03/08)** | **17** | **34** | **~11min** | **36s** |
+///
+/// O 47 vinha de uma busca de 5 assuntos e superestimava em ~27% no caso de 17
+/// — sublinear, porque o estágio 1 dispara as queries em paralelo e só os
+/// estágios 4 e 5 crescem com o volume.
+///
+/// A medição de 03/08 já inclui a migration 027 (OpenAI 5 → 20 concorrentes),
+/// que cortou o Filter2 de ~12min para 188s. Com a 028 (Jina 10 → 20) o estágio
+/// 4 deve cair de 327s para ~165s, e este número tende a ~28 — **a confirmar
+/// medindo**, não ajustar por dedução.
+///
+/// Errar pra cima é de propósito: prometer 11 e entregar 9 é melhor que o
+/// contrário.
+const _segundosPorAssunto = 36;
 
 /// Estimativa de duração da busca.
 ///

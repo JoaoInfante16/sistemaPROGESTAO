@@ -35,6 +35,8 @@
 
 | 027 | 027_openai_concorrencia.sql | `api_rate_limits.openai.max_concurrent` **5 -> 20** (e `min_time_ms` 200 -> 50). O 5 era chute conservador de fev/2026, nunca revisado, e e o gargalo mais apertado do sistema: estrangula o estagio 5 da busca manual (~6 min para 450 artigos, contra ~1,5 min com 20) e, por ser o mesmo Bottleneck, deixa o **auto-scan do cliente na fila** enquanto uma busca longa roda. Nao descarta nada — so aumenta vazao. ⚠️ Afeta producao na hora (banco compartilhado), mas so pra acelerar | **Pendente — o Joao vai rodar** (autorizada em 03/08) |
 
+| 028 | 028_jina_concorrencia.sql | `api_rate_limits.jina.max_concurrent` **10 -> 20**. Medido em 03/08 (Goiania, 17 assuntos): o Jina levou **327s dos 515s** da busca — 63% do tempo. Sobe JUNTO com `manual_search_fetch_concurrency` (10 -> 20, no codigo): sao dois limitadores em serie e subir so um nao acelera nada. ⚠️ Pre-requisito ja feito no mesmo commit: o fetcher passou a tratar **429 com `Retry-After`** — antes, um 429 virava excecao fora da lista de fallback e o artigo era perdido em silencio | **Pendente — o Joao vai rodar** |
+
 > ⚠️ Este log e preenchido a mao e ja desatualizou (019 e 020 estavam marcadas
 > como pendentes e ja tinham sido rodadas). Antes de confiar nele, rodar
 > **`npx tsx scripts/diagnostico-banco.ts`** — ele olha o estado REAL do banco

@@ -817,7 +817,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
               'devolve no máximo ~60 notícias por pergunta — pedir mais páginas '
               'da mesma pergunta não traz nada de novo.\n\n'
               'Por isso perguntar mais coisas é a única forma de encontrar '
-              'mais. O preço é tempo: cada assunto acrescenta cerca de 45 '
+              'mais. O preço é tempo: cada assunto acrescenta cerca de 35 '
               'segundos à busca.\n\n'
               'A palavra-chave livre busca qualquer coisa, mesmo fora da lista '
               '— greve, acidente numa rodovia, o que você precisar.',

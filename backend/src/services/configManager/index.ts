@@ -47,12 +47,21 @@ export const DEFAULTS: Record<string, string> = {
   // mudaria o auto-scan e a produção junto. Mesmo padrão da
   // `manual_search_analysis_cap`.
   //
-  // 10 casa com `api_rate_limits.jina.max_concurrent`, que já é 10 (conferido no
-  // banco em 02/08) — o pool em 5 era o gargalo, não o rate limiter, e usava
-  // metade da vazão já permitida. Medido pelo João no mesmo dia: o estágio 4 de
-  // uma busca real levou ~2 min, andando normalmente. Isso é o que esse número
-  // encurta.
-  manual_search_fetch_concurrency: '10',
+  // ⚠️ SÃO DOIS LIMITADORES EM SÉRIE, e subir só um não acelera nada:
+  //   1. este pool (`asyncPool` do runContentFetch)
+  //   2. `api_rate_limits.jina.max_concurrent` (o Bottleneck do rateLimiter)
+  // Em 02/08 este estava em 5 e o outro em 10 — metade da vazão permitida
+  // parada na mesa. Agora os dois vão a 20 (migration 028).
+  //
+  // Por que 20 agora: medido em 03/08, Goiânia com 17 assuntos baixou 393
+  // artigos em **327s** — 63% do tempo da busca inteira. Com a lista completa
+  // de assuntos o estágio 4 virou o gargalo de novo.
+  //
+  // ⚠️ PRÉ-REQUISITO, feito no mesmo commit: o `JinaContentFetcher` agora trata
+  // 429 com `Retry-After`. Sem isso, subir a concorrência trocaria lentidão por
+  // artigo perdido EM SILÊNCIO — o 429 não entrava na lista de fallback e o
+  // artigo sumia sem aparecer em lugar nenhum.
+  manual_search_fetch_concurrency: '20',
   search_max_results: '15',
   // Ramo web (indice organico) da busca manual — portais locais, prefeitura,
   // comunicado de policia. Conteudo que NAO aparece no indice de noticias.

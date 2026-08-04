@@ -28,6 +28,42 @@ export class JinaContentFetcher implements ContentFetcher {
     this.apiKey = config.jinaApiKey;
   }
 
+  private chamarJina(jinaUrl: string): Promise<Response> {
+    return fetch(jinaUrl, {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${this.apiKey}`,
+        'X-Return-Format': 'text',
+      },
+      signal: AbortSignal.timeout(JINA_TIMEOUT_MS),
+    });
+  }
+
+  /**
+   * Quanto esperar depois de um 429.
+   *
+   * `Retry-After` vem em segundos ou como data HTTP. Teto de 10s de propósito:
+   * o artigo não vale uma busca inteira parada, e o pool tem outras 19 URLs
+   * andando enquanto esta espera. Sem o header, 2s — o suficiente pra janela
+   * de rate limit girar sem custar tempo de parede visível.
+   */
+  private esperaDoRetryAfter(header: string | null): number {
+    const TETO_MS = 10_000;
+    if (!header) return 2_000;
+
+    const segundos = Number(header);
+    if (Number.isFinite(segundos) && segundos > 0) {
+      return Math.min(segundos * 1000, TETO_MS);
+    }
+
+    const data = Date.parse(header);
+    if (!Number.isNaN(data)) {
+      return Math.min(Math.max(data - Date.now(), 0), TETO_MS);
+    }
+
+    return 2_000;
+  }
+
   async fetch(url: string): Promise<FetchedContent> {
     try {
       return await this.fetchWithJina(url);
@@ -48,14 +84,21 @@ export class JinaContentFetcher implements ContentFetcher {
   private async fetchWithJina(url: string): Promise<FetchedContent> {
     const jinaUrl = `https://r.jina.ai/${url}`;
 
-    const response = await fetch(jinaUrl, {
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${this.apiKey}`,
-        'X-Return-Format': 'text',
-      },
-      signal: AbortSignal.timeout(JINA_TIMEOUT_MS),
-    });
+    let response = await this.chamarJina(jinaUrl);
+
+    // 429 = pedimos rápido demais. É o ÚNICO status que merece esperar e
+    // repetir: não é o artigo que está ruim, é a nossa vazão.
+    //
+    // ⚠️ Sem isto, subir a concorrência do estágio 4 trocaria lentidão por
+    // notícia faltando — o 429 caía no `throw` lá em cima, não entrava na lista
+    // de fallback (422/503/SSL/403) e o artigo era perdido SEM aparecer em
+    // lugar nenhum. Perder em silêncio é pior que demorar.
+    if (response.status === 429) {
+      const espera = this.esperaDoRetryAfter(response.headers.get('retry-after'));
+      logger.warn(`[Jina] 429 em ${url.substring(0, 60)} — repetindo em ${espera}ms`);
+      await new Promise((r) => setTimeout(r, espera));
+      response = await this.chamarJina(jinaUrl);
+    }
 
     if (!response.ok) {
       const errorBody = await response.text();
