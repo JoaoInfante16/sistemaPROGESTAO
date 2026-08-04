@@ -25,18 +25,24 @@ Ler e respeitar [workdesk/WORKFLOW.md](workdesk/WORKFLOW.md). Pontos que mais im
 
 ## 2. Workdesk — disciplina obrigatória
 
-**Mapa da pasta: [workdesk/README.md](workdesk/README.md)** — explica a organização e o ciclo das fases. Em sessão nova, começar pelo bloco **ESTADO DO MUNDO** no topo do DEV_LOG.
+**Em sessão nova, começar pelo bloco ESTADO DO MUNDO no topo do [DEV_LOG](workdesk/DEV_LOG.md).** É o único lugar com o estado atual — se aparecer uma segunda cópia dele em outro documento, apagar a cópia.
+
+🚨 **REGRA ZERO DA WORKDESK: documento não copia o que o código já diz.** Sem stack, sem árvore de arquivos, sem lista de chaves de config, sem shapes de request, sem versões de dependência — isso se lê na fonte, em dois segundos, e sempre certo. A cópia **apodrece calada** e vira uma segunda verdade que faz errar com confiança (em 04/08 a ARQUITETURA afirmava 4 coisas falsas dentro de uma caixa escrita "LEIA ANTES DE MEXER"). Entra na workdesk só o que **custa dinheiro ou tempo para redescobrir**: medições, o porquê das decisões, o que foi tentado e falhou, e o estado do que não se enxerga do código. **O porquê de uma linha específica mora num comentário colado nela, não aqui.**
 
 Três papéis distintos:
 
 - [workdesk/DEV_LOG.md](workdesk/DEV_LOG.md) — **passado**. Append a cada mudança de código ou decisão técnica. Sem esperar pedido.
-- [workdesk/ROADMAP.md](workdesk/ROADMAP.md) — **futuro**. Revisado junto com João no fim da sessão.
+- [workdesk/ROADMAP.md](workdesk/ROADMAP.md) — **futuro**, e só futuro. Revisado junto com João no fim da sessão.
 - [workdesk/ARQUITETURA.md](workdesk/ARQUITETURA.md) — **presente**. Editado in-place quando algo estrutural muda.
+
+Mais três vivos: [API_CONTRATO](workdesk/API_CONTRATO.md) (decisões de contrato que não podem ser desfeitas), [FUNIL](workdesk/FUNIL.md) (onde cada item da busca morre, com números) e [WORKFLOW](workdesk/WORKFLOW.md) (procedimento).
 
 Os documentos são de **dois tipos**, e cada um declara o seu no cabeçalho:
 
-- 📌 **vivos** — descrevem o estado atual, editados in-place, **continuam na raiz** depois do encerramento: `ARQUITETURA`, `API_CONTRATO`, `BACKEND_PENDENTE`, `WORKFLOW`, `SQL/`
+- 📌 **vivos** — descrevem o estado atual, editados in-place, **continuam na raiz** depois do encerramento: `ARQUITETURA`, `API_CONTRATO`, `FUNIL`, `WORKFLOW`, `SQL/`
 - 🗂️ **da fase** — **recortados** para `workdesk/Fases/Fase N/` no encerramento: `DEV_LOG`, `ROADMAP` e os briefings daquele trabalho
+
+**Arquivar 🗂️ na hora certa.** O `FRONTEND_BRIEFING` dizia "o app ignora oito campos" meses depois do app parar de ignorar, e seguia sendo apontado como "documento de entrada" em três lugares. Documento que descreve problema resolvido é pior que documento nenhum.
 
 **Ao encerrar uma fase**, a pasta `Fases/Fase N/` tem que ficar **auto-contida**: recebe os documentos 🗂️ recortados, uma **cópia** da `ARQUITETURA` (retrato do sistema no fim da fase — a viva continua na raiz) e um **README** que resume o que a fase resolveu, as descobertas que valem para sempre e os erros cometidos. Só então a raiz recomeça com DEV_LOG e ROADMAP novos.
 

@@ -1,7 +1,7 @@
 # Contrato da API — as decisoes de contrato
 
 > 📌 **Documento vivo** — atualizado sempre que uma *decisao* de contrato muda.
-> Nao e arquivado com a fase. Ver [README](./README.md).
+> Nao e arquivado com a fase. Ver [CLAUDE.md](../CLAUDE.md), secao 2.
 >
 > Ultima revisao: **2026-08-04**.
 >

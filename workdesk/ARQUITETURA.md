@@ -5,7 +5,7 @@
 > 📌 **Documento vivo** — descreve o **presente**: como o sistema funciona hoje.
 > Editado in-place quando algo estrutural muda, nunca arquivado com a fase.
 > O historico de *como se chegou aqui* e o [DEV_LOG](./DEV_LOG.md).
-> Ver [README](./README.md).
+> Ver [CLAUDE.md](../CLAUDE.md), secao 2.
 
 ---
 
@@ -355,6 +355,6 @@ Joao roda.
 |---|---|
 | o que cada rota recebe e devolve | [API_CONTRATO.md](./API_CONTRATO.md) |
 | onde cada item do funil morre, com numeros | [FUNIL.md](./FUNIL.md) |
-| o que falta fazer e o risco de cada item | [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md) |
+| o que falta fazer e o risco de cada item | [ROADMAP.md](./ROADMAP.md) |
 | **por que** cada decisao foi tomada | [DEV_LOG.md](./DEV_LOG.md) |
 | historico das fases fechadas | [Fases/](./Fases/) |

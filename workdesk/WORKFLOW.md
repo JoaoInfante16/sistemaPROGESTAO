@@ -42,8 +42,8 @@ saber como ser mais eficaz — o João autorizou.
 ## 3. Rotina do workdesk
 
 Os três papéis (DEV_LOG = passado, ROADMAP = futuro, ARQUITETURA = presente)
-estão no [README](./README.md). Claude mantém os três atualizados **sem esperar
-pedido**.
+estão no [CLAUDE.md](../CLAUDE.md), seção 2. Claude mantém os três atualizados
+**sem esperar pedido**.
 
 **Regra de rotação:** quando o `DEV_LOG.md` passar de ~1500 linhas, mover o
 conteúdo anterior para `_archive/DEV_LOG_YYYY-MM.md` (agrupado por mês) e deixar

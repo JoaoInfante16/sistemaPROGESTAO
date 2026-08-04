@@ -1,7 +1,7 @@
 # DEV_LOG — SIMEops (Fase 9)
 
 > 🗂️ **Documento da Fase 9** — arquivado em `Fases/Fase 9/` quando ela fechar.
-> Ver [README](./README.md) para a organização da pasta.
+> Ver [CLAUDE.md](../CLAUDE.md), seção 2.
 >
 > Diário de bordo: o que foi feito, decisões tomadas, problemas encontrados.
 > **Append-only**, cronológico (mais recente no topo). Não se reescreve o passado:
@@ -48,7 +48,7 @@ recalibra `_segundosPorAssunto` (hoje 36) em `assuntos_field.dart`.
 
 1. 🚨 **Migration 025** — o banco aceita leitura **e escrita** pela chave anon,
    que é pública (está no APK e no bundle do admin). Escrita e **não rodada**;
-   afeta produção na hora. Ver [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md), item 1.
+   afeta produção na hora. Ver [ROADMAP](./ROADMAP.md), Prioridade 0.
 2. **Promover `main`** — autorizado em princípio, não executado; a CLAUDE.md
    proíbe merge direto. ⚠️ Risco aceito por ele: o APK do cliente deixa escolher
    10 cidades e o backend novo aceita 1 → **400** na janela entre promover e ele
@@ -63,7 +63,7 @@ recalibra `_segundosPorAssunto` (hoje 36) em `assuntos_field.dart`.
 | [ARQUITETURA.md](./ARQUITETURA.md) | como o sistema funciona e **por quê** |
 | [API_CONTRATO.md](./API_CONTRATO.md) | as decisões de contrato que não podem ser desfeitas |
 | [FUNIL.md](./FUNIL.md) | onde cada item morre, com números |
-| [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md) | o que falta no backend, por consequência |
+| [ROADMAP.md](./ROADMAP.md) | o que falta fazer, e o checklist da promoção da `main` |
 | `scripts/diagnostico-banco.ts` | estado REAL do banco (só leitura) — o MIGRATIONS_LOG já mentiu |
 | `scripts/diagnostico-funil.ts` | funil da busca manual com motivos de rejeição |
 
@@ -235,6 +235,34 @@ de entrada" em três lugares.
 **Lacunas fechadas de quebra:** o FUNIL agora tem a resposta dos 47 de Goiânia
 (57% `filter2_location`, 32 do próprio Goiás — perda **geográfica**, não de
 extração) e a tabela de custo por estágio que só existia no handoff.
+
+### Segunda passada: dois arquivos apagados
+
+O João olhou o resultado e disse *"ainda tá cheio de doc, não vamos deletar
+nada?"*. Tinha razão — eu tinha aparado, não removido.
+
+**`BACKEND_PENDENTE.md` era um segundo ROADMAP.** Cinco das oito seções eram
+duplicata literal: migration 025, promover `main`, bugs conhecidos, dívida
+técnica e "precisa de decisão". E o que **não** era duplicata estava errado: §3
+dizia que o app não lê o que o backend manda (lê, desde ontem), citava
+`_maxPolls = 200` (não existe mais) e afirmava que `cidades` "deveria ser até
+10" — **contradizendo a decisão que o João tomou em 04/08**. §8 listava seis
+achados todos fechados. §6 agendava uma verificação para "segunda, 03/08".
+
+Salvo o que era único — o checklist de promoção da `main`, a tabela do que falta
+lá, e quatro verificações em aberto — tudo movido para o ROADMAP. Arquivo
+apagado.
+
+**`README.md` era o CLAUDE.md §2 em outras palavras.** Os três papéis, os dois
+tipos 📌/🗂️ e o ciclo da fase já estavam lá, mais curtos. Apagado, e os seis
+links que apontavam pra ele agora apontam pro CLAUDE.md.
+
+**O CLAUDE.md ganhou a regra zero da workdesk** — "documento não copia o que o
+código já diz" — porque é ele que carrega em toda sessão. A regra no rodapé de um
+documento que ninguém abre não impede nada.
+
+**Raiz: de 8 arquivos e ~150 KB para 6 arquivos e 2163 linhas.** Nenhum link
+quebrado (verificado).
 
 ---
 
@@ -909,7 +937,7 @@ Então o briefing é **da Fase 9** e será arquivado com ela.
 
 ### O que ficou
 
-- **[README.md](./README.md) novo** — o mapa da pasta: os dois tipos, o ciclo de
+- **`README.md` novo** — o mapa da pasta: os dois tipos, o ciclo de
   uma fase em diagrama, as regras que não podem ser quebradas e o histórico das
   fases. É a porta de entrada de quem chega sem contexto.
 - **Cada documento declara o próprio tipo** no cabeçalho, com 📌 ou 🗂️. Verificado:
@@ -1002,4 +1030,4 @@ O que ela entregou, em uma tabela:
 
 Fica registrado o que **não** foi feito, para não virar surpresa: a migration 025
 (RLS), a promoção da `main`, e o retry de 429 no Jina. Os três estão no
-[BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md) e no [ROADMAP](./ROADMAP.md).
+`BACKEND_PENDENTE.md` (absorvido pelo [ROADMAP](./ROADMAP.md) em 04/08).

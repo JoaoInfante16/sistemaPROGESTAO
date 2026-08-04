@@ -1,10 +1,11 @@
 # ROADMAP — SIMEops (Fase 9: o app à altura do backend)
 
 > 🗂️ **Documento da Fase 9** — arquivado em `Fases/Fase 9/` quando ela fechar.
-> Ver [README](./README.md) para a organização da pasta.
+> Ver [CLAUDE.md](../CLAUDE.md), seção 2.
 >
-> Planos, backlog e próximos passos. Revisado no fim de cada sessão com o João.
-> Dívida que atravessa fases mora no [BACKEND_PENDENTE](./BACKEND_PENDENTE.md).
+> Planos, backlog e próximos passos — **incluindo a dívida que atravessa fases**
+> (o `BACKEND_PENDENTE` foi absorvido aqui em 04/08: cinco das oito seções dele
+> eram duplicata literal deste documento). Revisado no fim de cada sessão.
 >
 > Fases 1 a 8 arquivadas em [Fases/](./Fases/). Estado atual do sistema e
 > medições que não devem ser refeitas: bloco **ESTADO DO MUNDO** no
@@ -38,13 +39,35 @@ com o teste de verificação no cabeçalho. **Não rodada** — afeta produção
 Verificado que **não quebra nada**: app e admin usam Supabase só para `auth`, e o
 backend usa a service key, que faz bypass de RLS.
 
-### 2. Promover `main`
+### 2. Promover `main` + APK de produção
 
-Produção roda código de **junho** e está quebrada em quatro lugares
-independentes. Tudo que foi feito nas Fases 8 e 9 só chega ao cliente aqui.
+`main` está em `faa38b7` (**junho**), 75 commits atrás. Tudo que foi feito nas
+Fases 8 e 9 só chega ao cliente aqui. Requer autorização explícita — a CLAUDE.md
+proíbe merge direto em `main`.
 
-Checklist completo em [BACKEND_PENDENTE.md](./BACKEND_PENDENTE.md), item 2.
-Requer autorização explícita (a CLAUDE.md proíbe merge direto em `main`).
+O que falta lá, confirmado lendo o código:
+
+| falta | efeito |
+|---|---|
+| `brd_json` | a SERP devolve HTML cru, `JSON.parse` falha **em silêncio** |
+| paginação com `num` (deprecado) | pula as posições 10-19, perde ~1/3 |
+| scraper assíncrono no Top 100 | 660-978s — **a travada que o cliente relatou** |
+| query `allintext:` | o Google responde `results_cnt = 0` |
+| Fases 8 e 9 inteiras | período respeitado, dedup em camadas, extras, progresso, assuntos na tela |
+
+**Checklist da promoção:**
+
+- [ ] conferir `commit` no `/health` de produção
+- [ ] confirmar que a fila de produção manteve o nome **puro** (`manual-search-queue`)
+- [ ] rodar uma busca real e conferir `budget_tracking.details`
+- [ ] **subir o APK junto** — `cd mobile-app && flutter clean && flutter build apk --dart-define-from-file=env/prod.json`
+- [ ] conferir o APK: `unzip -p app-release.apk lib/arm64-v8a/libapp.so | grep -a onrender` tem que dar `sistemaprogestao-7fzs`
+- [ ] confirmar `AUTO_SCAN_ENABLED` / `NODE_ENV=production` no Render
+- [ ] depois, rodar o **bloco 2** da migration 024 (as faixas `_60d`/`_90d` viram mortas)
+
+⚠️ **Risco aceito pelo João (04/08):** o APK que o cliente tem hoje deixa
+escolher 10 cidades e o backend novo aceita 1 → **400** na janela entre promover
+a `main` e ele instalar o app novo.
 
 ---
 
@@ -258,6 +281,18 @@ passo 1 feito, um 429 custa só um segundo a mais.
 - Flutter: `fl_chart` 0.70→1.x, `share_plus` 10→12, `flutter_map` 7→8,
   `sentry_flutter` 8→9.
 - **Renomear "Netrios News" → "SIMEops"** (diretório e repo).
+
+## 📏 Verificações em aberto
+
+- **`api_rate_limits.brightdata.max_concurrent` nunca foi revisado** — está em
+  10, e a doc da Bright Data diz que o limite real é **100 QPS** (uma busca faz
+  ~0,07 QPS). Pode subir; só não foi medido.
+- **Ramo web: 1 de ~4 medições feitas.** Critério já combinado com o João: se
+  seguir entregando ~1 de 23, desligar pelo painel.
+- **Período de 180 dias ponta a ponta** — 90 dias foi medido em 02/08 (São
+  Paulo, alcance de 90 dias exatos); falta repetir com 180.
+- **Tempo da busca depois da migration 028** — o ~11 min medido é anterior a
+  ela. É o número que recalibra `_segundosPorAssunto` em `assuntos_field.dart`.
 
 ## 🐛 Bugs conhecidos / suspeitas
 
