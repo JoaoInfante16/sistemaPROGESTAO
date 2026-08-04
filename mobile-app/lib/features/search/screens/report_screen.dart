@@ -1,6 +1,7 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../core/models/crime_point.dart';
@@ -23,6 +24,19 @@ class ReportScreen extends StatefulWidget {
   // busca coletou no caminho. É o pool do re-fatiamento "+ antigas".
   final List<Map<String, dynamic>> foraDoPeriodo;
 
+  /// Balde `regiao` — ocorrências de município vizinho.
+  ///
+  /// Até 03/08 este relatório **nem recebia** esta lista: ela sumia sem aviso,
+  /// que é a pior das opções (some do total e o usuário não sabe que sumiu).
+  /// Agora entra como toggle, simétrico ao "+ antigas".
+  final List<Map<String, dynamic>> regiao;
+
+  /// Até quantos dias atrás o "+ antigas" pode alcançar — é a config
+  /// `manual_search_horizon_days` do backend (180). Fica explícito na tela
+  /// porque um relatório de 30 dias com "+antigas" ligado pode conter matéria
+  /// de cinco meses atrás, e isso precisa estar escrito.
+  final int horizonteDias;
+
   const ReportScreen({
     super.key,
     this.searchId,
@@ -31,6 +45,8 @@ class ReportScreen extends StatefulWidget {
     required this.periodoDias,
     required this.results,
     this.foraDoPeriodo = const [],
+    this.regiao = const [],
+    this.horizonteDias = 180,
   });
 
   @override
@@ -44,6 +60,8 @@ class _ReportScreenState extends State<ReportScreen> {
   // null = período completo pedido; _includeOld inclui o balde fora_do_periodo.
   int? _sliceDias;
   bool _includeOld = false;
+  /// Inclui o balde de município vizinho nos números do relatório.
+  bool _includeRegiao = false;
   final Set<String> _cats = {};
 
   // Computed — função do recorte, recalculado a cada setState de filtro
@@ -156,6 +174,7 @@ class _ReportScreenState extends State<ReportScreen> {
     final pool = [
       ...widget.results,
       if (_includeOld) ...widget.foraDoPeriodo,
+      if (_includeRegiao) ...widget.regiao,
     ];
     final dias = _sliceDias;
     if (dias == null) return pool;
@@ -167,6 +186,18 @@ class _ReportScreenState extends State<ReportScreen> {
       final d = DateTime.tryParse(r['data_ocorrencia'] as String? ?? '');
       return d == null || !d.isBefore(cut);
     }).toList();
+  }
+
+  /// `Kobrasol` para a cidade pedida, `Centro · Aparecida de Goiânia` para
+  /// vizinha. Comparação sem acento/caixa porque o Filter2 devolve o nome como
+  /// veio no texto da matéria.
+  String _rotuloBairro(String bairro, Map<String, dynamic> r) {
+    final cidade = (r['cidade'] as String? ?? '').trim();
+    if (cidade.isEmpty) return bairro;
+
+    String normal(String s) => s.toLowerCase().trim();
+    final ehPedida = widget.cidades.any((c) => normal(c) == normal(cidade));
+    return ehPedida ? bairro : '$bairro · $cidade';
   }
 
   void _computeAnalytics() {
@@ -204,7 +235,12 @@ class _ReportScreenState extends State<ReportScreen> {
 
       final bairro = r['bairro'] as String?;
       if (bairro != null && bairro.isNotEmpty) {
-        _bairroCounts[bairro] = (_bairroCounts[bairro] ?? 0) + 1;
+        // Bairro de município vizinho leva o nome da cidade junto. Sem isso,
+        // com "+ região" ligado um bairro de Aparecida de Goiânia entrava no
+        // ranking como se fosse de Goiânia — e o ranking de bairros é
+        // exatamente o que alguém lê pra decidir onde reforçar operação.
+        _bairroCounts[_rotuloBairro(bairro, r)] =
+            (_bairroCounts[_rotuloBairro(bairro, r)] ?? 0) + 1;
       }
 
       final date = r['data_ocorrencia'] as String?;
@@ -348,12 +384,119 @@ class _ReportScreenState extends State<ReportScreen> {
     return 'Ultimos $d dias';
   }
 
+  /// O que está dentro deste relatório, em datas e cidades — não em adjetivos.
+  ///
+  /// ⚠️ ISTO EXISTE PORQUE O RELATÓRIO PODIA MENTIR SEM QUERER. Ligado o
+  /// "+ antigas", um relatório pedido de 30 dias passava a conter matéria de
+  /// até **180 dias** atrás (`manual_search_horizon_days`), e nada — nem o
+  /// donut, nem o ranking de bairro, nem o total — dizia isso. É um documento
+  /// que o cliente manda pra outra pessoa; ele tem que declarar o próprio
+  /// recorte.
+  Widget _buildRecorteDeclarado() {
+    final hoje = DateTime.now();
+    final dias = _sliceDias ?? widget.periodoDias;
+    final inicio = hoje.subtract(Duration(days: dias));
+    final f = DateFormat('dd/MM/yyyy');
+
+    final linhas = <(IconData, String, Color)>[
+      (
+        Icons.event_available,
+        '${f.format(inicio)} a ${f.format(hoje)}  ·  $dias dias',
+        SIMEopsColors.tealLight,
+      ),
+      (
+        Icons.location_city,
+        widget.cidades.join(', '),
+        SIMEopsColors.tealLight,
+      ),
+    ];
+
+    if (_includeOld && widget.foraDoPeriodo.isNotEmpty) {
+      linhas.add((
+        Icons.history,
+        '+ ${widget.foraDoPeriodo.length} anteriores a ${f.format(inicio)} '
+            '(até ${widget.horizonteDias} dias atrás)',
+        const Color(0xFFF59E0B),
+      ));
+    }
+
+    if (_includeRegiao && widget.regiao.isNotEmpty) {
+      linhas.add((
+        Icons.travel_explore,
+        '+ ${widget.regiao.length} de ${_cidadesDaRegiao()}',
+        const Color(0xFFF59E0B),
+      ));
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: SIMEopsColors.navyLight.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: SIMEopsColors.teal.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final (icone, texto, cor) in linhas)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(icone, size: 14, color: cor.withValues(alpha: 0.85)),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      texto,
+                      style: GoogleFonts.exo2(
+                        fontSize: 12,
+                        height: 1.35,
+                        color: cor == SIMEopsColors.tealLight
+                            ? SIMEopsColors.muted
+                            : cor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Municípios distintos presentes no balde de região, pra dizer QUAIS são.
+  /// "8 da região metropolitana" não informa; "8 de Aparecida de Goiânia,
+  /// Senador Canedo e mais 1" informa.
+  String _cidadesDaRegiao() {
+    final nomes = <String>{};
+    for (final r in widget.regiao) {
+      final c = (r['cidade'] as String? ?? '').trim();
+      if (c.isNotEmpty) nomes.add(c);
+    }
+    if (nomes.isEmpty) return 'municípios vizinhos';
+    final lista = nomes.toList()..sort();
+    if (lista.length <= 2) return lista.join(' e ');
+    return '${lista.take(2).join(', ')} e mais ${lista.length - 2}';
+  }
+
   Widget _buildSliceChips() {
     final presets = const [7, 15, 30, 60, 90]
         .where((d) => d < widget.periodoDias)
         .toList();
     final hasOld = widget.foraDoPeriodo.isNotEmpty;
-    if (presets.isEmpty && !hasOld) return const SizedBox.shrink();
+    final hasRegiao = widget.regiao.isNotEmpty;
+    if (presets.isEmpty && !hasOld && !hasRegiao) {
+      return const SizedBox.shrink();
+    }
+
+    // Data de corte do recorte atual — o rótulo do "+antigas" fala em data
+    // concreta, não em "antigas". Adjetivo não deixa ninguém auditar nada.
+    final corte = DateTime.now()
+        .subtract(Duration(days: _sliceDias ?? widget.periodoDias));
+    final corteLabel = DateFormat('dd/MM').format(corte);
 
     ChoiceChip chip(String label, bool selected, VoidCallback apply) {
       return ChoiceChip(
@@ -395,12 +538,26 @@ class _ReportScreenState extends State<ReportScreen> {
             _sliceDias = null;
             _includeOld = false;
           }),
+          // "+ 34 anteriores a 12/07" em vez de "+ antigas (34)": o usuário
+          // precisa saber ATÉ ONDE vai, porque o horizonte é de 180 dias e um
+          // relatório de 30 pode acabar com matéria de cinco meses atrás.
           if (hasOld)
-            chip('+ antigas (${widget.foraDoPeriodo.length})', _includeOld,
-                () {
-              _sliceDias = null;
-              _includeOld = true;
-            }),
+            chip(
+              '+ ${widget.foraDoPeriodo.length} anteriores a $corteLabel',
+              _includeOld,
+              () {
+                _sliceDias = null;
+                _includeOld = true;
+              },
+            ),
+          // Toggle simétrico ao de antigas. Antes de 03/08 este balde nem
+          // chegava ao relatório: sumia dos números sem uma linha dizendo.
+          if (hasRegiao)
+            chip(
+              '+ ${widget.regiao.length} da região',
+              _includeRegiao,
+              () => _includeRegiao = !_includeRegiao,
+            ),
         ],
       ),
     );
@@ -570,6 +727,11 @@ class _ReportScreenState extends State<ReportScreen> {
                   ],
                 ),
               ),
+
+              // O RECORTE, ESCRITO. Vem antes dos chips de propósito: quem lê
+              // o relatório precisa saber o que está dentro dele ANTES de ver
+              // qualquer número.
+              _buildRecorteDeclarado(),
 
               // Re-fatiamento por período — client-side, custo zero
               _buildSliceChips(),

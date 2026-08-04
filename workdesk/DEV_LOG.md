@@ -121,6 +121,106 @@ Verificado em 02/08: migrations 019, 020, 021b, 022 aplicadas; **021, 023, 024 e
 
 ---
 
+## 2026-08-04 — o relatório para de mentir sem querer
+
+### O que o João viu
+
+*"no relatório o usuário pode se enganar achando que aquilo tudo de notícias
+encontradas foram do período que ele estipulou"* — e estava certo, em três
+frentes independentes.
+
+### 1. O relatório não declarava o próprio recorte
+
+O chip `+ antigas (34)` somava aquele balde nos totais, e a partir daí **nada**
+distinguia: donut, ranking de bairros, total. E o horizonte é de **180 dias** —
+então um relatório pedido de **30 dias** podia conter matéria de **cinco meses
+atrás**, sem uma linha dizendo.
+
+É um documento que o cliente manda pra outra pessoa. Agora ele declara o que
+tem dentro, em datas concretas, e a declaração muda junto com os toggles:
+
+```
+12/07/2026 a 11/08/2026 · 30 dias
+Goiânia
++ 34 anteriores a 12/07 (até 180 dias atrás)
++ 8 de Aparecida de Goiânia, Senador Canedo e mais 1
+```
+
+Os chips também: `+ antigas (34)` virou **`+ 34 anteriores a 12/07`**. Adjetivo
+não deixa ninguém auditar nada.
+
+### 2. A região metropolitana não chegava ao relatório
+
+`ReportScreen` recebia `results` e `foraDoPeriodo` — **e não `regiao`**. O balde
+sumia dos números sem aviso, que é a pior das três opções possíveis (entrar,
+não entrar, ou não entrar em silêncio). Agora entra como toggle simétrico ao de
+antigas.
+
+⚠️ E bairro de município vizinho passou a levar o nome da cidade no ranking
+(`Centro · Aparecida de Goiânia`). Sem isso, com "+região" ligado, o ranking de
+bairros — que é justamente o que alguém lê pra decidir onde reforçar operação —
+misturava municípios sem dizer.
+
+### 3. O relatório jogava fora 35% das fontes (medido)
+
+| | |
+|---|---|
+| itens analisados | 221, em 12 buscas |
+| com **mais de uma** fonte | 60 (**27%**) |
+| fontes existentes | **341** |
+| fontes que o relatório lia | **221** — só a primeira |
+| selo OFICIAL mostrado | 6 |
+| selo OFICIAL existente | **10** → **4 perdidos** |
+
+`getSearchResultsAnalytics` lia `r.source_url`, singular. O dado completo sempre
+esteve em `sources[]` — o dedup intra-lote consolida os veículos do mesmo evento
+num card só. Era bug de leitura, e destruía justamente o sinal de credibilidade:
+"três veículos confirmaram" virava "um veículo". E como o portal de notícia é
+indexado antes do site da SSP, a fonte oficial costumava ser a segunda — e o
+selo se perdia.
+
+O caminho do auto-scan (`getNewsSources`) sempre leu a tabela `news_sources`
+inteira. Este lado é que estava atrás.
+
+### 4. O mapa nunca carregava — e isso explicava a comparação
+
+Pergunta do João: *"os relatórios do auto scan me parecem muito mais completos"*.
+
+`buildMapPoints` geocodifica num `for` sequencial; o Nominatim exige **1,1s**
+entre chamadas (política deles, não dá pra paralelizar) e cada ponto custa até 3
+delas no fallback rua→bairro→cidade.
+
+```
+77 pontos × 1,1s  =   85s     melhor caso
+77 pontos × 3,3s  =  254s     pior caso
+timeout do app    =    15s
+```
+
+**Nunca chegava.** E o `catch` só apagava o loading: mapa vazio, sem erro.
+
+A razão de os relatórios do auto-scan parecerem melhores é que o cache era um
+`Map` **em memória**: as 4 cidades monitoradas o mantinham quente e eram as
+únicas que terminavam a tempo. Não eram mais ricos — eram os únicos que
+chegavam. E no Render free, que hiberna, o cache morre várias vezes por dia.
+
+**Feito:**
+- cache de duas camadas, com **Redis** na L2 (TTL de 90 dias — rua não se move).
+  Grava inclusive o `null`: "o OSM não conhece este lugar" custou 1,1s e não
+  deve ser reperguntado.
+- a busca **aquece o geocode depois de entregar** — depois de gravar os
+  resultados, marcar concluída e mandar o push. O usuário já tem o que pediu; o
+  aquecimento roda enquanto ele navega. Colocar antes acrescentaria ~85s a uma
+  busca que ele está olhando.
+- timeout próprio de 90s nessa rota (era 15s).
+
+### Correção de documentação
+
+`manual_search_horizon_days` está documentado como **365** em dois lugares da
+Fase 8. O valor real, no `configManager` e no `schema.sql`, sempre foi **180**.
+Corrigido nos dois — a regra do workdesk é que doc desatualizada é bug.
+
+---
+
 ## 2026-08-03 — a tela, o tempo, e o funil que apontou pro lugar errado
 
 ### O baseline respondeu a pergunta — e não era o que a gente supunha

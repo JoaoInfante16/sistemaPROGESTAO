@@ -16,6 +16,7 @@ import { configManager } from '../../services/configManager';
 import { sendPushToUser } from '../../services/notifications/pushService';
 import { buildManualSearchQueries } from '../../services/search/queryTemplates';
 import { getMetroRegionForCities } from '../../services/location/metroRegion';
+import { geocodePoint } from '../../services/geocoding/nominatim';
 import { queueName } from '../queueNames';
 import {
   runFilter0,
@@ -458,6 +459,9 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     } catch (pushErr) {
       logger.warn(`${LOG_PREFIX} Push failed: ${(pushErr as Error).message}`);
     }
+
+    // Aquece o geocode DEPOIS de entregar. Ver aquecerGeocode.
+    await aquecerGeocode(finalResults, estado, LOG_PREFIX);
   } catch (error) {
     Sentry.captureException(error, { tags: { component: 'manual_search', searchId } });
     logger.error(`${LOG_PREFIX} failed: ${(error as Error).message}`);
@@ -472,6 +476,50 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     } catch (_) { /* non-fatal */ }
 
     throw error;
+  }
+}
+
+/**
+ * Geocodifica os resultados pra o relatorio abrir pronto.
+ *
+ * ⚠️ POR QUE ISTO EXISTE (medido em 03/08): o mapa do relatorio da busca manual
+ * **nunca carregava**. `buildMapPoints` geocodifica num `for` sequencial, o
+ * Nominatim exige 1,1s entre chamadas (politica deles, nao da pra paralelizar)
+ * e cada ponto custa ate 3 chamadas no fallback rua->bairro->cidade. Uma busca
+ * de 77 resultados levava de 85s a 254s contra um timeout de **15s** no app —
+ * e o `catch` do app so apagava o loading, entao o mapa ficava vazio SEM erro.
+ *
+ * QUANDO isto roda importa tanto quanto o QUE ele faz: **depois** de gravar os
+ * resultados, marcar a busca como concluida e mandar o push. O usuario ja tem
+ * o que pediu; o aquecimento acontece enquanto ele navega, e quando ele abrir o
+ * relatorio os pontos ja estao no Redis (TTL de 90 dias). Colocar isto antes
+ * acrescentaria ~85s a uma busca que o usuario esta olhando.
+ *
+ * Best-effort de ponta a ponta: falhar aqui nao pode derrubar uma busca que ja
+ * deu certo e ja foi entregue. No pior caso o relatorio geocodifica sob demanda,
+ * como fazia antes.
+ */
+async function aquecerGeocode(
+  resultados: Array<Record<string, unknown>>,
+  estado: string,
+  logPrefix: string,
+): Promise<void> {
+  const inicio = Date.now();
+  let feitos = 0;
+
+  try {
+    for (const r of resultados) {
+      const cidade = (r.cidade as string) || '';
+      if (!cidade) continue;
+      // `estado` do item quando existe (item de cidade vizinha pode divergir),
+      // senao o da busca.
+      const uf = (r.estado as string) || estado;
+      await geocodePoint(r.rua as string | null, r.bairro as string | null, cidade, uf);
+      feitos++;
+    }
+    logger.info(`${logPrefix} geocode aquecido: ${feitos} pontos em ${Math.round((Date.now() - inicio) / 1000)}s`);
+  } catch (err) {
+    logger.warn(`${logPrefix} aquecimento do geocode falhou em ${feitos}/${resultados.length}: ${(err as Error).message}`);
   }
 }
 

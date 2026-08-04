@@ -377,6 +377,9 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
           periodoDias: _periodoDias,
           results: _searchData.results,
           foraDoPeriodo: _searchData.foraDoPeriodo,
+          // Até 03/08 o relatório não recebia este balde: ele sumia dos
+          // números sem uma linha dizendo que tinha sumido.
+          regiao: _searchData.regiao,
         ),
       ),
     );
@@ -1353,6 +1356,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
                               periodoDias: _periodoDias,
                               results: _searchData.results,
                               foraDoPeriodo: _searchData.foraDoPeriodo,
+                              regiao: _searchData.regiao,
                             ),
                           ),
                         );

@@ -6,6 +6,7 @@
 // Rate limit: 1 req/sec (politica do Nominatim).
 
 import { logger } from '../../middleware/logger';
+import { redis } from '../../config/redis';
 
 interface GeoResult {
   lat: number;
@@ -13,7 +14,59 @@ interface GeoResult {
 }
 
 // Cache em memoria: "bairro|cidade|estado" → {lat, lng}
+//
+// L1 de um cache de duas camadas desde 03/08. A L2 e o Redis (ver `lerCache` /
+// `gravarCache` abaixo): coordenada de rua nao muda, entao guardar por 90 dias
+// e seguro e transforma o segundo relatorio da mesma cidade em instantaneo.
 const cache = new Map<string, GeoResult | null>();
+
+// 90 dias. Rua nao se move; o que muda e o OSM ganhar precisao, e um trimestre
+// e tempo de sobra pra reconsultar.
+const REDIS_TTL_SEGUNDOS = 90 * 24 * 60 * 60;
+
+/**
+ * Le do cache de duas camadas: memoria primeiro, Redis depois.
+ *
+ * ⚠️ POR QUE O REDIS ENTROU (medido em 03/08): so havia o `Map` em memoria, que
+ * morre a cada restart — e no Render free o servico hiberna varias vezes por
+ * dia. Com o cache frio, cada ponto custa ate 3 chamadas ao Nominatim a 1,1s
+ * cada (a politica deles e 1 req/s e nao da pra paralelizar). Um relatorio de
+ * 77 pontos levava de 85s a 254s contra um timeout de 15s no app: **o mapa
+ * simplesmente nunca carregava** na busca manual, e falhava em silencio.
+ *
+ * Os relatorios do auto-scan pareciam mais completos por isso — as 4 cidades
+ * monitoradas mantinham o cache quente, e eram os unicos que terminavam a
+ * tempo. Nao eram mais ricos; eram os unicos que chegavam.
+ *
+ * Devolve `undefined` quando nao ha entrada (diferente de `null`, que e uma
+ * resposta legitima: "o Nominatim nao conhece este lugar").
+ */
+async function lerCache(chave: string): Promise<GeoResult | null | undefined> {
+  if (cache.has(chave)) return cache.get(chave);
+
+  try {
+    const bruto = await redis.get(`geo:${chave}`);
+    if (bruto === null) return undefined;
+    const valor = JSON.parse(bruto) as GeoResult | null;
+    cache.set(chave, valor); // promove pra L1
+    return valor;
+  } catch (err) {
+    // Redis fora nao pode impedir de geocodificar — so deixa mais lento.
+    logger.warn(`[Geo] cache ilegivel (${chave}): ${(err as Error).message}`);
+    return undefined;
+  }
+}
+
+async function gravarCache(chave: string, valor: GeoResult | null): Promise<void> {
+  cache.set(chave, valor);
+  try {
+    // Grava inclusive o `null`: "este lugar nao existe no OSM" e uma resposta
+    // que custou 1,1s e nao deve ser reperguntada a cada relatorio.
+    await redis.set(`geo:${chave}`, JSON.stringify(valor), 'EX', REDIS_TTL_SEGUNDOS);
+  } catch (err) {
+    logger.warn(`[Geo] nao consegui cachear ${chave}: ${(err as Error).message}`);
+  }
+}
 
 function cacheKey(bairro: string, cidade: string, estado: string): string {
   return `${bairro.toLowerCase()}|${cidade.toLowerCase()}|${estado.toLowerCase()}`;
@@ -146,15 +199,15 @@ export async function geocodePoint(
   // 1. rua + bairro + cidade + estado
   if (rua && rua.trim().length > 0) {
     const key = `rua:${rua.toLowerCase()}|${(bairro || '').toLowerCase()}|${cidade.toLowerCase()}|${estado.toLowerCase()}`;
-    if (cache.has(key)) {
-      const hit = cache.get(key);
+    const hit = await lerCache(key);
+    if (hit !== undefined) {
       if (hit) return { ...hit, precisao: 'rua' };
     } else {
       const q = bairro
         ? `${rua}, ${bairro}, ${cidade}, ${estado}, Brasil`
         : `${rua}, ${cidade}, ${estado}, Brasil`;
       const result = await nominatimQuery(q);
-      cache.set(key, result);
+      await gravarCache(key, result);
       if (result) return { ...result, precisao: 'rua' };
     }
   }
@@ -162,24 +215,24 @@ export async function geocodePoint(
   // 2. bairro + cidade + estado
   if (bairro && bairro.trim().length > 0) {
     const key = cacheKey(bairro, cidade, estado);
-    if (cache.has(key)) {
-      const hit = cache.get(key);
+    const hit = await lerCache(key);
+    if (hit !== undefined) {
       if (hit) return { ...hit, precisao: 'bairro' };
     } else {
       const result = await nominatimQuery(`${bairro}, ${cidade}, ${estado}, Brasil`);
-      cache.set(key, result);
+      await gravarCache(key, result);
       if (result) return { ...result, precisao: 'bairro' };
     }
   }
 
   // 3. só cidade (último recurso)
   const cityKey = cacheKey('_city_', cidade, estado);
-  if (cache.has(cityKey)) {
-    const hit = cache.get(cityKey);
-    return hit ? { ...hit, precisao: 'cidade' } : null;
+  const cityHit = await lerCache(cityKey);
+  if (cityHit !== undefined) {
+    return cityHit ? { ...cityHit, precisao: 'cidade' } : null;
   }
   const cityResult = await nominatimQuery(`${cidade}, ${estado}, Brasil`);
-  cache.set(cityKey, cityResult);
+  await gravarCache(cityKey, cityResult);
   return cityResult ? { ...cityResult, precisao: 'cidade' } : null;
 }
 

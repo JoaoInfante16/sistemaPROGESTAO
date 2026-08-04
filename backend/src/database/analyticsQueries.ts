@@ -319,9 +319,35 @@ export async function getSearchResultsAnalytics(searchId: string): Promise<Searc
   let totalOcorrencias = 0;
 
   for (const r of allResults) {
-    // Sources contam sempre (inclusive das estatisticas, que tambem tem fonte)
-    const url = r.source_url as string | null;
-    if (url) {
+    // TODAS as fontes do item, nao so a primeira.
+    //
+    // ⚠️ Ate 03/08 isto lia so `r.source_url` — e medido em 221 itens reais:
+    // 27% deles tem MAIS DE UMA fonte, existiam 341 fontes e o relatorio
+    // mostrava 221 (**35% descartadas**). Pior: o selo OFICIAL era decidido
+    // pela PRIMEIRA URL, e o portal de noticia costuma ser indexado antes do
+    // site da SSP — 4 de 10 noticias com fonte oficial perdiam o selo.
+    //
+    // O dado sempre esteve la: `sources[]` e preenchido pelo dedup intra-lote,
+    // que consolida os veiculos do mesmo evento num card so. Era bug de
+    // leitura, e destruia justamente o sinal de credibilidade do relatorio
+    // ("tres veiculos confirmaram" virava "um veiculo").
+    //
+    // O caminho do auto-scan (`getNewsSources`) sempre leu a tabela
+    // `news_sources` inteira — este trecho e que estava atras.
+    const listaFontes = Array.isArray(r.sources)
+      ? (r.sources as Array<{ url?: string; source_name?: string; type?: string }>)
+      : [];
+    const urls = listaFontes
+      .map((f) => f?.url)
+      .filter((u): u is string => typeof u === 'string' && u.length > 0);
+
+    // `source_url` continua valendo como fallback: item antigo (anterior a 8.2)
+    // nao tem `sources[]`, e sem isto ele sumiria da lista de fontes.
+    if (urls.length === 0 && typeof r.source_url === 'string' && r.source_url) {
+      urls.push(r.source_url);
+    }
+
+    for (const url of urls) {
       const hostname = extractDomain(url);
       const sourceType = (r.source_type as string) === 'ssp' || isOfficialSource(url) ? 'oficial' as const : 'midia' as const;
       sources.push({ url, name: hostname, type: sourceType });

@@ -120,7 +120,9 @@ arredondando 45→60) saíram.
 - [x] Teto de **coleta** derivado do período — Salvador/30d passou de 3 para **29 dias** de alcance (59 → 156 URLs)
 - [x] Teto de **análise** derivado de uma base única (`manual_search_max_results_30d`), ajustável no admin
 - [x] `publishedAt` da SERP no `SearchResult` + priorização dentro-da-janela antes do corte
-- [x] `manual_search_horizon_days` (365)
+- [x] `manual_search_horizon_days` (~~365~~ **180** — corrigido em 03/08: o valor
+      real no `configManager` e no `schema.sql` sempre foi 180, casado com o teto
+      de 180 da validação. O 365 aqui era erro de escrita e mentiu por um dia)
 - [ ] **Testar 365 dias de ponta a ponta** — João vai testar no app
 
 | dias | coleta/query | análise | custo/cidade |

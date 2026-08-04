@@ -364,11 +364,19 @@ class ApiService {
     };
     if (searchId != null) bodyMap['searchId'] = searchId;
 
+    // Timeout PRÓPRIO, maior que os 15s do resto.
+    //
+    // O geocode é serial por obrigação (Nominatim exige 1,1s entre chamadas) e
+    // cada ponto custa até 3 delas. Desde 03/08 a busca aquece o cache no Redis
+    // logo depois de entregar os resultados, então o caso normal responde em
+    // milissegundos — mas a PRIMEIRA vez numa cidade nova, ou depois do TTL de
+    // 90 dias expirar, ainda paga o preço. Com 15s essa chamada estourava
+    // sempre e o mapa ficava vazio sem dizer por quê.
     final res = await _client.post(
       Uri.parse('$_baseUrl/analytics/map-points'),
       headers: _headers,
       body: jsonEncode(bodyMap),
-    ).timeout(_timeout);
+    ).timeout(const Duration(seconds: 90));
     _checkResponse(res);
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     return (data['mapPoints'] as List<dynamic>? ?? [])

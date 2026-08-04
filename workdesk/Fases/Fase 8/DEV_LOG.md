@@ -1342,7 +1342,8 @@ em cidade grande, e `fora_do_periodo` nasce vazio porque a coleta nem chega lá.
    vazia e a busca segue como antes. Teto de 45 municípios contra alucinação.
 4. **Vizinha ainda exige o estado bater** — sem isso Camaçari/SP entraria como
    vizinha de Salvador/BA, o mesmo erro de homônima que o filtro existe pra evitar.
-5. **Horizonte** (`manual_search_horizon_days`, 365) é o descarte de verdade.
+5. **Horizonte** (`manual_search_horizon_days`, ~~365~~ **180**) é o descarte de
+   verdade. *(Correção de 03/08: o valor real sempre foi 180.)*
 
 ### Três leitores de `search_results`, não um
 
