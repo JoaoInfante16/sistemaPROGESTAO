@@ -205,11 +205,37 @@ Merge-base é de **18/04**. Nove arquivos foram tocados dos dois lados:
 `deduplication/index.ts`, `main.dart`, `login_screen.dart`,
 `city_detail_screen.dart`, e os dois da workdesk (ruído).
 
-⚠️ **Contradição não resolvida:** o commit `add0967` da `main` diz *"reescrever
-prompt Layer 3 dedup — GPT rejeitava mesmo evento por ângulo diferente"*. A
-ARQUITETURA da `develop` diz que essa reescrita foi **testada e revertida** por
-regressão, e que o prompt antigo é o validado. **As duas estão em produção em
-branches diferentes.** Decidir antes de mergear `deduplication/index.ts`.
+### O Layer 3 do dedup — resolvido, era alarme falso meu
+
+Levantei como "contradição" e não era. Lendo os dois arquivos:
+
+- **`develop`** tem o prompt **velho e rígido**: *"Consider duplicate if: Location,
+  date and crime type are **identical**"*. Exige tudo igual.
+- **`main`** tem o prompt **melhor**: *"same **approximate** location, same time
+  frame... details do not contradict"*, mais a linha que resolve o caso real —
+  *"articles may cover different angles of the same event (victim found vs suspect
+  arrested, early report vs follow-up) — these still count as the SAME incident"*.
+
+O que me confundiu: **os dois arquivos carregam o mesmo comentário** dizendo que
+uma reescrita foi testada e revertida. Mas aquela reescrita revertida enviesava
+pro **NO** ("na dúvida, não é duplicata"); a da `main` vai na direção oposta. São
+mudanças diferentes — o comentário só ficou fora de lugar na `main`.
+
+**Resolução do merge:** fica o **texto do prompt da `main`** + a **linha de export
+da `develop`** (`export { confirmDuplicateWithGPT }`, que a busca manual usa no
+dedup em camadas e a `main` não tem). Não competem. E apagar o comentário obsoleto
+da `main`.
+
+### Versão do próximo release
+
+O Play confirma **`versionCode` 4 (1.1.1)** como a última enviada. O próximo build
+tem que ser **≥ 5**. Decidido: **`1.2.0+5`** — não é patch, é a Fase 8 + Fase 9
+inteiras chegando ao cliente. O `pubspec.yaml` **não** está entre os arquivos que
+conflitam, então o merge preserva o `1.1.1+4` da `main` sozinho e o bump entra por
+cima, num lugar só.
+
+**Fila do release:** (1) Google aprovar a chave nova → (2) merge com os 7 arquivos
+→ (3) bump `1.2.0+5` → (4) `build-aab-prod.bat`.
 
 ### O keystore tinha se perdido
 
