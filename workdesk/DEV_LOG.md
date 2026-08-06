@@ -27,8 +27,13 @@ declara o próprio recorte.
 
 | ambiente | branch | situação |
 |---|---|---|
-| local + staging | `develop` = `staging` = **`9874639`** | ✅ no ar, validado |
-| **produção** | `main` | 🔴 **75 commits atrás, de junho — é o que o cliente usa** |
+| local + staging | `develop` = `staging` | ✅ no ar, validado |
+| **produção** | `main` (`faa38b7`, **20/05**) | ⚠️ **é a branch de LANÇAMENTO da Play Store — tem 10 commits que a develop NÃO tem** |
+
+🚨 **NÃO é "código de junho quebrado em 4 lugares".** Essa frase estava em três
+documentos e era falsa; ver a entrada de 06/08. A `main` tem o `applicationId`
+publicado (`com.progestao.simeops`), a config de assinatura, o script de AAB e as
+duas páginas exigidas pelo Google Play. **Merge ingênuo destrói o lançamento.**
 
 Migrations **026, 027 e 028 aplicadas** e verificadas no banco (`openai` e `jina`
 com `max_concurrent` 20). Custo do mês: **$1,75 de $100**.
@@ -159,6 +164,73 @@ produção **na hora, sem deploy**. Quando o significado de uma config mudar,
 Verificado em **04/08**: 026, 027 e 028 aplicadas (`openai` e `jina` com
 `max_concurrent` 20). **024 e 025 seguem não rodadas.** Custo do mês: **$1,75**
 de $100.
+
+---
+
+## 2026-08-06 — a `main` não era o que estava escrito, e o keystore tinha sumido
+
+### A descoberta que quase virou desastre
+
+O João pediu bump de versão e build para subir na Play Store. Antes de buildar
+fui olhar a `main` — e a premissa que eu tinha repetido a sessão inteira era
+**falsa**.
+
+`git rev-list --left-right --count origin/main...origin/develop` → **`10  79`**.
+A `main` tinha **10 commits que a `develop` nunca viu**, de 20/04 a **20/05** (não
+"junho"). E não eram commits quaisquer:
+
+| só na `main` | o que teria acontecido no build |
+|---|---|
+| `applicationId = com.progestao.simeops` | a `develop` tem `com.netriosnews.netrios_news` — **outro app** para o Google |
+| config de assinatura lendo `key.properties` | eu ia "consertar" isso do zero, já existia |
+| `build-aab-prod.bat` (gera **AAB**) | o Play não aceita APK |
+| página de **política de privacidade** | exigência obrigatória do Play |
+| página de **exclusão de conta** | exigência obrigatória do Play |
+| versão **1.1.1+4** | a `develop` está em 1.1.0+3 — `versionCode` menor é rejeitado |
+| 5 fixes de produção (20/05) | mapa de grupo, Sentry, signOut offline, Node 22, geocoding |
+
+**O erro foi meu, e é do tipo que este documento existe para impedir.** Eu tinha
+acabado de escrever no CLAUDE.md "não deduzir qual código roda, ler" — apliquei ao
+backend e não apliquei à branch. Pior: na faxina de 04/08 eu **reescrevi** a frase
+"main de junho, quebrada em 4 lugares" em três documentos sem verificar uma linha.
+Auditei dez mentiras e digitei a maior.
+
+**Regra:** antes de qualquer merge para `main`, rodar
+`git log --oneline origin/develop..origin/main`. Nunca confiar na descrição.
+
+### O merge não é automático
+
+Merge-base é de **18/04**. Nove arquivos foram tocados dos dois lados:
+`backend/Dockerfile`, `analyticsQueries.ts`, `queries.ts`,
+`deduplication/index.ts`, `main.dart`, `login_screen.dart`,
+`city_detail_screen.dart`, e os dois da workdesk (ruído).
+
+⚠️ **Contradição não resolvida:** o commit `add0967` da `main` diz *"reescrever
+prompt Layer 3 dedup — GPT rejeitava mesmo evento por ângulo diferente"*. A
+ARQUITETURA da `develop` diz que essa reescrita foi **testada e revertida** por
+regressão, e que o prompt antigo é o validado. **As duas estão em produção em
+branches diferentes.** Decidir antes de mergear `deduplication/index.ts`.
+
+### O keystore tinha se perdido
+
+O notebook do João quebrou e levou o `simeops-release.jks` junto. Sem ele, um app
+publicado **nunca mais pode ser atualizado**.
+
+Salvou o fato de a **Assinatura de Apps do Google Play estar ativa**: o Google
+guarda a chave que assina o app de verdade, e o que se perdeu foi só a **chave de
+upload**, que se redefine. Confirmado no console em *Protegido com o Google Play →
+Proteção da Google Play Store → "Versões assinadas pelo Google Play"*.
+
+Gerado keystore novo (RSA 4096, 10.000 dias, alias `upload`) em
+`mobile-app/android/simeops-release.jks`, com `key.properties` ao lado. **A senha
+mora no `key.properties`** — que é git-ignored, então some se a máquina morrer.
+Pedido de redefinição enviado ao Google em 06/08; aprovação leva até 2 dias úteis.
+
+`.gitignore` da raiz ganhou `*.jks`, `*.keystore` e `key.properties` — o do
+`mobile-app/android/` já cobria, mas a raiz não.
+
+⚠️ **O `.jks` precisa de backup fora desta máquina.** É o mesmo arquivo que já se
+perdeu uma vez, e nenhuma regra de git protege contra notebook quebrado.
 
 ---
 
