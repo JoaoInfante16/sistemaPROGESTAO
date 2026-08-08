@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/utils/category_colors.dart';
 import '../../../core/widgets/simeops_title.dart';
 import '../../dashboard/screens/dashboard_screen.dart';
 import '../../search/screens/search_screen.dart';
@@ -27,6 +28,7 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _loadUnreadCount();
+    _publicarCores();
   }
 
   Future<void> _loadUnreadCount() async {
@@ -35,6 +37,22 @@ class _MainScreenState extends State<MainScreen> {
       final count = await api.getUnreadCount();
       if (mounted) setState(() => _unreadCount = count);
     } catch (e) { debugPrint('[Main] Unread count error: $e'); }
+  }
+
+  /// Puxa a taxonomia UMA vez na entrada e publica as cores de categoria pro
+  /// app inteiro (ver `aplicarCoresDaTaxonomia`). A cor é dado do backend —
+  /// sem isto, cada tela pintava pela cópia local e as duas tabelas já
+  /// divergiram uma vez (Fraude violeta Tailwind na busca, violeta validado
+  /// no feed, no mesmo APK). Falhou a rede? O fallback local segura.
+  Future<void> _publicarCores() async {
+    try {
+      final tax = await context.read<ApiService>().getTaxonomia();
+      aplicarCoresDaTaxonomia({
+        for (final c in tax.categorias) c.id: c.cor,
+      });
+    } catch (e) {
+      debugPrint('[Main] Taxonomia indisponível, cores locais valem: $e');
+    }
   }
 
   @override

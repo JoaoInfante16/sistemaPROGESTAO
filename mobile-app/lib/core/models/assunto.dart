@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/category_colors.dart';
+
 // Catálogo de assuntos servido por GET /settings/taxonomia.
 //
 // Vem do backend e não de uma const em Dart de propósito: a taxonomia é
@@ -51,12 +53,16 @@ class CategoriaTaxonomia {
     required this.cor,
   });
 
-  factory CategoriaTaxonomia.fromJson(Map<String, dynamic> json) =>
-      CategoriaTaxonomia(
-        id: json['id'] as String,
-        label: json['label'] as String? ?? json['id'] as String,
-        cor: _hexToColor(json['cor'] as String?),
-      );
+  factory CategoriaTaxonomia.fromJson(Map<String, dynamic> json) {
+    final id = json['id'] as String;
+    // Hex ausente ou inválido cai no categoryColor(), que já sabe a ordem
+    // certa (backend → cópia local) — nada de slate chumbado aqui.
+    return CategoriaTaxonomia(
+      id: id,
+      label: json['label'] as String? ?? id,
+      cor: _hexToColor(json['cor'] as String?) ?? categoryColor(id),
+    );
+  }
 }
 
 class Taxonomia {
@@ -91,19 +97,18 @@ class Taxonomia {
   List<Assunto> daCategoria(String categoriaId) =>
       assuntos.where((a) => a.categoria == categoriaId).toList();
 
-  Color corDe(String categoriaId) => categorias
-      .firstWhere(
-        (c) => c.id == categoriaId,
-        orElse: () => const CategoriaTaxonomia(
-            id: 'institucional', label: 'Institucional', cor: Color(0xFF64748B)),
-      )
-      .cor;
+  Color corDe(String categoriaId) {
+    for (final c in categorias) {
+      if (c.id == categoriaId) return c.cor;
+    }
+    return categoryColor(categoriaId);
+  }
 }
 
-Color _hexToColor(String? hex) {
-  if (hex == null) return const Color(0xFF64748B);
+Color? _hexToColor(String? hex) {
+  if (hex == null) return null;
   final limpo = hex.replaceFirst('#', '');
   final valor = int.tryParse(limpo, radix: 16);
-  if (valor == null) return const Color(0xFF64748B);
+  if (valor == null) return null;
   return Color(limpo.length == 6 ? 0xFF000000 | valor : valor);
 }

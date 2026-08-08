@@ -576,6 +576,14 @@ export interface CityOverviewItem {
   cityNames?: string[];
   totalCrimes: number;
   totalCrimes30d: number;
+  /**
+   * Contagem por categoria_grupo na janela de 30 dias — o que o card da cidade
+   * mostra como "25 SEGUR. / 44 PATRIM. / ...". Sai da MESMA varredura que ja
+   * roda; so faltava pedir a coluna no select.
+   *
+   * Categoria sem ocorrencia nao entra (o card nao deve exibir zeros).
+   */
+  categorias30d: Record<string, number>;
   trendPercent: number;
   topCrimeType: string | null;
   topCrimePercent: number;
@@ -621,7 +629,7 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
   // aqui, a contagem custa um loop e zero round-trip.
   const { data: newsAll } = await supabase
     .from('news')
-    .select('cidade, tipo_crime, created_at, data_ocorrencia')
+    .select('cidade, tipo_crime, categoria_grupo, created_at, data_ocorrencia')
     .eq('active', true)
     .in('cidade', cityNames);
 
@@ -648,6 +656,7 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
     countTotal: number;
     count30d: number;
     crimeTypes: Map<string, number>;
+    categorias30d: Map<string, number>;
     unread: number;
     lastNewsAt: string | null;
   }>();
@@ -658,12 +667,14 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
       countTotal: 0,
       count30d: 0,
       crimeTypes: new Map(),
+      categorias30d: new Map(),
       unread: 0,
       lastNewsAt: null,
     });
   }
 
-  // Count ALL news + crime types + last news + a janela de 30d.
+  // Count ALL news + crime types + last news + a janela de 30d e sua quebra
+  // por categoria.
   for (const n of newsAll || []) {
     const s = cityStats.get(n.cidade);
     if (!s) continue;
@@ -673,7 +684,11 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
       s.lastNewsAt = n.created_at;
     }
     const d = n.data_ocorrencia as string | null;
-    if (d != null && d >= d30ago) s.count30d++;
+    if (d != null && d >= d30ago) {
+      s.count30d++;
+      const cat = (n.categoria_grupo as string | null) || 'institucional';
+      s.categorias30d.set(cat, (s.categorias30d.get(cat) || 0) + 1);
+    }
   }
 
   // Count unread
@@ -703,6 +718,7 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
       parentState: stateMap.get(loc.parent_id) || null,
       totalCrimes: s.countTotal,
       totalCrimes30d: s.count30d,
+      categorias30d: Object.fromEntries(s.categorias30d),
       trendPercent: parseFloat(trend.toFixed(1)),
       topCrimeType: topCrime,
       topCrimePercent: s.countTotal > 0 ? parseFloat(((topCrimeCount / s.countTotal) * 100).toFixed(1)) : 0,
@@ -748,6 +764,7 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
       let totalAll = 0, total30d = 0, unread = 0;
       let lastAt: string | null = null;
       const crimeAgg = new Map<string, number>();
+      const catAgg = new Map<string, number>();
 
       for (const cn of groupCities) {
         const s = cityStats.get(cn);
@@ -758,6 +775,9 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
         if (s.lastNewsAt && (!lastAt || s.lastNewsAt > lastAt)) lastAt = s.lastNewsAt;
         for (const [type, count] of s.crimeTypes) {
           crimeAgg.set(type, (crimeAgg.get(type) || 0) + count);
+        }
+        for (const [cat, count] of s.categorias30d) {
+          catAgg.set(cat, (catAgg.get(cat) || 0) + count);
         }
       }
 
@@ -783,6 +803,7 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
         cityNames: groupCities,
         totalCrimes: totalAll,
         totalCrimes30d: total30d,
+        categorias30d: Object.fromEntries(catAgg),
         trendPercent: parseFloat(trend.toFixed(1)),
         topCrimeType: topCrime,
         topCrimePercent: totalAll > 0 ? parseFloat(((topCount / totalAll) * 100).toFixed(1)) : 0,

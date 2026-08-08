@@ -74,16 +74,35 @@ export const ASSUNTOS_CATALOGO: AssuntoCatalogo[] = [
 ];
 
 /**
- * Cores por categoria. Espelham `mobile-app/lib/core/utils/category_colors.dart`
- * — servidas aqui pro app poder pintar chip de assunto que ele nao conhecia no
- * dia do build, sem precisar de APK novo quando a taxonomia crescer.
+ * Cores por categoria. **Esta e a fonte unica** — o app usa a cor que vem daqui
+ * e so cai na copia local quando a taxonomia nao carregou (rede fora).
+ *
+ * Ate 08/08 esta constante dizia "espelham category_colors.dart", e era uma
+ * copia que apodreceu: o Dart trocou de paleta e o backend nao, entao Fraude
+ * saia violeta Tailwind na tela de busca e violeta validado no feed, no mesmo
+ * APK. Espelho de dado nao se mantem sozinho — por isso agora tem um dono.
+ *
+ * Os hexes sao MEDIDOS, nao escolhidos a olho. Sobre o navy #060D18:
+ *   banda de luminosidade OKLCH 0.48–0.67 · croma >= 0.10
+ *   dE deuteranopia 8.0 · dE visao normal 19.3 · contraste >= 3:1
+ *
+ * Os valores antigos (red/orange/blue/violet/slate-500 do Tailwind) reprovavam
+ * em 4 das 5 checagens — o pior: operacional x fraude com dE 1.3 sob
+ * deuteranopia, ou seja a MESMA cor pra ~8% dos homens, no mapa e no donut e
+ * nos chips ao mesmo tempo.
+ *
+ * ⚠️ Antes de mexer em qualquer hex, revalidar com o script `validate_palette.js`
+ * da skill `dataviz`. A adjacencia e conferida na ordem de CATEGORIA_ORDEM:
+ * trocar a ordem tambem exige revalidar, porque num empilhado so vizinhos se
+ * encostam. Azul e violeta nao coexistem — foi por isso que institucional
+ * virou verde-escuro em vez de cinza.
  */
 export const CATEGORIA_CORES: Record<CategoriaGrupo, string> = {
-  seguranca: '#EF4444',
-  patrimonial: '#F97316',
-  operacional: '#3B82F6',
-  fraude: '#8B5CF6',
-  institucional: '#64748B',
+  seguranca: '#DA4358',
+  patrimonial: '#B39026',
+  operacional: '#1F98AB',
+  fraude: '#8F62CB',
+  institucional: '#4E8F45',
 };
 
 export const CATEGORIA_LABELS: Record<CategoriaGrupo, string> = {

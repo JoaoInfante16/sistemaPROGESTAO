@@ -10,6 +10,13 @@ class CityOverview {
   final List<String>? cityNames;
   final int totalCrimes;
   final int totalCrimes30d;
+
+  /// Quebra por categoria nos 30 dias — é o que o card mostra como
+  /// "25 SEGUR. / 44 PATRIM. / ...". Categoria sem ocorrência não vem.
+  /// Vazio em backend anterior a 08/08: o card esconde a linha inteira em vez
+  /// de desenhar quatro zeros.
+  final Map<String, int> categorias30d;
+
   final double trendPercent;
   final String? topCrimeType;
   final double topCrimePercent;
@@ -26,6 +33,7 @@ class CityOverview {
     this.cityNames,
     required this.totalCrimes,
     required this.totalCrimes30d,
+    this.categorias30d = const {},
     required this.trendPercent,
     this.topCrimeType,
     required this.topCrimePercent,
@@ -65,6 +73,10 @@ class CityOverview {
           .toList(),
       totalCrimes: _toInt(json['totalCrimes']),
       totalCrimes30d: _toInt(json['totalCrimes30d']),
+      categorias30d: {
+        for (final e in (json['categorias30d'] as Map<String, dynamic>? ?? {}).entries)
+          e.key: _toInt(e.value),
+      },
       trendPercent: _toDouble(json['trendPercent']),
       topCrimeType: json['topCrimeType'] as String?,
       topCrimePercent: _toDouble(json['topCrimePercent']),

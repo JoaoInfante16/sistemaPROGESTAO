@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/models/city_overview.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
+import '../../../core/utils/category_colors.dart';
 import '../../../core/utils/crime_labels.dart';
 
 /// Cidade no dashboard, em bloco de fio.
@@ -90,10 +91,114 @@ class CityCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(_summary, style: SIMEopsType.lead()),
+            _CategoryFigures(counts: city.categorias30d),
             const SizedBox(height: 15),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// A quebra por categoria: `25 SEGUR. / 44 PATRIM. / ...`
+///
+/// O número fica em **tinta branca** e a cor mora no quadradinho ao lado —
+/// número colorido a 21px sobre navy perde contraste e faz cinco matizes
+/// brigarem entre si.
+///
+/// Mostra as **quatro maiores** e soma o resto em OUTRAS. Cinco colunas em
+/// 412px dariam ~70px cada, e `INSTITUCIONAL` não cabe em 70px nem abreviado.
+class _CategoryFigures extends StatelessWidget {
+  final Map<String, int> counts;
+
+  const _CategoryFigures({required this.counts});
+
+  /// Abreviações que cabem na coluna. Categoria fora da lista usa o rótulo
+  /// normal cortado — nunca some sem aparecer em OUTRAS.
+  static const _curto = <String, String>{
+    'seguranca': 'SEGUR.',
+    'patrimonial': 'PATRIM.',
+    'operacional': 'OPERAC.',
+    'fraude': 'FRAUDE',
+    'institucional': 'INSTIT.',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    if (counts.isEmpty) return const SizedBox.shrink();
+
+    final ordenado = counts.entries.where((e) => e.value > 0).toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    if (ordenado.isEmpty) return const SizedBox.shrink();
+
+    final colunas = <_Figure>[];
+    for (final e in ordenado.take(4)) {
+      colunas.add(_Figure(
+        valor: e.value,
+        rotulo: _curto[e.key] ?? categoryLabel(e.key).toUpperCase(),
+        cor: categoryColor(e.key),
+      ));
+    }
+    if (ordenado.length > 4) {
+      final resto = ordenado.skip(4).fold<int>(0, (soma, e) => soma + e.value);
+      if (resto > 0) {
+        colunas.add(_Figure(
+          valor: resto,
+          rotulo: 'OUTRAS',
+          cor: categoryColor('institucional'),
+        ));
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 15),
+      padding: const EdgeInsets.only(top: 12),
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: SIMEopsColors.rule)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < colunas.length; i++) ...[
+            if (i > 0) const SizedBox(width: 13),
+            Expanded(child: colunas[i]),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _Figure extends StatelessWidget {
+  final int valor;
+  final String rotulo;
+  final Color cor;
+
+  const _Figure({required this.valor, required this.rotulo, required this.cor});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('$valor', style: SIMEopsType.figure()),
+        const SizedBox(height: 7),
+        Row(
+          children: [
+            Container(width: 6, height: 6, color: cor),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                rotulo,
+                style: SIMEopsType.slug(color: SIMEopsColors.faint)
+                    .copyWith(fontSize: 8.5, letterSpacing: 0.77),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

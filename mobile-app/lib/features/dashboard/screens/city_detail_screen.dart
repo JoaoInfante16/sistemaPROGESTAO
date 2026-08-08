@@ -6,6 +6,7 @@ import '../../../core/models/city_overview.dart';
 import '../../../core/models/crime_point.dart';
 import '../../../core/models/executive_data.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/utils/category_colors.dart';
 import '../../../core/utils/state_utils.dart';
 import '../../../core/utils/type_helpers.dart';
 import '../../../core/widgets/crime_radar_map.dart';
@@ -511,22 +512,9 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   }
 
   // ── Donut chart por CATEGORIA ──
-
-  static const _categoryColors = <String, Color>{
-    'patrimonial': Color(0xFFF97316),
-    'seguranca': Color(0xFFEF4444),
-    'operacional': Color(0xFF3B82F6),
-    'fraude': Color(0xFF8B5CF6),
-    'institucional': Color(0xFF64748B),
-  };
-
-  static const _categoryLabels = <String, String>{
-    'patrimonial': 'Patrimonial',
-    'seguranca': 'Segurança',
-    'operacional': 'Operacional',
-    'fraude': 'Fraude',
-    'institucional': 'Institucional',
-  };
+  // Cor e label vêm de category_colors.dart — este arquivo tinha uma TERCEIRA
+  // tabela própria (Tailwind antigo), achada na auditoria de 08/08. O donut
+  // pintava diferente do feed na mesma tela de cidade.
 
   Widget _buildCategoryDonut(List<dynamic> categories, int total) {
     // Backend ja manda {category, count, percentage} agrupado.
@@ -547,7 +535,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
                 PieChart(
                   PieChartData(
                     sections: sorted.map((e) {
-                      final color = _categoryColors[e.key] ?? const Color(0xFF64748B);
+                      final color = categoryColor(e.key);
                       return PieChartSectionData(value: e.value.toDouble(), color: color, radius: 18, showTitle: false);
                     }).toList(),
                     sectionsSpace: 2,
@@ -569,8 +557,8 @@ class _CityDetailScreenState extends State<CityDetailScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: sorted.map((e) {
-                final color = _categoryColors[e.key] ?? const Color(0xFF64748B);
-                final label = _categoryLabels[e.key] ?? e.key;
+                final color = categoryColor(e.key);
+                final label = categoryLabel(e.key);
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Row(
