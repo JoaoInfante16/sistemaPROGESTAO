@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/theme/simeops_colors.dart';
+import '../../../core/theme/simeops_type.dart';
+import '../../feed/widgets/take_card.dart';
 import '../widgets/history_card.dart';
 import 'manual_search_screen.dart';
 
@@ -160,22 +162,20 @@ class _SearchScreenState extends State<SearchScreen> {
           : _error != null
               ? ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(18, 90, 18, 0),
                   children: [
-                    const SizedBox(height: 100),
-                    const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                    Text('Não foi possível\ncarregar o histórico',
+                        style: SIMEopsType.title()),
                     const SizedBox(height: 12),
                     Text(
-                      'Erro ao carregar histórico',
-                      style: Theme.of(context).textTheme.titleMedium,
-                      textAlign: TextAlign.center,
+                      'As consultas anteriores estão no servidor. '
+                      'Verifique a conexão e tente de novo.',
+                      style: SIMEopsType.lead(),
                     ),
-                    const SizedBox(height: 16),
-                    Center(
-                      child: FilledButton.tonal(
-                        onPressed: _loadHistory,
-                        child: const Text('Tentar novamente'),
-                      ),
+                    const SizedBox(height: 24),
+                    OutlinedButton(
+                      onPressed: _loadHistory,
+                      child: const Text('TENTAR DE NOVO'),
                     ),
                   ],
                 )
@@ -183,141 +183,139 @@ class _SearchScreenState extends State<SearchScreen> {
                   children: [
                     ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
-                      padding: EdgeInsets.fromLTRB(16, 16, 16, _selectMode ? 80 : 16),
+                      padding: EdgeInsets.only(bottom: _selectMode ? 96 : 20),
                       children: [
-                        // Nova Busca button
-                        if (!_selectMode)
-                          SizedBox(
-                            width: double.infinity,
-                            height: 52,
-                            child: FilledButton.icon(
-                              onPressed: _navigateToNewSearch,
-                              icon: const Icon(Icons.travel_explore),
-                              label: const Text('Nova Busca'),
+                        if (!_selectMode) ...[
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: FilledButton(
+                                onPressed: _navigateToNewSearch,
+                                child: const Text('NOVA CONSULTA'),
+                              ),
                             ),
-                          ),
-                        if (!_selectMode) const SizedBox(height: 20),
-
-                        // Selection mode header
-                        if (_selectMode) ...[
-                          Row(
-                            children: [
-                              IconButton(
-                                onPressed: _cancelSelection,
-                                icon: const Icon(Icons.close),
-                              ),
-                              Text(
-                                '${_selected.length} selecionada${_selected.length > 1 ? 's' : ''}',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              const Spacer(),
-                              TextButton(
-                                onPressed: () {
-                                  setState(() {
-                                    if (_selected.length == _history.length) {
-                                      _selected.clear();
-                                    } else {
-                                      for (final s in _history) {
-                                        _selected.add(s['search_id'] as String? ?? '');
-                                      }
-                                    }
-                                  });
-                                },
-                                child: Text(_selected.length == _history.length
-                                    ? 'Desmarcar todos'
-                                    : 'Selecionar todos'),
-                              ),
-                            ],
                           ),
                           const SizedBox(height: 8),
                         ],
 
-                        // History section
-                        if (_history.isNotEmpty) ...[
-                          if (!_selectMode)
-                            Text(
-                              'Buscas anteriores',
-                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    color: Colors.grey[600],
-                                  ),
+                        // Modo de seleção múltipla
+                        if (_selectMode)
+                          Container(
+                            decoration: const BoxDecoration(
+                              border: Border(
+                                bottom: BorderSide(color: SIMEopsColors.rule),
+                              ),
                             ),
-                          if (!_selectMode) const SizedBox(height: 8),
-                          ..._history.map((search) {
-                            final searchId = search['search_id'] as String? ?? '';
-                            final isSelected = _selected.contains(searchId);
-                            return Stack(
+                            padding: const EdgeInsets.fromLTRB(6, 8, 18, 8),
+                            child: Row(
                               children: [
-                                HistoryCard(
-                                  search: search,
-                                  onTap: () => _onTapSearch(search),
-                                  onLongPress: () => _onLongPressSearch(search),
+                                IconButton(
+                                  onPressed: _cancelSelection,
+                                  icon: const Icon(Icons.close,
+                                      size: 20, color: SIMEopsColors.muted),
                                 ),
-                                if (_selectMode)
-                                  Positioned(
-                                    top: 8,
-                                    right: 8,
-                                    child: Container(
-                                      width: 24,
-                                      height: 24,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: isSelected
-                                            ? SIMEopsColors.teal
-                                            : Colors.transparent,
-                                        border: Border.all(
-                                          color: isSelected
-                                              ? SIMEopsColors.teal
-                                              : SIMEopsColors.muted.withValues(alpha: 0.4),
-                                          width: 2,
-                                        ),
-                                      ),
-                                      child: isSelected
-                                          ? const Icon(Icons.check, size: 16, color: Colors.white)
-                                          : null,
+                                Text(
+                                  '${_selected.length} SELECIONADA'
+                                  '${_selected.length > 1 ? 'S' : ''}',
+                                  style: SIMEopsType.slug(
+                                      color: SIMEopsColors.white),
+                                ),
+                                const Spacer(),
+                                InkWell(
+                                  onTap: () => setState(() {
+                                    if (_selected.length == _history.length) {
+                                      _selected.clear();
+                                    } else {
+                                      for (final s in _history) {
+                                        _selected
+                                            .add(s['search_id'] as String? ?? '');
+                                      }
+                                    }
+                                  }),
+                                  child: Padding(
+                                    padding:
+                                        const EdgeInsets.symmetric(vertical: 10),
+                                    child: Text(
+                                      _selected.length == _history.length
+                                          ? 'DESMARCAR TODAS'
+                                          : 'MARCAR TODAS',
+                                      style: SIMEopsType.slug(
+                                          color: SIMEopsColors.tealLight),
                                     ),
                                   ),
+                                ),
                               ],
+                            ),
+                          ),
+
+                        if (_history.isNotEmpty) ...[
+                          if (!_selectMode)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(18, 22, 18, 6),
+                              child: Row(
+                                children: [
+                                  Text('CONSULTAS ANTERIORES',
+                                      style: SIMEopsType.dateline()),
+                                  const SizedBox(width: 11),
+                                  const Expanded(
+                                    child: Divider(
+                                        color: SIMEopsColors.rule, height: 1),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ..._history.map((search) {
+                            final id = search['search_id'] as String? ?? '';
+                            return HistoryCard(
+                              search: search,
+                              selected: _selected.contains(id),
+                              onTap: () => _onTapSearch(search),
+                              onLongPress: () => _onLongPressSearch(search),
                             );
                           }),
+                          const EndMark(),
                         ] else ...[
-                          const SizedBox(height: 80),
-                          Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Nenhuma busca realizada ainda',
-                            style: TextStyle(color: Colors.grey[500]),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Toque em "Nova Busca" para comecar',
-                            style: TextStyle(color: Colors.grey[400], fontSize: 13),
-                            textAlign: TextAlign.center,
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(18, 60, 18, 0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Nenhuma consulta\nainda',
+                                    style: SIMEopsType.title()),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'A consulta varre a imprensa da cidade que '
+                                  'você escolher, no período que você pedir. '
+                                  'Leva alguns minutos e você pode fechar o '
+                                  'app enquanto ela roda.',
+                                  style: SIMEopsType.lead(),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ],
                     ),
 
-                    // Delete FAB
                     if (_selectMode && _selected.isNotEmpty)
                       Positioned(
-                        left: 16,
-                        right: 16,
-                        bottom: 16,
-                        child: SizedBox(
-                          height: 52,
-                          child: FilledButton.icon(
-                            onPressed: _deleteSelected,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: Colors.red,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                        left: 18,
+                        right: 18,
+                        bottom: 18,
+                        child: Material(
+                          color: SIMEopsColors.alert,
+                          child: InkWell(
+                            onTap: _deleteSelected,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 18),
+                              child: Center(
+                                child: Text(
+                                  'APAGAR ${_selected.length}',
+                                  style: SIMEopsType.action(
+                                      color: SIMEopsColors.white),
+                                ),
                               ),
-                            ),
-                            icon: const Icon(Icons.delete_outline, color: Colors.white),
-                            label: Text(
-                              'Deletar ${_selected.length}',
-                              style: const TextStyle(color: Colors.white),
                             ),
                           ),
                         ),
