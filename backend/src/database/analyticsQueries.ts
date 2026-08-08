@@ -576,8 +576,6 @@ export interface CityOverviewItem {
   cityNames?: string[];
   totalCrimes: number;
   totalCrimes30d: number;
-  totalCrimes60d: number;
-  totalCrimes90d: number;
   trendPercent: number;
   topCrimeType: string | null;
   topCrimePercent: number;
@@ -593,10 +591,7 @@ export interface CityOverviewItem {
 
 export async function getCitiesOverview(userId?: string): Promise<CityOverviewItem[]> {
   const now = new Date();
-  const dayMs = 24 * 60 * 60 * 1000;
-  const d30ago = new Date(now.getTime() - 30 * dayMs).toISOString().split('T')[0];
-  const d60ago = new Date(now.getTime() - 60 * dayMs).toISOString().split('T')[0];
-  const d90ago = new Date(now.getTime() - 90 * dayMs).toISOString().split('T')[0];
+  const d30ago = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
   // 1. Get all active monitored cities with parent state
   const { data: locations } = await supabase
@@ -618,12 +613,12 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
 
   const cityNames = locations.map((l) => l.name);
 
-  // 2. Count ALL news per city (total acumulado) + as janelas de 30/60/90d.
+  // 2. Count ALL news per city (total acumulado) + a janela de 30d.
   //
-  // `data_ocorrencia` entrou no select pra que as tres janelas sejam contadas
-  // em memoria a partir DESTA query. Antes havia uma segunda query so pra
-  // contar 30 dias — as mesmas linhas, de novo, so pra somar. Ela saiu: com a
-  // coluna aqui, 30/60/90 custam um loop e zero round-trip.
+  // `data_ocorrencia` entrou no select pra que a janela seja contada em
+  // memoria a partir DESTA query. Antes havia uma segunda query so pra contar
+  // 30 dias — as mesmas linhas, de novo, so pra somar. Ela saiu: com a coluna
+  // aqui, a contagem custa um loop e zero round-trip.
   const { data: newsAll } = await supabase
     .from('news')
     .select('cidade, tipo_crime, created_at, data_ocorrencia')
@@ -652,8 +647,6 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
   const cityStats = new Map<string, {
     countTotal: number;
     count30d: number;
-    count60d: number;
-    count90d: number;
     crimeTypes: Map<string, number>;
     unread: number;
     lastNewsAt: string | null;
@@ -664,16 +657,13 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
     cityStats.set(loc.name, {
       countTotal: 0,
       count30d: 0,
-      count60d: 0,
-      count90d: 0,
       crimeTypes: new Map(),
       unread: 0,
       lastNewsAt: null,
     });
   }
 
-  // Count ALL news + crime types + last news + janelas de 30/60/90d.
-  // As janelas sao cumulativas: o que esta em 30d tambem esta em 60d e 90d.
+  // Count ALL news + crime types + last news + a janela de 30d.
   for (const n of newsAll || []) {
     const s = cityStats.get(n.cidade);
     if (!s) continue;
@@ -683,14 +673,7 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
       s.lastNewsAt = n.created_at;
     }
     const d = n.data_ocorrencia as string | null;
-    if (!d) continue;
-    if (d >= d90ago) {
-      s.count90d++;
-      if (d >= d60ago) {
-        s.count60d++;
-        if (d >= d30ago) s.count30d++;
-      }
-    }
+    if (d != null && d >= d30ago) s.count30d++;
   }
 
   // Count unread
@@ -720,8 +703,6 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
       parentState: stateMap.get(loc.parent_id) || null,
       totalCrimes: s.countTotal,
       totalCrimes30d: s.count30d,
-      totalCrimes60d: s.count60d,
-      totalCrimes90d: s.count90d,
       trendPercent: parseFloat(trend.toFixed(1)),
       topCrimeType: topCrime,
       topCrimePercent: s.countTotal > 0 ? parseFloat(((topCrimeCount / s.countTotal) * 100).toFixed(1)) : 0,
@@ -764,7 +745,7 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
       const groupCities = membersByGroup.get(g.id) || [];
       if (groupCities.length === 0) continue;
 
-      let totalAll = 0, total30d = 0, total60d = 0, total90d = 0, unread = 0;
+      let totalAll = 0, total30d = 0, unread = 0;
       let lastAt: string | null = null;
       const crimeAgg = new Map<string, number>();
 
@@ -773,8 +754,6 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
         if (!s) continue;
         totalAll += s.countTotal;
         total30d += s.count30d;
-        total60d += s.count60d;
-        total90d += s.count90d;
         unread += s.unread;
         if (s.lastNewsAt && (!lastAt || s.lastNewsAt > lastAt)) lastAt = s.lastNewsAt;
         for (const [type, count] of s.crimeTypes) {
@@ -804,8 +783,6 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
         cityNames: groupCities,
         totalCrimes: totalAll,
         totalCrimes30d: total30d,
-        totalCrimes60d: total60d,
-        totalCrimes90d: total90d,
         trendPercent: parseFloat(trend.toFixed(1)),
         topCrimeType: topCrime,
         topCrimePercent: totalAll > 0 ? parseFloat(((topCount / totalAll) * 100).toFixed(1)) : 0,

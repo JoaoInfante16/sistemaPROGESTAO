@@ -1,252 +1,141 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../../core/models/city_overview.dart';
 import '../../../core/theme/simeops_colors.dart';
+import '../../../core/theme/simeops_type.dart';
 import '../../../core/utils/crime_labels.dart';
 
-// Card de cidade/grupo do dashboard. O CityOverview chega com tendência,
-// crime predominante e última atividade — o card mostra tudo isso como
-// readouts, não só o total (antes metade do modelo era jogada fora).
+/// Cidade no dashboard, em bloco de fio.
+///
+/// Era um `Card` com borda, ícone, badge vermelho e três readouts em cápsula.
+/// Virou bloco aberto: nome em corpo grande, uma frase de resumo escrita como
+/// analista falaria, e o filete que separa do próximo.
+///
+/// **Cidade sem novidade não ganha bloco** — vira [QuietCityRow], uma linha de
+/// ~44px. É o que faz a grade sobreviver a 20 cidades sem virar planilha: dia
+/// quieto colapsa sozinho, dia agitado expande sozinho. A regra é semântica
+/// (tem não lida?), não um "top N" arbitrário.
 class CityCard extends StatelessWidget {
   final CityOverview city;
   final VoidCallback onTap;
 
   const CityCard({super.key, required this.city, required this.onTap});
 
-  String _footerText(CityOverview c) {
-    if (!c.isGroup) return c.parentState ?? '';
-
-    final n = c.cityCount ?? 0;
-    final cityWord = n == 1 ? 'cidade' : 'cidades';
-
-    // Preview dos nomes: "Florianópolis, São José +3"
-    final names = c.cityNames ?? const [];
-    if (names.isNotEmpty) {
-      final preview = names.take(2).join(', ');
-      final extra = names.length - 2;
-      return extra > 0 ? '$preview +$extra' : preview;
+  /// A frase de resumo. Nasce dos campos que o backend já manda — e é o único
+  /// lugar do app em que ele fala como gente em vez de painel.
+  String get _summary {
+    final total = city.totalCrimes30d;
+    if (total == 0) {
+      return 'Sem ocorrência publicada nos últimos trinta dias.';
     }
 
-    if (c.parentState != null) {
-      return '${c.parentState} · $n $cityWord';
+    final buf = StringBuffer('$total ${total == 1 ? 'ocorrência' : 'ocorrências'} '
+        'em trinta dias.');
+
+    final top = city.topCrimeType;
+    final pct = city.topCrimePercent;
+    if (top != null && top.isNotEmpty && pct > 0) {
+      buf.write(' ${crimeTypeLabel(top)} responde por '
+          '${pct.toStringAsFixed(0)}%, a maior fatia.');
     }
 
-    final s = c.stateCount ?? 0;
-    if (s > 1) {
-      final stateWord = s == 1 ? 'estado' : 'estados';
-      return '$s $stateWord · $n $cityWord';
+    // Grupo: dizer QUAIS cidades. "Grande Florianópolis" não informa nada a
+    // quem não é de lá, e o app é vendido para fora da cidade monitorada.
+    final names = city.cityNames;
+    if (city.isGroup && names != null && names.isNotEmpty) {
+      final preview = names.take(3).join(', ');
+      final extra = names.length - 3;
+      buf.write(' $preview${extra > 0 ? ' e mais $extra' : ''}.');
     }
 
-    return '$n $cityWord';
-  }
-
-  // "há 2h" / "há 3d" / "agora" — última ocorrência registrada.
-  String? get _lastActivity {
-    final t = city.lastNewsAt;
-    if (t == null) return null;
-    final diff = DateTime.now().difference(t);
-    if (diff.inMinutes < 60) return 'agora';
-    if (diff.inHours < 24) return 'há ${diff.inHours}h';
-    return 'há ${diff.inDays}d';
+    return buf.toString();
   }
 
   @override
   Widget build(BuildContext context) {
-    final trend = city.trendPercent;
-    final hasTrend = trend != 0;
-    // Mais crime = ruim (alert); menos = bom (official).
-    final trendColor = city.trendUp
-        ? SIMEopsColors.alert
-        : city.trendDown
-            ? SIMEopsColors.official
-            : SIMEopsColors.muted;
-    final trendText = hasTrend
-        ? '${city.trendUp ? '▲' : '▼'} ${trend.abs().toStringAsFixed(0)}%'
-        : '—';
+    final uf = city.parentState;
 
-    final topCrime = city.topCrimeType;
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header: ícone + nome + badge de não lidas
-              Row(
-                children: [
-                  Icon(
-                    city.isGroup ? Icons.layers : Icons.location_city,
-                    size: 16,
-                    color: city.isGroup
-                        ? SIMEopsColors.teal
-                        : SIMEopsColors.muted.withValues(alpha: 0.7),
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 21, 18, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    [
+                      if (uf != null && uf.isNotEmpty) uf.toUpperCase(),
+                      if (city.isGroup) '${city.cityCount ?? 0} CIDADES',
+                    ].join(' · '),
+                    style: SIMEopsType.slug(color: SIMEopsColors.faint),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      city.name,
-                      style: GoogleFonts.exo2(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                        color: SIMEopsColors.white,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                ),
+                if (city.hasUnread)
+                  Text(
+                    '${city.unreadCount} ${city.unreadCount == 1 ? 'NOVA' : 'NOVAS'}',
+                    style: SIMEopsType.slug(color: SIMEopsColors.greenLight),
                   ),
-                  if (city.hasUnread)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: SIMEopsColors.alert.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        '${city.unreadCount} NOVA${city.unreadCount > 1 ? 'S' : ''}',
-                        style: GoogleFonts.rajdhani(
-                          color: SIMEopsColors.alert,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Readouts: total · tendência · crime predominante
-              Row(
-                children: [
-                  _Readout(
-                    value: '${city.totalCrimes}',
-                    label: 'OCORRÊNCIAS',
-                  ),
-                  _dividerVertical(),
-                  _Readout(
-                    value: trendText,
-                    label: '30 DIAS',
-                    valueColor: trendColor,
-                  ),
-                  if (topCrime != null && topCrime.isNotEmpty) ...[
-                    _dividerVertical(),
-                    Expanded(
-                      child: _Readout(
-                        value: crimeTypeLabel(topCrime),
-                        label:
-                            'PREDOMINANTE${city.topCrimePercent > 0 ? ' · ${city.topCrimePercent.toStringAsFixed(0)}%' : ''}',
-                        compactValue: true,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Footer: contexto + última atividade + chevron
-              Row(
-                children: [
-                  Icon(Icons.location_on,
-                      size: 12,
-                      color: SIMEopsColors.muted.withValues(alpha: 0.6)),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      _footerText(city),
-                      style: GoogleFonts.exo2(
-                        fontSize: 11.5,
-                        color: SIMEopsColors.muted,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (_lastActivity != null) ...[
-                    Text(
-                      _lastActivity!,
-                      style: GoogleFonts.jetBrainsMono(
-                        fontSize: 10,
-                        color: SIMEopsColors.muted.withValues(alpha: 0.7),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                  ],
-                  Icon(Icons.chevron_right,
-                      size: 18,
-                      color: SIMEopsColors.muted.withValues(alpha: 0.6)),
-                ],
-              ),
-            ],
-          ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              city.name,
+              style: SIMEopsType.cityHeadline(),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 8),
+            Text(_summary, style: SIMEopsType.lead()),
+            const SizedBox(height: 15),
+          ],
         ),
       ),
     );
   }
-
-  Widget _dividerVertical() {
-    return Container(
-      width: 1,
-      height: 26,
-      margin: const EdgeInsets.symmetric(horizontal: 12),
-      color: SIMEopsColors.teal.withValues(alpha: 0.15),
-    );
-  }
 }
 
-class _Readout extends StatelessWidget {
-  final String value;
-  final String label;
-  final Color? valueColor;
-  // Valor textual (nome de crime) usa fonte menor que os numéricos.
-  final bool compactValue;
+/// Cidade sem nada novo: uma linha, não um bloco.
+class QuietCityRow extends StatelessWidget {
+  final CityOverview city;
+  final VoidCallback onTap;
 
-  const _Readout({
-    required this.value,
-    required this.label,
-    this.valueColor,
-    this.compactValue = false,
-  });
+  const QuietCityRow({super.key, required this.city, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          value,
-          style: compactValue
-              ? GoogleFonts.exo2(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: valueColor ?? SIMEopsColors.white,
-                )
-              : GoogleFonts.jetBrainsMono(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: valueColor ?? SIMEopsColors.tealLight,
-                ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+    final uf = city.parentState;
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: SIMEopsColors.rule)),
         ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: GoogleFonts.rajdhani(
-            fontSize: 9,
-            letterSpacing: 1.2,
-            fontWeight: FontWeight.w600,
-            color: SIMEopsColors.muted.withValues(alpha: 0.6),
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                uf != null && uf.isNotEmpty
+                    ? '${city.name} · ${uf.toUpperCase()}'
+                    : city.name,
+                style: SIMEopsType.placeTab(active: false)
+                    .copyWith(color: SIMEopsColors.muted, fontSize: 11),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              '${city.totalCrimes30d} em 30d',
+              style: SIMEopsType.placeTab(active: false).copyWith(fontSize: 11),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }

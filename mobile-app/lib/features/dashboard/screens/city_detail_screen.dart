@@ -766,10 +766,13 @@ class _CityDetailScreenState extends State<CityDetailScreen>
 }
 
 /// Janela da contagem do cabeçalho.
+///
+/// Só duas: o mês corrente e o acumulado. 60 e 90 dias existiram por uma
+/// tarde e saíram — com quatro opções o menu virava uma decisão a tomar toda
+/// vez, e ninguém precisa de granulação nesse número. Ele é orientação, não
+/// análise; quem quer recorte fino vai no relatório.
 enum StatPeriod {
   d30('30 dias', '30D'),
-  d60('60 dias', '60D'),
-  d90('90 dias', '90D'),
   all('Desde o início', 'TOTAL');
 
   const StatPeriod(this.label, this.short);
@@ -778,18 +781,11 @@ enum StatPeriod {
 
   int countOf(CityOverview c) => switch (this) {
         StatPeriod.d30 => c.totalCrimes30d,
-        StatPeriod.d60 => c.totalCrimes60d,
-        StatPeriod.d90 => c.totalCrimes90d,
         StatPeriod.all => c.totalCrimes,
       };
 }
 
-/// `107 EM 30D ▾` — toca e escolhe a janela.
-///
-/// Uma janela só é oferecida quando o backend mandou o número dela. Backend
-/// antigo devolve 0 em 60/90, e mostrar "0 EM 60D" seria pior que não mostrar:
-/// leria como "nenhuma ocorrência em 60 dias" quando o certo é "esse servidor
-/// não sabe contar 60 dias ainda".
+/// `107 EM 30D ▾` — toca e alterna entre o mês e o acumulado.
 class _PeriodCount extends StatelessWidget {
   final CityOverview city;
   final StatPeriod period;
@@ -803,10 +799,6 @@ class _PeriodCount extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final options = StatPeriod.values
-        .where((p) => p == StatPeriod.d30 || p == period || p.countOf(city) > 0)
-        .toList();
-
     return PopupMenuButton<StatPeriod>(
       initialValue: period,
       onSelected: onPick,
@@ -818,7 +810,7 @@ class _PeriodCount extends StatelessWidget {
       position: PopupMenuPosition.under,
       tooltip: 'Janela da contagem',
       itemBuilder: (_) => [
-        for (final p in options)
+        for (final p in StatPeriod.values)
           PopupMenuItem(
             value: p,
             height: 42,

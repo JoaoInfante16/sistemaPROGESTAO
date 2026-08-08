@@ -4,6 +4,8 @@ import '../../../core/models/city_overview.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/widgets/grid_background.dart';
 import '../../../core/theme/simeops_colors.dart';
+import '../../../core/theme/simeops_type.dart';
+import '../../feed/widgets/take_card.dart';
 import '../widgets/city_card.dart';
 import 'city_detail_screen.dart';
 
@@ -127,29 +129,68 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildGrid() {
+    // Cidade com novidade ganha o bloco inteiro; cidade quieta vira linha.
+    // Regra semântica, não "top N": num dia parado a tela toda colapsa, num
+    // dia agitado ela toda expande — é o que faz 4 e 20 cidades funcionarem
+    // no mesmo layout.
+    final loud = _cities.where((c) => c.hasUnread).toList();
+    final quiet = _cities.where((c) => !c.hasUnread).toList();
+
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
-        const SliverToBoxAdapter(child: SizedBox(height: 16)),
+        const SliverToBoxAdapter(child: SizedBox(height: 4)),
 
-        // City cards vertical list
         SliverList(
           delegate: SliverChildBuilderDelegate(
             (context, index) {
-              final city = _cities[index];
-              return CityCard(
-                city: city,
-                onTap: () => _openCity(city),
+              final city = loud[index];
+              return Column(
+                children: [
+                  CityCard(city: city, onTap: () => _openCity(city)),
+                  if (index < loud.length - 1) const TakeRule(),
+                ],
               );
             },
-            childCount: _cities.length,
+            childCount: loud.length,
           ),
         ),
 
-        const SliverToBoxAdapter(child: SizedBox(height: 200)),
+        if (quiet.isNotEmpty) ...[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.only(top: loud.isEmpty ? 8 : 26),
+              child: Row(
+                children: [
+                  const SizedBox(width: 18),
+                  Text(
+                    loud.isEmpty ? 'MONITORADAS' : 'SEM NOVIDADE HOJE',
+                    style: SIMEopsType.dateline(color: SIMEopsColors.faint),
+                  ),
+                  const SizedBox(width: 11),
+                  const Expanded(
+                    child: Divider(color: SIMEopsColors.rule, height: 1),
+                  ),
+                  const SizedBox(width: 18),
+                ],
+              ),
+            ),
+          ),
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => QuietCityRow(
+                city: quiet[index],
+                onTap: () => _openCity(quiet[index]),
+              ),
+              childCount: quiet.length,
+            ),
+          ),
+        ],
+
+        const SliverToBoxAdapter(child: EndMark()),
+        const SliverToBoxAdapter(child: SizedBox(height: 90)),
       ],
     );
   }
-
 }
 

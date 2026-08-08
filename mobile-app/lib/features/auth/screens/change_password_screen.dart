@@ -1,11 +1,27 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/theme/simeops_colors.dart';
-import '../../../core/widgets/grid_background.dart';
+import '../../../core/theme/simeops_type.dart';
 
+/// Primeiro acesso: a senha provisória (que o administrador conhece) precisa
+/// morrer aqui. Dois caminhos para isso:
+///
+/// **1. Criar uma senha** — o de sempre.
+///
+/// **2. Usar o desbloqueio do celular** — o app pergunta ao Android (digital,
+/// rosto, PIN ou padrão, o que estiver configurado), gera uma senha aleatória
+/// forte que o usuário nunca vê, troca no servidor e guarda no Keystore.
+/// A partir daí entrar é desbloquear.
+///
+/// O caminho 2 é mais seguro que o 1 na prática — senha de 32 caracteres
+/// sorteada contra "Mudar@123" que a pessoa reusa no e-mail — **mas tem um
+/// custo que precisa estar escrito na tela**: quem escolhe ele não sabe a
+/// própria senha. Perdeu o celular ou limpou os dados do app, só volta com
+/// reset do administrador. Esconder isso seria armadilha.
 class ChangePasswordScreen extends StatefulWidget {
   final VoidCallback? onComplete;
 
@@ -22,8 +38,23 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   bool _loading = false;
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
-  bool _rememberMe = true;
   String? _error;
+
+  /// null enquanto a consulta ao device não voltou — o botão não aparece
+  /// piscando e depois some.
+  bool? _deviceAuthAvailable;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkDeviceAuth();
+  }
+
+  Future<void> _checkDeviceAuth() async {
+    final auth = context.read<AuthService>();
+    final ok = await auth.isDeviceAuthAvailable();
+    if (mounted) setState(() => _deviceAuthAvailable = ok);
+  }
 
   @override
   void dispose() {
@@ -32,35 +63,78 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     super.dispose();
   }
 
+  /// Senha que ninguém digita, então pode ser longa e feia.
+  /// `Random.secure()` usa a fonte de entropia do sistema — `Random()` comum
+  /// é previsível e não serve para credencial.
+  static String _generateStrongPassword() {
+    const chars =
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+        '!@#\$%^&*-_=+';
+    final rnd = Random.secure();
+    return List.generate(32, (_) => chars[rnd.nextInt(chars.length)]).join();
+  }
+
+  Future<void> _apply(String newPassword, {required bool remember}) async {
+    final api = context.read<ApiService>();
+    final auth = context.read<AuthService>();
+
+    await api.changePassword(newPassword);
+
+    final email = auth.currentUser?.email;
+    if (email != null) {
+      await auth.signIn(email, newPassword);
+      if (remember) {
+        await auth.saveCredentials(email, newPassword);
+      } else {
+        // Trocou por senha digitada: qualquer credencial guardada de antes
+        // aponta pra senha velha e faria o login automático falhar em silêncio.
+        await auth.clearSavedCredentials();
+      }
+    }
+  }
+
   Future<void> _handleSetPassword() async {
     if (!_formKey.currentState!.validate()) return;
-
     setState(() {
       _loading = true;
       _error = null;
     });
-
     try {
-      final api = context.read<ApiService>();
-      final auth = context.read<AuthService>();
-      await api.changePassword(_passwordCtrl.text);
-
-      final email = auth.currentUser?.email;
-      if (email != null) {
-        // Re-login com a nova senha
-        await auth.signIn(email, _passwordCtrl.text);
-
-        // Salvar credenciais se "lembrar minha senha" ativo
-        if (_rememberMe) {
-          await auth.saveCredentials(email, _passwordCtrl.text);
-        }
-      }
-
+      await _apply(_passwordCtrl.text, remember: false);
+      if (mounted) widget.onComplete?.call();
+    } catch (_) {
       if (mounted) {
-        widget.onComplete?.call();
+        setState(() => _error = 'Não foi possível alterar a senha. Tente de novo.');
       }
-    } catch (e) {
-      setState(() => _error = 'Erro ao alterar senha. Tente novamente.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _handleDeviceAuth() async {
+    final auth = context.read<AuthService>();
+
+    setState(() => _error = null);
+
+    // Pergunta ao Android ANTES de mexer no servidor: se o usuário desistir no
+    // diálogo do sistema, nada aconteceu e a senha provisória segue valendo.
+    final ok = await auth.authenticateWithDevice();
+    if (!ok) {
+      if (mounted) {
+        setState(() => _error = 'Desbloqueio cancelado. Nada foi alterado.');
+      }
+      return;
+    }
+
+    if (mounted) setState(() => _loading = true);
+    try {
+      await _apply(_generateStrongPassword(), remember: true);
+      if (mounted) widget.onComplete?.call();
+    } catch (_) {
+      if (mounted) {
+        setState(() =>
+            _error = 'Não foi possível concluir. Tente criar uma senha.');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -70,267 +144,201 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: SIMEopsColors.navy,
-      body: GridBackground(
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 400),
-                decoration: BoxDecoration(
-                  color: SIMEopsColors.navyMid.withValues(alpha: 0.92),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: SIMEopsColors.teal.withValues(alpha: 0.15),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      blurRadius: 64,
-                      offset: const Offset(0, 24),
-                    ),
-                  ],
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(18, 40, 18, 40),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('PRIMEIRO ACESSO',
+                    style: SIMEopsType.slug(color: SIMEopsColors.tealLight)),
+                const SizedBox(height: 12),
+                Text('Sua senha\nprovisória expira\nagora',
+                    style: SIMEopsType.title()),
+                const SizedBox(height: 12),
+                Text(
+                  'A senha que o administrador criou é conhecida por ele. '
+                  'Escolha como você vai entrar a partir de agora.',
+                  style: SIMEopsType.lead(),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(32, 40, 32, 32),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Icon
-                        Container(
-                          width: 64,
-                          height: 64,
-                          decoration: BoxDecoration(
-                            color: SIMEopsColors.teal.withValues(alpha: 0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.lock_reset,
-                            size: 32,
-                            color: SIMEopsColors.teal,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
 
-                        // Title
-                        Text(
-                          'CRIE SUA SENHA',
-                          style: GoogleFonts.rajdhani(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 2,
-                            color: SIMEopsColors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
+                if (_error != null) ...[
+                  const SizedBox(height: 22),
+                  Container(
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        left: BorderSide(color: SIMEopsColors.alert, width: 2),
+                      ),
+                    ),
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    child: Text(_error!,
+                        style: SIMEopsType.note(color: SIMEopsColors.alert)),
+                  ),
+                ],
 
-                        // Subtitle
-                        Text(
-                          'Sua conta foi criada com uma senha temporaria.\nCrie uma senha permanente para continuar.',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.exo2(
-                            fontSize: 12,
-                            color: SIMEopsColors.muted.withValues(alpha: 0.7),
-                            height: 1.5,
-                          ),
-                        ),
-                        const SizedBox(height: 28),
-
-                        // Error
-                        if (_error != null) ...[
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.red.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: Colors.red.withValues(alpha: 0.3),
-                              ),
-                            ),
-                            child: Text(
-                              _error!,
-                              style: const TextStyle(
-                                color: Colors.redAccent,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-
-                        // NOVA SENHA label
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'NOVA SENHA',
-                            style: GoogleFonts.rajdhani(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 2,
-                              color: SIMEopsColors.muted,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        TextFormField(
-                          controller: _passwordCtrl,
-                          obscureText: _obscurePassword,
-                          style: const TextStyle(color: SIMEopsColors.white),
-                          decoration: InputDecoration(
-                            hintText: 'Minimo 6 caracteres',
-                            prefixIcon: const Icon(Icons.lock_outlined,
-                                color: SIMEopsColors.muted, size: 20),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_off
-                                    : Icons.visibility,
-                                color: SIMEopsColors.muted,
-                                size: 20,
-                              ),
-                              onPressed: () => setState(
-                                  () => _obscurePassword = !_obscurePassword),
-                            ),
-                          ),
-                          validator: (v) {
-                            if (v == null || v.isEmpty) {
-                              return 'Informe a nova senha';
-                            }
-                            if (v.length < 6) return 'Minimo 6 caracteres';
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 14),
-
-                        // CONFIRMAR SENHA label
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'CONFIRMAR SENHA',
-                            style: GoogleFonts.rajdhani(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 2,
-                              color: SIMEopsColors.muted,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        TextFormField(
-                          controller: _confirmCtrl,
-                          obscureText: _obscureConfirm,
-                          style: const TextStyle(color: SIMEopsColors.white),
-                          decoration: InputDecoration(
-                            hintText: 'Repita a senha',
-                            prefixIcon: const Icon(Icons.lock_outlined,
-                                color: SIMEopsColors.muted, size: 20),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscureConfirm
-                                    ? Icons.visibility_off
-                                    : Icons.visibility,
-                                color: SIMEopsColors.muted,
-                                size: 20,
-                              ),
-                              onPressed: () => setState(
-                                  () => _obscureConfirm = !_obscureConfirm),
-                            ),
-                          ),
-                          validator: (v) {
-                            if (v != _passwordCtrl.text) {
-                              return 'Senhas nao conferem';
-                            }
-                            return null;
-                          },
-                          onFieldSubmitted: (_) => _handleSetPassword(),
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Lembrar minha senha
-                        GestureDetector(
-                          onTap: () => setState(() => _rememberMe = !_rememberMe),
-                          child: Row(
-                            children: [
-                              SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: Checkbox(
-                                  value: _rememberMe,
-                                  onChanged: (v) => setState(() => _rememberMe = v ?? true),
-                                  activeColor: SIMEopsColors.teal,
-                                  side: BorderSide(
-                                    color: SIMEopsColors.muted.withValues(alpha: 0.5),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Text(
-                                'Lembrar minha senha neste dispositivo',
-                                style: GoogleFonts.exo2(
-                                  fontSize: 13,
-                                  color: SIMEopsColors.muted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-
-                        // SALVAR button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 48,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [
-                                  SIMEopsColors.green,
-                                  SIMEopsColors.greenLight,
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: ElevatedButton(
-                              onPressed: _loading ? null : _handleSetPassword,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                shadowColor: Colors.transparent,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: _loading
-                                  ? const SizedBox(
-                                      height: 20,
-                                      width: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : Text(
-                                      'SALVAR SENHA',
-                                      style: GoogleFonts.rajdhani(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: 3,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                        ),
-                      ],
+                // ── Caminho 1: o celular ──
+                if (_deviceAuthAvailable == true) ...[
+                  const SizedBox(height: 30),
+                  _SectionRule(label: 'RECOMENDADO'),
+                  const SizedBox(height: 16),
+                  Text('Desbloquear como o celular',
+                      style: SIMEopsType.body().copyWith(fontSize: 19)),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Digital, rosto ou PIN — o mesmo que abre o aparelho. '
+                    'O app cria uma senha longa sozinho e guarda protegida '
+                    'pelo Android. Você não precisa decorar nada.',
+                    style: SIMEopsType.lead(),
+                  ),
+                  const SizedBox(height: 12),
+                  // A ressalva fica JUNTO da opção, não num rodapé que ninguém lê.
+                  Text(
+                    'SE TROCAR DE CELULAR OU LIMPAR OS DADOS DO APP, O ACESSO\n'
+                    'SÓ VOLTA COM UMA REDEFINIÇÃO DO ADMINISTRADOR.',
+                    style: SIMEopsType.note(),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: _loading ? null : _handleDeviceAuth,
+                      child: const Text('USAR O DESBLOQUEIO DO CELULAR'),
                     ),
                   ),
+                ],
+
+                // ── Caminho 2: senha ──
+                const SizedBox(height: 34),
+                _SectionRule(
+                  label: _deviceAuthAvailable == true
+                      ? 'OU CRIE UMA SENHA'
+                      : 'CRIE UMA SENHA',
                 ),
-              ),
+                const SizedBox(height: 18),
+                Text('NOVA SENHA', style: SIMEopsType.fieldLabel()),
+                _PasswordField(
+                  controller: _passwordCtrl,
+                  hint: 'Mínimo 6 caracteres',
+                  obscure: _obscurePassword,
+                  onToggle: () =>
+                      setState(() => _obscurePassword = !_obscurePassword),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Informe a nova senha';
+                    if (v.length < 6) return 'Mínimo 6 caracteres';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 20),
+                Text('REPITA A SENHA', style: SIMEopsType.fieldLabel()),
+                _PasswordField(
+                  controller: _confirmCtrl,
+                  hint: 'A mesma de cima',
+                  obscure: _obscureConfirm,
+                  onToggle: () =>
+                      setState(() => _obscureConfirm = !_obscureConfirm),
+                  validator: (v) =>
+                      v != _passwordCtrl.text ? 'As senhas não conferem' : null,
+                  onSubmitted: (_) => _handleSetPassword(),
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: _loading ? null : _handleSetPassword,
+                    child: const Text('SALVAR SENHA'),
+                  ),
+                ),
+
+                if (_loading) ...[
+                  const SizedBox(height: 26),
+                  const Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: SIMEopsColors.tealLight),
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 30),
+                Text('ESTA TELA APARECE UMA ÚNICA VEZ.',
+                    style: SIMEopsType.note()),
+              ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SectionRule extends StatelessWidget {
+  final String label;
+  const _SectionRule({required this.label});
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: [
+          Text(label, style: SIMEopsType.dateline(color: SIMEopsColors.faint)),
+          const SizedBox(width: 11),
+          const Expanded(child: Divider(color: SIMEopsColors.rule, height: 1)),
+        ],
+      );
+}
+
+/// Campo de senha sem caixa: filete embaixo, como o resto do fio.
+class _PasswordField extends StatelessWidget {
+  final TextEditingController controller;
+  final String hint;
+  final bool obscure;
+  final VoidCallback onToggle;
+  final String? Function(String?) validator;
+  final void Function(String)? onSubmitted;
+
+  const _PasswordField({
+    required this.controller,
+    required this.hint,
+    required this.obscure,
+    required this.onToggle,
+    required this.validator,
+    this.onSubmitted,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      obscureText: obscure,
+      validator: validator,
+      onFieldSubmitted: onSubmitted,
+      style: SIMEopsType.body().copyWith(fontSize: 17),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: SIMEopsType.body()
+            .copyWith(fontSize: 17, color: SIMEopsColors.hairline),
+        filled: false,
+        contentPadding: const EdgeInsets.only(top: 12, bottom: 9),
+        enabledBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: SIMEopsColors.ruleStrong),
+        ),
+        focusedBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: SIMEopsColors.tealLight),
+        ),
+        border: const UnderlineInputBorder(
+          borderSide: BorderSide(color: SIMEopsColors.ruleStrong),
+        ),
+        suffixIcon: InkWell(
+          onTap: onToggle,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 14),
+            child: Text(obscure ? 'VER' : 'OCULTAR',
+                style: SIMEopsType.slug(color: SIMEopsColors.tealLight)),
+          ),
+        ),
+        suffixIconConstraints: const BoxConstraints(minWidth: 64),
       ),
     );
   }

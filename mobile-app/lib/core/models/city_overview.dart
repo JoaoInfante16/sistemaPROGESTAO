@@ -10,8 +10,6 @@ class CityOverview {
   final List<String>? cityNames;
   final int totalCrimes;
   final int totalCrimes30d;
-  final int totalCrimes60d;
-  final int totalCrimes90d;
   final double trendPercent;
   final String? topCrimeType;
   final double topCrimePercent;
@@ -28,8 +26,6 @@ class CityOverview {
     this.cityNames,
     required this.totalCrimes,
     required this.totalCrimes30d,
-    this.totalCrimes60d = 0,
-    this.totalCrimes90d = 0,
     required this.trendPercent,
     this.topCrimeType,
     required this.topCrimePercent,
@@ -69,10 +65,6 @@ class CityOverview {
           .toList(),
       totalCrimes: _toInt(json['totalCrimes']),
       totalCrimes30d: _toInt(json['totalCrimes30d']),
-      // Backend antigo não manda 60/90 — cai em 0 e o seletor esconde a opção
-      // em vez de mostrar zero, que leria como "não houve ocorrência".
-      totalCrimes60d: _toInt(json['totalCrimes60d']),
-      totalCrimes90d: _toInt(json['totalCrimes90d']),
       trendPercent: _toDouble(json['trendPercent']),
       topCrimeType: json['topCrimeType'] as String?,
       topCrimePercent: _toDouble(json['topCrimePercent']),
