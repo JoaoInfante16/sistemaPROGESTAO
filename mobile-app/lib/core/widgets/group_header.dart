@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../theme/simeops_colors.dart';
+import '../theme/simeops_type.dart';
 
-// Header de seção colapsável: `——— HOJE (12) ▾ ———`.
-// Evolução do padrão Divider — LABEL — Divider que o feed já usava; agora
-// tocável, com contagem e chevron. `accent` destaca seções especiais
-// (indicadores, região metropolitana, fora do período).
+/// Divisor de seção do fio: `HOJE · 04 AGO ─────────── 12 ▾`.
+///
+/// Era `——— HOJE (12) ▾ ———` centralizado entre dois filetes. Centralizado, o
+/// olho precisa procurar onde a seção começa a cada bloco; ancorado à esquerda,
+/// ele desce numa coluna só — que é o que faz uma lista longa ser varrida em
+/// vez de lida.
+///
+/// `accent` destaca seções especiais (região metropolitana, fora do período).
 class GroupHeader extends StatelessWidget {
   final String label;
   final int count;
@@ -24,42 +28,34 @@ class GroupHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textColor = accent ?? SIMEopsColors.muted.withValues(alpha: 0.75);
-    final lineColor = accent != null
-        ? accent!.withValues(alpha: 0.25)
-        : Colors.white.withValues(alpha: 0.08);
+    final ink = accent ?? SIMEopsColors.muted;
 
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+        padding: const EdgeInsets.fromLTRB(18, 24, 18, 6),
         child: Row(
           children: [
-            Expanded(child: Divider(color: lineColor)),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '$label ($count)',
-                    style: GoogleFonts.rajdhani(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: textColor,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 14,
-                    color: textColor,
-                  ),
-                ],
+            Text(label.toUpperCase(), style: SIMEopsType.dateline(color: ink)),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Divider(
+                color: accent?.withValues(alpha: 0.3) ?? SIMEopsColors.rule,
+                height: 1,
+                thickness: 1,
               ),
             ),
-            Expanded(child: Divider(color: lineColor)),
+            const SizedBox(width: 11),
+            Text(
+              '$count',
+              style: SIMEopsType.dateline(color: SIMEopsColors.faint),
+            ),
+            const SizedBox(width: 3),
+            Icon(
+              expanded ? Icons.expand_less : Icons.expand_more,
+              size: 15,
+              color: SIMEopsColors.faint,
+            ),
           ],
         ),
       ),

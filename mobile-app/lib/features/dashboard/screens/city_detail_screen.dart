@@ -14,6 +14,7 @@ import '../../../core/widgets/fontes_analisadas.dart';
 import '../../../core/widgets/grid_background.dart';
 import '../../../core/widgets/weekly_trend_bars.dart';
 import '../../../core/theme/simeops_colors.dart';
+import '../../../core/theme/simeops_type.dart';
 import '../../feed/screens/feed_screen.dart';
 
 class CityDetailScreen extends StatefulWidget {
@@ -61,6 +62,10 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
+      // O caderno ativo é desenhado à mão (não é mais TabBar), então precisa
+      // de rebuild — inclusive no arraste, que muda o índice sem passar pelo
+      // onTap.
+      if (mounted) setState(() {});
       // Lazy load: so carrega overview quando o usuario abre a tab
       if (_tabController.index == 1 && _loadingOverview && _summary == null) {
         _loadOverview();
@@ -196,79 +201,188 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: SIMEopsColors.navy,
-      appBar: AppBar(
-        backgroundColor: SIMEopsColors.navy,
-        title: Row(
+      body: SafeArea(
+        bottom: false,
+        child: Column(
           children: [
-            Text(
-              widget.city.name,
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
-            ),
-            if (widget.city.parentState != null) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: SIMEopsColors.teal.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  abbrState(widget.city.parentState!),
-                  style: TextStyle(fontSize: 11, color: SIMEopsColors.teal),
-                ),
+            _buildWireHeader(),
+            if (_isGroup) _buildPlacesRow(),
+            _buildCadernos(),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildFeedTab(),
+                  _buildOverviewTab(),
+                ],
               ),
-            ],
+            ),
           ],
         ),
-        bottom: PreferredSize(
-          preferredSize: Size.fromHeight(_isGroup ? 88 : 44),
-          child: Column(
+      ),
+    );
+  }
+
+  /// Cabeçalho do fio: seta + marca, nome da praça em corpo grande, linha de
+  /// estado, e o filete branco de 2px que fecha o bloco.
+  ///
+  /// Substitui a `AppBar` centralizada. O nome da cidade é o dado mais
+  /// importante da tela e estava a 18px no meio de uma barra de 56px; agora
+  /// abre a página a 29px, ancorado à esquerda como manchete de primeira.
+  ///
+  /// ⚠️ Ainda NÃO encolhe na rolagem. Encolher exige `NestedScrollView` +
+  /// `SliverAppBar`, e o corpo é um `TabBarView` cujos filhos têm scroll e
+  /// `RefreshIndicator` próprios — mexer nisso junto com a troca de estética
+  /// era arriscar duas coisas de uma vez. Fica para etapa própria: rende mais
+  /// ~85px durante a leitura.
+  Widget _buildWireHeader() {
+    final c = widget.city;
+    final uf = c.parentState != null ? abbrState(c.parentState!) : null;
+
+    final marks = <String>[
+      if (uf != null) uf,
+      '${c.totalCrimes30d} EM 30D',
+      if (c.unreadCount > 0) '${c.unreadCount} NOVAS',
+    ];
+
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: SIMEopsColors.white, width: 2),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              // Sub-city filter for groups
-              if (_isGroup)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  child: SizedBox(
-                    height: 32,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      children: [
-                        _SubCityChip(
-                          label: 'Todas',
-                          selected: _selectedSubCity == null,
-                          onTap: () => _onSubCityChanged(null),
-                        ),
-                        ...widget.city.cityNames!.map((c) => _SubCityChip(
-                          label: c,
-                          selected: _selectedSubCity == c,
-                          onTap: () => _onSubCityChanged(c),
-                        )),
-                      ],
-                    ),
-                  ),
+              InkWell(
+                onTap: () => Navigator.of(context).pop(),
+                child: const Padding(
+                  padding: EdgeInsets.all(8),
+                  child: Icon(Icons.arrow_back_ios_new,
+                      size: 17, color: SIMEopsColors.muted),
                 ),
-              TabBar(
-                controller: _tabController,
-                indicatorColor: SIMEopsColors.teal,
-                labelColor: SIMEopsColors.teal,
-                unselectedLabelColor: SIMEopsColors.muted,
-                tabs: const [
-                  Tab(text: 'Notícias'),
-                  Tab(text: 'Relatório'),
-                ],
+              ),
+              const SizedBox(width: 4),
+              Text.rich(
+                TextSpan(children: [
+                  const TextSpan(text: 'SIME'),
+                  TextSpan(
+                    text: 'OPS',
+                    style: TextStyle(color: SIMEopsColors.greenLight),
+                  ),
+                ]),
+                style: SIMEopsType.wordmark(size: 14),
               ),
             ],
           ),
+          const SizedBox(height: 9),
+          Text(c.name, style: SIMEopsType.title()),
+          const SizedBox(height: 9),
+          Row(
+            children: [
+              const _LiveDot(),
+              const SizedBox(width: 6),
+              Text(
+                c.lastNewsAt != null
+                    ? 'VARREDURA ${_agoLabel(c.lastNewsAt!)}'
+                    : 'VARREDURA 24H',
+                style: SIMEopsType.slug(color: SIMEopsColors.tealLight),
+              ),
+              const Spacer(),
+              Flexible(
+                child: Text(
+                  marks.join(' · '),
+                  style: SIMEopsType.slug(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _agoLabel(DateTime t) {
+    final d = DateTime.now().difference(t);
+    if (d.inMinutes < 60) return 'AGORA';
+    if (d.inHours < 24) return 'HÁ ${d.inHours}H';
+    return 'HÁ ${d.inDays}D';
+  }
+
+  /// As cidades do grupo. Rola na horizontal com degradê na borda direita —
+  /// sem ele o scroll é invisível e o usuário nunca descobre que existe
+  /// cidade cortada (Grande Goiânia tem 7).
+  Widget _buildPlacesRow() {
+    final names = widget.city.cityNames ?? const <String>[];
+    return SizedBox(
+      height: 40,
+      child: ShaderMask(
+        shaderCallback: (rect) => const LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [Colors.white, Colors.white, Colors.transparent],
+          stops: [0, 0.9, 1],
+        ).createShader(rect),
+        blendMode: BlendMode.dstIn,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(18, 12, 34, 0),
+          children: [
+            _PlaceTab(
+              label: 'Todas',
+              selected: _selectedSubCity == null,
+              onTap: () => _onSubCityChanged(null),
+            ),
+            ...names.map((c) => _PlaceTab(
+                  label: c,
+                  selected: _selectedSubCity == c,
+                  onTap: () => _onSubCityChanged(c),
+                )),
+          ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          // Tab 1: Feed filtrado
-          _buildFeedTab(),
+    );
+  }
 
-          // Tab 2: Overview / Stats
-          _buildOverviewTab(),
+  /// Notícias | Relatório — em corpo de texto, não em caixa alta de `TabBar`.
+  /// É a decisão mais permanente da tela e merece o maior peso depois do nome.
+  Widget _buildCadernos() {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: SIMEopsColors.rule)),
+      ),
+      padding: const EdgeInsets.fromLTRB(18, 15, 18, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (var i = 0; i < 2; i++) ...[
+            InkWell(
+              onTap: () => setState(() => _tabController.animateTo(i)),
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: _tabController.index == i
+                          ? SIMEopsColors.greenLight
+                          : Colors.transparent,
+                      width: 2,
+                    ),
+                  ),
+                ),
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text(
+                  i == 0 ? 'Notícias' : 'Relatório',
+                  style: SIMEopsType.tab(active: _tabController.index == i),
+                ),
+              ),
+            ),
+            if (i == 0) const SizedBox(width: 22),
+          ],
         ],
       ),
     );
@@ -641,33 +755,95 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   }
 }
 
-class _SubCityChip extends StatelessWidget {
+/// Cidade do grupo. Era cápsula arredondada teal (`_SubCityChip`) — a peça
+/// mais Material da tela. Vira rótulo em mono com filete embaixo: o mesmo
+/// vocabulário das outras faixas de controle, e ocupa metade da altura.
+class _PlaceTab extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
-  const _SubCityChip({required this.label, required this.selected, required this.onTap});
+  const _PlaceTab({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: GestureDetector(
+      padding: const EdgeInsets.only(right: 17),
+      child: InkWell(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: selected ? SIMEopsColors.teal : SIMEopsColors.navyLight,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-              color: selected ? Colors.white : SIMEopsColors.muted,
+            border: Border(
+              bottom: BorderSide(
+                color:
+                    selected ? SIMEopsColors.greenLight : Colors.transparent,
+                width: 1.5,
+              ),
             ),
           ),
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(
+            label.toUpperCase(),
+            style: SIMEopsType.placeTab(active: selected),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Ponto que respira ao lado de "VARREDURA HÁ 2H". É o único movimento da
+/// tela — o sinal de que o robô está de pé enquanto o usuário não olha.
+class _LiveDot extends StatefulWidget {
+  const _LiveDot();
+
+  @override
+  State<_LiveDot> createState() => _LiveDotState();
+}
+
+class _LiveDotState extends State<_LiveDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 3400),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Respeita "reduzir movimento" do sistema: pulsar sem parar é desconforto
+    // real pra quem tem sensibilidade vestibular, e a informação não depende
+    // da animação — o texto ao lado já diz há quanto tempo foi.
+    final reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (reduce) {
+      return Container(
+        width: 5,
+        height: 5,
+        decoration: const BoxDecoration(
+          color: SIMEopsColors.greenLight,
+          shape: BoxShape.circle,
+        ),
+      );
+    }
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.3, end: 1).animate(
+        CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+      ),
+      child: Container(
+        width: 5,
+        height: 5,
+        decoration: const BoxDecoration(
+          color: SIMEopsColors.greenLight,
+          shape: BoxShape.circle,
         ),
       ),
     );

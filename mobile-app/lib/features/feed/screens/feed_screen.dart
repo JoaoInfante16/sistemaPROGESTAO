@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../core/models/news_item.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/services/local_db_service.dart';
 import '../../../core/theme/simeops_colors.dart';
+import '../../../core/theme/simeops_type.dart';
 import '../../../core/utils/date_grouping.dart';
 import '../../../core/widgets/category_filter_bar.dart';
 import '../../../core/widgets/group_header.dart';
-import '../widgets/news_card.dart';
 import '../widgets/news_detail_sheet.dart';
+import '../widgets/take_card.dart';
 
 class FeedScreen extends StatefulWidget {
   /// Se fornecido, fixa o filtro de cidade (usado no CityDetailScreen)
@@ -205,38 +205,31 @@ class _FeedScreenState extends State<FeedScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    // Vazio NÃO é erro: cidade pequena passa dias sem ocorrência publicada, e
+    // o app não pode fazer a realidade da imprensa local parecer falha dele.
+    // Por isso texto explicando, e não ícone triste de "nada aqui".
     if (_news.isEmpty) {
-      return ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          const SizedBox(height: 80),
-          Icon(Icons.newspaper,
-              size: 64, color: SIMEopsColors.muted.withValues(alpha: 0.4)),
-          const SizedBox(height: 16),
-          Center(
-            child: Text(
-              'Nenhuma notícia ainda',
-              style: GoogleFonts.exo2(
-                  fontSize: 15, color: SIMEopsColors.muted),
+      return RefreshIndicator(
+        onRefresh: _refresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(18, 90, 18, 0),
+          children: [
+            Text('Nenhuma ocorrência\nno período', style: SIMEopsType.title()),
+            const SizedBox(height: 14),
+            Text(
+              'A varredura roda o dia inteiro. Cidade pequena passa dias sem '
+              'nada publicado — isso não é falha do app, é o volume da imprensa '
+              'local.',
+              style: SIMEopsType.lead(),
             ),
-          ),
-          const SizedBox(height: 8),
-          Center(
-            child: Text(
-              'Puxe para baixo para atualizar',
-              style: GoogleFonts.exo2(
-                  fontSize: 12,
-                  color: SIMEopsColors.muted.withValues(alpha: 0.6)),
-            ),
-          ),
-          const SizedBox(height: 24),
-          Center(
-            child: FilledButton.tonal(
+            const SizedBox(height: 26),
+            OutlinedButton(
               onPressed: _refresh,
-              child: const Text('Atualizar'),
+              child: const Text('VERIFICAR AGORA'),
             ),
-          ),
-        ],
+          ],
+        ),
       );
     }
 
@@ -261,16 +254,20 @@ class _FeedScreenState extends State<FeedScreen> {
         onTap: () => _toggleGroup(g.key),
       ));
       if (expanded) {
-        for (final item in g.items) {
-          rows.add(NewsCard(
+        for (var i = 0; i < g.items.length; i++) {
+          final item = g.items[i];
+          rows.add(TakeCard(
             news: item,
+            urgent: TakeCard.isUrgent(item),
             onTap: () {
               _markAsRead(item);
               NewsDetailSheet.show(context, item);
             },
-            onMarkRead: () => _markAsRead(item),
             onToggleFavorite: () => _toggleFavorite(item),
           ));
+          // Filete entre matérias, nunca depois da última: no fim do grupo
+          // quem separa é o divisor de data seguinte.
+          if (i < g.items.length - 1) rows.add(const TakeRule());
         }
       }
     }
@@ -279,6 +276,9 @@ class _FeedScreenState extends State<FeedScreen> {
         padding: EdgeInsets.all(16),
         child: Center(child: CircularProgressIndicator()),
       ));
+    } else {
+      // Diz "acabou" em vez de deixar o usuário rolando achando que carrega.
+      rows.add(const EndMark());
     }
 
     return Stack(
@@ -301,30 +301,19 @@ class _FeedScreenState extends State<FeedScreen> {
                       }),
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 16, left: 6),
-                    child: FilterChip(
-                      label: Text(
-                        'Não lidas',
-                        style: GoogleFonts.exo2(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
+                  InkWell(
+                    onTap: () => setState(() => _unreadOnly = !_unreadOnly),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 13, 18, 13),
+                      child: Text(
+                        'NÃO LIDAS',
+                        style: SIMEopsType.placeTab(active: _unreadOnly)
+                            .copyWith(
                           color: _unreadOnly
-                              ? Colors.white
-                              : SIMEopsColors.tealLight,
+                              ? SIMEopsColors.greenLight
+                              : SIMEopsColors.faint,
                         ),
                       ),
-                      selected: _unreadOnly,
-                      showCheckmark: false,
-                      selectedColor: SIMEopsColors.teal,
-                      backgroundColor:
-                          SIMEopsColors.teal.withValues(alpha: 0.12),
-                      side: BorderSide(
-                        color: SIMEopsColors.teal
-                            .withValues(alpha: _unreadOnly ? 0 : 0.4),
-                      ),
-                      onSelected: (_) =>
-                          setState(() => _unreadOnly = !_unreadOnly),
                     ),
                   ),
                 ],
@@ -336,14 +325,15 @@ class _FeedScreenState extends State<FeedScreen> {
                 child: rows.isEmpty || (rows.length == 1 && _hasMore)
                     ? ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(18, 70, 18, 0),
                         children: [
-                          const SizedBox(height: 80),
-                          Center(
-                            child: Text(
-                              'Nada no recorte atual',
-                              style: GoogleFonts.exo2(
-                                  fontSize: 13, color: SIMEopsColors.muted),
-                            ),
+                          Text('Nada no recorte', style: SIMEopsType.title()),
+                          const SizedBox(height: 12),
+                          Text(
+                            'As ${_news.length} ocorrências carregadas ficaram '
+                            'de fora dos filtros. Toque numa categoria para '
+                            'soltar o recorte.',
+                            style: SIMEopsType.lead(),
                           ),
                         ],
                       )
@@ -357,15 +347,30 @@ class _FeedScreenState extends State<FeedScreen> {
             ),
           ],
         ),
+        // Era um FAB redondo teal — a peça mais "Material" da tela inteira.
+        // Vira retângulo achatado com rótulo em mono: diz o que faz (o ícone
+        // `done_all` não dizia) e para de flutuar por cima da leitura.
         if (hasUnread && !_markedAllRead)
           Positioned(
-            right: 16,
-            bottom: 16,
-            child: FloatingActionButton.small(
-              backgroundColor: SIMEopsColors.teal,
-              onPressed: _markAllAsRead,
-              tooltip: 'Marcar todas como lidas',
-              child: const Icon(Icons.done_all, color: Colors.white, size: 20),
+            right: 18,
+            bottom: 18,
+            child: Material(
+              color: SIMEopsColors.navyLight,
+              child: InkWell(
+                onTap: _markAllAsRead,
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: SIMEopsColors.ruleStrong),
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+                  child: Text(
+                    'MARCAR TODAS LIDAS',
+                    style: SIMEopsType.placeTab(active: false)
+                        .copyWith(color: SIMEopsColors.muted),
+                  ),
+                ),
+              ),
             ),
           ),
       ],
