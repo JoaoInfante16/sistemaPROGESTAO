@@ -18,6 +18,31 @@
 > Bloco de orientação para instâncias novas do Claude (ou para o João depois de
 > um tempo longe). Atualizar quando mudar.
 
+### 🎨 Redesign em curso (08/08) — leia antes de mexer no app
+
+Branch **`feature/design-fio`**, já mergeada em **`staging`** (`1604b5f`). Fora
+da `develop` de propósito, porque o release da Play Store está engatilhado.
+
+**Plano completo (fases A-F):** `~/.claude/plans/composed-splashing-raven.md`
+
+| fase | o quê | estado |
+|---|---|---|
+| A | cor de categoria com fonte única | ✅ feito |
+| B | formulário de busca (11 blocos → 5) | 🔨 `seletor_lugar.dart` criado, não ligado |
+| C | espera de 7 min + resultados | ⬜ |
+| D | remoções (favoritos, detalhe, arrastar, lembrar senha, senha mín. 8) | ⬜ |
+| E | relatório + export HTML A4 | ⬜ |
+| F | notificações (migration 030, digest por cidade, tri-estado) | ⬜ |
+
+🚨 **A migration 029 (`news.titulo`) é PRÉ-REQUISITO do staging funcionar.** Sem
+ela o backend devolve 400 no feed e no scan — o código já pede a coluna.
+
+**Regras de design que valem como contrato** (nasceram de erro medido, não de
+gosto): urgência é peso (filete branco), não cor — vermelho é da categoria
+Segurança; cor mora no chip, texto fica em tinta legível; "1 FONTE" não aparece;
+cidade sem novidade vira linha, não bloco; verde é da interface, nunca do
+conteúdo; o local trunca, não quebra.
+
 ### Em que pé está o projeto (04/08)
 
 **A Fase 8 fechou o backend** (busca manual de 1 para 77 resultados) e **a Fase 9
@@ -164,6 +189,140 @@ produção **na hora, sem deploy**. Quando o significado de uma config mudar,
 Verificado em **04/08**: 026, 027 e 028 aplicadas (`openai` e `jina` com
 `max_concurrent` 20). **024 e 025 seguem não rodadas.** Custo do mês: **$1,75**
 de $100.
+
+---
+
+## 2026-08-08 (tarde) — a cor tinha três donos, e o card perdeu dado
+
+### As telas que fecharam
+
+Login, troca de senha, dashboard, feed, casca da cidade, histórico de consultas
+e configurações. Commits `6c730bb` → `1604b5f` na `feature/design-fio`.
+
+Achados que não eram estética:
+
+- **`settings_screen.dart` tinha a versão CHUMBADA** como `'1.1.0'` no meio do
+  widget — e já estava errada (o `pubspec` dizia 1.1.1). Passou a vir do
+  `PackageInfo` (dep nova: `package_info_plus`).
+- **`history_card.dart` usava `Colors.green/red/blueGrey/grey` crus**, contra a
+  regra escrita no cabeçalho do próprio `simeops_colors.dart`.
+- **A hierarquia do histórico estava invertida**: "Bahia" grande, "Salvador"
+  pequeno e apagado. Quem varre o histórico procura a *cidade* — o estado não
+  discrimina nada.
+- **"VARREDURA HÁ 2H" era mentira minha.** Escrevi esse rótulo em cima de
+  `lastNewsAt`, que é o `created_at` da ocorrência mais recente, **não** a hora
+  da varredura. Cidade quieta há 3 dias exibiria "VARREDURA HÁ 3D" com o
+  auto-scan tendo rodado há 20 minutos. Virou "ÚLTIMA HÁ 3D". O comentário do
+  campo em `analyticsQueries.ts` agora avisa.
+
+### A cor de categoria tinha TRÊS fontes divergentes
+
+Achado na auditoria, e é o tipo de bug que não dá erro — só pinta errado:
+
+| onde | valores |
+|---|---|
+| `backend/src/utils/taxonomia.ts` | Tailwind (`#EF4444`, `#F97316`, `#3B82F6`, `#8B5CF6`, `#64748B`) |
+| `mobile-app/.../category_colors.dart` | validadas |
+| `city_detail_screen.dart` (const privada!) | Tailwind de novo |
+
+No mesmo APK, **Fraude era violeta Tailwind na tela de busca, violeta validado
+no feed, e Tailwind outra vez no donut da tela de cidade**.
+
+A causa está escrita no arquivo: o `taxonomia.ts` dizia *"espelham
+category_colors.dart"*. Era uma cópia, e apodreceu no instante em que o Dart
+trocou de paleta. **É a regra zero da workdesk acontecendo dentro do código** —
+espelho de dado não se mantém sozinho.
+
+Resolvido invertendo a direção: **o backend é a fonte** (com os hexes validados),
+o Dart virou *fallback* pra quando a taxonomia não carrega, e o `main_screen`
+publica as cores na entrada via `aplicarCoresDaTaxonomia()`.
+
+⚠️ Os hexes são **medidos**, não escolhidos. Os antigos reprovavam em 4 de 5
+checagens — pior caso operacional × fraude com **ΔE 1,3 sob deuteranopia** (a
+mesma cor pra ~8% dos homens, no mapa e no donut e nos chips). Azul e violeta
+não coexistem: por isso institucional virou verde-escuro, não cinza. Revalidar
+com `validate_palette.js` da skill `dataviz` antes de mexer.
+
+### O erro de método: entregar menos calado
+
+O protótipo mostra `25 SEGUR. / 44 PATRIM. / 28 OPERAC. / 10 OUTRAS` por cidade
+no dashboard. Eu entreguei o card **sem esse bloco**, porque o `CityOverview` não
+tinha a quebra por categoria — e **não avisei**. O João percebeu olhando o
+protótipo lado a lado com o app.
+
+A lição não é "faltou um dado". É que **protótipo mostra o que o desenhista
+quis; a API mostra o que existe**, e quando os dois divergem isso tem que virar
+conversa, não simplificação silenciosa.
+
+Corrigido: `categorias30d` sai da **mesma varredura que já rodava** —
+`categoria_grupo` entrou no `select` (as mesmas linhas, uma coluna a mais) e a
+contagem acontece no loop existente. **Zero query nova.** No mesmo movimento,
+a query redundante que relia tudo só pra somar 30 dias foi deletada.
+
+Aplicando a mesma lição em seguida: **as tags de região metropolitana do
+protótipo (`+ LAURO DE FREITAS + CAMAÇARI...`) são ficção.** A região é resolvida
+por **GPT no backend na hora da busca** (`metroRegion.ts`, cache Redis de 30
+dias) — o app não sabe os nomes antes de buscar. Dessa vez foi pego **antes** de
+codar. Expor isso exigiria uma rota nova e uma chamada de GPT na tela de
+formulário; não feito, decisão do João pendente.
+
+### A janela da contagem: 60/90 nasceram e morreram no mesmo dia
+
+Pedido: seta no `107 EM 30D` pra filtrar 30/60/90/total. Implementado — e 60/90
+saíram por decisão do João ao ver funcionando: com quatro opções o menu virava
+decisão a cada abertura, e aquele número é orientação, não análise. Ficaram
+30 dias e total. **Os campos saíram do backend junto** — campo de API que
+ninguém consome é entulho.
+
+O ganho de performance ficou: a consolidação da query (um round-trip a menos por
+carregamento do dashboard) é independente da feature.
+
+### Desbloqueio do aparelho na troca de senha
+
+A infra **já existia inteira** no `AuthService` (`local_auth` +
+`flutter_secure_storage`, com `biometricOnly: false`), só não era oferecida na
+tela de troca. Agora: o usuário escolhe criar senha **ou** delegar ao Android —
+nesse caso o app sorteia 32 caracteres com `Random.secure()`, troca no servidor
+e guarda no Keystore. Ele nunca vê nem digita.
+
+A senha provisória **tem** que morrer nos dois caminhos: o administrador a
+conhece. E o custo está escrito **na tela, colado na opção** — quem escolhe isso
+não sabe a própria senha, e perder o celular significa reset pelo admin.
+
+**Decisão do João sobre recuperação de acesso:** o fluxo atual fica. Solicitação
+→ badge "Pediu reset" no painel → admin gera outra senha e envia. Foi levantado
+que guardar a senha permanente legível no painel exigiria uma coluna em claro,
+que **nasceria legível pela chave anon** (pública, dentro do APK, migration 025
+ainda não rodada); ele optou por não guardar. **Não existe mailer no backend** —
+o envio do e-mail é manual até hoje.
+
+### Staging recebeu tudo
+
+`staging` = `1604b5f` (fast-forward, 12 commits, zero conflito). Autorizado
+explicitamente.
+
+🚨 **O staging fica com erro até a migration 029 rodar.** O código faz `insert` e
+`select` de `news.titulo`; sem a coluna, o PostgREST devolve 400 em toda consulta
+ao feed e em todo insert do scan. Foi avisado antes do merge e o João optou por
+subir mesmo assim, rodando a 029 em seguida.
+
+### Onde a Fase B parou
+
+Criado `features/search/widgets/seletor_lugar.dart` — **ainda não ligado** ao
+`manual_search_screen`. Substitui o `MultiCitySearchField` (que tinha
+`maxCities = 1` mas ainda desenhava chip removível, contador "1/1 cidades" e
+mensagem de limite: três peças pra um caso impossível) e troca o overlay
+ancorado por uma folha, que no celular não briga com o teclado.
+
+**Diagnóstico medido da poluição** do formulário, pra não se perder:
+
+- o tempo estimado aparece **4 vezes** (3 cards de preset + caixa de estimativa)
+- **11 blocos** empilhados antes do botão
+- **5 tratamentos** diferentes de caixa arredondada
+- o 3º preset "ESCOLHER" **finge ser preset** — é porta, não atalho
+
+O plano completo das fases A-F está em
+`~/.claude/plans/composed-splashing-raven.md`.
 
 ---
 
