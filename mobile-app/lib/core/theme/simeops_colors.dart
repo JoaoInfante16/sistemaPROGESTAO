@@ -16,6 +16,22 @@ class SIMEopsColors {
   static const white = Color(0xFFF0F4F8);
   static const muted = Color(0xFF8FA9C0);
 
+  // Escala de tinta — contraste medido sobre navy (#060D18), WCAG AA pede
+  // 4.5:1 pra texto pequeno. O app roda no sol, em celular com brilho baixo:
+  // metadado ilegível some, e metadado é onde mora bairro e hora.
+  //   white  17.8:1  |  muted 8.0:1  |  faint 4.8:1  |  hairline 1.9:1
+  /// Terciário — ainda passa AA. Piso pra qualquer texto.
+  static const faint = Color(0xFF6E8092);
+
+  /// SÓ decoração (marca de fim de matéria, separador). Nunca texto.
+  static const hairline = Color(0xFF2A3F55);
+
+  /// Filete entre matérias e sob as faixas de controle.
+  static const rule = Color(0xFF16293C);
+
+  /// Filete de campo de formulário e borda de bloco — um passo acima do rule.
+  static const ruleStrong = Color(0xFF22394F);
+
   // Semânticas — calibradas para o navy, no lugar de Colors.* cru
   /// Badge NOVA, erros, tendência subindo (ruim). Vermelho dessaturado
   /// que não estoura sobre navy como o Colors.red puro.

@@ -50,6 +50,7 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
   const nature = (data.nature ?? data.natureza) as string | undefined;
   const city = ((data.city ?? data.cidade) as string | undefined)?.trim() ?? '';
   const summary = ((data.summary ?? data.resumo) as string | undefined)?.trim() ?? '';
+  const headline = ((data.headline ?? data.titulo) as string | undefined)?.trim() ?? '';
   const date = ((data.date ?? data.data_ocorrencia) as string | undefined)?.trim() ?? '';
   const state = ((data.state ?? data.estado) as string | undefined)?.trim() ?? '';
   const neighborhood = (data.neighborhood ?? data.bairro) as string | undefined;
@@ -91,6 +92,10 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
   const bairro = typeof neighborhood === 'string' && neighborhood.trim() ? neighborhood.trim() : undefined;
   const rua = typeof street === 'string' && street.trim() ? street.trim() : undefined;
 
+  // Manchete: cosmetica, entao NUNCA rejeita o item. Corta em 90 pra caber em
+  // 3 linhas de manchete no app; o GPT recebe teto de 70 e passa as vezes.
+  const titulo = headline.length > 0 ? headline.substring(0, 90).trim() : undefined;
+
   return {
     extraction: {
       e_crime: true,
@@ -102,6 +107,7 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
       bairro,
       rua,
       data_ocorrencia: date,
+      titulo,
       resumo: summary,
       confianca: confidence,
     },
@@ -170,6 +176,11 @@ LOCATION RULES:
 7. "state" must be the Brazilian state of that city. IMPORTANT: "São Paulo" can be both a state AND a city — use "São Paulo" as state only if referring to the state, and as city only if the crime happened in the city of São Paulo itself.
 8. If the article does not specify the exact city, use the most specific location mentioned.
 
+HEADLINE RULES:
+9. "headline": WRITE a short factual headline in Brazilian Portuguese, max 70 characters. Do NOT copy the source's headline — Brazilian crime outlets write sensationalist titles and this product is a sober work tool for public-safety professionals.
+10. State what happened and where. Journalistic present tense ("Homem é preso após...", not "Homem foi preso"). No ALL CAPS, no exclamation marks, no "VEJA", "URGENTE", "CHOCANTE", no value judgments, no victim/suspect full names, no gore.
+11. The headline must stand alone: a reader seeing only it should know the event. It is NOT a shortened summary — "summary" adds the detail the headline leaves out, so avoid repeating the headline verbatim there.
+
 ARTICLE:
 ${truncated}
 
@@ -183,6 +194,7 @@ Return ONLY JSON:
   "neighborhood": "Neighborhood/bairro within the city" or null,
   "street": "Street Name" or null,
   "date": "YYYY-MM-DD (publication date of the article, NOT dates mentioned in the text)",
+  "headline": "Factual headline in Brazilian Portuguese, max 70 chars, neutral tone",
   "summary": "1-2 sentence summary in Brazilian Portuguese",
   "confidence": 0.0 to 1.0
 }

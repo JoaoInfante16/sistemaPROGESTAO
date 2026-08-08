@@ -1,3 +1,4 @@
+import '../utils/crime_labels.dart';
 import '../utils/datas.dart';
 import '../utils/state_utils.dart';
 import '../utils/type_helpers.dart';
@@ -27,6 +28,12 @@ class NewsItem {
   final String? bairro;
   final String? rua;
   final DateTime dataOcorrencia;
+
+  /// Manchete escrita pelo Filter2 (migration 029). **Pode ser null** — toda
+  /// linha anterior a 06/08/2026 não tem, e não vale reprocessar (custaria
+  /// Jina + GPT de novo por item). Use [headline], nunca este campo direto.
+  final String? titulo;
+
   final String resumo;
   final double? confianca;
   final DateTime createdAt;
@@ -55,6 +62,7 @@ class NewsItem {
     this.bairro,
     this.rua,
     required this.dataOcorrencia,
+    this.titulo,
     required this.resumo,
     this.confianca,
     required this.createdAt,
@@ -77,6 +85,7 @@ class NewsItem {
       bairro: json['bairro'] as String?,
       rua: json['rua'] as String?,
       dataOcorrencia: DateTime.parse(json['data_ocorrencia'] as String),
+      titulo: json['titulo'] as String?,
       resumo: json['resumo'] as String,
       confianca: safeDoubleOrNull(json['confianca']),
       // `created_at` do Postgres vem sem sufixo de fuso — ver parseApiDate.
@@ -132,6 +141,7 @@ class NewsItem {
       bairro: json['bairro'] as String?,
       rua: json['rua'] as String?,
       dataOcorrencia: DateTime.tryParse(json['data_ocorrencia'] as String? ?? '') ?? DateTime.now(),
+      titulo: json['titulo'] as String?,
       resumo: json['resumo'] as String? ?? '',
       confianca: safeDoubleOrNull(json['confianca']),
       createdAt: DateTime.now(),
@@ -157,5 +167,30 @@ class NewsItem {
     if (bairro != null) parts.add(bairro!);
     if (rua != null) parts.add(rua!);
     return parts.join(' - ');
+  }
+
+  /// Manchete da matéria — SEMPRE use isto, nunca [titulo] direto.
+  ///
+  /// Quando o backend não mandou título (toda linha anterior à migration 029,
+  /// e qualquer item novo em que o GPT não devolveu headline), compõe um do
+  /// tipo de crime + bairro: "Homicídio no Kobrasol".
+  ///
+  /// A composição perde a voz editorial, mas é curta e nunca quebra o ritmo
+  /// vertical da lista — que é o que faz o feed ser escaneável. Preferir isso
+  /// à primeira frase do resumo, que passa de 150 caracteres e ocupa cinco
+  /// linhas em corpo de manchete.
+  String get headline {
+    final t = titulo?.trim();
+    if (t != null && t.isNotEmpty) return t;
+
+    if (natureza == 'estatistica') {
+      return bairro != null && bairro!.isNotEmpty
+          ? 'Indicador de criminalidade no $bairro'
+          : 'Indicador de criminalidade em $cidade';
+    }
+
+    final tipo = crimeTypeLabel(tipoCrime);
+    if (bairro != null && bairro!.isNotEmpty) return '$tipo no $bairro';
+    return '$tipo em $cidade';
   }
 }

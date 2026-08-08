@@ -36,6 +36,15 @@ export interface NewsExtraction {
   bairro?: string;
   rua?: string;
   data_ocorrencia: string; // YYYY-MM-DD
+  /**
+   * Manchete curta e neutra, escrita pelo Filter2 — nao copiada do veiculo.
+   *
+   * Opcional de proposito: item sem titulo NAO e rejeitado (seria jogar fora
+   * uma ocorrencia paga em SERP + Jina por um campo cosmetico), e as linhas
+   * anteriores a migration 029 nao tem nenhum. O app compoe um titulo dos
+   * campos estruturados quando vem null.
+   */
+  titulo?: string;
   resumo: string;
   confianca: number; // 0.0 a 1.0
   embedding?: number[];

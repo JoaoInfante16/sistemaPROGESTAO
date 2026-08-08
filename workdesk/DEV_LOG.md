@@ -167,6 +167,100 @@ de $100.
 
 ---
 
+## 2026-08-08 — o redesign começa pela fundação, e a manchete não existia
+
+Branch **`feature/design-fio`**, criada a partir da `develop`. O redesign NÃO
+entra na develop enquanto o release está engatilhado: `main.dart`,
+`login_screen.dart` e `city_detail_screen.dart` são três dos sete arquivos que
+já conflitam no merge pra `main`, e mandar visual novo e não testado pra Play
+Store no lugar do que funciona seria trocar o certo pelo duvidoso.
+
+### A descoberta que mudou o plano: não existe manchete
+
+O `NewsItem` tem `tipo_crime` e `resumo`. **Não tem título.** O card antigo
+mostrava `HOMICÍDIO · Kobrasol` em caixa alta como "título" e o resumo embaixo.
+
+O desenho do fio de agência tem a manchete como peça central, então isso era
+bloqueante. As três saídas avaliadas:
+
+| saída | custo | problema |
+|---|---|---|
+| primeira frase do `resumo` | zero | resumo é parágrafo; a 1ª frase passa de 150 char = 5 linhas em corpo de manchete |
+| compor de tipo + bairro | zero | vira rótulo grande, perde a voz — mas é curto e nunca quebra |
+| **Filter2 escrever a manchete** | ~0 marginal | escolhida |
+
+Escolhida a terceira: **o Filter2 já lê o artigo inteiro** pra extrair
+cidade/data/tipo, então a manchete sai no mesmo request. Nenhuma chamada nova,
+algumas dezenas de tokens de saída por item.
+
+**Decisão de produto:** o GPT **escreve** a manchete, não copia a do veículo.
+Imprensa policial brasileira titula no sensacional ("VEJA O VÍDEO", "EXECUTADO
+A SANGUE FRIO") e o produto é ferramenta sóbria pra quem lida com isso o dia
+inteiro — copiar importaria o tom que o app existe pra não ter. Regras 9-11 do
+prompt do Filter2: presente jornalístico, sem caixa alta, sem nome completo de
+vítima, e a manchete tem que se sustentar sozinha (não é resumo encurtado).
+
+**Nullable em duas frentes, de propósito:** as linhas antigas ficam sem título e
+não são reprocessadas (custaria Jina + GPT de novo por item, pra um campo
+cosmético), e item novo sem headline **não é rejeitado** — jogar fora uma
+ocorrência já paga em SERP + Jina por causa de um título seria o pior negócio
+possível. O app compõe pelo getter `NewsItem.headline`.
+
+Achado de brinde: a busca manual descartava o campo no mapeamento final, o
+**mesmo bug** que já tinha comido o `estado` (tem comentário sobre isso na linha
+de cima). Campo que o Filter2 extrai e o mapeamento esquece some sem erro nenhum.
+
+### As cores de categoria eram Tailwind cru
+
+O comentário no `category_colors.dart` dizia "hexes calibrados pro navy". Não
+eram: `red-500`, `orange-500`, `blue-500`, `violet-500`, `slate-500` — a paleta
+padrão do Tailwind, que é literalmente o lugar-comum estético que o redesign
+existe pra escapar. Rodadas no validador, reprovam em **4 das 5** checagens:
+
+```
+operacional × fraude    ΔE 1.3  (deuteranopia)  ← a MESMA cor pra ~8% dos homens
+segurança × patrimonial ΔE 10.4 (visão normal)  ← vermelho e laranja encostados
+institucional           croma 0.041             ← lê como cinza, não identifica
+```
+
+O ΔE 1.3 é o grave: valia no mapa, no donut e nos chips do feed ao mesmo tempo.
+
+Substituídas por hexes **medidos**, não escolhidos a olho — banda de luminosidade
+OKLCH 0.48–0.67, croma ≥0.10, ΔE deuteranopia 8.0, ΔE visão normal 19.3:
+
+```
+seguranca #DA4358 · patrimonial #B39026 · operacional #1F98AB
+fraude    #8F62CB · institucional #4E8F45
+```
+
+Institucional virou **verde-escuro** porque azul e violeta simplesmente não
+coexistem sob deuteranopia — não existe par de passos que salve. A adjacência é
+conferida na ordem do `categoryOrder`; **trocar a ordem exige revalidar**, porque
+num empilhado só vizinhos se encostam.
+
+### Fundação
+
+- `simeops_colors.dart` ganhou escala de tinta com contraste medido sobre navy:
+  `faint` 4.8:1 (piso pra texto), `hairline` 1.9:1 (só decoração), `rule` e
+  `ruleStrong`. O metadado carrega bairro e hora, e o app roda no sol.
+- `simeops_type.dart` (novo) — os tamanhos estavam espalhados em **140 chamadas**
+  de `GoogleFonts.*`. Três famílias, um trabalho cada: Archivo (manchete e
+  corpo), JetBrains Mono (todo metadado), Rajdhani (**só** a marca).
+- **Exo 2 sai do corpo** — geométrica techy, o lugar-comum. `textTheme` do
+  `main.dart` virou Archivo; as 67 chamadas diretas de `exo2` somem conforme as
+  telas migram. Botões passaram de Rajdhani pra mono com tracking largo.
+- `take_card.dart` (novo) — a matéria no fio. Sem caixa, sem borda, sem canto
+  arredondado: filete e espaço. Urgência é **peso** (filete branco na margem +
+  manchete 30% maior), nunca cor — vermelho já é a categoria Segurança e não
+  pode fazer dois papéis. Contador de fontes só aparece com **> 1**: "1 FONTE"
+  estava em 100% dos itens e rótulo que aparece sempre não informa.
+
+`npx tsc --noEmit` limpo, `flutter analyze` com os 3 infos que já existiam.
+
+**Migration 029 escrita e NÃO rodada** — ver MIGRATIONS_LOG.
+
+---
+
 ## 2026-08-06 — a `main` não era o que estava escrito, e o keystore tinha sumido
 
 ### A descoberta que quase virou desastre

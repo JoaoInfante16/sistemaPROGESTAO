@@ -4,15 +4,24 @@ import 'package:flutter/material.dart';
 // filtros, gráficos — qualquer lugar que precise colorir/rotular categoria.
 // Mapeamento tipo_crime → categoria vive no backend (TIPO_CRIME_GRUPO em types.ts).
 
-// Hexes calibrados pro navy (antes o report tinha uma escala própria refinada
-// e aqui ficava o Material cru — chips e donut pintavam diferente; unificado
-// na Fase 9, etapa da linguagem visual).
+// Hexes VALIDADOS pro navy (#060D18), não escolhidos a olho. Rodar de novo com
+// scripts/validate_palette.js da skill dataviz antes de mexer em qualquer um.
+//   banda de luminosidade OKLCH 0.48–0.67 · croma ≥0.10
+//   ΔE deuteranopia 8.0 · ΔE visão normal 19.3 · contraste ≥3:1
+// A adjacência é conferida na ordem do categoryOrder abaixo — trocar a ordem
+// exige revalidar, porque só vizinhos se encostam num empilhado.
+//
+// O que estava aqui antes era Tailwind cru (red/orange/blue/violet/slate-500)
+// e reprovava em 4 das 5 checagens. O pior: operacional × fraude dava
+// ΔE 1.3 sob deuteranopia — a mesma cor para ~8% dos homens, no mapa,
+// no donut e nos chips. Azul e violeta não coexistem; por isso institucional
+// virou verde-escuro em vez de cinza.
 const categoryColors = <String, Color>{
-  'patrimonial': Color(0xFFF97316),
-  'seguranca': Color(0xFFEF4444),
-  'operacional': Color(0xFF3B82F6),
-  'fraude': Color(0xFF8B5CF6),
-  'institucional': Color(0xFF64748B),
+  'seguranca': Color(0xFFDA4358),
+  'patrimonial': Color(0xFFB39026),
+  'operacional': Color(0xFF1F98AB),
+  'fraude': Color(0xFF8F62CB),
+  'institucional': Color(0xFF4E8F45),
 };
 
 const categoryLabels = <String, String>{
@@ -32,7 +41,7 @@ const categoryOrder = <String>[
 ];
 
 Color categoryColor(String? cat) =>
-    categoryColors[cat ?? 'institucional'] ?? const Color(0xFF64748B);
+    categoryColors[cat ?? 'institucional'] ?? const Color(0xFF4E8F45);
 
 String categoryLabel(String? cat) =>
     categoryLabels[cat ?? 'institucional'] ?? (cat ?? 'Outros');

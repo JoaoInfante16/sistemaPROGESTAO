@@ -111,7 +111,10 @@ class SIMEopsApp extends StatelessWidget {
         backgroundColor: isDark ? SIMEopsColors.navyMid : null,
         indicatorColor: SIMEopsColors.teal.withValues(alpha: 0.2),
       ),
-      textTheme: GoogleFonts.exo2TextTheme(base.textTheme),
+      // Archivo no lugar de Exo 2: grotesca sólida, aguenta manchete de 23-30px
+      // com entrelinha apertada. Exo é geométrica techy — o lugar-comum de que
+      // o redesign foge. Ver core/theme/simeops_type.dart.
+      textTheme: GoogleFonts.archivoTextTheme(base.textTheme),
       // Hierarquia de botões (uma regra só, sem overrides locais):
       //   primária    = FilledButton teal
       //   secundária  = OutlinedButton borda teal, texto teal
@@ -120,10 +123,12 @@ class SIMEopsApp extends StatelessWidget {
         style: FilledButton.styleFrom(
           backgroundColor: SIMEopsColors.teal,
           foregroundColor: Colors.white,
-          textStyle: GoogleFonts.rajdhani(
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 2,
+          // Mono com tracking largo em botão: fala a mesma língua do metadado
+          // e separa "comando" de "leitura". Rajdhani fica só na marca.
+          textStyle: GoogleFonts.jetBrainsMono(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            letterSpacing: 2.86,
           ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -134,10 +139,10 @@ class SIMEopsApp extends StatelessWidget {
         style: OutlinedButton.styleFrom(
           foregroundColor: SIMEopsColors.teal,
           side: BorderSide(color: SIMEopsColors.teal.withValues(alpha: 0.6)),
-          textStyle: GoogleFonts.rajdhani(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 2,
+          textStyle: GoogleFonts.jetBrainsMono(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            letterSpacing: 2.4,
           ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),

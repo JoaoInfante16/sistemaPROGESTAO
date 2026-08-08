@@ -394,6 +394,9 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
       bairro: news.bairro ?? null,
       rua: news.rua ?? null,
       data_ocorrencia: news.data_ocorrencia,
+      // Mesmo cuidado do `estado` logo acima: campo que o Filter2 extrai e o
+      // mapeamento final esquece some sem erro nenhum — o app so recebe null.
+      titulo: news.titulo ?? null,
       resumo: news.resumo,
       confianca: news.confianca,
       source_url: news.sourceUrl,

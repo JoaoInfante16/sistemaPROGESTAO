@@ -37,6 +37,8 @@
 
 | 028 | 028_jina_concorrencia.sql | `api_rate_limits.jina.max_concurrent` **10 -> 20**. Medido em 03/08 (Goiania, 17 assuntos): o Jina levou **327s dos 515s** da busca — 63% do tempo. Sobe JUNTO com `manual_search_fetch_concurrency` (10 -> 20, no codigo): sao dois limitadores em serie e subir so um nao acelera nada. ⚠️ Pre-requisito ja feito no mesmo commit: o fetcher passou a tratar **429 com `Retry-After`** — antes, um 429 virava excecao fora da lista de fallback e o artigo era perdido em silencio | ✅ **Aplicada em 04/08** — verificado no banco: `jina.max_concurrent` = 20 |
 
+| 029 | 029_news_titulo.sql | ADD COLUMN `titulo` (TEXT, nullable) em `news`. O Filter2 passa a **escrever** uma manchete curta e neutra no mesmo request que ja extrai cidade/data/tipo — custo marginal ~0, nenhuma chamada nova. Motivador: o redesign "fio de agencia" tem a manchete como peca central, e ate aqui nao existia campo de titulo (o app usava o tipo de crime em caixa alta). Nao copia o titulo do veiculo **de proposito**: imprensa policial titula no sensacional e o produto e sobrio por tese. Nullable em duas frentes — linhas antigas ficam sem (o app compoe dos campos estruturados) e item novo sem headline **nao e rejeitado**. Aditiva e reversivel | **NAO aplicada — pendente** |
+
 > ⚠️ Este log e preenchido a mao e ja desatualizou (019 e 020 estavam marcadas
 > como pendentes e ja tinham sido rodadas). Antes de confiar nele, rodar
 > **`npx tsx scripts/diagnostico-banco.ts`** — ele olha o estado REAL do banco
