@@ -47,6 +47,10 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   // For groups: selected sub-city filter
   String? _selectedSubCity;
 
+  /// Janela da contagem no cabeçalho. Só muda o número exibido ali — o feed
+  /// abaixo continua trazendo tudo, e o relatório tem o período dele.
+  StatPeriod _statPeriod = StatPeriod.d30;
+
   // For groups without sub-city selected, use first city name
   String get _activeCidade {
     if (_selectedSubCity != null) return _selectedSubCity!;
@@ -239,12 +243,6 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     final c = widget.city;
     final uf = c.parentState != null ? abbrState(c.parentState!) : null;
 
-    final marks = <String>[
-      if (uf != null) uf,
-      '${c.totalCrimes30d} EM 30D',
-      if (c.unreadCount > 0) '${c.unreadCount} NOVAS',
-    ];
-
     return Container(
       decoration: const BoxDecoration(
         border: Border(
@@ -285,21 +283,33 @@ class _CityDetailScreenState extends State<CityDetailScreen>
             children: [
               const _LiveDot(),
               const SizedBox(width: 6),
+              // ⚠️ `lastNewsAt` é o created_at da ocorrência mais recente, NÃO
+              // a hora da varredura. Chamar de "VARREDURA HÁ 3D" numa cidade
+              // quieta faz o auto-scan parecer parado quando ele rodou há 20
+              // minutos e não achou nada. O ponto verde é que diz "de pé".
               Text(
                 c.lastNewsAt != null
-                    ? 'VARREDURA ${_agoLabel(c.lastNewsAt!)}'
-                    : 'VARREDURA 24H',
+                    ? 'ÚLTIMA ${_agoLabel(c.lastNewsAt!)}'
+                    : 'MONITORANDO',
                 style: SIMEopsType.slug(color: SIMEopsColors.tealLight),
               ),
               const Spacer(),
-              Flexible(
-                child: Text(
-                  marks.join(' · '),
-                  style: SIMEopsType.slug(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+              if (uf != null) ...[
+                Text(uf, style: SIMEopsType.slug()),
+                const SizedBox(width: 9),
+              ],
+              _PeriodCount(
+                city: c,
+                period: _statPeriod,
+                onPick: (p) => setState(() => _statPeriod = p),
               ),
+              if (c.unreadCount > 0) ...[
+                const SizedBox(width: 9),
+                Text(
+                  '${c.unreadCount} NOVAS',
+                  style: SIMEopsType.slug(color: SIMEopsColors.greenLight),
+                ),
+              ],
             ],
           ),
         ],
@@ -752,6 +762,101 @@ class _CityDetailScreenState extends State<CityDetailScreen>
 
   Widget _dividerV() {
     return Container(width: 1, height: 36, color: SIMEopsColors.teal.withValues(alpha: 0.15));
+  }
+}
+
+/// Janela da contagem do cabeçalho.
+enum StatPeriod {
+  d30('30 dias', '30D'),
+  d60('60 dias', '60D'),
+  d90('90 dias', '90D'),
+  all('Desde o início', 'TOTAL');
+
+  const StatPeriod(this.label, this.short);
+  final String label;
+  final String short;
+
+  int countOf(CityOverview c) => switch (this) {
+        StatPeriod.d30 => c.totalCrimes30d,
+        StatPeriod.d60 => c.totalCrimes60d,
+        StatPeriod.d90 => c.totalCrimes90d,
+        StatPeriod.all => c.totalCrimes,
+      };
+}
+
+/// `107 EM 30D ▾` — toca e escolhe a janela.
+///
+/// Uma janela só é oferecida quando o backend mandou o número dela. Backend
+/// antigo devolve 0 em 60/90, e mostrar "0 EM 60D" seria pior que não mostrar:
+/// leria como "nenhuma ocorrência em 60 dias" quando o certo é "esse servidor
+/// não sabe contar 60 dias ainda".
+class _PeriodCount extends StatelessWidget {
+  final CityOverview city;
+  final StatPeriod period;
+  final ValueChanged<StatPeriod> onPick;
+
+  const _PeriodCount({
+    required this.city,
+    required this.period,
+    required this.onPick,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final options = StatPeriod.values
+        .where((p) => p == StatPeriod.d30 || p == period || p.countOf(city) > 0)
+        .toList();
+
+    return PopupMenuButton<StatPeriod>(
+      initialValue: period,
+      onSelected: onPick,
+      color: SIMEopsColors.navyLight,
+      elevation: 0,
+      shape: const RoundedRectangleBorder(
+        side: BorderSide(color: SIMEopsColors.ruleStrong),
+      ),
+      position: PopupMenuPosition.under,
+      tooltip: 'Janela da contagem',
+      itemBuilder: (_) => [
+        for (final p in options)
+          PopupMenuItem(
+            value: p,
+            height: 42,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    p.label,
+                    style: SIMEopsType.placeTab(active: p == period),
+                  ),
+                ),
+                const SizedBox(width: 18),
+                Text(
+                  '${p.countOf(city)}',
+                  style: SIMEopsType.placeTab(active: false)
+                      .copyWith(color: SIMEopsColors.faint),
+                ),
+              ],
+            ),
+          ),
+      ],
+      child: Padding(
+        // Padding vertical dá alvo de toque de 44px numa linha de 12px de alto.
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${period.countOf(city)} EM ${period.short}',
+              style: SIMEopsType.slug(),
+            ),
+            const SizedBox(width: 2),
+            const Icon(Icons.expand_more,
+                size: 13, color: SIMEopsColors.muted),
+          ],
+        ),
+      ),
+    );
   }
 }
 
