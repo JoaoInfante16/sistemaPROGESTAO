@@ -14,10 +14,11 @@ import '../../../core/utils/date_grouping.dart';
 import '../../../core/widgets/category_filter_bar.dart';
 import '../../../core/widgets/group_header.dart';
 import '../../../core/widgets/grid_background.dart';
-import '../../../core/widgets/simeops_title.dart';
+import '../../../core/widgets/masthead.dart';
 import '../../../core/theme/simeops_colors.dart';
+import '../../../core/theme/simeops_type.dart';
 import '../widgets/assuntos_field.dart';
-import '../widgets/multi_city_search_field.dart';
+import '../widgets/seletor_lugar.dart';
 import '../../feed/widgets/news_card.dart';
 import '../../feed/widgets/news_detail_sheet.dart';
 import '../../../core/models/news_item.dart';
@@ -209,8 +210,6 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       setState(() => _loadingLocations = false);
     }
   }
-
-  List<String> get _estados => BrazilianLocations.instance.getEstados();
 
   Future<void> _startSearch() async {
     if (_selectedEstado == null || _selectedCidades.isEmpty) return;
@@ -440,16 +439,25 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
     return Scaffold(
       backgroundColor: SIMEopsColors.navy,
-      appBar: AppBar(
-        title: isFormView
-            ? const Text('NOVA BUSCA') // herda style do AppBarTheme (main.dart)
-            : const SimeopsTitle(),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Masthead(
+              titulo: isFormView ? 'Nova consulta' : 'Consulta',
+              direita: isFormView ? 'UMA CIDADE · REGIÃO INCLUSA' : null,
+              onVoltar: () => Navigator.of(context).pop(),
+            ),
+            Expanded(
+              child: _searchStatus == 'idle'
+                  ? GridBackground(child: _buildForm())
+                  : _searchStatus == 'loading'
+                      ? const Center(child: CircularProgressIndicator())
+                      : _buildResults(),
+            ),
+          ],
+        ),
       ),
-      body: _searchStatus == 'idle'
-          ? GridBackground(child: _buildForm())
-          : _searchStatus == 'loading'
-              ? const Center(child: CircularProgressIndicator())
-              : _buildResults(),
     );
   }
 
@@ -468,111 +476,111 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     );
   }
 
+  /// O formulário, em **cinco blocos**: onde · o que perguntar · desde quando ·
+  /// a conta · o botão.
+  ///
+  /// Eram **onze**, e o diagnóstico foi medido antes de mexer:
+  ///
+  /// - o tempo estimado aparecia **4 vezes** (3 cartões de preset + a caixa de
+  ///   estimativa) — um número que aparece quatro vezes deixa de ser a moeda da
+  ///   decisão e vira ruído;
+  /// - **5 tratamentos diferentes** de caixa arredondada (dropdown r12, preset
+  ///   r12, período r10, calendário r10, estimativa r12);
+  /// - o 3º preset `ESCOLHER` **fingia ser preset**: é porta, não atalho;
+  /// - o `MultiCitySearchField` foi construído pra N cidades mas `maxCities` já
+  ///   era 1 — desenhava ficha removível, contador "1/1 cidades selecionadas" e
+  ///   mensagem de limite pra um caso que não pode acontecer;
+  /// - 3 blocos de texto explicativo (ícone de ajuda, descrição, disclaimer).
+  ///
+  /// O tempo agora aparece **duas** vezes, e é deliberado: nos presets, onde
+  /// serve pra **comparar** (é a tese do produto — mais assunto custa minuto), e
+  /// uma vez grande colado no botão, onde é a **decisão**. O plano dizia "uma
+  /// vez só"; sem o tempo por preset o usuário não enxerga a troca antes de
+  /// escolher, que é justamente o que a tela existe pra mostrar.
   Widget _buildForm() {
     if (_loadingLocations) {
       return const Center(child: CircularProgressIndicator());
     }
 
     final canSearch = _selectedEstado != null && _selectedCidades.isNotEmpty;
+    final cidade =
+        _selectedCidades.isEmpty ? null : _selectedCidades.first;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 28, 20, 120),
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 40),
       children: [
-        // ESTADO
-        _sectionLabel('ESTADO'),
-        DropdownButtonFormField<String>(
-          key: const ValueKey('estado'),
-          value: _selectedEstado,
-          decoration: InputDecoration(
-            hintText: 'Selecione o estado',
-            prefixIcon: Icon(Icons.map_outlined,
-                color: SIMEopsColors.teal.withValues(alpha: 0.6), size: 20),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-          isExpanded: true,
-          items: _estados
-              .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-              .toList(),
-          onChanged: (v) => setState(() {
-            _selectedEstado = v;
-            _selectedCidades = {};
-          }),
-        ),
-        const SizedBox(height: 18),
-
-        // CIDADES
-        _sectionLabel('CIDADES'),
-        MultiCitySearchField(
-          key: ValueKey(_selectedEstado),
-          estadoNome: _selectedEstado,
-          onChanged: (cidades) {
-            setState(() => _selectedCidades = cidades);
+        // ── 1. ONDE ──────────────────────────────────────────────────────
+        const SizedBox(height: 22),
+        Text('ONDE', style: SIMEopsType.fieldLabel()),
+        SeletorLugar(
+          rotulo: 'UF',
+          valor: _selectedEstado,
+          vazio: 'Escolher estado',
+          onTap: () async {
+            final e = await Lugares.escolherEstado(context, _selectedEstado);
+            if (e == null) return;
+            setState(() {
+              _selectedEstado = e;
+              _selectedCidades = {};
+            });
           },
         ),
-        const SizedBox(height: 18),
-
-        // O QUE BUSCAR — cada assunto é uma pergunta a mais ao Google, e um
-        // teto novo de ~60 notícias. O preço é tempo, e ele fica visível.
-        Row(
-          children: [
-            _sectionLabel('O QUE BUSCAR'),
-            const Spacer(),
-            IconButton(
-              onPressed: _explicarAssuntos,
-              icon: Icon(Icons.help_outline,
-                  size: 18, color: SIMEopsColors.muted.withValues(alpha: 0.7)),
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              tooltip: 'Por que escolher assuntos',
-            ),
-          ],
+        SeletorLugar(
+          rotulo: 'CIDADE',
+          valor: cidade,
+          vazio: _selectedEstado == null
+              ? 'Escolha o estado primeiro'
+              : 'Escolher cidade',
+          habilitado: _selectedEstado != null,
+          onTap: () async {
+            final c = await Lugares.escolherCidade(
+                context, _selectedEstado!, cidade);
+            if (c == null) return;
+            setState(() => _selectedCidades = {c});
+          },
         ),
+        const SizedBox(height: 9),
+        Text(
+          'A região metropolitana vem junto, sem custo extra — a consulta '
+          'devolve as cidades vizinhas num balde separado.',
+          style: SIMEopsType.note(),
+        ),
+
+        // ── 2. O QUE PERGUNTAR ───────────────────────────────────────────
+        // Cada assunto é uma pergunta a mais ao buscador, e um teto novo de
+        // ~60 notícias. O preço é tempo, e ele fica visível na própria linha.
+        const SizedBox(height: 28),
+        Text('O QUE PERGUNTAR', style: SIMEopsType.fieldLabel()),
         const SizedBox(height: 4),
         AssuntosField(
           taxonomia: _taxonomia,
           periodoDias: _periodoDias,
           onChanged: (lista) => setState(() => _assuntos = lista),
         ),
-        const SizedBox(height: 20),
 
-        // PERIODO — cinco pontos e um calendário. Sem granulação.
+        // ── 3. DESDE QUANDO ──────────────────────────────────────────────
         //
         // O slider livre de 1 a 180 saiu em 03/08: no device ele erra. O próprio
         // João pediu 30 dias e a busca saiu com 34 — precisão que ninguém pediu
         // custando a que todo mundo queria. Os cinco pontos resolvem o caso
         // comum com um toque; o calendário cobre "desde o incidente tal".
-        _sectionLabel('PERIODO'),
+        const SizedBox(height: 28),
+        Text('DESDE QUANDO', style: SIMEopsType.fieldLabel()),
         const SizedBox(height: 10),
         _pontosPeriodo(),
-        const SizedBox(height: 12),
-        _botaoCalendario(),
-        const SizedBox(height: 18),
+        _linhaCalendario(),
 
-        // A CONTA — assuntos × período em minutos. Fica logo abaixo do período
-        // pra trocar de ponto mexer no número na frente do usuário: é o único
-        // lugar onde o custo de uma busca maior fica visível ANTES de começar.
-        _caixaEstimativa(),
+        // ── 4. A CONTA ───────────────────────────────────────────────────
+        const SizedBox(height: 28),
+        _aConta(),
+
+        // ── 5. O BOTÃO ───────────────────────────────────────────────────
         const SizedBox(height: 20),
-
-        // INICIAR BUSCA — estilo vem inteiro do FilledButtonTheme (primária teal)
         SizedBox(
           width: double.infinity,
-          height: 52,
           child: FilledButton(
             onPressed: canSearch ? _startSearch : null,
-            child: const Text('INICIAR BUSCA'),
-          ),
-        ),
-        const SizedBox(height: 14),
-
-        // Disclaimer
-        Text(
-          'A busca analisa notícias públicas e pode levar alguns instantes.',
-          textAlign: TextAlign.center,
-          style: GoogleFonts.exo2(
-            fontSize: 12,
-            color: SIMEopsColors.muted.withValues(alpha: 0.5),
+            child: const Text('INICIAR CONSULTA'),
           ),
         ),
       ],
@@ -580,58 +588,49 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   }
 
   /// Os cinco períodos que resolvem quase tudo, um toque cada.
+  ///
+  /// Retângulos achatados encostados, sem borda e sem canto: o ativo se marca
+  /// por filete embaixo e tinta branca, o mesmo vocabulário das abas de cidade
+  /// e dos cadernos. Eram cinco cápsulas de canto 10 com borda teal — cinco
+  /// caixas desenhadas pra dizer o que um filete diz.
   Widget _pontosPeriodo() {
     return Row(
-      children: _periodoMarcas.map((dias) {
-        final ativo = _periodoDias == dias;
-        return Expanded(
-          child: GestureDetector(
-            onTap: () => setState(() {
-              _periodoDias = dias;
-              _desdeQuando = null; // sair do modo calendário
-            }),
-            behavior: HitTestBehavior.opaque,
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              padding: const EdgeInsets.symmetric(vertical: 11),
-              decoration: BoxDecoration(
-                color: ativo
-                    ? SIMEopsColors.teal.withValues(alpha: 0.16)
-                    : SIMEopsColors.navyLight.withValues(alpha: 0.8),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: ativo
-                      ? SIMEopsColors.teal
-                      : SIMEopsColors.teal.withValues(alpha: 0.12),
-                  width: ativo ? 1.5 : 1,
+      children: [
+        for (final dias in _periodoMarcas)
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() {
+                _periodoDias = dias;
+                _desdeQuando = null; // sair do modo calendário
+              }),
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                margin: const EdgeInsets.only(right: 2),
+                decoration: BoxDecoration(
+                  color: _periodoDias == dias && _desdeQuando == null
+                      ? SIMEopsColors.navyLight
+                      : SIMEopsColors.navyMid,
+                  border: Border(
+                    bottom: BorderSide(
+                      color: _periodoDias == dias && _desdeQuando == null
+                          ? SIMEopsColors.greenLight
+                          : Colors.transparent,
+                      width: 2,
+                    ),
+                  ),
                 ),
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    '$dias',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.jetBrainsMono(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: ativo
-                          ? SIMEopsColors.tealLight
-                          : SIMEopsColors.muted.withValues(alpha: 0.75),
-                    ),
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                child: Text(
+                  '${dias}D',
+                  textAlign: TextAlign.center,
+                  style: SIMEopsType.placeTab(
+                    active: _periodoDias == dias && _desdeQuando == null,
                   ),
-                  Text(
-                    'dias',
-                    style: GoogleFonts.exo2(
-                      fontSize: 9.5,
-                      color: SIMEopsColors.muted.withValues(alpha: 0.55),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-        );
-      }).toList(),
+      ],
     );
   }
 
@@ -645,56 +644,49 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   ///
   /// O recorte fechado já existe onde é de graça: no relatório, depois da
   /// busca, re-fatiando o que ela já trouxe (9.6).
-  Widget _botaoCalendario() {
+  /// Uma linha abaixo dos cinco pontos, no mesmo padrão do seletor de lugar:
+  /// rótulo à direita, valor à esquerda, filete embaixo. Era uma sexta caixa
+  /// arredondada competindo com os cinco retângulos logo acima.
+  Widget _linhaCalendario() {
     final ativo = _desdeQuando != null;
-    return GestureDetector(
+    return InkWell(
       onTap: _escolherDataInicio,
-      behavior: HitTestBehavior.opaque,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: ativo
-              ? SIMEopsColors.teal.withValues(alpha: 0.12)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: ativo
-                ? SIMEopsColors.teal
-                : SIMEopsColors.teal.withValues(alpha: 0.18),
-          ),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: SIMEopsColors.ruleStrong)),
         ),
+        padding: const EdgeInsets.only(top: 15, bottom: 11),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
           children: [
-            Icon(Icons.calendar_month_outlined,
-                size: 17,
-                color: ativo
-                    ? SIMEopsColors.tealLight
-                    : SIMEopsColors.muted.withValues(alpha: 0.7)),
-            const SizedBox(width: 10),
             Expanded(
               child: Text(
                 ativo
-                    ? 'Desde ${DateFormat('dd/MM/yyyy').format(_desdeQuando!)}'
-                        ' · $_periodoDias dias'
-                    : 'Escolher data de início',
-                style: GoogleFonts.exo2(
-                  fontSize: 13,
-                  fontWeight: ativo ? FontWeight.w600 : FontWeight.w400,
-                  color: ativo
-                      ? SIMEopsColors.tealLight
-                      : SIMEopsColors.muted.withValues(alpha: 0.75),
+                    ? DateFormat('dd/MM/yyyy').format(_desdeQuando!)
+                    : 'Escolher data exata',
+                style: SIMEopsType.body().copyWith(
+                  fontSize: 17,
+                  color:
+                      ativo ? SIMEopsColors.white : SIMEopsColors.faint,
                 ),
               ),
             ),
+            const SizedBox(width: 12),
             if (ativo)
-              GestureDetector(
+              InkWell(
                 onTap: () => setState(() {
                   _desdeQuando = null;
                   _periodoDias = 30;
                 }),
-                child: Icon(Icons.close,
-                    size: 16, color: SIMEopsColors.muted.withValues(alpha: 0.8)),
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Text('LIMPAR',
+                      style: SIMEopsType.slug(color: SIMEopsColors.tealLight)),
+                ),
               ),
+            Text(ativo ? '$_periodoDias DIAS' : 'OU DATA EXATA',
+                style: SIMEopsType.slug(color: SIMEopsColors.faint)),
           ],
         ),
       ),
@@ -728,113 +720,77 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     });
   }
 
-  /// A conta da busca: quantos assuntos, quantos dias, quantos minutos.
-  Widget _caixaEstimativa() {
+  /// A conta: o tempo como número grande, colado no botão.
+  ///
+  /// É a moeda da tela — o produto inteiro se resume a "mais assunto traz mais
+  /// notícia e custa mais minuto". Estava numa caixa arredondada com ícone,
+  /// dizendo em corpo de 12.5 o que agora diz em 40, e disputando atenção com
+  /// os três cartões de preset que repetiam o mesmo número.
+  Widget _aConta() {
     final n = _assuntos.length;
     final dur = estimativaBusca(n, _periodoDias);
     // Acima de ~12 min a espera deixa de ser "alguns instantes" e vira decisão
     // consciente — o aviso é o que transforma isso em escolha, não surpresa.
     final longa = dur.inMinutes >= 12;
-
-    final cor = longa ? const Color(0xFFF59E0B) : SIMEopsColors.teal;
+    final cidades = _selectedCidades.length;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: cor.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cor.withValues(alpha: 0.3)),
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: SIMEopsColors.white, width: 2)),
       ),
-      child: Row(
+      padding: const EdgeInsets.only(top: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(longa ? Icons.schedule : Icons.bolt, size: 17, color: cor),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  n == 0
-                      ? 'Nenhum assunto escolhido'
-                      : '$n assunto${n == 1 ? '' : 's'} · $_periodoDias dias · '
-                          '${formatarEstimativa(dur)}',
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: longa ? cor : SIMEopsColors.tealLight,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                n == 0 ? '—' : formatarEstimativa(dur).replaceFirst('~', ''),
+                style: SIMEopsType.hero().copyWith(fontSize: 40),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 5),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        n == 0
+                            ? 'NENHUM ASSUNTO'
+                            : '$n ${n == 1 ? 'ASSUNTO' : 'ASSUNTOS'}'
+                                '${cidades > 0 ? ' · $_periodoDias DIAS' : ''}',
+                        style: SIMEopsType.slug(color: SIMEopsColors.faint),
+                        textAlign: TextAlign.end,
+                      ),
+                      const SizedBox(height: 4),
+                      Text('ESTIMATIVA, NÃO GARANTIA',
+                          style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+                    ],
                   ),
                 ),
-                if (longa) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    'Busca longa — pode fechar o app, o push avisa quando terminar.',
-                    style: GoogleFonts.exo2(
-                      fontSize: 11.5,
-                      color: SIMEopsColors.muted.withValues(alpha: 0.8),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+              ),
+            ],
           ),
+          if (longa) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Consulta longa. Pode fechar o app — um aviso chega quando '
+              'terminar.',
+              style: SIMEopsType.note(),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  void _explicarAssuntos() {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: SIMEopsColors.navyMid,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 14, 24, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 20),
-                decoration: BoxDecoration(
-                  color: SIMEopsColors.muted.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            Text(
-              'Por que escolher assuntos',
-              style: GoogleFonts.exo2(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'Cada assunto é uma pergunta separada ao Google, e o Google '
-              'devolve no máximo ~60 notícias por pergunta — pedir mais páginas '
-              'da mesma pergunta não traz nada de novo.\n\n'
-              'Por isso perguntar mais coisas é a única forma de encontrar '
-              'mais. O preço é tempo: cada assunto acrescenta cerca de 35 '
-              'segundos à busca.\n\n'
-              'A palavra-chave livre busca qualquer coisa, mesmo fora da lista '
-              '— greve, acidente numa rodovia, o que você precisar.',
-              style: GoogleFonts.exo2(
-                fontSize: 14,
-                height: 1.55,
-                color: SIMEopsColors.muted,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // O `_explicarAssuntos` (folha "Por que escolher assuntos", aberta por um
+  // ícone de interrogação ao lado do rótulo) saiu em 09/08. O texto não morreu:
+  // foi para dentro da `FolhaAssuntos`, encostado na escolha, que é onde ele é
+  // acionável. Explicação atrás de "?" é explicação que ninguém lê — e essa em
+  // particular é a tese do produto, não um detalhe.
 
   // Funil de exibição — os 7 estágios do backend colapsados em 5 blocos.
   // Decisão de UI do briefing: mostrar o funil ao vivo, não 7 passos com check.

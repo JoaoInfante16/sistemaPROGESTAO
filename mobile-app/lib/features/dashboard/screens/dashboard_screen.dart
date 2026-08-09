@@ -193,7 +193,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
               return Column(
                 children: [
                   CityCard(city: city, onTap: () => _openCity(city)),
-                  if (index < loud.length - 1) const TakeRule(),
+                  // `ruleStrong`, não o filete do feed: aqui são dois ou três
+                  // blocos altos, e o traço precisa ser lido como "acabou esta
+                  // cidade". No feed, com 18 matérias, o filete fraco é o
+                  // certo — traço forte 18 vezes vira grade.
+                  if (index < loud.length - 1)
+                    const Divider(
+                      color: SIMEopsColors.ruleStrong,
+                      height: 1,
+                      thickness: 1,
+                    ),
                 ],
               );
             },

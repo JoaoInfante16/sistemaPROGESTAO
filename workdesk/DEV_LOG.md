@@ -202,6 +202,113 @@ de $100.
 
 ---
 
+## 2026-08-09 — Fase B: o formulário, e a sanfona morreu com um argumento melhor
+
+### O formulário: 11 blocos → 5
+
+`onde · o que perguntar · desde quando · a conta · o botão`. Diagnóstico medido
+antes de mexer (está no cabeçalho do `_buildForm`): o tempo aparecia **4 vezes**,
+havia **5 tratamentos** diferentes de caixa arredondada, e o 3º preset
+`ESCOLHER` **fingia ser preset** — é porta, não atalho.
+
+- estado e cidade viraram linhas com filete, abrindo folha com busca
+  **sem acento** (`sao jose` acha `São José`);
+- os presets viraram linhas com a conta à direita; `ESCOLHER ASSUNTO POR
+  ASSUNTO →` virou link, fora da pilha, porque clicar nele não escolhe nada;
+- os cinco períodos viraram retângulos encostados, e a data exata uma linha —
+  era uma sexta caixa competindo com as cinco de cima;
+- a conta virou número em corpo 40 colado no botão.
+
+⚠️ **Desvio deliberado do plano**, que dizia "o tempo aparece uma vez só": ele
+aparece **duas** — nos presets, onde serve pra *comparar*, e no número grande,
+onde é a *decisão*. Sem o tempo por preset o usuário não enxerga a troca antes
+de escolher, que é exatamente o que a tela existe pra mostrar.
+
+**Nada de capacidade saiu** (o João pediu explicitamente): a taxonomia inteira e
+a palavra-chave livre estão na `FolhaAssuntos`. O texto que explicava o teto de
+~60 notícias por pergunta saiu do ícone de "?" e foi pra dentro dela — explicação
+atrás de interrogação é explicação que ninguém lê, e essa é a tese do produto.
+
+Morreram: `multi_city_search_field.dart` (feito pra N cidades com `maxCities`
+já em 1 — desenhava ficha removível e "1/1 cidades selecionadas" pra um caso
+impossível), `city_search_field.dart` e `simeops_title.dart`.
+
+### 🚨 A sanfona morreu no mesmo dia em que nasceu
+
+Eu tinha proposto **e o João aprovado** a matéria expandindo no lugar. Vendo
+funcionando ele inverteu, e com argumento melhor:
+
+> *"a gente poderia fazer a resposta do gpt coincidir com o tamanho max pra n
+> truncar ali, dessa forma o usuário só clica na notícia pra entrar na url e não
+> pra ler o que tava ali"*
+
+Minha premissa era "resumo longo precisa de um lugar, logo expande". A dele:
+**se o parágrafo cabe inteiro, não precisa de lugar nenhum** — e aí o toque tem
+UM significado (abrir a fonte) em vez de dois que o usuário não distinguia antes
+de tocar.
+
+**A medida não é chute.** Os dois parágrafos do protótipo de referência têm
+**189 e 197 caracteres**; o card tem 376px úteis e a lide é Archivo 14.5, ou
+seja ~52 caracteres por linha = 4 linhas. Teto: **195**, com `maxLines: 5` como
+rede pro pior caso tipográfico (0.6em daria 4.5 linhas).
+
+O corte é em **fim de frase** (`cortarNaFrase`), nunca no meio de palavra:
+reticências num título são toleráveis, num parágrafo são bug — o leitor fica sem
+o desfecho.
+
+Custo de tirar a sanfona: as fontes secundárias perderiam a porta. `3 FONTES`
+virou tocável e lista os veículos — caso raro atrás de um toque num número que
+já estava na tela.
+
+### O parágrafo tem que COMPLEMENTAR a manchete
+
+Segunda observação do João no mesmo turno. Eu tinha escrito no prompt *"não
+repetir a manchete literalmente"* — adjetivo, que modelo nenhum obedece. Virou
+exemplo, que é o que funciona:
+
+```
+Manchete: "Empresário é preso vendendo peças de veículos roubados"
+RUIM: "Um empresário foi preso por vender peças de veículos roubados. A prisão
+       aconteceu em flagrante."
+BOM:  "A Operação 311 prendeu o homem em flagrante em Palhoça. Foram apreendidos
+       componentes de sete veículos, dois deles com registro de roubo."
+```
+
+Mais duas travas: nenhuma frase pode começar com pronome apontando pra manchete
+(`ele`, `o caso`), e **120 caracteres que acrescentam fato ganham de 190 que
+repetem** — senão o modelo enche linguiça pra chegar ao teto.
+
+### 🚨 A frase do card falava outra taxonomia que os números
+
+Achado da foto do João: o card dizia *"Homicídio responde por 24%, a maior
+fatia"* e logo abaixo mostrava `11 PATRIM. · 6 SEGUR.`. A frase vinha de
+`topCrimeType` (**tipo** de crime) e os números de `categorias30d`
+(**categoria**). Os dois estavam certos — homicídio é um tipo dentro do grupo
+Segurança — mas **denominador diferente na mesma tela lê como erro**, e num
+produto de dado número que não fecha é o defeito que mais destrói confiança.
+
+Agora a frase sai da mesma fonte dos números. É o mesmo raciocínio do selo "42"
+que eu tinha apontado no protótipo, acontecendo no código.
+
+### O respiro entre cidades: era hierarquia, não espaço
+
+*"tá tudo muito junto entre o grande florianópolis e porto alegre, o olho não
+tem respiro"*, e ele completou que **o card com borda de antes parecia mais
+organizado**.
+
+A causa: **dois filetes desenhados iguais fazendo trabalhos opostos** — um
+dentro do card (acima dos números) e um entre as cidades — com espaçamento quase
+igual (27px contra 36px). O olho não tinha como saber qual separava parágrafo e
+qual separava cidade. A caixa antiga dizia "isto é uma unidade" sem ambiguidade;
+o fio tem que ganhar isso com espaço e **um traço só**.
+
+- filete de dentro: removido (números a 21px já se separam da prosa a 14.5);
+- filete de fora: `ruleStrong` — aqui são 2-3 blocos altos. No feed, com 18
+  matérias, o fraco continua certo: traço forte 18 vezes vira grade;
+- ar entre cidades: 36px → **52px**.
+
+---
+
 ## 2026-08-09 (madrugada) — o tema era o piso errado, e a foto viu o que a análise não vê
 
 Rodada inteira nascida de **duas fotos do aparelho**. Nenhum dos seis achados

@@ -42,6 +42,35 @@ const NATURE_MAP: Record<string, Natureza> = {
   'estatistica': 'estatistica',
 };
 
+/**
+ * Corta o resumo no fim de uma FRASE, nunca no meio de uma palavra.
+ *
+ * O prompt pede 190 caracteres, e o modelo passa às vezes — o mesmo aconteceu
+ * com a manchete de 70. A diferença é que reticências no fim de um titulo sao
+ * toleráveis e no fim de um parágrafo sao um bug: o leitor fica sem o desfecho
+ * ("...dois deles com registro de rou").
+ *
+ * Então: pega o maior prefixo que termine em `.`, `!` ou `?` e caiba no teto.
+ * Se nem a primeira frase couber (caso raro, o modelo ignorou o pedido), aí
+ * sim corta na palavra e marca com reticências — mas isso e o ultimo recurso,
+ * não o caminho normal.
+ */
+export function cortarNaFrase(texto: string, teto: number): string {
+  const limpo = texto.trim();
+  if (limpo.length <= teto) return limpo;
+
+  // Última pontuação de fim de frase dentro do teto.
+  let corte = -1;
+  for (let i = 0; i < Math.min(limpo.length, teto); i++) {
+    const c = limpo[i];
+    if (c === '.' || c === '!' || c === '?') corte = i;
+  }
+  if (corte > 0) return limpo.slice(0, corte + 1).trim();
+
+  const espaco = limpo.lastIndexOf(' ', teto - 1);
+  return `${limpo.slice(0, espaco > 0 ? espaco : teto - 1).trim()}…`;
+}
+
 function validateExtraction(data: Record<string, unknown>, minConfidence: number = 0.7): Filter2Result {
   // Mapear campos ingles → portugues (aceita ambos)
   const isCrime = data.is_crime ?? data.e_crime;
@@ -92,6 +121,19 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
   const bairro = typeof neighborhood === 'string' && neighborhood.trim() ? neighborhood.trim() : undefined;
   const rua = typeof street === 'string' && street.trim() ? street.trim() : undefined;
 
+  // O resumo cabe INTEIRO no card, sem "ler mais" e sem reticencias.
+  //
+  // A medida nao e chute: o card tem 376px uteis e a lide e Archivo 14.5, o que
+  // da ~52 caracteres por linha; os dois paragrafos do prototipo de referencia
+  // tem 189 e 197 caracteres, ou seja quatro linhas. O teto de 195 reproduz
+  // isso, e o `maxLines: 5` do TakeCard cobre o pior caso tipografico (4.5
+  // linhas se o texto for todo de caracteres largos).
+  //
+  // Isso e o que permite o toque ter UM significado so — abrir a fonte. Enquanto
+  // o texto era truncado, tocar podia querer dizer "ler o resto" ou "abrir o
+  // artigo", e o usuario nao sabia qual antes de tocar.
+  const resumo = cortarNaFrase(summary, 195);
+
   // Manchete: cosmetica, entao NUNCA rejeita o item.
   //
   // Corta em 70, o MESMO teto que o prompt pede (a regra 9). Cortava em 90, e
@@ -113,7 +155,7 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
       rua,
       data_ocorrencia: date,
       titulo,
-      resumo: summary,
+      resumo,
       confianca: confidence,
     },
   };
@@ -187,8 +229,17 @@ HEADLINE RULES:
 11. The headline must stand alone: a reader seeing only it should know the event. It is NOT a shortened summary — "summary" adds the detail the headline leaves out, so avoid repeating the headline verbatim there.
 
 SUMMARY RULES:
-12. "summary": 2 to 3 sentences in Brazilian Portuguese. The app shows the first two lines in the list and the rest when the reader taps — so the FIRST sentence must carry the essential fact on its own, and the following ones add what a public-safety analyst would want next: how many people involved, what was seized or recovered, whether anyone was arrested, which force acted.
-13. No speculation and no adjectives of severity. If the article does not say something, leave it out — do not fill the third sentence with filler.
+12. "summary": exactly 2 sentences in Brazilian Portuguese, **at most 190 characters in total**. This is a hard budget, not a suggestion: the app prints the summary WHOLE, with no "read more" — anything past the budget is cut off by the server and the reader loses it.
+
+13. The summary must be COMPLEMENTARY to the headline, never a paraphrase of it. The reader has already read the headline; every clause here must earn its place by adding something the headline could not fit: exact figures, the force that acted, what was seized or recovered, how many people, the trigger, the outcome.
+
+    Headline: "Empresário é preso vendendo peças de veículos roubados"
+    BAD  (says the same thing again): "Um empresário foi preso por vender peças de veículos roubados. A prisão aconteceu em flagrante."
+    GOOD (adds what the headline left out): "A Operação 311 prendeu o homem em flagrante em Palhoça. Foram apreendidos componentes de sete veículos, dois deles com registro de roubo."
+
+14. Sentence 1 carries the specifics of the event; sentence 2 carries the consequence or what came out of it. Both must stand without the headline — do not start with "ele", "o caso" or any pronoun pointing back at the headline.
+
+15. No speculation, no adjectives of severity, no victim/suspect full names. If the article does not say something, leave it out — a summary of 120 characters that adds facts beats one of 190 that repeats the headline.
 
 ARTICLE:
 ${truncated}
@@ -204,7 +255,7 @@ Return ONLY JSON:
   "street": "Street Name" or null,
   "date": "YYYY-MM-DD (publication date of the article, NOT dates mentioned in the text)",
   "headline": "Factual headline in Brazilian Portuguese, max 70 chars, neutral tone",
-  "summary": "2-3 sentence summary in Brazilian Portuguese, first sentence self-contained",
+  "summary": "2 sentences in Brazilian Portuguese, max 190 chars TOTAL, first sentence self-contained",
   "confidence": 0.0 to 1.0
 }
 

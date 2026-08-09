@@ -27,7 +27,17 @@ class Masthead extends StatelessWidget {
   /// Canto direito da linha de estado.
   final String? direita;
 
-  const Masthead({super.key, this.titulo, this.esquerda, this.direita});
+  /// Quando a tela foi empilhada: desenha seta + marca acima do título, igual
+  /// ao cabeçalho da cidade.
+  final VoidCallback? onVoltar;
+
+  const Masthead({
+    super.key,
+    this.titulo,
+    this.esquerda,
+    this.direita,
+    this.onVoltar,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -39,10 +49,36 @@ class Masthead extends StatelessWidget {
           bottom: BorderSide(color: SIMEopsColors.white, width: 2),
         ),
       ),
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
+      padding: EdgeInsets.fromLTRB(18, onVoltar != null ? 6 : 14, 18, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (onVoltar != null) ...[
+            Row(
+              children: [
+                InkWell(
+                  onTap: onVoltar,
+                  child: const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Icon(Icons.arrow_back_ios_new,
+                        size: 17, color: SIMEopsColors.muted),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text.rich(
+                  TextSpan(children: [
+                    const TextSpan(text: 'SIME'),
+                    TextSpan(
+                      text: 'OPS',
+                      style: TextStyle(color: SIMEopsColors.greenLight),
+                    ),
+                  ]),
+                  style: SIMEopsType.wordmark(size: 14),
+                ),
+              ],
+            ),
+            const SizedBox(height: 9),
+          ],
           if (titulo == null)
             Text.rich(
               TextSpan(children: [

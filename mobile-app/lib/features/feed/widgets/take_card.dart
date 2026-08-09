@@ -70,16 +70,17 @@ class TakeCard extends StatefulWidget {
 }
 
 class _TakeCardState extends State<TakeCard> {
-  /// A sanfona: a matéria cresce no lugar em vez de abrir outra tela.
-  ///
-  /// Substituiu o `NewsDetailSheet`, que subia por cima de tudo. Numa tela em
-  /// que a pessoa está **varrendo** 18 itens atrás do que importa, cada modal
-  /// quebra a varredura: sai da lista, lê, fecha e tem que reencontrar onde
-  /// parou. Aqui ela nunca sai do fio.
-  ///
-  /// Cresce pra **baixo** do ponto tocado, então a manchete que está sendo
-  /// lida não se move — quem desce é o que ainda não foi lido.
-  bool _aberta = false;
+  // A sanfona (matéria expandindo no lugar) viveu algumas horas em 09/08 e foi
+  // descartada pelo João com um argumento melhor que o meu.
+  //
+  // Meu raciocínio: resumo longo precisa de um lugar, logo expande. O dele
+  // inverte a premissa: **se o parágrafo cabe inteiro, não precisa de lugar
+  // nenhum.** E aí o toque passa a ter UM significado — abrir a fonte — em vez
+  // de dois, "ler o resto" ou "abrir o artigo", que o usuário não conseguia
+  // distinguir antes de tocar.
+  //
+  // O que torna isso possível é o teto de 195 caracteres no `resumo`, cortado
+  // em fim de frase pelo Filter2. Ver `cortarNaFrase` em `filter2GPT.ts`.
 
   NewsItem get news => widget.news;
 
@@ -126,10 +127,13 @@ class _TakeCardState extends State<TakeCard> {
 
   bool get _isIndicador => news.natureza == 'estatistica';
 
-  void _alternar() {
-    final abrindo = !_aberta;
-    setState(() => _aberta = abrindo);
-    if (abrindo) widget.onOpen?.call();
+  /// Toque na matéria: marca lida e abre a fonte principal no navegador
+  /// **externo**. Nem WebView nem Custom Tab — conteúdo de terceiros não deve
+  /// ser emoldurado como se fosse do app.
+  Future<void> _abrir() async {
+    widget.onOpen?.call();
+    if (news.sources.isEmpty) return;
+    await _abrirFonte(news.sources.first.url);
   }
 
   Future<void> _abrirFonte(String url) async {
@@ -138,6 +142,49 @@ class _TakeCardState extends State<TakeCard> {
     } catch (e) {
       debugPrint('[TakeCard] falha ao abrir $url — $e');
     }
+  }
+
+  /// `3 FONTES` é tocável e lista as outras.
+  ///
+  /// Sem isso, tirar a sanfona perderia as fontes secundárias: o toque no card
+  /// abre só a primeira. É o caso raro (a maioria dos itens tem uma fonte só) e
+  /// por isso mora atrás de um toque no próprio número, que já estava na tela.
+  void _listarFontes() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: SIMEopsColors.navy,
+      shape: const RoundedRectangleBorder(),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: double.infinity,
+              decoration: const BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: SIMEopsColors.white, width: 2),
+                ),
+              ),
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
+              child: Text(
+                '${news.sources.length} veículos cobriram',
+                style: SIMEopsType.title().copyWith(fontSize: 22),
+              ),
+            ),
+            _Fontes(
+              sources: news.sources,
+              nome: _host,
+              onAbrir: (url) async {
+                Navigator.pop(context);
+                await _abrirFonte(url);
+              },
+            ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -170,7 +217,7 @@ class _TakeCardState extends State<TakeCard> {
         ],
       ),
       child: InkWell(
-        onTap: _alternar,
+        onTap: _abrir,
         child: IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -203,20 +250,16 @@ class _TakeCardState extends State<TakeCard> {
                       ),
                       if (news.resumo.isNotEmpty) ...[
                         const SizedBox(height: 8),
-                        AnimatedSize(
-                          duration: const Duration(milliseconds: 180),
-                          curve: Curves.easeOut,
-                          alignment: Alignment.topCenter,
-                          child: Text(
-                            news.resumo,
-                            style: SIMEopsType.lead(
-                              color: read ? SIMEopsColors.faint : null,
-                            ),
-                            maxLines: _aberta ? null : 2,
-                            overflow: _aberta
-                                ? TextOverflow.clip
-                                : TextOverflow.ellipsis,
+                        // INTEIRO, sem "ler mais". `maxLines: 5` é só rede de
+                        // segurança pro texto antigo (escrito antes do teto de
+                        // 195) e pro pior caso tipográfico — não é o normal.
+                        Text(
+                          news.resumo,
+                          style: SIMEopsType.lead(
+                            color: read ? SIMEopsColors.faint : null,
                           ),
+                          maxLines: 5,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                       const SizedBox(height: 11),
@@ -224,15 +267,9 @@ class _TakeCardState extends State<TakeCard> {
                         outlet: _outlet,
                         sourceCount: news.sources.length,
                         official: news.hasOfficialSource,
+                        onVerFontes:
+                            news.sources.length > 1 ? _listarFontes : null,
                       ),
-                      if (_aberta) ...[
-                        const SizedBox(height: 14),
-                        _Fontes(
-                          sources: news.sources,
-                          nome: _host,
-                          onAbrir: _abrirFonte,
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -304,36 +341,44 @@ class _Credits extends StatelessWidget {
   final int sourceCount;
   final bool official;
 
+  /// Só quando há mais de uma fonte: abre a lista das outras.
+  final VoidCallback? onVerFontes;
+
   const _Credits({
     required this.outlet,
     required this.sourceCount,
     required this.official,
+    this.onVerFontes,
   });
 
   @override
   Widget build(BuildContext context) {
-    // "1 FONTE" não aparece: era o caso chato e estava em ~100% dos itens, e
-    // rótulo que aparece sempre não informa. "3 FONTES" é sinal real de
-    // credibilidade — três veículos cobriram o mesmo fato — e era invisível.
-    final texto = [
-      if (outlet != null) outlet!,
-      if (sourceCount > 1) '$sourceCount FONTES',
-    ].join(' · ');
-
     return Row(
       children: [
-        Expanded(
-          child: Text(
-            texto,
-            style: SIMEopsType.credit(color: SIMEopsColors.faint),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+        if (outlet != null)
+          Flexible(
+            child: Text(
+              outlet!,
+              style: SIMEopsType.credit(color: SIMEopsColors.faint),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-        ),
-        if (official) ...[
-          const SizedBox(width: 9),
-          Text('OFICIAL', style: SIMEopsType.credit(color: SIMEopsColors.green)),
+        // "1 FONTE" não aparece: era o caso chato e estava em ~100% dos itens, e
+        // rótulo que aparece sempre não informa. "3 FONTES" é sinal real de
+        // credibilidade — três veículos cobriram o mesmo fato — e era invisível.
+        // Aqui ele também é a porta pras outras duas.
+        if (sourceCount > 1) ...[
+          Text(' · ', style: SIMEopsType.credit(color: SIMEopsColors.faint)),
+          InkWell(
+            onTap: onVerFontes,
+            child: Text('$sourceCount FONTES',
+                style: SIMEopsType.credit(color: SIMEopsColors.tealLight)),
+          ),
         ],
+        const Spacer(),
+        if (official)
+          Text('OFICIAL', style: SIMEopsType.credit(color: SIMEopsColors.green)),
       ],
     );
   }

@@ -1,19 +1,33 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/models/assunto.dart';
 import '../../../core/theme/simeops_colors.dart';
+import '../../../core/theme/simeops_type.dart';
+import '../../../core/widgets/cat_chip.dart';
 
 // Seletor de ASSUNTOS da busca manual.
 //
 // A tese: o índice do Google tem teto de ~60-70 itens POR PERGUNTA, e não há
 // parâmetro que mude isso (medido em 01-02/08). Pedir mais página do mesmo
 // assunto não traz nada; perguntar outra coisa traz. Então "quantos assuntos"
-// é a alavanca de volume — e o preço dela é tempo, ~47s por assunto.
+// é a alavanca de volume — e o preço dela é tempo, ~36s por assunto.
 //
 // Por isso cada preset mostra a própria conta (quantos assuntos, quantos
 // minutos) em vez de só um nome: "Essencial" sozinho não informa nada, e a
 // escolha só é honesta se o custo estiver na frente de quem escolhe.
+//
+// ── Redesenho de 09/08 ────────────────────────────────────────────────────
+// Eram três cartões arredondados lado a lado, e o terceiro ("ESCOLHER") fingia
+// ser preset: ele não é um atalho, é uma **porta** — clicar não escolhe nada,
+// abre a escolha manual. Botão que se parece com os vizinhos mas faz outra
+// coisa é armadilha.
+//
+// Além disso, ao entrar no modo manual a lista inteira de assuntos se abria
+// **dentro do formulário**: cinco blocos de fichas mais o campo de palavra-
+// chave, empurrando o botão de iniciar para muito abaixo da dobra.
+//
+// Agora: dois presets como linhas, e a escolha manual numa folha. Nada foi
+// removido — a taxonomia inteira e a palavra-chave livre continuam lá dentro.
 
 /// Segundos por assunto numa janela de 30 dias.
 ///
@@ -48,8 +62,7 @@ const _segundosPorAssunto = 36;
 Duration estimativaBusca(int quantosAssuntos, int periodoDias) {
   if (quantosAssuntos <= 0) return Duration.zero;
   final fator = (periodoDias / 30).clamp(0.2, 12.0);
-  final segundos =
-      quantosAssuntos * _segundosPorAssunto * _raiz(fator);
+  final segundos = quantosAssuntos * _segundosPorAssunto * _raiz(fator);
   return Duration(seconds: segundos.round());
 }
 
@@ -100,8 +113,6 @@ class _AssuntosFieldState extends State<AssuntosField> {
   /// campo `assuntos[]` e recebem o mesmo tratamento nos filtros do backend.
   final List<String> _livres = [];
 
-  final _livreCtrl = TextEditingController();
-
   @override
   void initState() {
     super.initState();
@@ -115,12 +126,6 @@ class _AssuntosFieldState extends State<AssuntosField> {
     if (old.taxonomia.isEmpty && !widget.taxonomia.isEmpty) {
       _aplicarPreset(_modo, notificar: true);
     }
-  }
-
-  @override
-  void dispose() {
-    _livreCtrl.dispose();
-    super.dispose();
   }
 
   List<String> get _selecionados => [
@@ -137,51 +142,37 @@ class _AssuntosFieldState extends State<AssuntosField> {
         _marcados
           ..clear()
           ..addAll(widget.taxonomia.essenciais);
+        _livres.clear();
       } else if (modo == _Modo.completa) {
         _marcados
           ..clear()
           ..addAll(widget.taxonomia.assuntos.map((a) => a.termo));
+        _livres.clear();
       }
-      // `personalizar` mantém o que já estava marcado — o usuário está partindo
-      // de um preset e ajustando, não recomeçando do zero.
     });
     if (notificar) widget.onChanged(_selecionados);
   }
 
-  void _alternar(String termo) {
+  Future<void> _abrirEscolha() async {
+    final r = await FolhaAssuntos.abrir(
+      context,
+      taxonomia: widget.taxonomia,
+      marcados: _marcados,
+      livres: _livres,
+      periodoDias: widget.periodoDias,
+    );
+    if (r == null) return;
     setState(() {
-      if (_marcados.contains(termo)) {
-        _marcados.remove(termo);
-      } else {
-        _marcados.add(termo);
-      }
+      _marcados
+        ..clear()
+        ..addAll(r.$1);
+      _livres
+        ..clear()
+        ..addAll(r.$2);
+      // Escolher à mão desmarca o preset — mesmo que o resultado coincida com
+      // ele, quem mandou foi a escolha manual.
       _modo = _Modo.personalizar;
     });
-    widget.onChanged(_selecionados);
-  }
-
-  void _adicionarLivre() {
-    final texto = _livreCtrl.text.trim();
-    if (texto.length < 2) return;
-
-    final jaExiste = _livres.any((l) => l.toLowerCase() == texto.toLowerCase()) ||
-        widget.taxonomia.assuntos
-            .any((a) => a.termo.toLowerCase() == texto.toLowerCase());
-    if (jaExiste) {
-      _livreCtrl.clear();
-      return;
-    }
-
-    setState(() {
-      _livres.add(texto);
-      _modo = _Modo.personalizar;
-      _livreCtrl.clear();
-    });
-    widget.onChanged(_selecionados);
-  }
-
-  void _removerLivre(String termo) {
-    setState(() => _livres.remove(termo));
     widget.onChanged(_selecionados);
   }
 
@@ -199,7 +190,7 @@ class _AssuntosFieldState extends State<AssuntosField> {
       return 'Crime comum: ${_listar(labels)}.';
     }
     if (_modo == _Modo.completa) {
-      return 'Todos os assuntos da taxonomia, de roubo a greve e crime ambiental.';
+      return 'Todos os assuntos do catálogo, de roubo a greve e crime ambiental.';
     }
 
     final labels = [
@@ -227,183 +218,415 @@ class _AssuntosFieldState extends State<AssuntosField> {
     if (tax.isEmpty) {
       return Text(
         'Catálogo de assuntos indisponível — a busca vai usar a lista padrão.',
-        style: GoogleFonts.exo2(
-          fontSize: 12,
-          color: SIMEopsColors.muted.withValues(alpha: 0.6),
-        ),
+        style: SIMEopsType.note(),
       );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            _presetCard(
-              titulo: 'ESSENCIAL',
-              quantos: tax.essenciais.length,
-              modo: _Modo.essencial,
-            ),
-            const SizedBox(width: 8),
-            _presetCard(
-              titulo: 'COMPLETA',
-              quantos: tax.assuntos.length,
-              modo: _Modo.completa,
-            ),
-            const SizedBox(width: 8),
-            _presetCard(
-              titulo: 'ESCOLHER',
-              quantos: null,
-              modo: _Modo.personalizar,
-            ),
-          ],
+        _LinhaPreset(
+          nome: 'Essencial',
+          quantos: tax.essenciais.length,
+          periodoDias: widget.periodoDias,
+          ativo: _modo == _Modo.essencial,
+          onTap: () => _aplicarPreset(_Modo.essencial),
         ),
-        const SizedBox(height: 10),
-        Text(
-          _descricao,
-          style: GoogleFonts.exo2(
-            fontSize: 12.5,
-            height: 1.4,
-            color: SIMEopsColors.muted.withValues(alpha: 0.85),
+        _LinhaPreset(
+          nome: 'Completa',
+          quantos: tax.assuntos.length,
+          periodoDias: widget.periodoDias,
+          ativo: _modo == _Modo.completa,
+          onTap: () => _aplicarPreset(_Modo.completa),
+        ),
+        if (_modo == _Modo.personalizar)
+          _LinhaPreset(
+            nome: 'Escolhidos a dedo',
+            quantos: _selecionados.length,
+            periodoDias: widget.periodoDias,
+            ativo: true,
+            onTap: _abrirEscolha,
+          ),
+        // Porta, não preset: fica em corpo de link e fora da pilha de linhas,
+        // porque clicar aqui não escolhe nada — abre a escolha.
+        InkWell(
+          onTap: _abrirEscolha,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 13),
+            child: Text('ESCOLHER ASSUNTO POR ASSUNTO →',
+                style: SIMEopsType.slug(color: SIMEopsColors.tealLight)),
           ),
         ),
-        if (_modo == _Modo.personalizar) ...[
-          const SizedBox(height: 16),
-          for (final cat in tax.categorias) ..._blocoCategoria(tax, cat),
-          const SizedBox(height: 6),
-          _campoLivre(),
-        ],
+        Text(_descricao, style: SIMEopsType.note()),
       ],
     );
   }
+}
 
-  Widget _presetCard({
-    required String titulo,
-    required int? quantos,
-    required _Modo modo,
-  }) {
-    final ativo = _modo == modo;
-    // O "escolher" não tem contagem fixa — mostra a seleção atual.
-    final n = quantos ?? _selecionados.length;
-    final tempo = formatarEstimativa(estimativaBusca(n, widget.periodoDias));
+/// Um preset: nome à esquerda, a conta à direita, filete embaixo.
+class _LinhaPreset extends StatelessWidget {
+  final String nome;
+  final int quantos;
+  final int periodoDias;
+  final bool ativo;
+  final VoidCallback onTap;
 
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => _aplicarPreset(modo),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          decoration: BoxDecoration(
-            color: ativo
-                ? SIMEopsColors.teal.withValues(alpha: 0.14)
-                : SIMEopsColors.navyLight.withValues(alpha: 0.8),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: ativo
-                  ? SIMEopsColors.teal
-                  : SIMEopsColors.teal.withValues(alpha: 0.12),
-              width: ativo ? 1.5 : 1,
+  const _LinhaPreset({
+    required this.nome,
+    required this.quantos,
+    required this.periodoDias,
+    required this.ativo,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tempo = formatarEstimativa(estimativaBusca(quantos, periodoDias));
+
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: SIMEopsColors.rule)),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            SizedBox(
+              width: 16,
+              child: ativo
+                  ? Text('▸',
+                      style:
+                          SIMEopsType.slug(color: SIMEopsColors.greenLight))
+                  : null,
             ),
-          ),
-          child: Column(
-            children: [
-              Text(
-                titulo,
-                style: GoogleFonts.exo2(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.6,
-                  color: ativo ? SIMEopsColors.tealLight : SIMEopsColors.muted,
+            Expanded(
+              child: Text(
+                nome,
+                style: SIMEopsType.body().copyWith(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color:
+                      ativo ? SIMEopsColors.white : SIMEopsColors.muted,
                 ),
               ),
-              const SizedBox(height: 5),
-              Text(
-                n == 0 ? 'escolher' : '$n assunto${n == 1 ? '' : 's'}',
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: 10.5,
-                  color: SIMEopsColors.muted.withValues(alpha: 0.75),
+            ),
+            Text(
+              '$quantos ASSUNTOS · $tempo',
+              style: SIMEopsType.slug(
+                color: ativo ? SIMEopsColors.tealLight : SIMEopsColors.faint,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A escolha manual: catálogo inteiro por categoria + palavra-chave livre.
+///
+/// Saiu de dentro do formulário e virou folha porque abria cinco blocos de
+/// fichas no meio da tela e empurrava o botão de iniciar para fora da dobra.
+/// **Nenhuma capacidade mudou** — é a mesma taxonomia e o mesmo campo livre.
+class FolhaAssuntos extends StatefulWidget {
+  final Taxonomia taxonomia;
+  final Set<String> marcados;
+  final List<String> livres;
+  final int periodoDias;
+
+  const FolhaAssuntos({
+    super.key,
+    required this.taxonomia,
+    required this.marcados,
+    required this.livres,
+    required this.periodoDias,
+  });
+
+  /// Devolve `(marcados, livres)` ou null se fechou sem confirmar.
+  static Future<(Set<String>, List<String>)?> abrir(
+    BuildContext context, {
+    required Taxonomia taxonomia,
+    required Set<String> marcados,
+    required List<String> livres,
+    required int periodoDias,
+  }) {
+    return showModalBottomSheet<(Set<String>, List<String>)>(
+      context: context,
+      backgroundColor: SIMEopsColors.navy,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(),
+      builder: (_) => FolhaAssuntos(
+        taxonomia: taxonomia,
+        marcados: marcados,
+        livres: livres,
+        periodoDias: periodoDias,
+      ),
+    );
+  }
+
+  @override
+  State<FolhaAssuntos> createState() => _FolhaAssuntosState();
+}
+
+class _FolhaAssuntosState extends State<FolhaAssuntos> {
+  late final Set<String> _marcados = {...widget.marcados};
+  late final List<String> _livres = [...widget.livres];
+  final _livreCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _livreCtrl.dispose();
+    super.dispose();
+  }
+
+  int get _total => _marcados.length + _livres.length;
+
+  void _adicionarLivre() {
+    final texto = _livreCtrl.text.trim();
+    if (texto.length < 2) return;
+
+    final jaExiste =
+        _livres.any((l) => l.toLowerCase() == texto.toLowerCase()) ||
+            widget.taxonomia.assuntos
+                .any((a) => a.termo.toLowerCase() == texto.toLowerCase());
+    if (jaExiste) {
+      _livreCtrl.clear();
+      return;
+    }
+    setState(() {
+      _livres.add(texto);
+      _livreCtrl.clear();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tax = widget.taxonomia;
+    final tempo =
+        formatarEstimativa(estimativaBusca(_total, widget.periodoDias));
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.85,
+        child: Column(
+          children: [
+            Container(
+              decoration: const BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: SIMEopsColors.white, width: 2),
                 ),
               ),
-              const SizedBox(height: 2),
-              Text(
-                n == 0 ? '—' : tempo,
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: ativo
-                      ? SIMEopsColors.tealLight
-                      : SIMEopsColors.muted.withValues(alpha: 0.6),
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('Assuntos',
+                            style: SIMEopsType.title().copyWith(fontSize: 25)),
+                      ),
+                      InkWell(
+                        onTap: () => setState(() {
+                          _marcados.clear();
+                          _livres.clear();
+                        }),
+                        child: Padding(
+                          padding: const EdgeInsets.all(6),
+                          child: Text('LIMPAR',
+                              style: SIMEopsType.slug(
+                                  color: SIMEopsColors.tealLight)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // A tese do produto, encostada na escolha. Vivia atrás de um
+                  // ícone de "?" no formulário — e explicação atrás de
+                  // interrogação é explicação que ninguém lê.
+                  Text(
+                    'Cada assunto é uma pergunta separada ao buscador, e ele '
+                    'devolve no máximo ~60 notícias por pergunta. Perguntar '
+                    'mais coisas é a única forma de achar mais — e cada '
+                    'assunto acrescenta cerca de 35 segundos.',
+                    style: SIMEopsType.note(),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.only(bottom: 18),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                children: [
+                  for (final cat in tax.categorias) ..._bloco(tax, cat),
+                  const SizedBox(height: 22),
+                  _campoLivre(),
+                ],
+              ),
+            ),
+            Container(
+              decoration: const BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: SIMEopsColors.ruleStrong),
                 ),
               ),
-            ],
-          ),
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 10),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Text('$_total ${_total == 1 ? 'ASSUNTO' : 'ASSUNTOS'}',
+                          style: SIMEopsType.slug(color: SIMEopsColors.white)),
+                      const Spacer(),
+                      Text(_total == 0 ? '—' : tempo,
+                          style:
+                              SIMEopsType.slug(color: SIMEopsColors.tealLight)),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: _total == 0
+                          ? null
+                          : () => Navigator.pop(context, (_marcados, _livres)),
+                      child: const Text('USAR ESTES'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  List<Widget> _blocoCategoria(Taxonomia tax, CategoriaTaxonomia cat) {
+  List<Widget> _bloco(Taxonomia tax, CategoriaTaxonomia cat) {
     final itens = tax.daCategoria(cat.id);
     if (itens.isEmpty) return const [];
 
     return [
       Padding(
-        padding: const EdgeInsets.only(top: 12, bottom: 6),
+        padding: const EdgeInsets.fromLTRB(18, 20, 18, 10),
         child: Row(
           children: [
-            Container(
-              width: 7,
-              height: 7,
-              decoration: BoxDecoration(color: cat.cor, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 7),
-            Text(
-              cat.label.toUpperCase(),
-              style: GoogleFonts.exo2(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.8,
-                color: SIMEopsColors.muted.withValues(alpha: 0.7),
-              ),
-            ),
+            // Quadrado, não círculo: o resto do sistema não tem canto redondo,
+            // e este é o mesmo objeto que aparece na slug da matéria.
+            CatChip(cor: cat.cor),
+            const SizedBox(width: 9),
+            Text(cat.label.toUpperCase(),
+                style: SIMEopsType.slug(color: SIMEopsColors.muted)),
           ],
         ),
       ),
-      Wrap(
-        spacing: 7,
-        runSpacing: 7,
-        children: itens.map((a) {
-          final on = _marcados.contains(a.termo);
-          return _chip(
-            label: a.label,
-            cor: cat.cor,
-            ativo: on,
-            onTap: () => _alternar(a.termo),
-          );
-        }).toList(),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        child: Wrap(
+          spacing: 7,
+          runSpacing: 7,
+          children: itens.map((a) {
+            final on = _marcados.contains(a.termo);
+            return _Ficha(
+              label: a.label,
+              cor: cat.cor,
+              ativo: on,
+              onTap: () => setState(() {
+                if (!_marcados.add(a.termo)) _marcados.remove(a.termo);
+              }),
+            );
+          }).toList(),
+        ),
       ),
     ];
   }
 
-  Widget _chip({
-    required String label,
-    required Color cor,
-    required bool ativo,
-    required VoidCallback onTap,
-    VoidCallback? onRemove,
-  }) {
-    return GestureDetector(
+  Widget _campoLivre() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('PALAVRA-CHAVE', style: SIMEopsType.fieldLabel()),
+          TextField(
+            controller: _livreCtrl,
+            onSubmitted: (_) => _adicionarLivre(),
+            textInputAction: TextInputAction.done,
+            style: SIMEopsType.body().copyWith(fontSize: 17),
+            decoration: InputDecoration(
+              hintText: 'ex: acidente rodovia',
+              suffixIcon: InkWell(
+                onTap: _adicionarLivre,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 14),
+                  child: Text('ADICIONAR',
+                      style:
+                          SIMEopsType.slug(color: SIMEopsColors.tealLight)),
+                ),
+              ),
+              suffixIconConstraints: const BoxConstraints(minWidth: 96),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Vira uma pergunta a mais ao buscador, igual aos assuntos do '
+            'catálogo. Serve para o que é específico da sua cidade.',
+            style: SIMEopsType.note(),
+          ),
+          if (_livres.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: _livres
+                  .map((l) => _Ficha(
+                        label: l,
+                        cor: SIMEopsColors.tealLight,
+                        ativo: true,
+                        onTap: () => setState(() => _livres.remove(l)),
+                        remover: true,
+                      ))
+                  .toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Ficha de assunto. Retângulo, não cápsula — o sistema não tem canto redondo.
+class _Ficha extends StatelessWidget {
+  final String label;
+  final Color cor;
+  final bool ativo;
+  final VoidCallback onTap;
+  final bool remover;
+
+  const _Ficha({
+    required this.label,
+    required this.cor,
+    required this.ativo,
+    required this.onTap,
+    this.remover = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
       onTap: onTap,
       child: Container(
-        padding: EdgeInsets.fromLTRB(11, 7, onRemove != null ? 6 : 11, 7),
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
         decoration: BoxDecoration(
-          color: ativo
-              ? cor.withValues(alpha: 0.18)
-              : SIMEopsColors.navyLight.withValues(alpha: 0.7),
-          borderRadius: BorderRadius.circular(20),
+          color: ativo ? cor.withValues(alpha: 0.16) : null,
           border: Border.all(
-            color: ativo ? cor : cor.withValues(alpha: 0.22),
-            width: ativo ? 1.4 : 1,
+            color: ativo ? cor : SIMEopsColors.ruleStrong,
           ),
         ),
         child: Row(
@@ -411,77 +634,20 @@ class _AssuntosFieldState extends State<AssuntosField> {
           children: [
             Text(
               label,
-              style: GoogleFonts.exo2(
-                fontSize: 12.5,
-                fontWeight: ativo ? FontWeight.w600 : FontWeight.w400,
-                color: ativo ? Colors.white : SIMEopsColors.muted,
+              // Texto em tinta legível, nunca na cor da série: a borda já
+              // identifica a categoria.
+              style: SIMEopsType.body().copyWith(
+                fontSize: 13.5,
+                color: ativo ? SIMEopsColors.white : SIMEopsColors.muted,
               ),
             ),
-            if (onRemove != null) ...[
-              const SizedBox(width: 3),
-              GestureDetector(
-                onTap: onRemove,
-                child: Icon(Icons.close,
-                    size: 14, color: SIMEopsColors.muted.withValues(alpha: 0.8)),
-              ),
+            if (remover) ...[
+              const SizedBox(width: 6),
+              const Icon(Icons.close, size: 14, color: SIMEopsColors.muted),
             ],
           ],
         ),
       ),
-    );
-  }
-
-  Widget _campoLivre() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 8),
-        TextField(
-          controller: _livreCtrl,
-          onSubmitted: (_) => _adicionarLivre(),
-          textInputAction: TextInputAction.done,
-          style: GoogleFonts.exo2(fontSize: 13.5, color: Colors.white),
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: 'Palavra-chave (ex: acidente rodovia)',
-            hintStyle: GoogleFonts.exo2(
-              fontSize: 13,
-              color: SIMEopsColors.muted.withValues(alpha: 0.5),
-            ),
-            prefixIcon: Icon(Icons.add,
-                size: 19, color: SIMEopsColors.teal.withValues(alpha: 0.7)),
-            suffixIcon: TextButton(
-              onPressed: _adicionarLivre,
-              child: Text(
-                'ADD',
-                style: GoogleFonts.exo2(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: SIMEopsColors.tealLight,
-                ),
-              ),
-            ),
-            border:
-                OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-        if (_livres.isNotEmpty) ...[
-          const SizedBox(height: 9),
-          Wrap(
-            spacing: 7,
-            runSpacing: 7,
-            children: _livres
-                .map((l) => _chip(
-                      label: l,
-                      cor: SIMEopsColors.teal,
-                      ativo: true,
-                      onTap: () {},
-                      onRemove: () => _removerLivre(l),
-                    ))
-                .toList(),
-          ),
-        ],
-      ],
     );
   }
 }

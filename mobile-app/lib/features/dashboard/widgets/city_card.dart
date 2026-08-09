@@ -3,7 +3,6 @@ import '../../../core/models/city_overview.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 import '../../../core/utils/category_colors.dart';
-import '../../../core/utils/crime_labels.dart';
 import '../../../core/utils/state_utils.dart';
 import '../../../core/widgets/cat_chip.dart';
 
@@ -25,6 +24,18 @@ class CityCard extends StatelessWidget {
 
   /// A frase de resumo. Nasce dos campos que o backend já manda — e é o único
   /// lugar do app em que ele fala como gente em vez de painel.
+  ///
+  /// 🚨 **A maior fatia é de CATEGORIA, não de tipo de crime.**
+  ///
+  /// Estava em `topCrimeType`, e isso punha duas taxonomias no mesmo card: a
+  /// frase dizia *"Homicídio responde por 24%, a maior fatia"* e a linha logo
+  /// abaixo mostrava `11 PATRIM. · 6 SEGUR.` — o leitor vê o maior número em
+  /// Patrimonial e uma frase afirmando que o maior é Homicídio. Ambos estavam
+  /// certos (homicídio é um *tipo* dentro do grupo Segurança), mas denominador
+  /// diferente na mesma tela lê como erro, e num produto de dado número que
+  /// não fecha é o defeito que mais destrói confiança.
+  ///
+  /// Agora sai da mesma fonte que os números: `categorias30d`.
   String get _summary {
     final total = city.totalCrimes30d;
     if (total == 0) {
@@ -34,11 +45,20 @@ class CityCard extends StatelessWidget {
     final buf = StringBuffer('$total ${total == 1 ? 'ocorrência' : 'ocorrências'} '
         'em trinta dias.');
 
-    final top = city.topCrimeType;
-    final pct = city.topCrimePercent;
-    if (top != null && top.isNotEmpty && pct > 0) {
-      buf.write(' ${crimeTypeLabel(top)} responde por '
-          '${pct.toStringAsFixed(0)}%, a maior fatia.');
+    final porCategoria = city.categorias30d.entries
+        .where((e) => e.value > 0)
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    if (porCategoria.isNotEmpty) {
+      final maior = porCategoria.first;
+      final somaCategorias =
+          porCategoria.fold<int>(0, (s, e) => s + e.value);
+      if (somaCategorias > 0) {
+        final pct = maior.value * 100 / somaCategorias;
+        buf.write(' ${categoryLabel(maior.key)} responde por '
+            '${pct.toStringAsFixed(0)}%, a maior fatia.');
+      }
     }
 
     // Grupo: dizer QUAIS cidades. "Grande Florianópolis" não informa nada a
@@ -59,10 +79,16 @@ class CityCard extends StatelessWidget {
     // saía como `SANTA CA…` truncada, comendo a largura do nome da cidade.
     final uf = city.parentState != null ? abbrState(city.parentState!) : null;
 
+    // Ar generoso em cima e embaixo. Com 15 no rodapé e 21 no topo do próximo,
+    // as duas cidades encostavam: o olho não achava onde uma terminava. E o
+    // que confundia junto era o **filete de dentro** do card (acima dos
+    // números), desenhado igual ao filete de fora — dois traços iguais, um
+    // separando parágrafo do mesmo bloco e o outro separando cidades. O de
+    // dentro saiu; sobrou um traço só, e ele agora quer dizer uma coisa só.
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 21, 18, 0),
+        padding: const EdgeInsets.fromLTRB(18, 26, 18, 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -96,7 +122,7 @@ class CityCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(_summary, style: SIMEopsType.lead()),
             _CategoryFigures(counts: city.categorias30d),
-            const SizedBox(height: 15),
+            const SizedBox(height: 26),
           ],
         ),
       ),
@@ -152,12 +178,10 @@ class _CategoryFigures extends StatelessWidget {
         ),
     ];
 
+    // Sem filete em cima: os números a 21px já se separam sozinhos da prosa a
+    // 14.5, e o traço que existia aqui competia com o que separa as cidades.
     return Container(
-      margin: const EdgeInsets.only(top: 15),
-      padding: const EdgeInsets.only(top: 12),
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: SIMEopsColors.rule)),
-      ),
+      margin: const EdgeInsets.only(top: 18),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
