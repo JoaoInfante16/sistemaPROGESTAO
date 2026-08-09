@@ -120,7 +120,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         titlePadding: const EdgeInsets.fromLTRB(22, 22, 22, 0),
         contentPadding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
-        title: Text('Solicitar acesso', style: SIMEopsType.body().copyWith(fontSize: 21)),
+        title: Text('Solicitar acesso', style: SIMEopsType.dialogTitle()),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -259,7 +259,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     controller: _emailCtrl,
                     keyboardType: TextInputType.emailAddress,
                     autocorrect: false,
-                    style: SIMEopsType.body().copyWith(fontSize: 17),
+                    style: SIMEopsType.fieldValue(),
                     decoration: _lineField('voce@orgao.gov.br'),
                     validator: (v) => (v == null || v.trim().isEmpty)
                         ? 'Informe o e-mail'
@@ -270,7 +270,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   TextFormField(
                     controller: _passwordCtrl,
                     obscureText: _obscurePassword,
-                    style: SIMEopsType.body().copyWith(fontSize: 17),
+                    style: SIMEopsType.fieldValue(),
                     decoration: _lineField('••••••••').copyWith(
                       suffixIcon: InkWell(
                         onTap: () => setState(
@@ -378,8 +378,7 @@ class _LoginScreenState extends State<LoginScreen> {
         hintText: hint,
         // `faint`, não `hairline`: o placeholder é instrução de formato
         // ("voce@orgao.gov.br"), e a 1.8:1 ele simplesmente não existia.
-        hintStyle: SIMEopsType.body()
-            .copyWith(fontSize: 17, color: SIMEopsColors.faint),
+        hintStyle: SIMEopsType.fieldValue(color: SIMEopsColors.faint),
         filled: false,
         contentPadding: const EdgeInsets.only(top: 12, bottom: 9),
         enabledBorder: const UnderlineInputBorder(

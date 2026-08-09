@@ -181,7 +181,7 @@ class _LinhaIndicador extends StatelessWidget {
               Expanded(
                 child: Text(
                   indicador.label,
-                  style: SIMEopsType.body().copyWith(fontSize: 15),
+                  style: SIMEopsType.rowTitle(),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),

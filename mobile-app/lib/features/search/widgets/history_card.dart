@@ -110,10 +110,7 @@ class HistoryCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               titulo,
-              style: SIMEopsType.body().copyWith(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.3,
+              style: SIMEopsType.entryTitle(
                 color: failed ? SIMEopsColors.faint : SIMEopsColors.white,
               ),
               maxLines: 1,

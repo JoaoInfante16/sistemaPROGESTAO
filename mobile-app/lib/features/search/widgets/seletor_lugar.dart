@@ -170,11 +170,10 @@ class _FolhaEscolhaState extends State<FolhaEscolha> {
                     autofocus: true,
                     onChanged: _filtrar,
                     controller: _busca,
-                    style: SIMEopsType.body().copyWith(fontSize: 17),
+                    style: SIMEopsType.fieldValue(),
                     decoration: InputDecoration(
                       hintText: 'digite para filtrar',
-                      hintStyle: SIMEopsType.body()
-                          .copyWith(fontSize: 17, color: SIMEopsColors.faint),
+                      hintStyle: SIMEopsType.fieldValue(color: SIMEopsColors.faint),
                       filled: false,
                       contentPadding: const EdgeInsets.only(top: 10, bottom: 8),
                       enabledBorder: const UnderlineInputBorder(

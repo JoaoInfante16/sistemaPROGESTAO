@@ -91,7 +91,7 @@ class Masthead extends StatelessWidget {
               style: SIMEopsType.wordmark(size: 25),
             )
           else
-            Text(titulo!, style: SIMEopsType.title().copyWith(fontSize: 25)),
+            Text(titulo!, style: SIMEopsType.sheetTitle()),
           if (temLinha) ...[
             const SizedBox(height: 9),
             Row(

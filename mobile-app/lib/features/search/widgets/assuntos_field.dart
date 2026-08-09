@@ -428,7 +428,7 @@ class _FolhaAssuntosState extends State<FolhaAssuntos> {
                     children: [
                       Expanded(
                         child: Text('Assuntos',
-                            style: SIMEopsType.title().copyWith(fontSize: 25)),
+                            style: SIMEopsType.sheetTitle()),
                       ),
                       InkWell(
                         onTap: () => setState(() {
@@ -558,7 +558,7 @@ class _FolhaAssuntosState extends State<FolhaAssuntos> {
             controller: _livreCtrl,
             onSubmitted: (_) => _adicionarLivre(),
             textInputAction: TextInputAction.done,
-            style: SIMEopsType.body().copyWith(fontSize: 17),
+            style: SIMEopsType.fieldValue(),
             decoration: InputDecoration(
               hintText: 'ex: acidente rodovia',
               suffixIcon: InkWell(

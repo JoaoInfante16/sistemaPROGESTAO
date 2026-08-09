@@ -137,25 +137,42 @@ class _SearchScreenState extends State<SearchScreen> {
     final count = _selected.length;
     final confirmed = await showDialog<bool>(
       context: context,
+      // Mesmo diálogo das outras telas: fundo `navyLight`, canto zero e o
+      // vermelho da paleta. Este aqui tinha `Colors.red` — a única cor do app
+      // que não vinha de `SIMEopsColors` — e o canto arredondado padrão do
+      // Material, que é justamente o que o tema global tirou de todo o resto.
       builder: (ctx) => AlertDialog(
-        backgroundColor: SIMEopsColors.navyMid,
-        title: const Text('Deletar buscas?'),
-        content: Text('$count busca${count > 1 ? 's' : ''} sera${count > 1 ? 'o' : ''} removida${count > 1 ? 's' : ''} permanentemente.'),
+        backgroundColor: SIMEopsColors.navyLight,
+        shape: const RoundedRectangleBorder(
+          side: BorderSide(color: SIMEopsColors.ruleStrong),
+        ),
+        title: Text(
+          count > 1 ? 'Apagar $count consultas?' : 'Apagar a consulta?',
+          style: SIMEopsType.dialogTitle(),
+        ),
+        content: Text(
+          'O resultado sai do histórico e não volta. As ocorrências que ela '
+          'encontrou continuam no feed da cidade.',
+          style: SIMEopsType.lead(),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
+            child: const Text('MANTER'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Deletar'),
+            style: FilledButton.styleFrom(
+              backgroundColor: SIMEopsColors.alert,
+              foregroundColor: SIMEopsColors.white,
+            ),
+            child: const Text('APAGAR'),
           ),
         ],
       ),
     );
 
-    if (confirmed != true) return;
+    if (confirmed != true || !mounted) return;
 
     try {
       final api = context.read<ApiService>();

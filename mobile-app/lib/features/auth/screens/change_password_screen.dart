@@ -314,11 +314,10 @@ class _PasswordField extends StatelessWidget {
       obscureText: obscure,
       validator: validator,
       onFieldSubmitted: onSubmitted,
-      style: SIMEopsType.body().copyWith(fontSize: 17),
+      style: SIMEopsType.fieldValue(),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: SIMEopsType.body()
-            .copyWith(fontSize: 17, color: SIMEopsColors.faint),
+        hintStyle: SIMEopsType.fieldValue(color: SIMEopsColors.faint),
         filled: false,
         contentPadding: const EdgeInsets.only(top: 12, bottom: 9),
         enabledBorder: const UnderlineInputBorder(

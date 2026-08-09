@@ -982,7 +982,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         ),
         title: Text(
           'Cancelar a consulta?',
-          style: SIMEopsType.body().copyWith(fontSize: 21),
+          style: SIMEopsType.dialogTitle(),
         ),
         content: Text(
           'Ela roda no servidor e termina sozinha mesmo com o app fechado. '

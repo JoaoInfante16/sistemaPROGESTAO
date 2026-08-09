@@ -246,7 +246,7 @@ class _Campo extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Text(valor, style: SIMEopsType.body().copyWith(fontSize: 15)),
+            child: Text(valor, style: SIMEopsType.rowTitle()),
           ),
         ],
       ),

@@ -64,6 +64,30 @@ class SIMEopsType {
         color: color ?? SIMEopsColors.white,
       );
 
+  /// Título de folha e de topo de tela (`Nova consulta`, `Recorte`).
+  ///
+  /// É o [title] em 25. O `Masthead` e as três folhas do app pediam esse
+  /// tamanho com `copyWith`, cada um por conta própria — quatro cópias de uma
+  /// decisão só, que é como uma escala vira uma lista de números soltos.
+  static TextStyle sheetTitle({Color? color}) =>
+      title(color: color).copyWith(fontSize: 25);
+
+  /// Título de item de lista: `Fortaleza` no histórico de consultas.
+  ///
+  /// Archivo 20 com entrelinha **de manchete** (1.12). Era
+  /// `body().copyWith(fontSize: 20, …)`, e o [body] carrega `height: 1.4` —
+  /// entrelinha de parágrafo aplicada a um título de uma linha. O nome ficava
+  /// flutuando dentro do próprio espaço, parecendo maior e mais solto que a
+  /// manchete do feed; foi o que o João viu quando disse "a fonte do feed é
+  /// melhor". A fonte era a mesma: o que estava errado era a entrelinha.
+  static TextStyle entryTitle({Color? color}) => GoogleFonts.archivo(
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+        height: 1.12,
+        letterSpacing: -0.3,
+        color: color ?? SIMEopsColors.white,
+      );
+
   /// Título encolhido, quando o cabeçalho recolhe na rolagem.
   static TextStyle titleCompact() => GoogleFonts.archivo(
         fontSize: 16,
@@ -106,6 +130,18 @@ class SIMEopsType {
         height: 1.4,
         color: color ?? SIMEopsColors.white,
       );
+
+  /// Título de diálogo (`Sair da conta`, `Cancelar a consulta?`).
+  static TextStyle dialogTitle() => body().copyWith(fontSize: 21);
+
+  /// Valor digitado ou escolhido num campo — o que o usuário pôs ali.
+  static TextStyle fieldValue({Color? color}) =>
+      body(color: color).copyWith(fontSize: 17);
+
+  /// Nome de uma linha de lista que tem controle à direita: a chave do
+  /// relatório, o indicador, o campo da folha de detalhe.
+  static TextStyle rowTitle({Color? color}) =>
+      body(color: color).copyWith(fontSize: 15);
 
   /// Aba de caderno (Notícias / Relatório).
   static TextStyle tab({required bool active}) => GoogleFonts.archivo(

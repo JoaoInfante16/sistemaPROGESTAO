@@ -120,7 +120,7 @@ class _FolhaFiltroState extends State<FolhaFiltro> {
               children: [
                 Expanded(
                   child: Text('Recorte',
-                      style: SIMEopsType.title().copyWith(fontSize: 25)),
+                      style: SIMEopsType.sheetTitle()),
                 ),
                 if (f.ativo)
                   InkWell(

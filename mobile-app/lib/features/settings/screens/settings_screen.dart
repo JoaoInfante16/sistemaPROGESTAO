@@ -152,7 +152,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           side: BorderSide(color: SIMEopsColors.ruleStrong),
         ),
         title: Text('Sair da conta',
-            style: SIMEopsType.body().copyWith(fontSize: 21)),
+            style: SIMEopsType.dialogTitle()),
         content: Text(
           // O desbloqueio pelo celular é apagado junto — senão o login
           // automático relogava na hora e o usuário não conseguia sair.

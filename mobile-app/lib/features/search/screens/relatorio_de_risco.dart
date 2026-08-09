@@ -606,7 +606,7 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(titulo, style: SIMEopsType.body().copyWith(fontSize: 15)),
+                Text(titulo, style: SIMEopsType.rowTitle()),
                 const SizedBox(height: 3),
                 Text(
                   descricao,
