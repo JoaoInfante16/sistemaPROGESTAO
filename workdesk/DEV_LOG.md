@@ -39,9 +39,15 @@ da `develop` de propósito, porque o release da Play Store está engatilhado.
 
 **`staging` = `feature/design-fio` = `47b8cd8`**, ambas empurradas em 09/08.
 
-🚨 **A migration 030 (`news.hora_publicacao`) é PRÉ-REQUISITO.** O código já faz
-`insert` e `select` da coluna; sem ela o PostgREST devolve 400 no feed e no
-scan. A **029 já foi aplicada** (confirmada pelo João em 09/08).
+✅ **029 e 030 aplicadas** (confirmadas pelo João em 09/08). O banco tem
+`news.titulo` e `news.hora_publicacao`, e o staging está inteiro.
+
+⏳ **Ainda não medido:** nenhuma varredura nem busca manual rodou com o prompt
+novo. Então o feed segue mostrando manchete **composta** (`Homicídio no
+Kobrasol`) e o resumo antigo — o que o João apontou como errado ainda aparece,
+não porque falhou, mas porque só vale pra item novo. A primeira busca manual é
+o teste de verdade: manchete escrita, resumo de até 190 complementando, e hora
+do veículo.
 
 ⚠️ **A 030 do plano original era a de notificações — renumerar pra 031.** A hora
 de publicação entrou na frente porque era correção de bug em produção de dado.
