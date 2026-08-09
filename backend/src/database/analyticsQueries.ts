@@ -16,19 +16,35 @@ export interface MapPointRaw {
   bairro: string | null;
   rua: string | null;
   data: string;
+  /// Cidade DO PONTO. Sem ela, o geocode de um grupo roda todo bairro contra
+  /// a primeira cidade da lista e um bairro de Palhoca vira pino dentro de
+  /// Florianopolis — a mesma armadilha que a busca manual ja documentava.
+  cidade: string | null;
 }
 
 // Pega notícias individuais do período pra alimentar mapa (radar de pontos).
 // Só ocorrências (natureza='ocorrencia'); estatísticas não vão pro mapa.
+/**
+ * ⚠️ AS QUATRO CONSULTAS DESTE ARQUIVO ACEITAM UMA CIDADE **OU MUITAS**.
+ *
+ * O relatorio de um GRUPO ("Grande Florianopolis" = 4 cidades) precisa somar
+ * todas. Ate 09/08 elas faziam `.eq('cidade', cidade)`, uma so, e o app mandava
+ * a PRIMEIRA do grupo: o cabecalho da tela dizia `21 EM 30D` e o relatorio
+ * logo abaixo abria com `12`. Dois numeros verdadeiros medindo coisas
+ * diferentes, e nada na tela dizendo qual era qual.
+ *
+ * `.in()` com um elemento e equivalente ao `.eq()` de antes — nenhuma chamada
+ * existente muda de comportamento.
+ */
 export async function getMapPointsRaw(
-  cidade: string,
+  cidade: string | string[],
   dateFrom: string,
   dateTo: string,
 ): Promise<MapPointRaw[]> {
   const { data, error } = await supabase
     .from('news')
-    .select('id, tipo_crime, categoria_grupo, bairro, rua, data_ocorrencia, natureza')
-    .eq('cidade', cidade)
+    .select('id, tipo_crime, categoria_grupo, bairro, rua, data_ocorrencia, natureza, cidade')
+    .in('cidade', Array.isArray(cidade) ? cidade : [cidade])
     .eq('active', true)
     .gte('data_ocorrencia', dateFrom)
     .lte('data_ocorrencia', dateTo);
@@ -44,6 +60,7 @@ export async function getMapPointsRaw(
       bairro: (r.bairro as string | null) || null,
       rua: (r.rua as string | null) || null,
       data: r.data_ocorrencia as string,
+      cidade: (r.cidade as string | null) || null,
     }));
 }
 
@@ -75,6 +92,7 @@ export async function getSearchMapPointsRaw(searchId: string): Promise<MapPointR
         bairro: (r.bairro as string | null) || null,
         rua: (r.rua as string | null) || null,
         data: r.data_ocorrencia as string,
+        cidade: (r.cidade as string | null) || null,
       });
     }
   }
@@ -94,14 +112,15 @@ interface CrimeSummaryResult {
 }
 
 export async function getCrimeSummary(
-  cidade: string,
+  cidade: string | string[],
   dateFrom: string,
   dateTo: string
 ): Promise<CrimeSummaryResult> {
+  const cidades = Array.isArray(cidade) ? cidade : [cidade];
   const { data, error } = await supabase
     .from('news')
-    .select('tipo_crime, categoria_grupo, bairro, natureza, resumo, data_ocorrencia, created_at, news_sources(url)')
-    .eq('cidade', cidade)
+    .select('tipo_crime, categoria_grupo, bairro, cidade, natureza, resumo, data_ocorrencia, created_at, news_sources(url)')
+    .in('cidade', cidades)
     .eq('active', true)
     .gte('data_ocorrencia', dateFrom)
     .lte('data_ocorrencia', dateTo);
@@ -139,9 +158,16 @@ export async function getCrimeSummary(
     const cat = (row.categoria_grupo as string | null) || 'institucional';
     categoryMap.set(cat, (categoryMap.get(cat) || 0) + 1);
 
+    // Num GRUPO o bairro leva a cidade junto: `Centro` existe em Florianopolis,
+    // em Palhoca e em Sao Jose, e somar os tres numa linha so inventaria um
+    // bairro que nao existe — logo no ranking que alguem le pra decidir onde
+    // reforcar operacao. Com uma cidade so, o nome dela seria repeticao.
     const bairro = row.bairro as string | null;
     if (bairro) {
-      bairroMap.set(bairro, (bairroMap.get(bairro) || 0) + 1);
+      const chave = cidades.length > 1
+        ? `${bairro} · ${row.cidade as string}`
+        : bairro;
+      bairroMap.set(chave, (bairroMap.get(chave) || 0) + 1);
     }
   }
 
@@ -187,7 +213,7 @@ interface TrendDataPoint {
 }
 
 export async function getCrimeTrend(
-  cidade: string,
+  cidade: string | string[],
   dateFrom: string,
   dateTo: string,
   groupBy: 'day' | 'week' | 'month' = 'week'
@@ -195,7 +221,7 @@ export async function getCrimeTrend(
   const { data, error } = await supabase
     .from('news')
     .select('tipo_crime, data_ocorrencia')
-    .eq('cidade', cidade)
+    .in('cidade', Array.isArray(cidade) ? cidade : [cidade])
     .eq('active', true)
     .gte('data_ocorrencia', dateFrom)
     .lte('data_ocorrencia', dateTo)
@@ -440,7 +466,7 @@ function deduplicateSources<T extends { url: string }>(sources: T[]): T[] {
 // ============================================
 
 export async function getNewsSources(
-  cidade: string,
+  cidade: string | string[],
   dateFrom: string,
   dateTo: string
 ): Promise<Array<{ name: string; count: number; urls: string[]; type: 'oficial' | 'midia' }>> {
@@ -448,7 +474,7 @@ export async function getNewsSources(
   const { data: newsRows, error: newsErr } = await supabase
     .from('news')
     .select('id')
-    .eq('cidade', cidade)
+    .in('cidade', Array.isArray(cidade) ? cidade : [cidade])
     .eq('active', true)
     .gte('data_ocorrencia', dateFrom)
     .lte('data_ocorrencia', dateTo);

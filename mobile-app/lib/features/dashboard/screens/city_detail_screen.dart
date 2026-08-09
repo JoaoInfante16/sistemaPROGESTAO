@@ -77,15 +77,19 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   /// quer ver Segurança em Palhoça também.
   final _filtro = FeedFiltro();
 
-  // For groups without sub-city selected, use first city name
-  String get _activeCidade {
-    if (_selectedSubCity != null) return _selectedSubCity!;
-    if (widget.city.isGroup &&
-        widget.city.cityNames != null &&
-        widget.city.cityNames!.isNotEmpty) {
-      return widget.city.cityNames!.first;
-    }
-    return widget.city.name;
+  /// As cidades que o relatório soma — **ele herda a aba**, igual ao feed.
+  ///
+  /// `TODAS` num grupo são as quatro cidades; uma aba escolhida é só ela.
+  ///
+  /// Era um `_activeCidade` que, com `TODAS` selecionada, devolvia a **primeira
+  /// cidade do grupo**. Na Grande Florianópolis o cabeçalho dizia `21 EM 30D` e
+  /// o relatório logo abaixo abria com `12` — dois números verdadeiros medindo
+  /// coisas diferentes, e nada na tela dizendo qual era qual.
+  List<String> get _cidadesDoRelatorio {
+    if (_selectedSubCity != null) return [_selectedSubCity!];
+    final nomes = widget.city.cityNames;
+    if (widget.city.isGroup && nomes != null && nomes.isNotEmpty) return nomes;
+    return [widget.city.name];
   }
 
   bool get _isGroup => widget.city.isGroup;
@@ -140,7 +144,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
       final now = DateTime.now();
 
       final summary = await api
-          .getCrimeSummary(_activeCidade, _relatorioDe, _dateStr(now))
+          .getCrimeSummary(_cidadesDoRelatorio, _relatorioDe, _dateStr(now))
           .catchError((_) => <String, dynamic>{});
 
       if (mounted) {
@@ -165,7 +169,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     try {
       final api = context.read<ApiService>();
       final raw = await api.getExecutive(
-        cidade: _activeCidade,
+        cidades: _cidadesDoRelatorio,
         estado: estado,
         rangeDays: _relatorioRangeDays,
       );
@@ -186,7 +190,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
       final api = context.read<ApiService>();
       final now = DateTime.now();
       final trendData = await api
-          .getCrimeTrend(_activeCidade, _relatorioDe, _dateStr(now))
+          .getCrimeTrend(_cidadesDoRelatorio, _relatorioDe, _dateStr(now))
           .catchError((_) => <String, dynamic>{});
       if (mounted) {
         setState(() {
@@ -203,7 +207,6 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   // Radar: backend geocoda + devolve lista pronta (CrimePoint).
   // Segue a MESMA janela do resto do relatório.
   Future<void> _loadMapPoints() async {
-    final cidade = _activeCidade;
     final estado = widget.city.parentState ?? '';
     if (estado.isEmpty) return;
 
@@ -212,7 +215,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
       final api = context.read<ApiService>();
       final now = DateTime.now();
       final raw = await api.getMapPoints(
-        cidade: cidade,
+        cidades: _cidadesDoRelatorio,
         estado: estado,
         dateFrom: _relatorioDe,
         dateTo: _dateStr(now),

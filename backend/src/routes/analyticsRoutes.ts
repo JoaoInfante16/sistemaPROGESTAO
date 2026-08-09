@@ -30,16 +30,35 @@ import { logger } from '../middleware/logger';
 
 const router = Router();
 
+/**
+ * `cidade=X` ou `cidades=X,Y,Z` — devolve sempre uma lista.
+ *
+ * O relatorio de um GRUPO precisa das quatro cidades; o de uma cidade so manda
+ * uma. Os dois parametros convivem porque o APK que o cliente tem na mao ainda
+ * manda `cidade`, e ele nao pode quebrar quando este backend subir.
+ */
+function resolverCidades(q: { cidade?: string; cidades?: string }): string[] {
+  if (q.cidades) {
+    const lista = q.cidades.split(',').map((c) => c.trim()).filter(Boolean);
+    if (lista.length > 0) return lista;
+  }
+  return q.cidade ? [q.cidade] : [];
+}
+
 // Monta CrimePoint[] a partir de raws + geocode. Usado por /analytics/map-points
 // (leve, on-demand) E por /analytics/report (persiste no relatório).
 async function buildMapPoints(
   rawPoints: MapPointRaw[],
-  cidade: string,
+  /** Usada so quando o ponto nao traz cidade propria (linha antiga). */
+  cidadePadrao: string,
   estado: string,
 ): Promise<CrimePoint[]> {
   const out: CrimePoint[] = [];
   for (const p of rawPoints) {
-    const geo = await geocodePoint(p.rua, p.bairro, cidade, estado);
+    // A cidade DO PONTO, nao a da requisicao. Num grupo elas sao diferentes, e
+    // geocodificar "Ponte do Imaruim" contra Florianopolis poe o pino a 20km
+    // do lugar — com a mesma aparencia de um pino certo.
+    const geo = await geocodePoint(p.rua, p.bairro, p.cidade || cidadePadrao, estado);
     if (!geo) continue;
     out.push({
       id: p.id,
@@ -66,14 +85,11 @@ router.get(
   validateQuery(schemas.analyticsQuery),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { cidade, dateFrom, dateTo } = req.query as {
-        cidade: string;
-        dateFrom: string;
-        dateTo: string;
-      };
+      const { dateFrom, dateTo } = req.query as { dateFrom: string; dateTo: string };
+      const cidades = resolverCidades(req.query);
       const [result, sources] = await Promise.all([
-        getCrimeSummary(cidade, dateFrom, dateTo),
-        getNewsSources(cidade, dateFrom, dateTo).catch(() => []),
+        getCrimeSummary(cidades, dateFrom, dateTo),
+        getNewsSources(cidades, dateFrom, dateTo).catch(() => []),
       ]);
       // Sources já vêm agrupados por hostname com count + type (oficial/midia).
       // Expor pra city_detail renderizar "Fontes Analisadas" com mesma estrutura
@@ -96,13 +112,14 @@ router.get(
   validateQuery(schemas.analyticsTrend),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { cidade, dateFrom, dateTo, groupBy } = req.query as {
-        cidade: string;
+      const { dateFrom, dateTo, groupBy } = req.query as {
         dateFrom: string;
         dateTo: string;
         groupBy: 'day' | 'week' | 'month';
       };
-      const result = await getCrimeTrend(cidade, dateFrom, dateTo, groupBy);
+      const result = await getCrimeTrend(
+        resolverCidades(req.query), dateFrom, dateTo, groupBy,
+      );
       res.json(result);
     } catch (error) {
       logger.error('[Analytics] Crime trend error:', error);
@@ -122,20 +139,24 @@ router.get(
   validateQuery(schemas.executiveQuery),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { cidade, estado, rangeDays } = req.query as unknown as {
-        cidade: string;
+      const { estado, rangeDays } = req.query as unknown as {
         estado: string;
         rangeDays: number;
       };
+      const cidades = resolverCidades(req.query);
 
       const now = new Date();
       const from = new Date(now.getTime() - rangeDays * 24 * 60 * 60 * 1000);
       const dateFrom = from.toISOString().split('T')[0];
       const dateTo = now.toISOString().split('T')[0];
 
-      const summary = await getCrimeSummary(cidade, dateFrom, dateTo).catch(() => null);
+      const summary = await getCrimeSummary(cidades, dateFrom, dateTo).catch(() => null);
       const stats = summary?.estatisticas || [];
-      const executive = await getOrGenerateExecutive(cidade, estado, rangeDays, stats);
+      // A chave do cache do executivo e uma string de cidade. Num grupo ela
+      // passa a ser a lista inteira, ordenada — senao "Grande Florianopolis" e
+      // "Florianopolis" dividiriam o mesmo resumo do GPT.
+      const chaveCidade = [...cidades].sort().join(',');
+      const executive = await getOrGenerateExecutive(chaveCidade, estado, rangeDays, stats);
       res.json(executive);
     } catch (error) {
       logger.error('[Analytics] Executive error:', error);
@@ -210,18 +231,18 @@ router.post(
   validateBody(schemas.mapPointsQuery),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { cidade, estado, dateFrom, dateTo, searchId } = req.body as {
-        cidade: string;
+      const { estado, dateFrom, dateTo, searchId } = req.body as {
         estado: string;
         dateFrom: string;
         dateTo: string;
         searchId?: string;
       };
+      const cidades = resolverCidades(req.body);
 
       const rawPoints: MapPointRaw[] = searchId
         ? await getSearchMapPointsRaw(searchId).catch(() => [])
-        : await getMapPointsRaw(cidade, dateFrom, dateTo).catch(() => []);
-      const mapPoints = await buildMapPoints(rawPoints, cidade, estado);
+        : await getMapPointsRaw(cidades, dateFrom, dateTo).catch(() => []);
+      const mapPoints = await buildMapPoints(rawPoints, cidades[0] ?? '', estado);
       res.json({ mapPoints });
     } catch (error) {
       logger.error('[Analytics] Map points error:', error);

@@ -58,6 +58,16 @@ export function validateQuery(schema: ZodSchema) {
 // Schemas reutilizáveis
 // ============================================
 
+/**
+ * Teto da janela de analytics, em dias.
+ *
+ * Era **365**, e isso derrubava a opcao `TUDO` do relatorio (que o app manda
+ * como uma data bem antiga) com um 400 — a tela ficava vazia sem explicar. Dez
+ * anos e teto de sanidade, nao de produto: o banco comecou em 2026, entao na
+ * pratica `TUDO` varre tudo o que existe.
+ */
+const JANELA_MAXIMA_DIAS = 3700;
+
 export const schemas = {
   // Paginação
   pagination: z.object({
@@ -158,30 +168,42 @@ export const schemas = {
     scan_frequency_minutes: z.number().int().min(5).max(1440).default(60),
   }),
 
-  // Analytics (com validacao: dateFrom <= dateTo, max 365 dias)
+  // Analytics: dateFrom <= dateTo, e a janela limitada por JANELA_MAXIMA_DIAS.
+  //
+  // As consultas aceitam `cidade` (uma) OU `cidades` (lista separada por
+  // virgula). A lista existe para o relatorio de GRUPO — ver o comentario no
+  // topo de `analyticsQueries.ts`.
   analyticsQuery: z.object({
-    cidade: z.string().min(2).max(100),
+    cidade: z.string().min(2).max(100).optional(),
+    cidades: z.string().min(2).max(2000).optional(),
     dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   }).refine(
+    (d) => Boolean(d.cidade || d.cidades),
+    { message: 'cidade ou cidades e obrigatorio', path: ['cidade'] }
+  ).refine(
     (d) => new Date(d.dateFrom) <= new Date(d.dateTo),
     { message: 'dateFrom must be before or equal to dateTo', path: ['dateFrom'] }
   ).refine(
-    (d) => (new Date(d.dateTo).getTime() - new Date(d.dateFrom).getTime()) / (1000 * 60 * 60 * 24) <= 365,
-    { message: 'Date range cannot exceed 365 days', path: ['dateTo'] }
+    (d) => (new Date(d.dateTo).getTime() - new Date(d.dateFrom).getTime()) / (1000 * 60 * 60 * 24) <= JANELA_MAXIMA_DIAS,
+    { message: `Date range cannot exceed ${JANELA_MAXIMA_DIAS} days`, path: ['dateTo'] }
   ),
 
   analyticsTrend: z.object({
-    cidade: z.string().min(2).max(100),
+    cidade: z.string().min(2).max(100).optional(),
+    cidades: z.string().min(2).max(2000).optional(),
     dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     groupBy: z.enum(['day', 'week', 'month']).default('week'),
   }).refine(
+    (d) => Boolean(d.cidade || d.cidades),
+    { message: 'cidade ou cidades e obrigatorio', path: ['cidade'] }
+  ).refine(
     (d) => new Date(d.dateFrom) <= new Date(d.dateTo),
     { message: 'dateFrom must be before or equal to dateTo', path: ['dateFrom'] }
   ).refine(
-    (d) => (new Date(d.dateTo).getTime() - new Date(d.dateFrom).getTime()) / (1000 * 60 * 60 * 24) <= 365,
-    { message: 'Date range cannot exceed 365 days', path: ['dateTo'] }
+    (d) => (new Date(d.dateTo).getTime() - new Date(d.dateFrom).getTime()) / (1000 * 60 * 60 * 24) <= JANELA_MAXIMA_DIAS,
+    { message: `Date range cannot exceed ${JANELA_MAXIMA_DIAS} days`, path: ['dateTo'] }
   ),
 
   generateReport: z.object({
@@ -196,10 +218,16 @@ export const schemas = {
   ),
 
   executiveQuery: z.object({
-    cidade: z.string().min(2).max(100),
+    cidade: z.string().min(2).max(100).optional(),
+    cidades: z.string().min(2).max(2000).optional(),
     estado: z.string().min(2).max(100),
-    rangeDays: z.coerce.number().int().min(7).max(365).default(30),
-  }),
+    // Ate 3700 pelo mesmo motivo da JANELA_MAXIMA_DIAS: o `TUDO` do relatorio
+    // manda uma janela de anos, e 365 devolvia 400.
+    rangeDays: z.coerce.number().int().min(7).max(JANELA_MAXIMA_DIAS).default(30),
+  }).refine(
+    (d) => Boolean(d.cidade || d.cidades),
+    { message: 'cidade ou cidades e obrigatorio', path: ['cidade'] }
+  ),
 
   // Busca manual: estatísticas já filtradas no client, backend cacheia por
   // searchId (busca é imutável, 1 GPT call por busca em vez de N por open).
@@ -218,7 +246,8 @@ export const schemas = {
   }),
 
   mapPointsQuery: z.object({
-    cidade: z.string().min(2).max(100),
+    cidade: z.string().min(2).max(100).optional(),
+    cidades: z.string().min(2).max(2000).optional(),
     estado: z.string().min(2).max(100),
     dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

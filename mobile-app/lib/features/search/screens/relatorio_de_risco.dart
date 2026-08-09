@@ -183,7 +183,7 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
       // Busca manual com searchId → backend lê de search_results.
       // Sem searchId (caso manual ad-hoc) → lê de news pelo período.
       final raw = await api.getMapPoints(
-        cidade: widget.cidades.first,
+        cidades: widget.cidades,
         estado: widget.estado,
         dateFrom: _dateStr(from),
         dateTo: _dateStr(now),

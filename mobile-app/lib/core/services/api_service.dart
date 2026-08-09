@@ -308,12 +308,12 @@ class ApiService {
   // Resumo executivo (cards de indicadores + parágrafo + fontes) pro dashboard.
   // Backend cacheia por cidade+estado+range — regenera quando chega estatística nova.
   Future<Map<String, dynamic>> getExecutive({
-    required String cidade,
+    required List<String> cidades,
     required String estado,
     int rangeDays = 30,
   }) async {
     final uri = Uri.parse('$_baseUrl/analytics/executive').replace(queryParameters: {
-      'cidade': cidade,
+      'cidades': cidades.join(','),
       'estado': estado,
       'rangeDays': rangeDays.toString(),
     });
@@ -350,14 +350,14 @@ class ApiService {
   }
 
   Future<List<Map<String, dynamic>>> getMapPoints({
-    required String cidade,
+    required List<String> cidades,
     required String estado,
     required String dateFrom,
     required String dateTo,
     String? searchId,
   }) async {
     final bodyMap = <String, dynamic>{
-      'cidade': cidade,
+      'cidades': cidades.join(','),
       'estado': estado,
       'dateFrom': dateFrom,
       'dateTo': dateTo,
@@ -405,10 +405,16 @@ class ApiService {
     return (body['items'] as List<dynamic>).cast<Map<String, dynamic>>();
   }
 
+  /// Aceita UMA cidade ou muitas — o relatorio de um grupo precisa das quatro.
+  /// Ate 09/08 mandava so a primeira e o total ficava menor que o do cabecalho.
   Future<Map<String, dynamic>> getCrimeSummary(
-    String cidade, String dateFrom, String dateTo,
+    List<String> cidades, String dateFrom, String dateTo,
   ) async {
-    final params = {'cidade': cidade, 'dateFrom': dateFrom, 'dateTo': dateTo};
+    final params = {
+      'cidades': cidades.join(','),
+      'dateFrom': dateFrom,
+      'dateTo': dateTo,
+    };
     final uri = Uri.parse('$_baseUrl/analytics/crime-summary')
         .replace(queryParameters: params);
     final res = await _client.get(uri, headers: _headers).timeout(_timeout);
@@ -417,10 +423,13 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getCrimeTrend(
-    String cidade, String dateFrom, String dateTo, {String groupBy = 'week'}
+    List<String> cidades, String dateFrom, String dateTo, {String groupBy = 'week'}
   ) async {
     final params = {
-      'cidade': cidade, 'dateFrom': dateFrom, 'dateTo': dateTo, 'groupBy': groupBy,
+      'cidades': cidades.join(','),
+      'dateFrom': dateFrom,
+      'dateTo': dateTo,
+      'groupBy': groupBy,
     };
     final uri = Uri.parse('$_baseUrl/analytics/crime-trend')
         .replace(queryParameters: params);
