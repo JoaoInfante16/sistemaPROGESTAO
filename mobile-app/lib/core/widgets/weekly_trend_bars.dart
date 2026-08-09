@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../theme/simeops_colors.dart';
+import '../theme/simeops_type.dart';
 import '../utils/type_helpers.dart';
 
 // Bar chart de tendência semanal — compartilhado entre auto-scan (city_detail)
@@ -27,7 +27,7 @@ class WeeklyTrendBars extends StatelessWidget {
         child: Center(
           child: Text(
             'Sem dados de tendência no período',
-            style: GoogleFonts.exo2(fontSize: 12, color: SIMEopsColors.muted),
+            style: SIMEopsType.note(color: SIMEopsColors.faint),
           ),
         ),
       );
@@ -50,25 +50,25 @@ class WeeklyTrendBars extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Text('$total',
-                      style: GoogleFonts.exo2(
-                          fontSize: 9,
-                          color: total > 0
-                              ? SIMEopsColors.white.withValues(alpha: 0.8)
-                              : SIMEopsColors.muted.withValues(alpha: 0.4))),
-                  const SizedBox(height: 2),
-                  Container(
-                    height: total > 0 ? barHeight.clamp(4.0, maxBarHeight) : 2.0,
-                    decoration: BoxDecoration(
+                  Text(
+                    '$total',
+                    style: SIMEopsType.slug(
                       color: total > 0
-                          ? SIMEopsColors.teal.withValues(alpha: 0.7)
-                          : SIMEopsColors.muted.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(3),
+                          ? SIMEopsColors.white
+                          : SIMEopsColors.hairline,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 3),
+                  // Semana sem ocorrência fica com um filete de 2px em vez de
+                  // sumir: o vazio é informação — foi uma semana medida, não
+                  // uma semana faltando.
+                  Container(
+                    height: total > 0 ? barHeight.clamp(4.0, maxBarHeight) : 2.0,
+                    color: total > 0 ? SIMEopsColors.teal : SIMEopsColors.rule,
+                  ),
+                  const SizedBox(height: 5),
                   Text(label,
-                      style: GoogleFonts.exo2(fontSize: 8, color: SIMEopsColors.muted),
+                      style: SIMEopsType.slug(color: SIMEopsColors.faint),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis),
                 ],

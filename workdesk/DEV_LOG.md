@@ -33,7 +33,8 @@ da `develop` de propósito, porque o release da Play Store está engatilhado.
 | B | formulário de busca (11 blocos → 5) | ✅ feito |
 | C | espera de 7 min + resultados | ✅ feito |
 | D | remoções (favoritos, arrastar, lembrar senha, senha mín. 8) | ⬜ |
-| E | relatório + export HTML A4 | ⬜ **próxima** (pedida pelo João em 09/08) |
+| E | relatório (as **duas** telas) | ✅ feito |
+| E2 | export HTML A4 autocontido | ⬜ **próxima** |
 | F | notificações (digest por cidade, tri-estado) — migration **031** | ⬜ |
 | — | **revisão de todas as copys** (pedido do João, DEPOIS das fases) | ⬜ |
 
@@ -52,18 +53,17 @@ do veículo.
 ⚠️ **A 030 do plano original era a de notificações — renumerar pra 031.** A hora
 de publicação entrou na frente porque era correção de bug em produção de dado.
 
-### O que a Fase E tem que resolver (levantado e não feito)
+### O que falta na Fase E (o export)
 
-- o **relatório é a tela mais atrasada do app**: 904 linhas, `Rajdhani` em 10
-  lugares (a regra é só o logotipo), `exo2` no resto e **quatro raios de canto**
-  (6, 12, 14 e 20 nos chips). Nada ali passou pelo redesign.
-- **o mapa mora dentro dele** (`report_screen.dart:766`) e também na aba
-  Relatório da cidade (`city_detail_screen.dart:546`) — mexer num é mexer nos dois.
-- a referência tem a tela pronta (`#rel-risco` no protótipo): recorte declarado
-  em caixa · toggle da região · número-herói · faixa por categoria com
-  `VER COMO TABELA` · concentração por local · mapa com a precisão declarada
-  (`7 DOS 25 ITENS NÃO TÊM BAIRRO`) · `COMPARTILHAR`.
-- ordem do João em 09/08: **mantém a estrutura, revisa o design.** O donut fica.
+- o botão `COMPARTILHAR RELATÓRIO` ainda **manda um link de texto** para o
+  admin-panel (`generateReport` → `reportUrl`). O que falta é o documento:
+  HTML autocontido, arquivo único, fontes em base64, **tema claro** (o app é
+  escuro, o documento não), imprimível em A4, marca do cliente numa variável só
+  (`--marca`) e o aviso de cobertura no rodapé — quem recebe nunca viu a tela.
+- candidato a mandar pra instância da web (ela não precisa do repo). O briefing
+  **precisa** levar os cinco hexes validados, senão volta Tailwind: `#DA4358`
+  segurança, `#B39026` patrimonial, `#1F98AB` operacional, `#8F62CB` fraude,
+  `#4E8F45` institucional.
 - `news_detail_sheet.dart` **não morre** (decisão do João em 09/08) — saiu da
   lista de remoções da Fase D.
 
@@ -228,6 +228,71 @@ produção **na hora, sem deploy**. Quando o significado de uma config mudar,
 Verificado em **04/08**: 026, 027 e 028 aplicadas (`openai` e `jina` com
 `max_concurrent` 20). **024 e 025 seguem não rodadas.** Custo do mês: **$1,75**
 de $100.
+
+---
+
+## 2026-08-09 (noite) — Fase E: o relatório era duas telas copiadas, e o carrossel escondia dado
+
+Pedido do João, palavra por palavra: **"mantém estrutura, revisa design"**. E
+uma correção dele — falou "mapa", quis dizer "relatório". Não estava tão errado:
+o mapa mora dentro do relatório, nas duas telas.
+
+**Porque são duas.** `report_screen.dart` (busca manual, números calculados no
+aparelho) e a aba Relatório de `city_detail_screen.dart` (auto-scan, números
+agregados pelo backend) desenhavam **o mesmo relatório em código separado**:
+dois donuts, dois rankings de bairro, dois `_statBox`, dois `_sectionTitle`,
+dois `_card`. Foi exatamente assim que a tela da cidade acabou com uma
+**terceira tabela de cores** própria, achada na auditoria de 08/08 — quando o
+desenho é copiado, a correção chega numa cópia só.
+
+Então antes da estética veio `core/widgets/report_pieces.dart`:
+`BlocoRelatorio`, `RankBarras`, `TabelaGemea` e `RoscaCategorias`. As duas telas
+montam das mesmas peças; o que sobra de diferente entre elas é só a origem dos
+números, que é a única diferença que devia existir.
+
+### O que mudou de verdade (não é só tinta)
+
+- **abre com uma frase, não com um gráfico.** Eram quatro caixinhas
+  (`107/OCORRÊNCIAS`, `18/BAIRROS`, `9/TIPOS`) que obrigam quem lê a montar
+  sozinho a leitura — e nenhuma delas dizia a coisa mais importante. Agora o
+  número grande vem com a frase montada dos próprios dados, terminando na
+  ressalva: *"É o que a imprensa noticiou — não o total registrado pelas
+  polícias."* Na **primeira dobra**, não num rodapé: quem vai citar o número
+  numa reunião precisa saber disso antes.
+- **todo gráfico tem gêmeo em tabela.** Rosca e barra mostram proporção e
+  escondem o número exato; ninguém cita "uns 40% mais ou menos". É também o
+  único caminho pra quem lê com leitor de tela.
+- **o carrossel de indicadores morreu.** Eram fichas de 180px rolando na
+  **horizontal** dentro de um documento que rola na vertical: o terceiro
+  indicador ficava atrás de um gesto que ninguém adivinha. Virou lista, com a
+  estrutura que um indicador precisa ter pra ser citado — **valor · o que é ·
+  de quando/de quem**. E as duas cores de sentido (`0xFF22C55E`, `0xFFE05252`)
+  vinham de fora da paleta: mais uma tabela paralela, agora em `SIMEopsColors`.
+- **os dois chips ambíguos viraram chaves.** `+ 34 anteriores a 12/07` e
+  `+ 12 da região` eram `ChoiceChip` r20 — e chip aceso e chip apagado parecem
+  a mesma coisa a um metro de distância, para dois controles que **mudam todos
+  os números da página**. Agora são linhas com interruptor e a descrição do que
+  cada um soma.
+- **ranking em uma cor só.** Magnitude nominal não se colore por valor: pintar
+  o primeiro bairro de vermelho e o último de verde inventa um juízo
+  ("perigoso"/"seguro") que o dado não sustenta — são contagens de citação em
+  matéria, não taxas por habitante.
+- **a precisão do ponto, declarada**: `18 de 25 ocorrências entraram no mapa —
+  o resto não traz bairro na matéria`. Um mapa que desenha 18 de 25 sem dizer
+  isso deixa quem lê concluir que a cidade inteira está ali.
+- **datas escritas à mão** (`5 de julho de 2026`). `DateFormat('pt_BR')` precisa
+  de `initializeDateFormatting`, e sem isso a data sai **em inglês** — num
+  documento que o cliente encaminha pra outra pessoa.
+
+O `_Switch` retangular que morava privado no `settings_screen` virou
+`core/widgets/interruptor.dart` — o relatório precisou do mesmo desenho e a
+Fase F vai precisar de novo, nas preferências de notificação.
+
+A rosca **fica** (decisão do João): ela carrega o panorama e a legenda carrega a
+comparação. O que mudou nela foi filete fino em vez de anel gordo, total no
+centro e quadrado em vez de bolinha na legenda.
+
+`flutter analyze` nos mesmos 2 infos preexistentes.
 
 ---
 

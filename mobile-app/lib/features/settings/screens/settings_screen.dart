@@ -8,6 +8,7 @@ import '../../../core/services/api_service.dart';
 import '../../../core/services/push_service.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
+import '../../../core/widgets/interruptor.dart';
 import '../../../core/widgets/masthead.dart';
 import '../../feed/widgets/take_card.dart';
 
@@ -111,7 +112,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           description: _notificationsEnabled
               ? 'Avisa quando uma consulta termina e quando chega ocorrência nova'
               : 'Nenhum aviso — as ocorrências continuam sendo coletadas',
-          trailing: _Switch(
+          trailing: Interruptor(
             value: _notificationsEnabled,
             onChanged: _toggleNotifications,
           ),
@@ -254,42 +255,6 @@ class _SettingRow extends StatelessWidget {
   }
 }
 
-/// Interruptor retangular — o `Switch` do Material é a peça mais arredondada
-/// que existe e destoava de uma tela feita só de filete.
-class _Switch extends StatelessWidget {
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  const _Switch({required this.value, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => onChanged(!value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        width: 42,
-        height: 23,
-        decoration: BoxDecoration(
-          color: value
-              ? SIMEopsColors.green.withValues(alpha: 0.18)
-              : SIMEopsColors.navyLight,
-          border: Border.all(
-            color: value ? SIMEopsColors.green : SIMEopsColors.ruleStrong,
-          ),
-        ),
-        child: AnimatedAlign(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOut,
-          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            width: 15,
-            height: 15,
-            margin: const EdgeInsets.symmetric(horizontal: 2),
-            color: value ? SIMEopsColors.greenLight : SIMEopsColors.faint,
-          ),
-        ),
-      ),
-    );
-  }
-}
+// O `_Switch` retangular nasceu aqui e virou `core/widgets/interruptor.dart`
+// em 09/08, quando o relatório precisou do mesmo desenho pra ligar a região
+// metropolitana.

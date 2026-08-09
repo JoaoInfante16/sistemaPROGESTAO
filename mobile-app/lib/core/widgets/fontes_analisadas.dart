@@ -1,16 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../theme/simeops_colors.dart';
+import '../theme/simeops_type.dart';
 
-// Seção "Fontes Analisadas" compartilhada entre city_detail (auto-scan) e
-// report_screen (busca manual). Agrupa fontes por hostname com count,
-// separa oficiais (gov.br/ssp/etc) de mídia, e mostra contador no header.
-//
-// Input: listas de Map {'name': hostname, 'count': 'N'} já deduplicadas.
-// Sem clicabilidade (fonte do "resuminho" por URL foi retirado a pedido do João).
+/// "Veículos analisados" — compartilhada entre a cidade (auto-scan) e o
+/// relatório da busca manual.
+///
+/// Agrupa por hostname com contagem e separa **oficial** (gov.br, ssp, sesp…)
+/// de imprensa. A distinção importa: uma ocorrência confirmada pela secretaria
+/// de segurança e uma noticiada por um portal não têm o mesmo peso, e o
+/// relatório precisa deixar isso visível sem precisar dizer.
+///
+/// Antes era uma caixa r12 com `[1]  ndmais.com.br  3x` em `exo2`. Agora é
+/// ranking com filete: nome, contagem e a barra proporcional que já é a
+/// linguagem do bairro logo acima. **Uma cor só** na barra — quantidade de
+/// publicações não é juízo de valor sobre o veículo.
 class FontesAnalisadas extends StatelessWidget {
   final List<Map<String, String>> oficiais;
   final List<Map<String, String>> midias;
+
+  /// Quantos veículos aparecem antes do "+ N com menos de X". Oito é o que
+  /// cabe sem a seção virar uma segunda lista de notícias.
+  static const _visiveis = 8;
 
   const FontesAnalisadas({
     super.key,
@@ -22,85 +32,111 @@ class FontesAnalisadas extends StatelessWidget {
   Widget build(BuildContext context) {
     if (oficiais.isEmpty && midias.isEmpty) return const SizedBox.shrink();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Título com contador (oficiais · mídias) + linha horizontal
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10, top: 4),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text('FONTES ANALISADAS',
-                  style: GoogleFonts.rajdhani(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 2,
-                      color: SIMEopsColors.muted)),
-              const SizedBox(width: 10),
-              Text(
-                '${oficiais.length} oficiais · ${midias.length} mídias',
-                style: GoogleFonts.exo2(
-                    fontSize: 10,
-                    letterSpacing: 0.5,
-                    color: SIMEopsColors.muted.withValues(alpha: 0.5)),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Container(
-                    height: 1,
-                    color: SIMEopsColors.teal.withValues(alpha: 0.15)),
-              ),
-            ],
+    int conta(Map<String, String> f) => int.tryParse(f['count'] ?? '1') ?? 1;
+
+    // Oficiais primeiro, sempre: são a fonte mais forte do documento.
+    final todos = [
+      ...oficiais.map((f) => (f, true)),
+      ...midias.map((f) => (f, false)),
+    ];
+    final visiveis = todos.take(_visiveis).toList();
+    final resto = todos.length - visiveis.length;
+    final maior = visiveis.isEmpty ? 1 : conta(visiveis.first.$1);
+    final corte = visiveis.isEmpty ? 0 : conta(visiveis.last.$1);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 26, 18, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('VEÍCULOS ANALISADOS', style: SIMEopsType.dateline()),
+          const SizedBox(height: 5),
+          Text(
+            [
+              if (oficiais.isNotEmpty)
+                '${oficiais.length} ${oficiais.length == 1 ? 'fonte oficial' : 'fontes oficiais'}',
+              if (midias.isNotEmpty)
+                '${midias.length} de imprensa',
+            ].join(' · '),
+            style: SIMEopsType.note(color: SIMEopsColors.faint),
           ),
-        ),
-        // Card com lista de fontes — oficiais primeiro, depois mídia
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: SIMEopsColors.navyLight.withValues(alpha: 0.4),
-            border: Border.all(color: SIMEopsColors.teal.withValues(alpha: 0.2)),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ...List.generate(
-                oficiais.length,
-                (i) => _sourceRow(i + 1, oficiais[i], true),
+          const SizedBox(height: 12),
+          for (final (fonte, oficial) in visiveis)
+            _Linha(
+              nome: fonte['name'] ?? '',
+              valor: conta(fonte),
+              fracao: maior > 0 ? conta(fonte) / maior : 0,
+              oficial: oficial,
+            ),
+          if (resto > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text(
+                '+ $resto ${resto == 1 ? 'veículo' : 'veículos'} com menos de '
+                '$corte ${corte == 1 ? 'publicação' : 'publicações'}.',
+                style: SIMEopsType.note(color: SIMEopsColors.faint),
               ),
-              ...List.generate(
-                midias.length,
-                (i) => _sourceRow(oficiais.length + i + 1, midias[i], false),
-              ),
-            ],
-          ),
-        ),
-      ],
+            ),
+        ],
+      ),
     );
   }
+}
 
-  Widget _sourceRow(int index, Map<String, String> source, bool isOfficial) {
-    final color = isOfficial ? SIMEopsColors.tealLight : SIMEopsColors.muted;
-    final count = int.tryParse(source['count'] ?? '1') ?? 1;
+class _Linha extends StatelessWidget {
+  final String nome;
+  final int valor;
+  final double fracao;
+  final bool oficial;
+
+  const _Linha({
+    required this.nome,
+    required this.valor,
+    required this.fracao,
+    required this.oficial,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('[$index]  ',
-              style: GoogleFonts.exo2(
-                  fontSize: 11, color: SIMEopsColors.muted.withValues(alpha: 0.5))),
-          Expanded(
-            child: Text(source['name'] ?? '',
-                style: GoogleFonts.exo2(fontSize: 13, color: color),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Expanded(
+                child: Text(
+                  nome,
+                  style: SIMEopsType.placeTab(
+                    active: false,
+                    color: oficial ? SIMEopsColors.tealLight : SIMEopsColors.muted,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (oficial) ...[
+                const SizedBox(width: 10),
+                Text('OFICIAL',
+                    style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+              ],
+              const SizedBox(width: 10),
+              Text('$valor', style: SIMEopsType.placeTab(active: true)),
+            ],
           ),
-          if (count > 1)
-            Text('${count}x',
-                style: GoogleFonts.jetBrainsMono(
-                    fontSize: 11, color: SIMEopsColors.muted.withValues(alpha: 0.7))),
+          const SizedBox(height: 7),
+          Container(
+            height: 4,
+            color: SIMEopsColors.navyLight,
+            child: FractionallySizedBox(
+              alignment: Alignment.centerLeft,
+              widthFactor: fracao.clamp(0.0, 1.0),
+              child: Container(color: SIMEopsColors.teal),
+            ),
+          ),
         ],
       ),
     );

@@ -1,24 +1,22 @@
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../core/models/city_overview.dart';
 import '../../../core/models/crime_point.dart';
 import '../../../core/models/executive_data.dart';
 import '../../../core/services/api_service.dart';
-import '../../../core/utils/category_colors.dart';
 import '../../../core/utils/state_utils.dart';
 import '../../../core/utils/type_helpers.dart';
 import '../../../core/widgets/crime_radar_map.dart';
 import '../../../core/widgets/executive_indicators.dart';
 import '../../../core/widgets/fontes_analisadas.dart';
-import '../../../core/widgets/grid_background.dart';
 import '../../../core/widgets/live_dot.dart';
+import '../../../core/widgets/report_pieces.dart';
 import '../../../core/widgets/weekly_trend_bars.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 import '../../feed/feed_filtro.dart';
 import '../../feed/screens/feed_screen.dart';
+import '../../feed/widgets/take_card.dart' show EndMark;
 
 class CityDetailScreen extends StatefulWidget {
   final CityOverview city;
@@ -513,6 +511,17 @@ class _CityDetailScreenState extends State<CityDetailScreen>
         key: ValueKey(cidade), filtro: _filtro, cityFilter: cidade);
   }
 
+  /// A aba Relatório da cidade — **a mesma peça** do relatório da busca manual.
+  ///
+  /// As duas telas desenhavam o mesmo relatório em código separado: dois
+  /// donuts, dois rankings de bairro, dois `_statBox`, dois `_sectionTitle`.
+  /// Foi assim que esta aqui acabou com uma **terceira tabela de cores** só
+  /// dela (achada em 08/08) — quando o desenho é copiado, a correção chega numa
+  /// cópia só. Agora as duas montam de `core/widgets/report_pieces.dart`.
+  ///
+  /// A diferença que sobra é a origem dos números: aqui eles vêm agregados pelo
+  /// backend (`/analytics/crime-summary`, janela fixa de 30 dias); lá são
+  /// calculados no aparelho a partir do resultado da consulta.
   Widget _buildOverviewTab() {
     if (_loadingOverview) {
       return const Center(child: CircularProgressIndicator());
@@ -521,166 +530,156 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     final types = (_summary?['byCrimeType'] as List<dynamic>?) ?? [];
     final categories = (_summary?['byCategory'] as List<dynamic>?) ?? [];
     final bairros = (_summary?['topBairros'] as List<dynamic>?) ?? [];
-
-    final estatisticas = (_summary?['estatisticas'] as List<dynamic>?) ?? [];
     final totalCrimes = safeInt(_summary?['totalCrimes']);
-    final totalBairros = bairros.length;
-    final totalTipos = types.length;
 
-    return GridBackground(
-      child: RefreshIndicator(
-        onRefresh: _loadOverview,
-        color: SIMEopsColors.teal,
-        child: ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          children: [
-            // Resumo numerico
-            _sectionTitle('Resumo'),
-            _buildResumoCard(totalCrimes, totalBairros, totalTipos, estatisticas.length),
+    // O backend já manda {category, count, percentage} agrupado — não recalcula.
+    final porCategoria = <String, int>{
+      for (final c in categories)
+        (c['category'] as String? ?? 'institucional'): safeInt(c['count']),
+    };
 
-            // Donut chart por CATEGORIA (backend ja agrupa — nao recalcula aqui)
-            if (categories.isNotEmpty) ...[
-              _sectionTitle('Distribuição por Categoria'),
-              _buildCategoryDonut(categories, totalCrimes),
-            ],
+    final rankBairros = (bairros.toList()
+          ..sort((a, b) => safeInt(b['count']).compareTo(safeInt(a['count']))))
+        .map((b) => ((b['bairro'] as String? ?? 'Desconhecido'), safeInt(b['count'])))
+        .toList();
 
-            // Radar de ocorrências
-            if (_mapPoints.isNotEmpty) ...[
-              _sectionTitle('Mapa de Ocorrências'),
-              _rCard(child: CrimeRadarMap(points: _mapPoints)),
-            ] else if (_mapLoading) ...[
-              _sectionTitle('Mapa de Ocorrências'),
-              _rCard(
-                child: SizedBox(
-                  height: 280,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(color: SIMEopsColors.teal),
-                        const SizedBox(height: 12),
-                        Text('Carregando mapa...', style: GoogleFonts.exo2(fontSize: 12, color: SIMEopsColors.muted)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-
-            // Bairros com mais incidencias
-            if (bairros.isNotEmpty) ...[
-              _sectionTitle('Bairros com Mais Incidências'),
-              _buildBairrosRanking(bairros),
-            ],
-
-            // Indicadores da Região — agrupa: cards visuais (Executive) +
-            // tendência temporal + estatísticas brutas. Tudo que é "métrica da
-            // região" no mesmo lugar.
-            _sectionTitle('Indicadores da Região'),
-            // Cards de indicadores + resumo complementar + fontes (via GPT das estatísticas)
-            ExecutiveIndicators(data: _executive, showHeader: false, loading: _executiveLoading),
-            // Gráfico de tendência temporal com filtros
-            _buildTrendWithFilters(),
-
-            // (Estatísticas brutas individuais foram removidas — informação fica
-            // condensada no resumo_complementar do Executive acima, sem poluir
-            // o relatório com cards longos de texto.)
-
-            // Fontes Analisadas (uniforme com report_screen da busca manual)
-            _buildFontesAnalisadas(),
-
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Resumo numerico (identico ao report_screen) ──
-
-  Widget _buildResumoCard(int total, int bairros, int tipos, int indicadores) {
-    return _rCard(
-      child: Row(
+    return RefreshIndicator(
+      onRefresh: _loadOverview,
+      color: SIMEopsColors.teal,
+      child: ListView(
+        padding: const EdgeInsets.only(bottom: 20),
         children: [
-          _statBox('$total', 'Ocorrências'),
-          _dividerV(),
-          _statBox('$bairros', 'Bairros'),
-          _dividerV(),
-          _statBox('$tipos', 'Tipos'),
-          if (indicadores > 0) ...[
-            _dividerV(),
-            _statBox('$indicadores', 'Indicadores'),
-          ],
-        ],
-      ),
-    );
-  }
-
-  // ── Donut chart por CATEGORIA ──
-  // Cor e label vêm de category_colors.dart — este arquivo tinha uma TERCEIRA
-  // tabela própria (Tailwind antigo), achada na auditoria de 08/08. O donut
-  // pintava diferente do feed na mesma tela de cidade.
-
-  Widget _buildCategoryDonut(List<dynamic> categories, int total) {
-    // Backend ja manda {category, count, percentage} agrupado.
-    final sorted = categories
-        .map((c) => MapEntry(c['category'] as String? ?? 'institucional', safeInt(c['count'])))
-        .toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    return _rCard(
-      child: Row(
-        children: [
-          SizedBox(
-            width: 130,
-            height: 130,
-            child: Stack(
-              alignment: Alignment.center,
+          // Abre com uma frase montada dos próprios números, não com gráfico.
+          // Eram quatro caixinhas (`107 / OCORRÊNCIAS`, `18 / BAIRROS`) que
+          // obrigam quem lê a montar sozinho a leitura — e nenhuma delas dizia
+          // a coisa mais importante, que é de onde o número vem.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                PieChart(
-                  PieChartData(
-                    sections: sorted.map((e) {
-                      final color = categoryColor(e.key);
-                      return PieChartSectionData(value: e.value.toDouble(), color: color, radius: 18, showTitle: false);
-                    }).toList(),
-                    sectionsSpace: 2,
-                    centerSpaceRadius: 40,
-                  ),
-                ),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('$total', style: GoogleFonts.rajdhani(fontSize: 24, fontWeight: FontWeight.w700, color: SIMEopsColors.white)),
-                    Text('TOTAL', style: GoogleFonts.rajdhani(fontSize: 9, letterSpacing: 1, color: SIMEopsColors.muted.withValues(alpha: 0.6))),
-                  ],
+                Text('$totalCrimes', style: SIMEopsType.hero()),
+                const SizedBox(height: 7),
+                Text(
+                  _fraseDaCidade(totalCrimes, rankBairros.length, types.length),
+                  style: SIMEopsType.lead().copyWith(fontSize: 15),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: sorted.map((e) {
-                final color = categoryColor(e.key);
-                final label = categoryLabel(e.key);
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Row(
-                    children: [
-                      Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(label, style: GoogleFonts.exo2(fontSize: 12, color: SIMEopsColors.muted))),
-                      Text('${e.value}', style: GoogleFonts.rajdhani(fontSize: 14, fontWeight: FontWeight.w700, color: SIMEopsColors.white)),
+
+          if (porCategoria.isNotEmpty)
+            BlocoRelatorio(
+              titulo: 'Por categoria',
+              child: RoscaCategorias(
+                contagens: porCategoria,
+                total: totalCrimes,
+              ),
+            ),
+
+          if (rankBairros.isNotEmpty)
+            BlocoRelatorio(
+              titulo: 'Bairros mais citados',
+              nota: 'Citação na matéria — não é onde o fato ocorreu em 100% '
+                  'dos casos.',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  RankBarras(itens: rankBairros.take(8).toList()),
+                  TabelaGemea(
+                    linhas: [
+                      for (final (nome, valor) in rankBairros)
+                        (nome, '$valor', ''),
                     ],
                   ),
-                );
-              }).toList(),
+                ],
+              ),
             ),
+
+          if (_mapPoints.isNotEmpty)
+            BlocoRelatorio(
+              titulo: 'Distribuição no mapa',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 12),
+                  CrimeRadarMap(points: _mapPoints),
+                  const SizedBox(height: 9),
+                  // A precisão do ponto, declarada. Um mapa que desenha 18 de
+                  // 25 itens sem dizer isso deixa quem lê concluir que a cidade
+                  // inteira está ali.
+                  Text(
+                    '${_mapPoints.length} de $totalCrimes '
+                    '${totalCrimes == 1 ? 'ocorrência entrou' : 'ocorrências entraram'} '
+                    'no mapa — o resto não traz bairro na matéria.',
+                    style: SIMEopsType.note(color: SIMEopsColors.faint),
+                  ),
+                ],
+              ),
+            )
+          else if (_mapLoading)
+            const BlocoRelatorio(
+              titulo: 'Distribuição no mapa',
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: Center(
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: SIMEopsColors.teal),
+                  ),
+                ),
+              ),
+            ),
+
+          BlocoRelatorio(
+            titulo: 'Volume no tempo',
+            child: _buildTendencia(),
           ),
+
+          if (_executiveLoading || !_executive.isEmpty)
+            BlocoRelatorio(
+              titulo: 'Indicadores da região',
+              child: Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: ExecutiveIndicators(
+                  data: _executive,
+                  showHeader: false,
+                  loading: _executiveLoading,
+                ),
+              ),
+            ),
+
+          _buildFontesAnalisadas(),
+          const EndMark(),
         ],
       ),
     );
+  }
+
+  /// A frase de abertura, montada dos números da própria cidade.
+  ///
+  /// A ressalva metodológica vem **na primeira dobra**, não num rodapé: o
+  /// número aqui é o que a imprensa publicou, e quem for citá-lo numa reunião
+  /// precisa saber disso antes.
+  String _fraseDaCidade(int total, int bairros, int tipos) {
+    if (total == 0) {
+      return 'Nenhuma ocorrência publicada nos últimos 30 dias. Cidade quieta '
+          'na imprensa não é cidade sem ocorrência — é o que não virou notícia.';
+    }
+    final b = StringBuffer();
+    b.write(total == 1 ? 'ocorrência publicada' : 'ocorrências publicadas');
+    b.write(' nos últimos 30 dias');
+    if (bairros > 0) {
+      b.write(', em $bairros ${bairros == 1 ? 'bairro' : 'bairros'}');
+    }
+    if (tipos > 0) {
+      b.write(' e $tipos ${tipos == 1 ? 'tipo' : 'tipos'} de ocorrência');
+    }
+    b.write('. É o que a imprensa noticiou — não o total registrado pelas '
+        'polícias.');
+    return b.toString();
   }
 
   // ── Fontes Analisadas (uniforme com report_screen) ──
@@ -715,146 +714,55 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     return FontesAnalisadas(oficiais: oficiais, midias: midias);
   }
 
-  // ── Bairros com mais incidencias (identico ao report_screen) ──
+  /// Volume no tempo, com a janela em abas de fio.
+  ///
+  /// Eram quatro cápsulas r14 preenchidas de teal — o mesmo vocabulário do
+  /// botão primário, para uma escolha que não é ação nenhuma. Agora são as
+  /// mesmas abas da fila de cidades: rótulo mono e filete embaixo do ativo.
+  Widget _buildTendencia() {
+    const periodos = ['7d', '30d', '90d', '1a'];
+    const rotulos = {'7d': '7 DIAS', '30d': '30 DIAS', '90d': '90 DIAS', '1a': '1 ANO'};
 
-  Widget _buildBairrosRanking(List<dynamic> bairros) {
-    final sorted = bairros.toList()..sort((a, b) => safeInt(b['count']).compareTo(safeInt(a['count'])));
-    final top = sorted.take(8).toList();
-    final maxCount = safeInt(top.first['count']);
-
-    return _rCard(
-      child: Column(
-        children: top.asMap().entries.map((entry) {
-          final i = entry.key;
-          final b = entry.value;
-          final name = b['bairro'] as String? ?? 'Desconhecido';
-          final count = safeInt(b['count']);
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 24,
-                  child: Text('${i + 1}.', style: GoogleFonts.exo2(fontSize: 12, color: SIMEopsColors.muted)),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(name, style: GoogleFonts.exo2(fontSize: 13, fontWeight: FontWeight.w500, color: SIMEopsColors.white)),
-                          Text('$count', style: GoogleFonts.rajdhani(fontSize: 13, fontWeight: FontWeight.w700, color: SIMEopsColors.muted)),
-                        ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 14),
+          child: Row(
+            children: [
+              for (final p in periodos)
+                Padding(
+                  padding: const EdgeInsets.only(right: 17),
+                  child: InkWell(
+                    onTap: () => _changePeriod(p),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: _trendPeriod == p
+                                ? SIMEopsColors.greenLight
+                                : Colors.transparent,
+                            width: 1.5,
+                          ),
+                        ),
                       ),
-                      const SizedBox(height: 3),
-                      LinearProgressIndicator(
-                        value: maxCount > 0 ? count / maxCount : 0,
-                        backgroundColor: SIMEopsColors.teal.withValues(alpha: 0.1),
-                        color: SIMEopsColors.teal,
-                        minHeight: 4,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  // ── Tendencia temporal com filtros de periodo ──
-
-  Widget _buildTrendWithFilters() {
-    const periods = ['7d', '30d', '90d', '1a'];
-    const labels = {'7d': '7 dias', '30d': '30 dias', '90d': '90 dias', '1a': '1 ano'};
-
-    return _rCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Period chips
-          Row(
-            children: periods.map((p) => Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: GestureDetector(
-                onTap: () => _changePeriod(p),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: _trendPeriod == p ? SIMEopsColors.teal : SIMEopsColors.navyLight,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Text(
-                    labels[p]!,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: _trendPeriod == p ? FontWeight.w600 : FontWeight.w400,
-                      color: _trendPeriod == p ? Colors.white : SIMEopsColors.muted,
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(rotulos[p]!,
+                          style: SIMEopsType.placeTab(active: _trendPeriod == p)),
                     ),
                   ),
                 ),
-              ),
-            )).toList(),
+            ],
           ),
-          const SizedBox(height: 14),
-          // Bar chart semanal (widget compartilhado com report_screen)
-          WeeklyTrendBars(
-            data: (_trend ?? const [])
-                .map((e) => e as Map<String, dynamic>)
-                .toList(),
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 16),
+        WeeklyTrendBars(
+          data: (_trend ?? const [])
+              .map((e) => e as Map<String, dynamic>)
+              .toList(),
+        ),
+      ],
     );
-  }
-
-  // ── Helpers (identicos ao report_screen) ──
-
-  Widget _sectionTitle(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10, top: 4),
-      child: Row(
-        children: [
-          Text(text.toUpperCase(), style: GoogleFonts.rajdhani(fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 2, color: SIMEopsColors.muted)),
-          const SizedBox(width: 8),
-          Expanded(child: Container(height: 1, color: SIMEopsColors.teal.withValues(alpha: 0.15))),
-        ],
-      ),
-    );
-  }
-
-  Widget _rCard({required Widget child}) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: SIMEopsColors.navyMid.withValues(alpha: 0.95),
-        border: Border.all(color: SIMEopsColors.teal.withValues(alpha: 0.15)),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: child,
-    );
-  }
-
-  Widget _statBox(String value, String label) {
-    return Expanded(
-      child: Column(
-        children: [
-          Text(value, style: GoogleFonts.rajdhani(fontSize: 26, fontWeight: FontWeight.w700, color: SIMEopsColors.white)),
-          Text(label.toUpperCase(), style: GoogleFonts.rajdhani(fontSize: 9, letterSpacing: 1, color: SIMEopsColors.muted.withValues(alpha: 0.6))),
-        ],
-      ),
-    );
-  }
-
-  Widget _dividerV() {
-    return Container(width: 1, height: 36, color: SIMEopsColors.teal.withValues(alpha: 0.15));
   }
 }
 

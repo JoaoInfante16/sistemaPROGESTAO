@@ -1,12 +1,13 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import '../models/crime_point.dart';
 import '../theme/simeops_colors.dart';
+import '../theme/simeops_type.dart';
 import '../utils/category_colors.dart';
 import '../utils/crime_labels.dart';
+import 'cat_chip.dart';
 
 // Radar de ocorrências. Um ponto por notícia, cor por categoria, glow leve.
 // Overlap natural em hotspots (sem clustering agregado). Chips no topo pra
@@ -111,33 +112,24 @@ class _CrimeRadarMapState extends State<CrimeRadarMap> {
               children: [
                 Text(
                   crimeTypeLabel(p.tipoCrime).toUpperCase(),
-                  style: GoogleFonts.rajdhani(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1,
-                    color: SIMEopsColors.white,
-                  ),
+                  style: SIMEopsType.slug(color: SIMEopsColors.white),
                 ),
-                if (local.isNotEmpty)
+                if (local.isNotEmpty) ...[
+                  const SizedBox(height: 3),
                   Text(
                     local,
-                    style: GoogleFonts.exo2(
-                      fontSize: 11,
-                      color: SIMEopsColors.muted,
-                    ),
+                    style: SIMEopsType.lead().copyWith(fontSize: 13),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                ],
               ],
             ),
           ),
           const SizedBox(width: 8),
           Text(
             _fmtData(p.data),
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: 11,
-              color: SIMEopsColors.muted.withValues(alpha: 0.8),
-            ),
+            style: SIMEopsType.slug(color: SIMEopsColors.faint),
           ),
           const SizedBox(width: 4),
           InkWell(
@@ -165,15 +157,7 @@ class _CrimeRadarMapState extends State<CrimeRadarMap> {
             ),
           ),
           const SizedBox(width: 4),
-          Text(
-            label,
-            style: GoogleFonts.rajdhani(
-              fontSize: 9,
-              letterSpacing: 1,
-              fontWeight: FontWeight.w600,
-              color: SIMEopsColors.muted.withValues(alpha: 0.6),
-            ),
-          ),
+          Text(label, style: SIMEopsType.slug(color: SIMEopsColors.faint)),
         ],
       ),
     );
@@ -209,32 +193,21 @@ class _CrimeRadarMapState extends State<CrimeRadarMap> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Chips de filtro
+        // Ligar/desligar categoria no mapa. Eram `FilterChip` — cápsula
+        // preenchida da cor da categoria, o elemento mais saturado da tela pra
+        // um controle que quase nunca é tocado. Agora é o quadrado de sempre
+        // com o nome ao lado, e desligado ele apaga em vez de inverter.
         SizedBox(
-          height: 36,
+          height: 30,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: orderedCats.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 6),
+            separatorBuilder: (_, __) => const SizedBox(width: 16),
             itemBuilder: (_, i) {
               final cat = orderedCats[i];
               final isOn = !_hidden.contains(cat);
-              final color = categoryColor(cat);
-              return FilterChip(
-                label: Text(
-                  categoryLabel(cat),
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isOn ? Colors.white : color,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                selected: isOn,
-                showCheckmark: false,
-                selectedColor: color,
-                backgroundColor: color.withValues(alpha: 0.12),
-                side: BorderSide(color: color.withValues(alpha: isOn ? 0 : 0.4)),
-                onSelected: (_) => setState(() {
+              return InkWell(
+                onTap: () => setState(() {
                   if (isOn) {
                     _hidden.add(cat);
                     if (_selected?.categoria == cat) _selected = null;
@@ -242,14 +215,30 @@ class _CrimeRadarMapState extends State<CrimeRadarMap> {
                     _hidden.remove(cat);
                   }
                 }),
+                child: Opacity(
+                  opacity: isOn ? 1 : 0.35,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CatChip(categoria: cat),
+                      const SizedBox(width: 7),
+                      Text(
+                        categoryLabel(cat).toUpperCase(),
+                        style: SIMEopsType.slug(
+                          color: isOn
+                              ? SIMEopsColors.muted
+                              : SIMEopsColors.faint,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               );
             },
           ),
         ),
-        const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: SizedBox(
+        const SizedBox(height: 10),
+        SizedBox(
             height: widget.height,
             child: Stack(
               children: [
@@ -358,7 +347,6 @@ class _CrimeRadarMapState extends State<CrimeRadarMap> {
                   ),
               ],
             ),
-          ),
         ),
         // Legenda da precisão (o tamanho/brilho do ponto codifica confiança)
         Padding(
@@ -369,13 +357,8 @@ class _CrimeRadarMapState extends State<CrimeRadarMap> {
               _legendDot(4, 'BAIRRO'),
               _legendDot(3, 'CIDADE'),
               const Spacer(),
-              Text(
-                'precisão do ponto',
-                style: GoogleFonts.exo2(
-                  fontSize: 10,
-                  color: SIMEopsColors.muted.withValues(alpha: 0.5),
-                ),
-              ),
+              Text('PRECISÃO DO PONTO',
+                  style: SIMEopsType.slug(color: SIMEopsColors.faint)),
             ],
           ),
         ),
