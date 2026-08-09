@@ -101,7 +101,8 @@ class _TakeCardState extends State<TakeCard> {
     if (widget.groupedByDate) return hora ?? '';
 
     final d = news.dataOcorrencia;
-    final data = '${d.day.toString().padLeft(2, '0')}/'
+    final data =
+        '${d.day.toString().padLeft(2, '0')}/'
         '${d.month.toString().padLeft(2, '0')}';
     return hora != null ? '$data · $hora' : data;
   }
@@ -192,10 +193,12 @@ class _TakeCardState extends State<TakeCard> {
 
   @override
   Widget build(BuildContext context) {
-    final cat =
-        _isIndicador ? 'institucional' : (news.categoriaGrupo ?? 'institucional');
-    final catLabel =
-        _isIndicador ? 'INDICADOR' : categoryLabel(cat).toUpperCase();
+    final cat = _isIndicador
+        ? 'institucional'
+        : (news.categoriaGrupo ?? 'institucional');
+    final catLabel = _isIndicador
+        ? 'INDICADOR'
+        : categoryLabel(cat).toUpperCase();
 
     // Lida recua sem ícone e sem caixa: manchete perde peso e vai pra tinta
     // fraca. Não precisa de "já li" escrito — o contraste já diz.
@@ -211,9 +214,12 @@ class _TakeCardState extends State<TakeCard> {
         children: [
           SlidableAction(
             onPressed: (_) => widget.onToggleFavorite?.call(),
-            backgroundColor:
-                news.isFavorite ? SIMEopsColors.navyLight : SIMEopsColors.bookmark,
-            foregroundColor: news.isFavorite ? SIMEopsColors.muted : Colors.white,
+            backgroundColor: news.isFavorite
+                ? SIMEopsColors.navyLight
+                : SIMEopsColors.bookmark,
+            foregroundColor: news.isFavorite
+                ? SIMEopsColors.muted
+                : Colors.white,
             icon: news.isFavorite ? Icons.bookmark_remove : Icons.bookmark_add,
             label: news.isFavorite ? 'Remover' : 'Salvar',
           ),
@@ -270,8 +276,9 @@ class _TakeCardState extends State<TakeCard> {
                         outlet: _outlet,
                         sourceCount: news.sources.length,
                         official: news.hasOfficialSource,
-                        onVerFontes:
-                            news.sources.length > 1 ? _listarFontes : null,
+                        onVerFontes: news.sources.length > 1
+                            ? _listarFontes
+                            : null,
                       ),
                     ],
                   ),
@@ -379,13 +386,18 @@ class _Credits extends StatelessWidget {
           Text(' · ', style: SIMEopsType.credit(color: SIMEopsColors.faint)),
           InkWell(
             onTap: onVerFontes,
-            child: Text('$sourceCount FONTES',
-                style: SIMEopsType.credit(color: SIMEopsColors.tealLight)),
+            child: Text(
+              '$sourceCount FONTES',
+              style: SIMEopsType.credit(color: SIMEopsColors.tealLight),
+            ),
           ),
         ],
         const Spacer(),
         if (official)
-          Text('OFICIAL', style: SIMEopsType.credit(color: SIMEopsColors.green)),
+          Text(
+            'OFICIAL',
+            style: SIMEopsType.credit(color: SIMEopsColors.green),
+          ),
       ],
     );
   }
@@ -431,8 +443,10 @@ class _Fontes extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 9),
-                  Text('LER →',
-                      style: SIMEopsType.credit(color: SIMEopsColors.tealLight)),
+                  Text(
+                    'LER →',
+                    style: SIMEopsType.credit(color: SIMEopsColors.tealLight),
+                  ),
                 ],
               ),
             ),
@@ -469,26 +483,30 @@ class TakeRule extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 18),
-        child: Divider(color: SIMEopsColors.rule, height: 1, thickness: 1),
-      );
+    padding: EdgeInsets.symmetric(horizontal: 18),
+    child: Divider(color: SIMEopsColors.rule, height: 1, thickness: 1),
+  );
 }
 
-/// "— 30 —": marca de fim de matéria de redação. Diz "acabou, não travou" —
-/// o fim de lista silencioso deixa o usuário rolando à toa achando que
-/// tem mais carregando.
+/// Fim de lista explícito: o fim silencioso deixa o usuário rolando à toa
+/// achando que ainda tem coisa carregando.
+///
+/// ⚠️ Aqui era "— 30 —", o fim de matéria de redação. João perguntou o que
+/// era — e termo que precisa ser explicado não fica na tela. Junto foi
+/// embora o `hairline` (1.8:1), que nunca deveria ter virado texto.
 class EndMark extends StatelessWidget {
   const EndMark({super.key});
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: 34, bottom: 20),
-        child: Center(
-          child: Text(
-            '— 30 —',
-            style: SIMEopsType.dateline(color: SIMEopsColors.hairline)
-                .copyWith(letterSpacing: 3.4),
-          ),
-        ),
-      );
+    padding: const EdgeInsets.only(top: 34, bottom: 20),
+    child: Center(
+      child: Text(
+        'FIM',
+        style: SIMEopsType.dateline(
+          color: SIMEopsColors.faint,
+        ).copyWith(letterSpacing: 3.4),
+      ),
+    ),
+  );
 }

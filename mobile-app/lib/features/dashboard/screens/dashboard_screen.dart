@@ -51,11 +51,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _openCity(CityOverview city) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => CityDetailScreen(city: city),
-      ),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => CityDetailScreen(city: city)));
     // Reload badges when returning from detail
     _loadCities();
   }
@@ -69,10 +67,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? _buildError()
-                : _cities.isEmpty
-                    ? _buildEmpty()
-                    : _buildGrid(),
+            ? _buildError()
+            : _cities.isEmpty
+            ? _buildEmpty()
+            : _buildGrid(),
       ),
     );
   }
@@ -84,7 +82,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_off, size: 48, color: SIMEopsColors.muted.withValues(alpha: 0.4)),
+            Icon(
+              Icons.cloud_off,
+              size: 48,
+              color: SIMEopsColors.muted.withValues(alpha: 0.4),
+            ),
             const SizedBox(height: 16),
             Text(
               'Não foi possível carregar',
@@ -93,7 +95,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 12),
             TextButton.icon(
               onPressed: () {
-                setState(() { _loading = true; _error = null; });
+                setState(() {
+                  _loading = true;
+                  _error = null;
+                });
                 _loadCities();
               },
               icon: const Icon(Icons.refresh, size: 18),
@@ -112,7 +117,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Center(
           child: Column(
             children: [
-              Icon(Icons.location_city, size: 56, color: SIMEopsColors.muted.withValues(alpha: 0.3)),
+              Icon(
+                Icons.location_city,
+                size: 56,
+                color: SIMEopsColors.muted.withValues(alpha: 0.3),
+              ),
               const SizedBox(height: 16),
               Text(
                 'Nenhuma cidade monitorada',
@@ -121,7 +130,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 6),
               Text(
                 'Configure cidades no painel administrativo',
-                style: TextStyle(color: SIMEopsColors.muted.withValues(alpha: 0.6), fontSize: 13),
+                style: TextStyle(
+                  color: SIMEopsColors.muted.withValues(alpha: 0.6),
+                  fontSize: 13,
+                ),
               ),
             ],
           ),
@@ -129,6 +141,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ],
     );
   }
+
+  /// Municípios de verdade, não verbetes: um grupo vale pelas cidades que
+  /// tem dentro. Somar `_cities.length` dizia "2 CIDADES" para um grupo de
+  /// três mais uma avulsa — e o próprio card ao lado dizia "3 CIDADES".
+  int get _municipios => _cities.fold<int>(
+    0,
+    (soma, c) =>
+        soma + (c.isGroup ? (c.cityCount ?? c.cityNames?.length ?? 1) : 1),
+  );
 
   /// ⚠️ Aqui morava a palavra **"PRAÇAS"**, e ela era jargão de redação (praça =
   /// a cidade que o jornal cobre). O usuário é gente de segurança pública, não
@@ -151,8 +172,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         dot: const LiveDot(),
         label: ultima != null ? 'ÚLTIMA ${_agoLabel(ultima)}' : 'MONITORANDO',
       ),
-      direita: '${_cities.length} '
-          '${_cities.length == 1 ? 'CIDADE' : 'CIDADES'}',
+      direita:
+          '$_municipios '
+          '${_municipios == 1 ? 'CIDADE' : 'CIDADES'}',
     );
   }
 
@@ -187,27 +209,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
         SliverToBoxAdapter(child: _buildMasthead()),
 
         SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              final city = loud[index];
-              return Column(
-                children: [
-                  CityCard(city: city, onTap: () => _openCity(city)),
-                  // `ruleStrong`, não o filete do feed: aqui são dois ou três
-                  // blocos altos, e o traço precisa ser lido como "acabou esta
-                  // cidade". No feed, com 18 matérias, o filete fraco é o
-                  // certo — traço forte 18 vezes vira grade.
-                  if (index < loud.length - 1)
-                    const Divider(
-                      color: SIMEopsColors.ruleStrong,
-                      height: 1,
-                      thickness: 1,
-                    ),
-                ],
-              );
-            },
-            childCount: loud.length,
-          ),
+          delegate: SliverChildBuilderDelegate((context, index) {
+            final city = loud[index];
+            return Column(
+              children: [
+                CityCard(city: city, onTap: () => _openCity(city)),
+                // `ruleStrong`, não o filete do feed: aqui são dois ou três
+                // blocos altos, e o traço precisa ser lido como "acabou esta
+                // cidade". No feed, com 18 matérias, o filete fraco é o
+                // certo — traço forte 18 vezes vira grade.
+                if (index < loud.length - 1)
+                  const Divider(
+                    color: SIMEopsColors.ruleStrong,
+                    height: 1,
+                    thickness: 1,
+                  ),
+              ],
+            );
+          }, childCount: loud.length),
         ),
 
         if (quiet.isNotEmpty) ...[
@@ -247,4 +266,3 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
-

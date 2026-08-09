@@ -126,9 +126,8 @@ class _LoginScreenState extends State<LoginScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'O administrador recebe a solicitação e envia uma senha nova '
-              'para o e-mail cadastrado. Não é automático — depende de '
-              'alguém liberar do outro lado.',
+              'Confirme o e-mail cadastrado. Um administrador libera uma '
+              'senha nova e ela chega por e-mail.',
               style: SIMEopsType.lead(),
             ),
             const SizedBox(height: 18),
@@ -174,8 +173,8 @@ class _LoginScreenState extends State<LoginScreen> {
       SnackBar(
         backgroundColor: SIMEopsColors.navyLight,
         content: Text(
-          'Solicitação enviada. A senha nova chega no e-mail cadastrado '
-          'assim que o administrador liberar.',
+          'A solicitação foi enviada para um administrador. Sua senha deve '
+          'chegar no e-mail cadastrado em breve',
           style: SIMEopsType.lead(color: SIMEopsColors.white),
         ),
         duration: const Duration(seconds: 6),
@@ -201,13 +200,15 @@ class _LoginScreenState extends State<LoginScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text.rich(
-                    TextSpan(children: [
-                      const TextSpan(text: 'SIME'),
-                      TextSpan(
-                        text: 'OPS',
-                        style: TextStyle(color: SIMEopsColors.greenLight),
-                      ),
-                    ]),
+                    TextSpan(
+                      children: [
+                        const TextSpan(text: 'SIME'),
+                        TextSpan(
+                          text: 'OPS',
+                          style: TextStyle(color: SIMEopsColors.greenLight),
+                        ),
+                      ],
+                    ),
                     style: SIMEopsType.wordmark(size: 38),
                   ),
                   const SizedBox(height: 12),
@@ -221,12 +222,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     Container(
                       decoration: const BoxDecoration(
                         border: Border(
-                          left: BorderSide(color: SIMEopsColors.alert, width: 2),
+                          left: BorderSide(
+                            color: SIMEopsColors.alert,
+                            width: 2,
+                          ),
                         ),
                       ),
                       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                      child: Text(_error!,
-                          style: SIMEopsType.note(color: SIMEopsColors.alert)),
+                      child: Text(
+                        _error!,
+                        style: SIMEopsType.note(color: SIMEopsColors.alert),
+                      ),
                     ),
                   ],
 
@@ -242,9 +248,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 30),
                     Row(
                       children: [
-                        Text('OU ENTRE COM A SENHA',
-                            style:
-                                SIMEopsType.dateline(color: SIMEopsColors.faint)),
+                        Text(
+                          'OU ENTRE COM A SENHA',
+                          style: SIMEopsType.dateline(
+                            color: SIMEopsColors.faint,
+                          ),
+                        ),
                         const SizedBox(width: 11),
                         const Expanded(
                           child: Divider(color: SIMEopsColors.rule, height: 1),
@@ -274,16 +283,19 @@ class _LoginScreenState extends State<LoginScreen> {
                     decoration: _lineField('••••••••').copyWith(
                       suffixIcon: InkWell(
                         onTap: () => setState(
-                            () => _obscurePassword = !_obscurePassword),
+                          () => _obscurePassword = !_obscurePassword,
+                        ),
                         child: Padding(
                           padding: const EdgeInsets.only(top: 14),
-                          child: Text(_obscurePassword ? 'VER' : 'OCULTAR',
-                              style: SIMEopsType.slug(
-                                  color: SIMEopsColors.tealLight)),
+                          child: Text(
+                            _obscurePassword ? 'VER' : 'OCULTAR',
+                            style: SIMEopsType.slug(
+                              color: SIMEopsColors.tealLight,
+                            ),
+                          ),
                         ),
                       ),
-                      suffixIconConstraints:
-                          const BoxConstraints(minWidth: 64),
+                      suffixIconConstraints: const BoxConstraints(minWidth: 64),
                     ),
                     validator: (v) =>
                         (v == null || v.isEmpty) ? 'Informe a senha' : null,
@@ -311,16 +323,22 @@ class _LoginScreenState extends State<LoginScreen> {
                                   : Colors.transparent,
                             ),
                             child: _rememberMe
-                                ? const Icon(Icons.check,
-                                    size: 12, color: SIMEopsColors.navy)
+                                ? const Icon(
+                                    Icons.check,
+                                    size: 12,
+                                    color: SIMEopsColors.navy,
+                                  )
                                 : null,
                           ),
                           const SizedBox(width: 10),
-                          Text('MANTER CONECTADO NESTE APARELHO',
-                              style: SIMEopsType.slug(
-                                  color: _rememberMe
-                                      ? SIMEopsColors.muted
-                                      : SIMEopsColors.faint)),
+                          Text(
+                            'MANTER CONECTADO NESTE APARELHO',
+                            style: SIMEopsType.slug(
+                              color: _rememberMe
+                                  ? SIMEopsColors.muted
+                                  : SIMEopsColors.faint,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -342,7 +360,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: SIMEopsColors.tealLight),
+                          strokeWidth: 2,
+                          color: SIMEopsColors.tealLight,
+                        ),
                       ),
                     ),
                   ],
@@ -352,18 +372,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     onTap: _handleForgotPassword,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Text('ESQUECEU A SENHA? SOLICITAR ACESSO →',
-                          style: SIMEopsType.slug(
-                              color: SIMEopsColors.tealLight)),
+                      child: Text(
+                        'ESQUECEU A SENHA? SOLICITAR ACESSO →',
+                        style: SIMEopsType.slug(color: SIMEopsColors.tealLight),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  // Caixa de sentença de propósito: é a frase que evita o
-                  // usuário esperar por um e-mail que nunca vai chegar.
-                  Text(
-                    'Não existe cadastro público e não sai e-mail automático. '
-                    'As contas são criadas e liberadas por um administrador.',
-                    style: SIMEopsType.note(),
                   ),
                 ],
               ),
@@ -375,20 +388,20 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   InputDecoration _lineField(String hint) => InputDecoration(
-        hintText: hint,
-        // `faint`, não `hairline`: o placeholder é instrução de formato
-        // ("voce@orgao.gov.br"), e a 1.8:1 ele simplesmente não existia.
-        hintStyle: SIMEopsType.fieldValue(color: SIMEopsColors.faint),
-        filled: false,
-        contentPadding: const EdgeInsets.only(top: 12, bottom: 9),
-        enabledBorder: const UnderlineInputBorder(
-          borderSide: BorderSide(color: SIMEopsColors.ruleStrong),
-        ),
-        focusedBorder: const UnderlineInputBorder(
-          borderSide: BorderSide(color: SIMEopsColors.tealLight),
-        ),
-        border: const UnderlineInputBorder(
-          borderSide: BorderSide(color: SIMEopsColors.ruleStrong),
-        ),
-      );
+    hintText: hint,
+    // `faint`, não `hairline`: o placeholder é instrução de formato
+    // ("voce@orgao.gov.br"), e a 1.8:1 ele simplesmente não existia.
+    hintStyle: SIMEopsType.fieldValue(color: SIMEopsColors.faint),
+    filled: false,
+    contentPadding: const EdgeInsets.only(top: 12, bottom: 9),
+    enabledBorder: const UnderlineInputBorder(
+      borderSide: BorderSide(color: SIMEopsColors.ruleStrong),
+    ),
+    focusedBorder: const UnderlineInputBorder(
+      borderSide: BorderSide(color: SIMEopsColors.tealLight),
+    ),
+    border: const UnderlineInputBorder(
+      borderSide: BorderSide(color: SIMEopsColors.ruleStrong),
+    ),
+  );
 }

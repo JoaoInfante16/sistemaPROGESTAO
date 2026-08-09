@@ -263,6 +263,57 @@ de $100.
 
 ---
 
+## 2026-08-09 (noite) — o relatório do grupo via uma cidade só, e três textos que o aparelho reprovou
+
+**O relatório de um GRUPO mostrava só a primeira cidade.** Na Grande
+Florianópolis o cabeçalho dizia `21 EM 30D` e o relatório logo abaixo dizia 12 —
+dois números da mesma coisa, na mesma tela. A causa: os quatro endpoints de
+analytics faziam `.eq('cidade', cidade)`, e o app mandava a **primeira** cidade
+do grupo. O feed nunca teve esse problema porque já mandava `cidades=A,B,C`.
+
+Agora as quatro consultas aceitam uma cidade ou muitas (`.in()`), e as rotas
+aceitam `cidades=` **ao lado** de `cidade=` — o APK que já está na mão do
+cliente continua funcionando. Três detalhes que só aparecem quando é grupo:
+
+- o ranking de bairro passa a ser chaveado `Centro · Palhoça`, senão dois
+  "Centro" de municípios diferentes viram um só;
+- o `MapPointRaw` carrega a **cidade dele**, não a do filtro. Geocodificar um
+  bairro contra o município errado põe o pino a ~20 km de distância com a mesma
+  cara de pino certo;
+- a chave do cache do executivo é a lista ordenada e juntada.
+
+E **um bug meu, do commit anterior**: o `TUDO` da janela do relatório tomava
+400. `analyticsQuery` e `analyticsTrend` tinham teto de 365 dias e o executivo
+tinha `rangeDays` máximo 365 — três das quatro chamadas quebravam. Teto único
+agora (`JANELA_MAXIMA_DIAS = 3700`), que é sanidade e não produto.
+
+---
+
+Depois disso, três coisas que só a foto do aparelho pega:
+
+**1. A tela de login explicava uma regra que ninguém perguntou.** Embaixo do
+link de esqueci a senha havia *"Não existe cadastro público e não sai e-mail
+automático. As contas são criadas e liberadas por um administrador."* — duas
+linhas de negativa na primeira tela do app. João: *"grosseiro e poluindo"*, e
+ele está certo: é resposta sem pergunta, e a pergunta só existe **depois** de
+tocar no link. Sumiu da tela; a informação continua no diálogo, sem a negativa
+(*"Confirme o e-mail cadastrado. Um administrador libera uma senha nova e ela
+chega por e-mail."*), e a confirmação depois de enviar diz o que ele pediu.
+
+**2. `2 CIDADES` no cabeçalho de um painel com 4 municípios.** A conta era
+`_cities.length` — verbetes, não cidades — e um grupo conta como um. O card
+logo abaixo dizia `3 CIDADES` para o grupo, então a tela se contradizia sozinha
+a 200px de distância. Agora o grupo vale pelo `cityCount`.
+
+**3. `— 30 —`.** *"E o que é esse -30- no rodapé?"* — pergunta que já é a
+resposta. Era a marca de fim de matéria de redação, e o comentário do próprio
+masthead (o que matou a palavra "PRAÇAS") diz a regra: **a metáfora do fio
+decide forma, nunca as palavras da tela; termo que precisa ser explicado não
+entra.** Virou `FIM`. Junto foi embora o `hairline` (1.8:1) como cor de texto,
+que também nunca deveria ter passado.
+
+---
+
 ## 2026-08-09 (noite) — o que as fotos do aparelho pegaram, em três rodadas
 
 Tudo nesta entrada saiu de foto de tela, não de análise. Vale registrar porque
