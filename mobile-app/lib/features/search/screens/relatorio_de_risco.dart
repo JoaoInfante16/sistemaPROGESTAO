@@ -8,7 +8,6 @@ import '../../../core/widgets/crime_radar_map.dart';
 import '../../../core/widgets/executive_indicators.dart';
 import '../../../core/widgets/fontes_analisadas.dart';
 import '../../../core/widgets/interruptor.dart';
-import '../../../core/widgets/masthead.dart';
 import '../../../core/widgets/report_pieces.dart';
 import '../../../core/widgets/weekly_trend_bars.dart';
 import '../../../core/theme/simeops_colors.dart';
@@ -33,7 +32,7 @@ import '../../feed/widgets/take_card.dart' show EndMark;
 /// 2. **todo gráfico tem gêmeo em tabela.** Rosca e barra são boas pra ver
 ///    proporção e péssimas pra citar número — e este documento existe pra ser
 ///    citado por alguém que não estava na sala.
-class ReportScreen extends StatefulWidget {
+class RelatorioDeRisco extends StatefulWidget {
   final String? searchId;
   final List<String> cidades;
   final String estado;
@@ -56,7 +55,7 @@ class ReportScreen extends StatefulWidget {
   /// de cinco meses atrás, e isso precisa estar escrito.
   final int horizonteDias;
 
-  const ReportScreen({
+  const RelatorioDeRisco({
     super.key,
     this.searchId,
     required this.cidades,
@@ -69,10 +68,10 @@ class ReportScreen extends StatefulWidget {
   });
 
   @override
-  State<ReportScreen> createState() => _ReportScreenState();
+  State<RelatorioDeRisco> createState() => _RelatorioDeRiscoState();
 }
 
-class _ReportScreenState extends State<ReportScreen> {
+class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
   bool _generatingLink = false;
 
   // Recorte client-side — re-fatiar é de graça, o dado já veio na busca.
@@ -124,17 +123,20 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Future<void> _loadExecutive() async {
     if (widget.cidades.isEmpty || widget.estado.isEmpty) return;
-    if (_estatisticas.isEmpty) return; // sem estatísticas no período → seção some
+    // Sem estatística no período a seção inteira some.
+    if (_estatisticas.isEmpty) return;
 
     setState(() => _executiveLoading = true);
     try {
       final api = context.read<ApiService>();
       final stats = _estatisticas
-          .map((s) => <String, dynamic>{
-                'resumo': s['resumo'] ?? '',
-                'data_ocorrencia': s['data_ocorrencia'] ?? '',
-                'source_url': s['source_url'] ?? s['url'],
-              })
+          .map(
+            (s) => <String, dynamic>{
+              'resumo': s['resumo'] ?? '',
+              'data_ocorrencia': s['data_ocorrencia'] ?? '',
+              'source_url': s['source_url'] ?? s['url'],
+            },
+          )
           .where((s) => (s['resumo'] as String).isNotEmpty)
           .toList();
 
@@ -210,8 +212,11 @@ class _ReportScreenState extends State<ReportScreen> {
     if (dias == null) return pool;
 
     final now = DateTime.now();
-    final cut = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: dias));
+    final cut = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: dias));
     return pool.where((r) {
       final d = DateTime.tryParse(r['data_ocorrencia'] as String? ?? '');
       return d == null || !d.isBefore(cut);
@@ -295,15 +300,19 @@ class _ReportScreenState extends State<ReportScreen> {
     _totalEstatisticas = estatisticas.length;
     _estatisticas = estatisticas;
 
-    _byDate = dateCounts.entries
-        .map((e) => <String, dynamic>{'date': e.key, 'count': e.value})
-        .toList()
-      ..sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
+    _byDate =
+        dateCounts.entries
+            .map((e) => <String, dynamic>{'date': e.key, 'count': e.value})
+            .toList()
+          ..sort(
+            (a, b) => (a['date'] as String).compareTo(b['date'] as String),
+          );
 
     // Fontes: agrupa por hostname (mesmo veiculo com N materias vira 1 linha com count).
     final officialPattern = RegExp(
-        r'\.gov\.br|\.ssp\.|\.seguranca\.|\.sesp\.|\.sspds\.|\.sejusp\.|\.segup\.',
-        caseSensitive: false);
+      r'\.gov\.br|\.ssp\.|\.seguranca\.|\.sesp\.|\.sspds\.|\.sejusp\.|\.segup\.',
+      caseSensitive: false,
+    );
     final hostCountOficial = <String, int>{};
     final hostCountMedia = <String, int>{};
 
@@ -323,14 +332,20 @@ class _ReportScreenState extends State<ReportScreen> {
         hostCountMedia[host] = (hostCountMedia[host] ?? 0) + 1;
       }
     }
-    _sourcesOficial = hostCountOficial.entries
-        .map((e) => {'name': e.key, 'count': e.value.toString()})
-        .toList()
-      ..sort((a, b) => int.parse(b['count']!).compareTo(int.parse(a['count']!)));
-    _sourcesMedia = hostCountMedia.entries
-        .map((e) => {'name': e.key, 'count': e.value.toString()})
-        .toList()
-      ..sort((a, b) => int.parse(b['count']!).compareTo(int.parse(a['count']!)));
+    _sourcesOficial =
+        hostCountOficial.entries
+            .map((e) => {'name': e.key, 'count': e.value.toString()})
+            .toList()
+          ..sort(
+            (a, b) => int.parse(b['count']!).compareTo(int.parse(a['count']!)),
+          );
+    _sourcesMedia =
+        hostCountMedia.entries
+            .map((e) => {'name': e.key, 'count': e.value.toString()})
+            .toList()
+          ..sort(
+            (a, b) => int.parse(b['count']!).compareTo(int.parse(a['count']!)),
+          );
   }
 
   /// Municípios distintos presentes no balde de região, pra dizer QUAIS são.
@@ -369,7 +384,8 @@ class _ReportScreenState extends State<ReportScreen> {
       final url = response['reportUrl'] as String?;
       if (url == null || url.isEmpty) {
         throw Exception(
-            'Backend não retornou reportUrl. Verifique ADMIN_PANEL_URL no servidor.');
+          'Backend não retornou reportUrl. Verifique ADMIN_PANEL_URL no servidor.',
+        );
       }
 
       if (mounted) {
@@ -380,9 +396,9 @@ class _ReportScreenState extends State<ReportScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao gerar relatório: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Erro ao gerar relatório: $e')));
       }
     } finally {
       if (mounted) setState(() => _generatingLink = false);
@@ -394,14 +410,26 @@ class _ReportScreenState extends State<ReportScreen> {
   // ══════════════════════════════════════════════════════════════════════
 
   static const _mesesLongos = [
-    'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
-    'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+    'janeiro',
+    'fevereiro',
+    'março',
+    'abril',
+    'maio',
+    'junho',
+    'julho',
+    'agosto',
+    'setembro',
+    'outubro',
+    'novembro',
+    'dezembro',
   ];
   // Datas escritas à mão, sem `DateFormat('pt_BR')`: a localização do intl
   // precisa de `initializeDateFormatting`, e sem ela a data sai em inglês —
   // num documento que o cliente encaminha pra outra pessoa.
   String _dataLonga(DateTime d) =>
       '${d.day} de ${_mesesLongos[d.month - 1]} de ${d.year}';
+  String _horaCurta(DateTime d) =>
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   String _dataCurta(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
 
@@ -419,8 +447,13 @@ class _ReportScreenState extends State<ReportScreen> {
   /// precisa saber disso antes de citá-lo numa reunião.
   String get _fraseDeAbertura {
     final b = StringBuffer();
-    b.write(_plural(_totalOcorrencias, 'ocorrência publicada',
-        'ocorrências publicadas'));
+    b.write(
+      _plural(
+        _totalOcorrencias,
+        'ocorrência publicada',
+        'ocorrências publicadas',
+      ),
+    );
     if (_veiculos > 0) {
       b.write(' por $_veiculos ${_plural(_veiculos, 'veículo', 'veículos')}');
     }
@@ -428,11 +461,15 @@ class _ReportScreenState extends State<ReportScreen> {
 
     if (_includeRegiao && _totalRegiaoNoRecorte > 0) {
       final naCidade = _totalOcorrencias - _totalRegiaoNoRecorte;
-      b.write(', sendo $naCidade em ${widget.cidades.first} e '
-          '$_totalRegiaoNoRecorte na região metropolitana');
+      b.write(
+        ', sendo $naCidade em ${widget.cidades.first} e '
+        '$_totalRegiaoNoRecorte na região metropolitana',
+      );
     }
-    b.write('. É o que a imprensa noticiou — não o total registrado pelas '
-        'polícias.');
+    b.write(
+      '. É o que a imprensa noticiou — não o total registrado pelas '
+      'polícias.',
+    );
     return b.toString();
   }
 
@@ -461,6 +498,8 @@ class _ReportScreenState extends State<ReportScreen> {
       if (_includeOld && widget.foraDoPeriodo.isNotEmpty)
         'Inclui ${widget.foraDoPeriodo.length} anteriores a '
             '${_dataCurta(_inicioDoRecorte)} — até ${widget.horizonteDias} dias atrás',
+      // Um documento que alguém encaminha precisa dizer de quando ele é.
+      'Gerado em ${_dataCurta(hoje)} às ${_horaCurta(hoje)}',
     ];
 
     return Padding(
@@ -470,13 +509,17 @@ class _ReportScreenState extends State<ReportScreen> {
         padding: const EdgeInsets.fromLTRB(13, 12, 13, 13),
         decoration: const BoxDecoration(
           color: SIMEopsColors.navyMid,
-          border: Border(left: BorderSide(color: SIMEopsColors.white, width: 2)),
+          border: Border(
+            left: BorderSide(color: SIMEopsColors.white, width: 2),
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('RECORTE DESTE DOCUMENTO',
-                style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+            Text(
+              'RECORTE DESTE DOCUMENTO',
+              style: SIMEopsType.slug(color: SIMEopsColors.faint),
+            ),
             const SizedBox(height: 8),
             for (final l in linhas)
               Padding(
@@ -492,9 +535,13 @@ class _ReportScreenState extends State<ReportScreen> {
   /// Re-fatiar o período. Sem `ChoiceChip` — a cápsula r20 era a peça mais
   /// arredondada do app.
   Widget _fatias() {
-    final presets = const [7, 15, 30, 60, 90]
-        .where((d) => d < widget.periodoDias)
-        .toList();
+    final presets = const [
+      7,
+      15,
+      30,
+      60,
+      90,
+    ].where((d) => d < widget.periodoDias).toList();
     if (presets.isEmpty) return const SizedBox.shrink();
 
     Widget fatia(String rotulo, bool ativa, VoidCallback aplicar) {
@@ -527,8 +574,11 @@ class _ReportScreenState extends State<ReportScreen> {
         children: [
           for (final d in presets)
             fatia('${d}D', _sliceDias == d, () => _sliceDias = d),
-          fatia('${widget.periodoDias}D', _sliceDias == null,
-              () => _sliceDias = null),
+          fatia(
+            '${widget.periodoDias}D',
+            _sliceDias == null,
+            () => _sliceDias = null,
+          ),
         ],
       ),
     );
@@ -558,9 +608,12 @@ class _ReportScreenState extends State<ReportScreen> {
               children: [
                 Text(titulo, style: SIMEopsType.body().copyWith(fontSize: 15)),
                 const SizedBox(height: 3),
-                Text(descricao,
-                    style: SIMEopsType.note(color: SIMEopsColors.faint)
-                        .copyWith(fontSize: 12.5)),
+                Text(
+                  descricao,
+                  style: SIMEopsType.note(
+                    color: SIMEopsColors.faint,
+                  ).copyWith(fontSize: 12.5),
+                ),
               ],
             ),
           ),
@@ -576,216 +629,197 @@ class _ReportScreenState extends State<ReportScreen> {
   // ══════════════════════════════════════════════════════════════════════
   // BUILD
   // ══════════════════════════════════════════════════════════════════════
-
+  /// Deixou de ser tela em 09/08.
+  ///
+  /// O relatório abria empilhado, por um botão verde de largura inteira, e a
+  /// tela da cidade resolvia **a mesma decisão** — ver a lista ou ver o
+  /// relatório — com uma aba discreta de duas palavras. Duas gramáticas para a
+  /// mesma escolha, e a da cidade é a certa: ali o relatório é um caderno do
+  /// mesmo jornal, não um destino. Então isto virou corpo, e quem desenha o
+  /// topo é a tela que o hospeda.
   @override
   Widget build(BuildContext context) {
-    final agora = DateTime.now();
     final bairros = _bairroCounts.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final top = bairros.take(8).toList();
 
-    return Scaffold(
-      backgroundColor: SIMEopsColors.navy,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            Masthead(
-              titulo: 'Relatório de risco',
-              onVoltar: () => Navigator.of(context).pop(),
-              esquerda: Text(
-                '${widget.cidades.join(', ')} · ${widget.estado}'.toUpperCase(),
-                style: SIMEopsType.slug(color: SIMEopsColors.faint),
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 20),
+      children: [
+        _recorteDeclarado(),
+        _fatias(),
+
+        if (widget.foraDoPeriodo.isNotEmpty || widget.regiao.isNotEmpty)
+          const SizedBox(height: 20),
+        if (widget.foraDoPeriodo.isNotEmpty)
+          _chave(
+            titulo: 'Incluir o que é mais antigo',
+            descricao:
+                'Soma ${widget.foraDoPeriodo.length} ocorrências '
+                'anteriores a ${_dataCurta(_inicioDoRecorte)}, '
+                'até ${widget.horizonteDias} dias atrás',
+            valor: _includeOld,
+            onChanged: (v) => setState(() {
+              _includeOld = v;
+              _computeAnalytics();
+            }),
+          ),
+        if (widget.regiao.isNotEmpty)
+          _chave(
+            titulo: 'Incluir a região metropolitana',
+            descricao:
+                'Soma ${widget.regiao.length} ocorrências '
+                'de ${_cidadesDaRegiao()}',
+            valor: _includeRegiao,
+            onChanged: (v) => setState(() {
+              _includeRegiao = v;
+              _computeAnalytics();
+            }),
+          ),
+
+        // A abertura: o número e o que ele quer dizer.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 26, 18, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('$_totalOcorrencias', style: SIMEopsType.hero()),
+              const SizedBox(height: 7),
+              Text(
+                _fraseDeAbertura,
+                style: SIMEopsType.lead().copyWith(fontSize: 15),
               ),
-              direita: 'GERADO ${_dataCurta(agora)} '
-                  '${agora.hour.toString().padLeft(2, '0')}:'
-                  '${agora.minute.toString().padLeft(2, '0')}',
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.only(bottom: 20),
-                children: [
-                  _recorteDeclarado(),
-                  _fatias(),
-
-                  if (widget.foraDoPeriodo.isNotEmpty ||
-                      widget.regiao.isNotEmpty)
-                    const SizedBox(height: 20),
-                  if (widget.foraDoPeriodo.isNotEmpty)
-                    _chave(
-                      titulo: 'Incluir o que é mais antigo',
-                      descricao:
-                          'Soma ${widget.foraDoPeriodo.length} ocorrências '
-                          'anteriores a ${_dataCurta(_inicioDoRecorte)}, '
-                          'até ${widget.horizonteDias} dias atrás',
-                      valor: _includeOld,
-                      onChanged: (v) => setState(() {
-                        _includeOld = v;
-                        _computeAnalytics();
-                      }),
-                    ),
-                  if (widget.regiao.isNotEmpty)
-                    _chave(
-                      titulo: 'Incluir a região metropolitana',
-                      descricao: 'Soma ${widget.regiao.length} ocorrências '
-                          'de ${_cidadesDaRegiao()}',
-                      valor: _includeRegiao,
-                      onChanged: (v) => setState(() {
-                        _includeRegiao = v;
-                        _computeAnalytics();
-                      }),
-                    ),
-
-                  // A abertura: o número e o que ele quer dizer.
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 26, 18, 0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('$_totalOcorrencias', style: SIMEopsType.hero()),
-                        const SizedBox(height: 7),
-                        Text(_fraseDeAbertura,
-                            style: SIMEopsType.lead().copyWith(fontSize: 15)),
-                      ],
-                    ),
-                  ),
-
-                  if (_categoryCounts.isNotEmpty)
-                    BlocoRelatorio(
-                      titulo: 'Por categoria',
-                      child: RoscaCategorias(
-                        contagens: _categoryCounts,
-                        total: _totalOcorrencias,
-                        selecionadas: _cats,
-                        onToggle: (cat) => setState(() {
-                          if (!_cats.add(cat)) _cats.remove(cat);
-                          _computeAnalytics();
-                        }),
-                      ),
-                    ),
-
-                  if (top.isNotEmpty)
-                    BlocoRelatorio(
-                      titulo: 'Bairros mais citados',
-                      nota: 'Citação na matéria — não é onde o fato ocorreu em '
-                          '100% dos casos.',
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          RankBarras(
-                            itens: [for (final e in top) (e.key, e.value)],
-                          ),
-                          if (_semBairro > 0)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 10),
-                              child: Text(
-                                '$_semBairro ${_plural(_semBairro, 'ocorrência não tem', 'ocorrências não têm')} '
-                                'bairro identificado na matéria.',
-                                style: SIMEopsType.note(
-                                    color: SIMEopsColors.faint),
-                              ),
-                            ),
-                          TabelaGemea(
-                            linhas: [
-                              for (final e in bairros) (e.key, '${e.value}', ''),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  if (_mapPoints.isNotEmpty)
-                    BlocoRelatorio(
-                      titulo: 'Distribuição no mapa',
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 12),
-                          CrimeRadarMap(points: _mapPoints),
-                          const SizedBox(height: 9),
-                          // A precisão do ponto, declarada. Um mapa que desenha
-                          // 18 de 25 itens sem dizer isso deixa quem lê concluir
-                          // que a cidade inteira está ali.
-                          Text(
-                            '${_mapPoints.length} de $_totalOcorrencias '
-                            '${_plural(_totalOcorrencias, 'ocorrência entrou', 'ocorrências entraram')} '
-                            'no mapa — o resto não traz bairro na matéria.',
-                            style:
-                                SIMEopsType.note(color: SIMEopsColors.faint),
-                          ),
-                        ],
-                      ),
-                    )
-                  else if (_mapLoading)
-                    BlocoRelatorio(
-                      titulo: 'Distribuição no mapa',
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 40),
-                        child: Center(
-                          child: SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: SIMEopsColors.teal),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                  if (_byDate.length > 1)
-                    BlocoRelatorio(
-                      titulo: 'Volume por semana',
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 14),
-                        child: WeeklyTrendBars(data: aggregateByWeek(_byDate)),
-                      ),
-                    ),
-
-                  if (_executiveLoading || !_executive.isEmpty)
-                    BlocoRelatorio(
-                      titulo: 'Indicadores da região',
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: ExecutiveIndicators(
-                          data: _executive,
-                          showHeader: false,
-                          loading: _executiveLoading,
-                        ),
-                      ),
-                    ),
-
-                  if (_totalEstatisticas > 0 && _executive.isEmpty)
-                    BlocoRelatorio(
-                      titulo: 'Indicadores da região',
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: Text(
-                          '$_totalEstatisticas ${_plural(_totalEstatisticas, 'indicador foi coletado', 'indicadores foram coletados')} '
-                          'no período, mas o resumo não pôde ser montado agora.',
-                          style: SIMEopsType.note(color: SIMEopsColors.faint),
-                        ),
-                      ),
-                    ),
-
-                  FontesAnalisadas(
-                      oficiais: _sourcesOficial, midias: _sourcesMedia),
-
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 30, 18, 0),
-                    child: FilledButton(
-                      onPressed: _generatingLink ? null : _generateAndShareLink,
-                      child: Text(_generatingLink
-                          ? 'GERANDO O LINK…'
-                          : 'COMPARTILHAR RELATÓRIO'),
-                    ),
-                  ),
-                  const EndMark(),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
+
+        if (_categoryCounts.isNotEmpty)
+          BlocoRelatorio(
+            titulo: 'Por categoria',
+            child: RoscaCategorias(
+              contagens: _categoryCounts,
+              total: _totalOcorrencias,
+              selecionadas: _cats,
+              onToggle: (cat) => setState(() {
+                if (!_cats.add(cat)) _cats.remove(cat);
+                _computeAnalytics();
+              }),
+            ),
+          ),
+
+        if (top.isNotEmpty)
+          BlocoRelatorio(
+            titulo: 'Bairros mais citados',
+            nota:
+                'Citação na matéria — não é onde o fato ocorreu em '
+                '100% dos casos.',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                RankBarras(itens: [for (final e in top) (e.key, e.value)]),
+                if (_semBairro > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text(
+                      '$_semBairro ${_plural(_semBairro, 'ocorrência não tem', 'ocorrências não têm')} '
+                      'bairro identificado na matéria.',
+                      style: SIMEopsType.note(color: SIMEopsColors.faint),
+                    ),
+                  ),
+                TabelaGemea(
+                  linhas: [for (final e in bairros) (e.key, '${e.value}', '')],
+                ),
+              ],
+            ),
+          ),
+
+        if (_mapPoints.isNotEmpty)
+          BlocoRelatorio(
+            titulo: 'Distribuição no mapa',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 12),
+                CrimeRadarMap(points: _mapPoints),
+                const SizedBox(height: 9),
+                // A precisão do ponto, declarada. Um mapa que desenha
+                // 18 de 25 itens sem dizer isso deixa quem lê concluir
+                // que a cidade inteira está ali.
+                Text(
+                  '${_mapPoints.length} de $_totalOcorrencias '
+                  '${_plural(_totalOcorrencias, 'ocorrência entrou', 'ocorrências entraram')} '
+                  'no mapa — o resto não traz bairro na matéria.',
+                  style: SIMEopsType.note(color: SIMEopsColors.faint),
+                ),
+              ],
+            ),
+          )
+        else if (_mapLoading)
+          BlocoRelatorio(
+            titulo: 'Distribuição no mapa',
+            child: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 40),
+              child: Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: SIMEopsColors.teal,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+        if (_byDate.length > 1)
+          BlocoRelatorio(
+            titulo: 'Volume por semana',
+            child: Padding(
+              padding: const EdgeInsets.only(top: 14),
+              child: WeeklyTrendBars(data: aggregateByWeek(_byDate)),
+            ),
+          ),
+
+        if (_executiveLoading || !_executive.isEmpty)
+          BlocoRelatorio(
+            titulo: 'Indicadores da região',
+            child: Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: ExecutiveIndicators(
+                data: _executive,
+                showHeader: false,
+                loading: _executiveLoading,
+              ),
+            ),
+          ),
+
+        if (_totalEstatisticas > 0 && _executive.isEmpty)
+          BlocoRelatorio(
+            titulo: 'Indicadores da região',
+            child: Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text(
+                '$_totalEstatisticas ${_plural(_totalEstatisticas, 'indicador foi coletado', 'indicadores foram coletados')} '
+                'no período, mas o resumo não pôde ser montado agora.',
+                style: SIMEopsType.note(color: SIMEopsColors.faint),
+              ),
+            ),
+          ),
+
+        FontesAnalisadas(oficiais: _sourcesOficial, midias: _sourcesMedia),
+
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 30, 18, 0),
+          child: FilledButton(
+            onPressed: _generatingLink ? null : _generateAndShareLink,
+            child: Text(
+              _generatingLink ? 'GERANDO O LINK…' : 'COMPARTILHAR RELATÓRIO',
+            ),
+          ),
+        ),
+        const EndMark(),
+      ],
     );
   }
 }

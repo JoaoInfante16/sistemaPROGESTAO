@@ -22,7 +22,7 @@ import '../widgets/seletor_lugar.dart';
 import '../../feed/feed_filtro.dart';
 import '../../feed/widgets/take_card.dart';
 import '../../../core/models/news_item.dart';
-import 'report_screen.dart';
+import 'relatorio_de_risco.dart';
 
 class ManualSearchScreen extends StatefulWidget {
   /// Se fornecido, retoma uma busca existente (do histórico).
@@ -39,6 +39,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   String? _selectedEstado;
   Set<String> _selectedCidades = {};
   int _periodoDias = 30;
+
   /// Data escolhida no calendário; `null` = está num dos cinco pontos.
   /// `_periodoDias` continua sendo a verdade que vai pro backend — isto só
   /// guarda de onde o número veio, pra tela poder dizer "desde 12/03".
@@ -52,7 +53,15 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
   // Search state
   String? _searchId;
-  String? _reportId;
+
+  /// Caderno aberto: 0 = as ocorrências, 1 = o relatório. Ver [_buildCadernos].
+  ///
+  /// Substituiu o `_reportId`, que existia só pra decidir se o botão dizia
+  /// "gerar" ou "ver" um relatório que sempre existiu — ele é calculado do
+  /// resultado que já está na mão, não gerado sob demanda. O `report_id` do
+  /// backend continua importando **só** na hora de compartilhar, e isso mora
+  /// dentro do próprio relatório.
+  int _caderno = 0;
   String _searchStatus = 'idle'; // idle, processing, completed, failed
   // Resposta crua do /results, com os três baldes SEMPRE separados (regra do
   // contrato). O ReportScreen recebe .results como veio; .foraDoPeriodo cru
@@ -141,12 +150,11 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       final status = await api.getManualSearchStatus(searchId);
       final s = status['status'] as String;
 
-      // Recuperar params originais e report_id
+      // Recuperar os params originais da consulta
       final params = status['params'] as Map<String, dynamic>?;
-      final reportId = status['report_id'] as String?;
+
       if (mounted) {
         setState(() {
-          _reportId = reportId;
           if (params != null) {
             _selectedEstado = params['estado'] as String?;
             final cidades = params['cidades'];
@@ -185,7 +193,9 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       if (mounted) {
         setState(() => _searchStatus = 'failed');
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Resultados expirados ou indisponiveis')),
+          const SnackBar(
+            content: Text('Resultados expirados ou indisponiveis'),
+          ),
         );
       }
     }
@@ -248,9 +258,9 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     } catch (e) {
       setState(() => _searchStatus = 'failed');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao iniciar busca: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Erro ao iniciar busca: $e')));
       }
     }
   }
@@ -341,7 +351,8 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
         // Detecção de estagnação: assinatura do que deveria estar se mexendo.
         if (progress != null) {
-          final sig = '${progress['stage_num']}'
+          final sig =
+              '${progress['stage_num']}'
               '|${progress['feitos']}'
               '|${progress['atualizado_em']}';
           if (sig != _lastProgressSig) {
@@ -349,7 +360,8 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
             _lastAdvanceAt = DateTime.now();
           }
         }
-        final stalled = _lastAdvanceAt != null &&
+        final stalled =
+            _lastAdvanceAt != null &&
             DateTime.now().difference(_lastAdvanceAt!) > _stallTimeout;
         if (stalled && s == 'processing') {
           _pollTimer?.cancel();
@@ -358,8 +370,10 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
             setState(() => _searchStatus = 'failed');
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                  content: Text(
-                      'A busca parou de avançar. Tente novamente ou veja o histórico.')),
+                content: Text(
+                  'A busca parou de avançar. Tente novamente ou veja o histórico.',
+                ),
+              ),
             );
           }
           return;
@@ -387,7 +401,11 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
           _elapsedTimer?.cancel();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Sem conexão com o servidor. Volte ao histórico quando terminar.')),
+              const SnackBar(
+                content: Text(
+                  'Sem conexão com o servidor. Volte ao histórico quando terminar.',
+                ),
+              ),
             );
           }
         }
@@ -395,46 +413,13 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     });
   }
 
-  Future<void> _openReport() async {
-    if (_selectedEstado == null) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ReportScreen(
-          searchId: _searchId,
-          cidades: _selectedCidades.isNotEmpty
-              ? _selectedCidades.toList()
-              : [_selectedEstado!],
-          estado: _selectedEstado!,
-          periodoDias: _periodoDias,
-          results: _searchData.results,
-          foraDoPeriodo: _searchData.foraDoPeriodo,
-          // Até 03/08 o relatório não recebia este balde: ele sumia dos
-          // números sem uma linha dizendo que tinha sumido.
-          regiao: _searchData.regiao,
-        ),
-      ),
-    );
-    _checkForReport();
-  }
-
-  Future<void> _checkForReport() async {
-    if (_searchId == null) return;
-    try {
-      final api = context.read<ApiService>();
-      final status = await api.getManualSearchStatus(_searchId!);
-      final reportId = status['report_id'] as String?;
-      if (reportId != null && mounted) {
-        setState(() => _reportId = reportId);
-      }
-    } catch (e) { debugPrint('[ManualSearch] Check report error: $e'); }
-  }
-
   void _resetSearch() {
     _pollTimer?.cancel();
     _elapsedTimer?.cancel();
 
     // Cancelar no backend se busca em andamento
-    if (_searchId != null && (_searchStatus == 'processing' || _searchStatus == 'loading')) {
+    if (_searchId != null &&
+        (_searchStatus == 'processing' || _searchStatus == 'loading')) {
       final api = context.read<ApiService>();
       api.cancelSearch(_searchId!).catchError((e) {
         debugPrint('[ManualSearch] Cancel error: $e');
@@ -443,7 +428,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
     setState(() {
       _searchId = null;
-      _reportId = null;
+
       _searchStatus = 'idle';
       _searchData = const ManualSearchResults();
       _items = [];
@@ -494,20 +479,22 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
               onVoltar: () => Navigator.of(context).pop(),
               esquerda: isFormView
                   ? null
-                  : Text(recorte,
-                      style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+                  : Text(
+                      recorte,
+                      style: SIMEopsType.slug(color: SIMEopsColors.faint),
+                    ),
               direita: isFormView
                   ? 'UMA CIDADE · REGIÃO INCLUSA'
                   : concluida
-                      ? '${_items.where((n) => n.natureza != 'estatistica').length} OCORRÊNCIAS'
-                      : _elapsedText.toUpperCase(),
+                  ? '${_items.where((n) => n.natureza != 'estatistica').length} OCORRÊNCIAS'
+                  : _elapsedText.toUpperCase(),
             ),
             Expanded(
               child: _searchStatus == 'idle'
                   ? GridBackground(child: _buildForm())
                   : _searchStatus == 'loading'
-                      ? const Center(child: CircularProgressIndicator())
-                      : _buildResults(),
+                  ? const Center(child: CircularProgressIndicator())
+                  : _buildResults(),
             ),
           ],
         ),
@@ -542,8 +529,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     }
 
     final canSearch = _selectedEstado != null && _selectedCidades.isNotEmpty;
-    final cidade =
-        _selectedCidades.isEmpty ? null : _selectedCidades.first;
+    final cidade = _selectedCidades.isEmpty ? null : _selectedCidades.first;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 0, 18, 40),
@@ -573,7 +559,10 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
           habilitado: _selectedEstado != null,
           onTap: () async {
             final c = await Lugares.escolherCidade(
-                context, _selectedEstado!, cidade);
+              context,
+              _selectedEstado!,
+              cidade,
+            );
             if (c == null) return;
             setState(() => _selectedCidades = {c});
           },
@@ -706,8 +695,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
                     : 'Escolher data exata',
                 style: SIMEopsType.body().copyWith(
                   fontSize: 17,
-                  color:
-                      ativo ? SIMEopsColors.white : SIMEopsColors.faint,
+                  color: ativo ? SIMEopsColors.white : SIMEopsColors.faint,
                 ),
               ),
             ),
@@ -720,12 +708,16 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
                 }),
                 child: Padding(
                   padding: const EdgeInsets.only(right: 10),
-                  child: Text('LIMPAR',
-                      style: SIMEopsType.slug(color: SIMEopsColors.tealLight)),
+                  child: Text(
+                    'LIMPAR',
+                    style: SIMEopsType.slug(color: SIMEopsColors.tealLight),
+                  ),
                 ),
               ),
-            Text(ativo ? '$_periodoDias DIAS' : 'OU DATA EXATA',
-                style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+            Text(
+              ativo ? '$_periodoDias DIAS' : 'OU DATA EXATA',
+              style: SIMEopsType.slug(color: SIMEopsColors.faint),
+            ),
           ],
         ),
       ),
@@ -799,13 +791,15 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
                         n == 0
                             ? 'NENHUM ASSUNTO'
                             : '$n ${n == 1 ? 'ASSUNTO' : 'ASSUNTOS'}'
-                                '${cidades > 0 ? ' · $_periodoDias DIAS' : ''}',
+                                  '${cidades > 0 ? ' · $_periodoDias DIAS' : ''}',
                         style: SIMEopsType.slug(color: SIMEopsColors.faint),
                         textAlign: TextAlign.end,
                       ),
                       const SizedBox(height: 4),
-                      Text('ESTIMATIVA, NÃO GARANTIA',
-                          style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+                      Text(
+                        'ESTIMATIVA, NÃO GARANTIA',
+                        style: SIMEopsType.slug(color: SIMEopsColors.faint),
+                      ),
                     ],
                   ),
                 ),
@@ -896,7 +890,9 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
     if (passo > atual) return '—';
     if (passo == atual) {
-      if (feitos != null && total != null && total > 0) return '$feitos / $total';
+      if (feitos != null && total != null && total > 0) {
+        return '$feitos / $total';
+      }
       return '···';
     }
 
@@ -939,12 +935,12 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   /// Chave de um achado, pra contar sem contar duas vezes o mesmo item que
   /// voltou na janela seguinte do polling.
   String _chaveDoAchado(Map<String, dynamic> a) => [
-        a['titulo'],
-        a['tipo_crime'],
-        a['cidade'],
-        a['bairro'],
-        a['data_ocorrencia'],
-      ].join('|');
+    a['titulo'],
+    a['tipo_crime'],
+    a['cidade'],
+    a['bairro'],
+    a['data_ocorrencia'],
+  ].join('|');
 
   /// Acumula os achados que passam pela janela do worker.
   ///
@@ -984,8 +980,10 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         shape: const RoundedRectangleBorder(
           side: BorderSide(color: SIMEopsColors.ruleStrong),
         ),
-        title: Text('Cancelar a consulta?',
-            style: SIMEopsType.body().copyWith(fontSize: 21)),
+        title: Text(
+          'Cancelar a consulta?',
+          style: SIMEopsType.body().copyWith(fontSize: 21),
+        ),
         content: Text(
           'Ela roda no servidor e termina sozinha mesmo com o app fechado. '
           'Cancelar agora descarta o que já foi coletado.',
@@ -1011,7 +1009,11 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     unawaited(_startSearch());
   }
 
-  Widget _marca({required bool feito, required bool agora, required bool parou}) {
+  Widget _marca({
+    required bool feito,
+    required bool agora,
+    required bool parou,
+  }) {
     if (parou) {
       return Container(width: 8, height: 8, color: SIMEopsColors.alert);
     }
@@ -1031,7 +1033,12 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   /// as etapas que ainda não rodaram são a prova de que a busca tem plano, e
   /// apagá-las mataria a função da lista.
   List<Widget> _linhaDoPasso(
-      int i, int atual, int? feitos, int? total, bool falhou) {
+    int i,
+    int atual,
+    int? feitos,
+    int? total,
+    bool falhou,
+  ) {
     final passo = i + 1;
     final feito = passo < atual;
     final agora = passo == atual;
@@ -1040,10 +1047,10 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     final tinta = parou
         ? SIMEopsColors.alert
         : agora
-            ? SIMEopsColors.white
-            : feito
-                ? SIMEopsColors.muted
-                : SIMEopsColors.faint;
+        ? SIMEopsColors.white
+        : feito
+        ? SIMEopsColors.muted
+        : SIMEopsColors.faint;
 
     final temBarra =
         agora && !falhou && feitos != null && total != null && total > 0;
@@ -1075,10 +1082,10 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
                 color: parou
                     ? SIMEopsColors.alert
                     : agora
-                        ? SIMEopsColors.tealLight
-                        : feito
-                            ? SIMEopsColors.faint
-                            : SIMEopsColors.hairline,
+                    ? SIMEopsColors.tealLight
+                    : feito
+                    ? SIMEopsColors.faint
+                    : SIMEopsColors.hairline,
               ),
             ),
           ],
@@ -1141,15 +1148,18 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 28, 18, 0),
             child: Text.rich(
-              TextSpan(children: [
-                const TextSpan(text: 'PODE FECHAR O APP.\n'),
-                TextSpan(
-                  text: 'UM AVISO CHEGA QUANDO TERMINAR.',
-                  style: TextStyle(color: SIMEopsColors.muted),
-                ),
-              ]),
-              style: SIMEopsType.slug(color: SIMEopsColors.faint)
-                  .copyWith(height: 1.7),
+              TextSpan(
+                children: [
+                  const TextSpan(text: 'PODE FECHAR O APP.\n'),
+                  TextSpan(
+                    text: 'UM AVISO CHEGA QUANDO TERMINAR.',
+                    style: TextStyle(color: SIMEopsColors.muted),
+                  ),
+                ],
+              ),
+              style: SIMEopsType.slug(
+                color: SIMEopsColors.faint,
+              ).copyWith(height: 1.7),
             ),
           ),
           Padding(
@@ -1166,22 +1176,22 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   }
 
   List<Widget> _blocoDosAchados() => [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 28, 18, 0),
-          child: Row(
-            children: [
-              Text('JÁ ENCONTRADO · ${_achadosVistos.length}',
-                  style: SIMEopsType.dateline()),
-              const SizedBox(width: 11),
-              const Expanded(
-                child: Divider(color: SIMEopsColors.rule, height: 1),
-              ),
-            ],
+    Padding(
+      padding: const EdgeInsets.fromLTRB(18, 28, 18, 0),
+      child: Row(
+        children: [
+          Text(
+            'JÁ ENCONTRADO · ${_achadosVistos.length}',
+            style: SIMEopsType.dateline(),
           ),
-        ),
-        for (final a in _achadosRecentes)
-          _AchadoAoVivo(key: ValueKey(_chaveDoAchado(a)), achado: a),
-      ];
+          const SizedBox(width: 11),
+          const Expanded(child: Divider(color: SIMEopsColors.rule, height: 1)),
+        ],
+      ),
+    ),
+    for (final a in _achadosRecentes)
+      _AchadoAoVivo(key: ValueKey(_chaveDoAchado(a)), achado: a),
+  ];
 
   /// A falha **não** troca a tela por um ícone triste.
   ///
@@ -1192,7 +1202,9 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   /// a coleta morreu no download, o que é uma informação útil inclusive pra
   /// decidir se vale repetir agora ou mais tarde.
   List<Widget> _blocoDaFalha(int atual) {
-    final onde = (atual >= 1 && atual <= _passos.length) ? _passos[atual - 1] : null;
+    final onde = (atual >= 1 && atual <= _passos.length)
+        ? _passos[atual - 1]
+        : null;
 
     return [
       Padding(
@@ -1208,9 +1220,9 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
           child: Text(
             onde == null
                 ? 'A consulta não chegou a começar. Costuma ser conexão — '
-                    'refazer agora normalmente resolve.'
+                      'refazer agora normalmente resolve.'
                 : 'A consulta parou em “$onde”. O que já tinha sido coletado '
-                    'não fica salvo: refazer começa do zero.',
+                      'não fica salvo: refazer começa do zero.',
             style: SIMEopsType.note(),
           ),
         ),
@@ -1241,11 +1253,21 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   /// o período.
   String get _rotuloForaDoPeriodo {
     const meses = [
-      'JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN',
-      'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ',
+      'JAN',
+      'FEV',
+      'MAR',
+      'ABR',
+      'MAI',
+      'JUN',
+      'JUL',
+      'AGO',
+      'SET',
+      'OUT',
+      'NOV',
+      'DEZ',
     ];
-    final d = _desdeQuando ??
-        DateTime.now().subtract(Duration(days: _periodoDias));
+    final d =
+        _desdeQuando ?? DateTime.now().subtract(Duration(days: _periodoDias));
     return 'ANTES DE ${d.day} ${meses[d.month - 1]}';
   }
 
@@ -1253,19 +1275,113 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     if (_searchStatus == 'processing') return _buildEspera();
     if (_searchStatus == 'failed') return _buildEspera(falhou: true);
 
+    return Column(
+      children: [
+        _buildCadernos(),
+        Expanded(
+          child: _caderno == 0
+              ? _buildOcorrencias()
+              : RelatorioDeRisco(
+                  searchId: _searchId,
+                  cidades: _selectedCidades.isNotEmpty
+                      ? _selectedCidades.toList()
+                      : [_selectedEstado ?? ''],
+                  estado: _selectedEstado ?? '',
+                  periodoDias: _periodoDias,
+                  results: _searchData.results,
+                  foraDoPeriodo: _searchData.foraDoPeriodo,
+                  // Até 03/08 o relatório não recebia este balde: ele sumia
+                  // dos números sem uma linha dizendo que tinha sumido.
+                  regiao: _searchData.regiao,
+                ),
+        ),
+      ],
+    );
+  }
+
+  /// Os cadernos — **a mesma peça da tela da cidade**.
+  ///
+  /// Aqui o relatório se abria por um `FilledButton` verde de largura inteira,
+  /// e a tela da cidade resolve a MESMA decisão (ver a lista ou ver o
+  /// relatório) com duas palavras e um filete. Duas gramáticas para a mesma
+  /// escolha, e uma delas gritando: o botão era o objeto mais saturado da tela,
+  /// competindo com o resultado que a pessoa esperou sete minutos pra ler.
+  ///
+  /// O `FILTRAR` também mudou de lugar junto — some no caderno do relatório,
+  /// que tem o recorte dele. Com isso morreu a linha `ÚLTIMOS 30 DIAS`, que
+  /// repetia o que o cabeçalho já diz duas linhas acima.
+  Widget _buildCadernos() {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: SIMEopsColors.rule)),
+      ),
+      padding: const EdgeInsets.fromLTRB(18, 15, 18, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (var i = 0; i < 2; i++) ...[
+            InkWell(
+              onTap: () => setState(() => _caderno = i),
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: _caderno == i
+                          ? SIMEopsColors.greenLight
+                          : Colors.transparent,
+                      width: 2,
+                    ),
+                  ),
+                ),
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text(
+                  i == 0 ? 'Ocorrências' : 'Relatório',
+                  style: SIMEopsType.tab(active: _caderno == i),
+                ),
+              ),
+            ),
+            if (i == 0) const SizedBox(width: 22),
+          ],
+          const Spacer(),
+          if (_caderno == 0)
+            InkWell(
+              onTap: _abrirFiltro,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 11, left: 10),
+                child: Text(
+                  'FILTRAR',
+                  style: SIMEopsType.slug(
+                    color: _filtro.ativo
+                        ? SIMEopsColors.greenLight
+                        : SIMEopsColors.tealLight,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOcorrencias() {
     // Indicador de criminalidade não é ocorrência e nunca entrou na contagem —
     // ele é material de segunda ordem, e vai pro próprio balde lá embaixo.
-    final ocorrencias =
-        _items.where((n) => n.natureza != 'estatistica').toList();
-    final indicadores =
-        _items.where((n) => n.natureza == 'estatistica').toList();
+    final ocorrencias = _items
+        .where((n) => n.natureza != 'estatistica')
+        .toList();
+    final indicadores = _items
+        .where((n) => n.natureza == 'estatistica')
+        .toList();
 
     final visiveis = _filtro.categorias.isEmpty
         ? ocorrencias
         : ocorrencias
-            .where((n) =>
-                _filtro.categorias.contains(n.categoriaGrupo ?? 'institucional'))
-            .toList();
+              .where(
+                (n) => _filtro.categorias.contains(
+                  n.categoriaGrupo ?? 'institucional',
+                ),
+              )
+              .toList();
 
     final groups = groupNewsByDate(visiveis);
     final rows = <Widget>[];
@@ -1274,115 +1390,118 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     // que foi pedido; os outros dois são material que a consulta trouxe junto
     // e que o contrato mantém separado. Somá-los seria dizer que a cidade teve
     // 34 ocorrências quando teve 13.
-    rows.add(Padding(
-      padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _Figura(
-            valor: ocorrencias.length,
-            rotulo: 'NO PERÍODO',
-            destaque: true,
-          ),
-          _Figura(valor: _regiaoItems.length, rotulo: 'REGIÃO\nMETROPOLITANA'),
-          _Figura(
-            valor: _foraItems.length,
-            // `ANTES DE\n5 JUL` — a data real diz mais que "fora do período",
-            // que obriga a lembrar qual era o período.
-            rotulo: _foraItems.isEmpty
-                ? 'FORA DO\nPERÍODO'
-                : _rotuloForaDoPeriodo.replaceFirst(' DE ', ' DE\n'),
-          ),
-        ],
+    rows.add(
+      Padding(
+        padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _Figura(
+              valor: ocorrencias.length,
+              rotulo: 'NO PERÍODO',
+              destaque: true,
+            ),
+            _Figura(
+              valor: _regiaoItems.length,
+              rotulo: 'REGIÃO\nMETROPOLITANA',
+            ),
+            _Figura(
+              valor: _foraItems.length,
+              // `ANTES DE\n5 JUL` — a data real diz mais que "fora do período",
+              // que obriga a lembrar qual era o período.
+              rotulo: _foraItems.isEmpty
+                  ? 'FORA DO\nPERÍODO'
+                  : _rotuloForaDoPeriodo.replaceFirst(' DE ', ' DE\n'),
+            ),
+          ],
+        ),
       ),
-    ));
+    );
 
     // Recorte curto rende pouco, e isso é da natureza da fonte — não é falha
     // da consulta. Dizer isso na hora evita a conclusão errada ("o app não
     // funciona") e aponta as duas alavancas reais.
     if (ocorrencias.length <= 2) {
-      rows.add(Padding(
-        padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(13, 12, 13, 13),
-          decoration: const BoxDecoration(
-            color: SIMEopsColors.navyMid,
-            border: Border(
-              left: BorderSide(color: SIMEopsColors.teal, width: 2),
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(13, 12, 13, 13),
+            decoration: const BoxDecoration(
+              color: SIMEopsColors.navyMid,
+              border: Border(
+                left: BorderSide(color: SIMEopsColors.teal, width: 2),
+              ),
+            ),
+            child: Text(
+              'Resultado magro é normal em recorte curto: a imprensa publica o '
+              'que publica. Ampliar o período ou incluir mais assuntos é o que '
+              'aumenta o alcance.',
+              style: SIMEopsType.note(),
             ),
           ),
+        ),
+      );
+    }
+
+    rows.add(
+      Padding(
+        padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                _filtro.ativo
+                    ? _filtro.descricao
+                    : 'ÚLTIMOS $_periodoDias DIAS',
+                style: SIMEopsType.slug(
+                  color: _filtro.ativo
+                      ? SIMEopsColors.tealLight
+                      : SIMEopsColors.faint,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            InkWell(
+              onTap: _abrirFiltro,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 4, 0, 4),
+                child: Text(
+                  'FILTRAR',
+                  style: SIMEopsType.slug(color: SIMEopsColors.tealLight),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (visiveis.isEmpty) {
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 40, 18, 0),
           child: Text(
-            'Resultado magro é normal em recorte curto: a imprensa publica o '
-            'que publica. Ampliar o período ou incluir mais assuntos é o que '
-            'aumenta o alcance.',
+            ocorrencias.isEmpty
+                ? 'A consulta não trouxe ocorrência nenhuma no período pedido.'
+                : 'Nenhuma ocorrência nas categorias que você deixou marcadas.',
             style: SIMEopsType.note(),
           ),
         ),
-      ));
-    }
-
-    rows.add(Padding(
-      padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              _filtro.ativo ? _filtro.descricao : 'ÚLTIMOS $_periodoDias DIAS',
-              style: SIMEopsType.slug(
-                color: _filtro.ativo
-                    ? SIMEopsColors.tealLight
-                    : SIMEopsColors.faint,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          InkWell(
-            onTap: _abrirFiltro,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 4, 0, 4),
-              child: Text('FILTRAR',
-                  style: SIMEopsType.slug(color: SIMEopsColors.tealLight)),
-            ),
-          ),
-        ],
-      ),
-    ));
-
-    final podeRelatorio = _items.isNotEmpty && _selectedEstado != null;
-    rows.add(Padding(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
-      child: _reportId != null
-          ? FilledButton(
-              onPressed: podeRelatorio ? _openReport : null,
-              child: const Text('VER RELATÓRIO DE RISCO'),
-            )
-          : OutlinedButton(
-              onPressed: podeRelatorio ? _openReport : null,
-              child: const Text('GERAR RELATÓRIO DE RISCO'),
-            ),
-    ));
-
-    if (visiveis.isEmpty) {
-      rows.add(Padding(
-        padding: const EdgeInsets.fromLTRB(18, 40, 18, 0),
-        child: Text(
-          ocorrencias.isEmpty
-              ? 'A consulta não trouxe ocorrência nenhuma no período pedido.'
-              : 'Nenhuma ocorrência nas categorias que você deixou marcadas.',
-          style: SIMEopsType.note(),
-        ),
-      ));
+      );
     }
 
     for (final g in groups) {
       final expanded = _sectionExpanded(g.key, g.defaultExpanded);
-      rows.add(GroupHeader(
-        label: g.label,
-        count: g.items.length,
-        expanded: expanded,
-        onTap: () => _toggleSection(g.key),
-      ));
+      rows.add(
+        GroupHeader(
+          label: g.label,
+          count: g.items.length,
+          expanded: expanded,
+          onTap: () => _toggleSection(g.key),
+        ),
+      );
       if (expanded) {
         for (var i = 0; i < g.items.length; i++) {
           rows.add(_take(g.items[i]));
@@ -1394,17 +1513,24 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     // Os baldes. `aberta` decide o padrão: a região metropolitana nasce ABERTA
     // desde 03/08 porque recolhida ela escondia resultado pago e entregue — a
     // busca de Goiânia tinha 8 ocorrências ali e parecia ter achado só 11.
-    void addSection(String key, String label, List<NewsItem> items,
-        {Color? accent, bool aberta = false}) {
+    void addSection(
+      String key,
+      String label,
+      List<NewsItem> items, {
+      Color? accent,
+      bool aberta = false,
+    }) {
       if (items.isEmpty) return;
       final expanded = _sectionExpanded(key, aberta);
-      rows.add(GroupHeader(
-        label: label,
-        count: items.length,
-        expanded: expanded,
-        accent: accent,
-        onTap: () => _toggleSection(key),
-      ));
+      rows.add(
+        GroupHeader(
+          label: label,
+          count: items.length,
+          expanded: expanded,
+          accent: accent,
+          onTap: () => _toggleSection(key),
+        ),
+      );
       if (expanded) {
         for (var i = 0; i < items.length; i++) {
           rows.add(_take(items[i]));
@@ -1413,20 +1539,35 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       }
     }
 
-    addSection('sec:regiao', 'REGIÃO METROPOLITANA', _regiaoItems,
-        accent: SIMEopsColors.tealLight, aberta: true);
-    addSection('sec:fora', _rotuloForaDoPeriodo, _foraItems,
-        accent: SIMEopsColors.tealLight);
-    addSection('sec:indicadores', 'INDICADORES', indicadores,
-        accent: categoryColor('institucional'));
+    addSection(
+      'sec:regiao',
+      'REGIÃO METROPOLITANA',
+      _regiaoItems,
+      accent: SIMEopsColors.tealLight,
+      aberta: true,
+    );
+    addSection(
+      'sec:fora',
+      _rotuloForaDoPeriodo,
+      _foraItems,
+      accent: SIMEopsColors.tealLight,
+    );
+    addSection(
+      'sec:indicadores',
+      'INDICADORES',
+      indicadores,
+      accent: categoryColor('institucional'),
+    );
 
-    rows.add(Padding(
-      padding: const EdgeInsets.fromLTRB(18, 30, 18, 0),
-      child: TextButton(
-        onPressed: _resetSearch,
-        child: const Text('FAZER OUTRA CONSULTA'),
+    rows.add(
+      Padding(
+        padding: const EdgeInsets.fromLTRB(18, 30, 18, 0),
+        child: TextButton(
+          onPressed: _resetSearch,
+          child: const Text('FAZER OUTRA CONSULTA'),
+        ),
       ),
-    ));
+    );
     rows.add(const EndMark());
 
     return ListView(children: rows);
@@ -1494,8 +1635,9 @@ class _Figura extends StatelessWidget {
           const SizedBox(height: 7),
           Text(
             rotulo,
-            style: SIMEopsType.slug(color: SIMEopsColors.faint)
-                .copyWith(height: 1.5),
+            style: SIMEopsType.slug(
+              color: SIMEopsColors.faint,
+            ).copyWith(height: 1.5),
           ),
         ],
       ),
@@ -1526,8 +1668,8 @@ class _AchadoAoVivo extends StatelessWidget {
     final manchete = (titulo != null && titulo.isNotEmpty)
         ? titulo
         : bairro != null && bairro.isNotEmpty
-            ? '${crimeTypeLabel(tipo)} no $bairro'
-            : '${crimeTypeLabel(tipo)} em ${cidade ?? ''}'.trim();
+        ? '${crimeTypeLabel(tipo)} no $bairro'
+        : '${crimeTypeLabel(tipo)} em ${cidade ?? ''}'.trim();
 
     final local = [
       if (cidade != null && cidade.isNotEmpty) cidade,
@@ -1542,7 +1684,10 @@ class _AchadoAoVivo extends StatelessWidget {
       curve: Curves.easeOut,
       builder: (_, t, child) => Opacity(
         opacity: t,
-        child: Transform.translate(offset: Offset(0, (1 - t) * -7), child: child),
+        child: Transform.translate(
+          offset: Offset(0, (1 - t) * -7),
+          child: child,
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(18, 15, 18, 0),
@@ -1555,8 +1700,10 @@ class _AchadoAoVivo extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    [categoryLabel(cat).toUpperCase(), if (local.isNotEmpty) local]
-                        .join(' · '),
+                    [
+                      categoryLabel(cat).toUpperCase(),
+                      if (local.isNotEmpty) local,
+                    ].join(' · '),
                     style: SIMEopsType.slug(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -1572,7 +1719,10 @@ class _AchadoAoVivo extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               manchete,
-              style: SIMEopsType.headline().copyWith(fontSize: 16.5, height: 1.22),
+              style: SIMEopsType.headline().copyWith(
+                fontSize: 16.5,
+                height: 1.22,
+              ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
