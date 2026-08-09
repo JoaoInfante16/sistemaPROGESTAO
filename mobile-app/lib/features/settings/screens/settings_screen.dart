@@ -10,7 +10,6 @@ import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 import '../../../core/widgets/interruptor.dart';
 import '../../../core/widgets/masthead.dart';
-import '../../feed/widgets/take_card.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -138,7 +137,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
 
-        const EndMark(),
+        const SizedBox(height: 40),
       ],
     );
   }

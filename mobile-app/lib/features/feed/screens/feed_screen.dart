@@ -296,8 +296,9 @@ class _FeedScreenState extends State<FeedScreen> {
         child: Center(child: CircularProgressIndicator()),
       ));
     } else {
-      // Diz "acabou" em vez de deixar o usuário rolando achando que carrega.
-      rows.add(const EndMark());
+      // Sem marca de fim: o que dizia "acabou" era um carimbo, e a lista
+      // acabando já diz isso. Sobra o ar do rodapé.
+      rows.add(const SizedBox(height: 40));
     }
 
     return Stack(

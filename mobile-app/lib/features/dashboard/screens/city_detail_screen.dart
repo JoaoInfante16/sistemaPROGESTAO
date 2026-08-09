@@ -16,7 +16,6 @@ import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 import '../../feed/feed_filtro.dart';
 import '../../feed/screens/feed_screen.dart';
-import '../../feed/widgets/take_card.dart' show EndMark;
 
 class CityDetailScreen extends StatefulWidget {
   final CityOverview city;
@@ -700,7 +699,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
             ),
 
           _buildFontesAnalisadas(),
-          const EndMark(),
+          const SizedBox(height: 40),
         ],
       ),
     );

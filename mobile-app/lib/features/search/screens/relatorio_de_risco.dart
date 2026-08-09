@@ -12,7 +12,6 @@ import '../../../core/widgets/report_pieces.dart';
 import '../../../core/widgets/weekly_trend_bars.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
-import '../../feed/widgets/take_card.dart' show EndMark;
 
 /// O relatório de risco.
 ///
@@ -804,7 +803,7 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
             ),
           ),
         ),
-        const EndMark(),
+        const SizedBox(height: 40),
       ],
     );
   }

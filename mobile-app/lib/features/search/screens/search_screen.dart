@@ -5,7 +5,6 @@ import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 import '../../../core/utils/datas.dart';
 import '../../../core/widgets/masthead.dart';
-import '../../feed/widgets/take_card.dart';
 import '../widgets/history_card.dart';
 import 'manual_search_screen.dart';
 
@@ -349,7 +348,7 @@ class _SearchScreenState extends State<SearchScreen> {
                                   );
                                 }),
                               ]),
-                          const EndMark(),
+                          const SizedBox(height: 40),
                         ] else ...[
                           Padding(
                             padding: const EdgeInsets.fromLTRB(18, 60, 18, 0),

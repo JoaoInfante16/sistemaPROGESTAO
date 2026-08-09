@@ -263,6 +263,78 @@ de $100.
 
 ---
 
+## 2026-08-09 (noite) — as duas listas de lugar tinham anatomias diferentes sem ninguém ter decidido isso
+
+O app tem duas listas que falam de cidade, e elas foram desenhadas separadas:
+o card da varredura (~235px, quatro elementos) e o item do histórico de
+consultas (~90px, três). João, com as duas na mão: *"um eu acho muito simples
+(busca) e o outro muito grande, e não sei se essas contagens são úteis de
+fato"*. E a direção, que é o que importa: *"se fizesse um merge dos dois, mas
+pudesse colocar em cada estrutura informações úteis para cada propósito"*.
+
+**A divergência era estrutural, não de densidade** — e a causa do tamanho do
+card não eram os números, era o card **dizer a mesma coisa duas vezes**: a
+frase afirmava *"Patrimonial responde por 52%, a maior fatia"* e a linha logo
+abaixo mostrava `11 PATRIM. · 6 SEGUR.`. O maior número e a maior fatia são o
+mesmo fato em duas linguagens.
+
+Nasceu `core/widgets/entrada_de_lugar.dart` com quatro posições. Quem preenche
+decide **o quê**; a peça decide o espaçamento e o degrau de tipo, que era
+exatamente o que estava escorregando entre as duas telas.
+
+| | dashboard | consultas |
+|---|---|---|
+| ① etiqueta esquerda | UF + `6 NOVAS` em verde | UF |
+| ② etiqueta direita | `21 EM 30D` | a hora |
+| ③ qualificação | prosa, **só quando tem o que dizer** | `30 DIAS · 17 ASSUNTOS` |
+| ④ figura(s) | quebra por categoria | `56 RESULTADOS` |
+
+Três ganhos que caíram de graça do arranjo:
+
+- o `21 EM 30D` foi para ②, que é **exatamente o que a `QuietCityRow` já
+  escrevia** e o que o cabeçalho da cidade escreve. Cidade quieta e cidade
+  agitada passaram a dizer a mesma frase no mesmo lugar;
+- `3 CIDADES` morreu e virou os nomes em ③ — "Grande Florianópolis" não informa
+  nada a quem não é de lá, e o app é vendido para fora da cidade monitorada;
+- na consulta que falhou, o `FALHOU` ocupa ④ (onde ia o número) em vez de
+  disputar a linha de cima com a hora. A exceção passou a ficar onde o olho já
+  vai.
+
+**A regra de ③, que é a decisão de fundo:** só entra o que **nenhuma figura do
+card mostra**. Por isso cidade sozinha fica muda ali. A objeção era "duas
+alturas na mesma lista" — mas altura variável não é defeito dessa lista, é o
+mecanismo dela: cidade sem novidade já nem bloco é, vira `QuietCityRow` de
+44px, e o comentário do arquivo registra o porquê desde 08/08.
+
+Card de 235px → ~175px, sem perder um dado.
+
+**E o `EndMark` morreu.** Em três horas ele foi `— 30 —`, depois `FIM`, depois
+nada: *"não precisa escrever fim também né"*. Sete telas carimbavam a mesma
+palavra para dizer o que a rolagem já diz; sobrou o ar do rodapé.
+
+### O erro da sessão: `dart format lib/`
+
+Formatei a **pasta inteira** em vez dos arquivos do commit. O formatador do
+Dart mudou de estilo na 3.7 (corpo de expressão passou de indentação pendurada
+para bloco) e o repositório nunca tinha passado por ele: **43 arquivos, 1386
+inserções, 1198 remoções, zero mudança de comportamento**. Reverti tudo com
+autorização e redigitei as mudanças reais à mão, no estilo do repositório.
+
+Fica a regra: **`dart format` só nos arquivos que entram no commit.** Rodar na
+pasta enterra uma remoção de uma linha no meio de 40 reformatadas e estraga o
+`git blame` para sempre.
+
+### Achado que não virou trabalho
+
+`trendPercent` viaja em toda resposta do dashboard e vale **sempre 0** —
+`analyticsQueries.ts` tem `const trend = 0; // trend removed`. O app carrega o
+campo e expõe `trendUp`/`trendDown`, que ninguém chama. É campo morto nos dois
+lados, e é justamente o único conteúdo que a prosa de ③ poderia carregar sem
+repetir figura ("mais que no mês passado"). Custa uma segunda janela de
+contagem no backend.
+
+---
+
 ## 2026-08-09 (noite) — o relatório do grupo via uma cidade só, e três textos que o aparelho reprovou
 
 **O relatório de um GRUPO mostrava só a primeira cidade.** Na Grande

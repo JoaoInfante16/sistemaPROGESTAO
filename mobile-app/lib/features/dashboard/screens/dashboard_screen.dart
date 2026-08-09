@@ -7,7 +7,6 @@ import '../../../core/widgets/live_dot.dart';
 import '../../../core/widgets/masthead.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
-import '../../feed/widgets/take_card.dart';
 import '../widgets/city_card.dart';
 import 'city_detail_screen.dart';
 
@@ -260,7 +259,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
 
-        const SliverToBoxAdapter(child: EndMark()),
         const SliverToBoxAdapter(child: SizedBox(height: 90)),
       ],
     );

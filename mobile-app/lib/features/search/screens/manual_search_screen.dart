@@ -1170,7 +1170,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
             ),
           ),
         ],
-        const EndMark(),
+        const SizedBox(height: 40),
       ],
     );
   }
@@ -1568,7 +1568,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         ),
       ),
     );
-    rows.add(const EndMark());
+    rows.add(const SizedBox(height: 40));
 
     return ListView(children: rows);
   }

@@ -488,25 +488,8 @@ class TakeRule extends StatelessWidget {
   );
 }
 
-/// Fim de lista explícito: o fim silencioso deixa o usuário rolando à toa
-/// achando que ainda tem coisa carregando.
-///
-/// ⚠️ Aqui era "— 30 —", o fim de matéria de redação. João perguntou o que
-/// era — e termo que precisa ser explicado não fica na tela. Junto foi
-/// embora o `hairline` (1.8:1), que nunca deveria ter virado texto.
-class EndMark extends StatelessWidget {
-  const EndMark({super.key});
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 34, bottom: 20),
-    child: Center(
-      child: Text(
-        'FIM',
-        style: SIMEopsType.dateline(
-          color: SIMEopsColors.faint,
-        ).copyWith(letterSpacing: 3.4),
-      ),
-    ),
-  );
-}
+// ⚠️ Aqui morava o `EndMark`, a marca de fim de lista — primeiro como "— 30 —"
+// (fim de matéria de redação), depois como "FIM". João matou as duas: *"não
+// precisa escrever fim também né"*. E é verdade: a lista acabando já é a
+// evidência de que acabou, e sete telas carimbavam a mesma palavra pra dizer o
+// que a rolagem diz sozinha. Sobrou o ar do rodapé em cada uma delas.
