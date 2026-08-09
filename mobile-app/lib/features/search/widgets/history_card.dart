@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 import '../../../core/utils/datas.dart';
+import '../../../core/utils/state_utils.dart';
 
 /// Uma consulta no histórico.
 ///
@@ -31,21 +32,13 @@ class HistoryCard extends StatelessWidget {
     this.selected = false,
   });
 
-  /// "hoje 11:22" / "ontem 13:35" / "02 ago". O timestamp completo com ano
-  /// ocupava o dobro da largura para dizer o mesmo.
+  /// Só a hora: `11:22`. A lista é agrupada por dia (`HOJE`, `ONTEM`,
+  /// `04 AGO`), então carimbar a data em cada item repetia vinte vezes o que
+  /// o divisor logo acima já diz.
   static String _stamp(DateTime? d) {
     if (d == null) return '';
-    const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun',
-                   'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-    final now = DateTime.now();
-    final day = DateTime(d.year, d.month, d.day);
-    final today = DateTime(now.year, now.month, now.day);
-    final hm = '${d.hour.toString().padLeft(2, '0')}:'
+    return '${d.hour.toString().padLeft(2, '0')}:'
         '${d.minute.toString().padLeft(2, '0')}';
-
-    if (day == today) return 'hoje $hm';
-    if (day == today.subtract(const Duration(days: 1))) return 'ontem $hm';
-    return '${d.day.toString().padLeft(2, '0')} ${meses[d.month - 1]}';
   }
 
   @override
@@ -70,8 +63,13 @@ class HistoryCard extends StatelessWidget {
     final titulo = cidades.isNotEmpty ? cidades.first : estado;
 
     // Linha de contexto: o que define a consulta, em mono.
+    //
+    // `abbrState`, não o nome por extenso: `MINAS GERAIS · 30 DIAS · 17
+    // ASSUNTOS` estourava a linha e empurrava o resto pra fora, enquanto
+    // `MG · 30 DIAS · 17 ASSUNTOS` diz o mesmo em um terço da largura. A UF é
+    // desambiguação, não conteúdo — ninguém lê "Minas Gerais" aqui, lê "MG".
     final marks = <String>[
-      if (estado.isNotEmpty) estado.toUpperCase(),
+      if (estado.isNotEmpty) abbrState(estado),
       if (periodo != null) '$periodo DIAS',
       if (assuntos != null && assuntos > 0) '$assuntos ASSUNTOS',
       if (cidades.length > 1) '+${cidades.length - 1} CIDADES',

@@ -202,6 +202,114 @@ de $100.
 
 ---
 
+## 2026-08-09 (madrugada) — o tema era o piso errado, e a foto viu o que a análise não vê
+
+Rodada inteira nascida de **duas fotos do aparelho**. Nenhum dos seis achados
+seria pego por `flutter analyze`, por leitura de código ou por mim olhando o
+protótipo: todos só existem quando o app está rodando com **os dados reais do
+João** (2 cidades, nenhuma não lida).
+
+### 1. 🚨 O tema global nunca recebeu o redesign
+
+**É o achado que mais importa desta sessão.** Queixa do João sobre a tela de
+consultas: *"n tá muito pálida? olha a referência como as cores são melhores
+utilizadas"*. A causa não estava na tela — estava no `main.dart`:
+
+| peça | estava | virou |
+|---|---|---|
+| `FilledButton` | teal, canto 12 | **verde**, canto 0, texto escuro |
+| `OutlinedButton` | borda teal 60%, canto 12 | filete `ruleStrong`, canto 0 |
+| `TextButton` | **Exo 2** | mono teal |
+| campo de texto | fundo + borda arredondada | linha com filete |
+| barra inferior | cápsula teal atrás do ícone | filete e tinta |
+| `Card` | canto 14, borda teal | canto 0 |
+
+**A lição: tema é a camada onde a cor acontece.** Dava pra reescrever cinco
+telas inteiras em linguagem de fio e o elemento mais chamativo de cada uma
+continuar sendo um botão Material herdado. Eu estava pintando as paredes com o
+piso errado, e por seis commits não olhei o `main.dart`.
+
+O verde é a decisão que mais muda a tela: é a única cor saturada do sistema e
+passa a marcar **a ação**, uma por tela. Em teal ele brigava com o teal do link
+e com o teal do progresso — três coisas na mesma cor querem dizer que nenhuma é
+especial. Texto do botão em `#08150A` sobre o verde dá **8.9:1**; branco sobre
+verde daria 2.6:1, que é o erro clássico de botão colorido.
+
+### 2. 🚨 Regra de layout desenhada pra 20 cidades, nunca testada em 2
+
+O dashboard do João abriu **vazio**: as duas cidades estavam sem não lidas,
+viraram duas linhas de 44px e sobrou meia tela de nada.
+
+A regra "cidade sem novidade vira linha" existe pra fazer as **com** novidade se
+destacarem. Se nenhuma tem, não há de que destacar — colapsar só esconde o
+produto. Agora: **dia parado, ninguém colapsa**; todas viram bloco inteiro com
+os números por categoria.
+
+Vale como padrão de erro: regra de densidade desenhada pro caso grande quebra
+calada no caso pequeno, e o caso pequeno é o que o cliente tem hoje.
+
+### 3. Dois SIMEOPS empilhados
+
+Eu pus um cabeçalho no dashboard **sem olhar que o `MainScreen` já tinha uma
+`AppBar`** com a marca centralizada. Segunda vez na sessão que mexo sem ler o
+que embrulha (a primeira foi apagar `_categoryColors` sem checar consumidores).
+
+A `AppBar` saiu e cada aba virou dona do próprio topo, com o `Masthead`
+compartilhado: logotipo no dashboard (é a casa), `Consultas` e `Configurações`
+nas outras. Repetir o logotipo em três abas é dizer três vezes em que app a
+pessoa está — e a barra fixa centralizada custava 56px em toda tela, sempre.
+
+### 4. `abbrState` faltando em três lugares
+
+`Grande Florianópolis · SANTA CA…` truncado no dashboard, `ALAGOAS · 7 DIAS · 5
+ASSUNTOS` estourando no histórico. A função existe e já era usada na tela da
+cidade; faltava no `CityCard`, no `QuietCityRow` e no `HistoryCard`. A UF é
+desambiguação, não conteúdo — ninguém lê "Minas Gerais" ali, lê "MG".
+
+### 5. A quarta faixa de controle
+
+Pergunta do João: *"esse HEADER, n parece muito poluído?"*. Contando na foto,
+eram **quatro faixas** antes da primeira manchete: abas de cidade, cadernos,
+chips de categoria e o `NÃO LIDAS`. A referência tem três.
+
+A barra de chips era a pior: cinco fichas com cor, nome e contagem mais um
+toggle, **permanentes**, pra um filtro que quase sempre está desligado — pagar o
+custo do caso raro em todo uso do caso comum. Virou o `FILTRAR` no espaço vazio
+da linha de cadernos + a `FolhaFiltro`. A linha que descreve o recorte só
+aparece **quando existe recorte**.
+
+O estado virou `FeedFiltro` (ChangeNotifier) na tela da cidade, não no
+`FeedScreen`: o botão que abre está nos cadernos, e assim o recorte sobrevive à
+troca de cidade dentro do grupo.
+
+### 6. Meu erro de vocabulário: "PRAÇAS"
+
+Escrevi `7 PRAÇAS` no topo do dashboard. Praça é o nome que **jornal** dá à
+cidade que cobre — jargão de redação, e o usuário é gente de segurança pública.
+
+⚠️ **A metáfora do fio decide FORMA, nunca as palavras da tela.** Se um termo
+precisa ser explicado, não entra. Está anotado no `dashboard_screen.dart`.
+
+### O que a primeira tentativa errou, e por quê
+
+Antes das fotos eu tinha **apagado** `SC`, `18 NOVAS` e o ponto verde do
+cabeçalho da cidade, por serem repetição da tela anterior. Errado: a referência
+tem os mesmos dados. O que fazia a linha dela funcionar é ser **uma tinta só,
+costurada por `·`** — no app eram três widgets em três cores. **O peso era a
+cor, não o dado.** Restaurado monocromático.
+
+### Pendente, dito pelo João
+
+*"depois vamos arrumar as copys que estão horríveis"* — revisão de texto de todo
+o app, **depois** do design. Não começar antes de fechar as fases.
+
+### Verificação
+
+`flutter analyze` limpo (os 3 infos preexistentes), `npx tsc --noEmit` limpo,
+APK de staging instalado no A57 e validado pelo João na tela.
+
+---
+
 ## 2026-08-08 (noite) — a prosa honesta era o texto mais difícil de ler
 
 Revisão do protótipo de referência (`workdesk/Frontend Fio Completo`) contra o

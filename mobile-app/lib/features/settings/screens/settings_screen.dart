@@ -8,6 +8,7 @@ import '../../../core/services/api_service.dart';
 import '../../../core/services/push_service.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
+import '../../../core/widgets/masthead.dart';
 import '../../feed/widgets/take_card.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -72,6 +73,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ListView(
       padding: const EdgeInsets.only(bottom: 20),
       children: [
+        const Masthead(titulo: 'Configurações'),
         const _SectionHead('CONTA'),
         Padding(
           padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
@@ -85,14 +87,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 6),
+              // Sessão ativa é o estado normal — vale como informação, não como
+              // celebração. Em verde ela era o elemento mais saturado da tela
+              // pra dizer "está tudo como sempre". Verde é da interface, não do
+              // conteúdo; quem merece cor aqui é a ausência de login.
               Text(
                 auth.isAuthenticated
                     ? 'SESSÃO ATIVA · ACESSO LIBERADO PELO ADMINISTRADOR'
                     : 'SEM LOGIN',
                 style: SIMEopsType.slug(
                   color: auth.isAuthenticated
-                      ? SIMEopsColors.greenLight
-                      : SIMEopsColors.faint,
+                      ? SIMEopsColors.faint
+                      : SIMEopsColors.alert,
                 ),
               ),
             ],

@@ -6,8 +6,8 @@ import '../../../core/services/local_db_service.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 import '../../../core/utils/date_grouping.dart';
-import '../../../core/widgets/category_filter_bar.dart';
 import '../../../core/widgets/group_header.dart';
+import '../feed_filtro.dart';
 import '../widgets/take_card.dart';
 
 class FeedScreen extends StatefulWidget {
@@ -16,7 +16,17 @@ class FeedScreen extends StatefulWidget {
   /// Se fornecido, filtra por lista de cidades (usado em grupos)
   final List<String>? citiesFilter;
 
-  const FeedScreen({super.key, this.cityFilter, this.citiesFilter});
+  /// O recorte (categorias + só não lidas). Vive na tela da cidade porque o
+  /// botão que o abre está na linha de cadernos, e porque assim ele sobrevive
+  /// à troca de cidade dentro do grupo. Ver [FeedFiltro].
+  final FeedFiltro filtro;
+
+  const FeedScreen({
+    super.key,
+    required this.filtro,
+    this.cityFilter,
+    this.citiesFilter,
+  });
 
   @override
   State<FeedScreen> createState() => _FeedScreenState();
@@ -34,9 +44,8 @@ class _FeedScreenState extends State<FeedScreen> {
   late final List<String>? _cidadesFilter = widget.citiesFilter;
   bool _markedAllRead = false;
 
-  // Recorte: categorias selecionadas (vazio = todas) + só não lidas.
-  final Set<String> _selectedCats = {};
-  bool _unreadOnly = false;
+  FeedFiltro get _filtro => widget.filtro;
+
   // Grupos cujo estado expandido o usuário inverteu (toggle sobre o default).
   final Set<String> _toggledGroups = {};
 
@@ -46,12 +55,30 @@ class _FeedScreenState extends State<FeedScreen> {
     _loadCached();
     _refresh();
     _scrollCtrl.addListener(_onScroll);
+    _filtro.addListener(_onFiltroMudou);
   }
 
   @override
   void dispose() {
+    _filtro.removeListener(_onFiltroMudou);
     _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  void _onFiltroMudou() {
+    if (mounted) setState(() {});
+  }
+
+  /// A folha do filtro precisa saber quantas ocorrências tem cada categoria, e
+  /// quem sabe isso é aqui. Publicado a cada carga — nunca durante o build,
+  /// que dispararia `notifyListeners` no meio de um frame.
+  void _publicarContagens() {
+    final counts = <String, int>{};
+    for (final n in _news) {
+      final cat = n.categoriaGrupo ?? 'institucional';
+      counts[cat] = (counts[cat] ?? 0) + 1;
+    }
+    _filtro.publicarContagens(counts);
   }
 
   void _onScroll() {
@@ -105,6 +132,7 @@ class _FeedScreenState extends State<FeedScreen> {
         _hasMore = items.length >= _limit;
         _initialLoad = false;
       });
+      _publicarContagens();
     } catch (e) {
       if (mounted) {
         setState(() => _initialLoad = false);
@@ -190,9 +218,9 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 
   List<NewsItem> get _visibleNews => _news.where((n) {
-        if (_unreadOnly && !n.isUnread) return false;
-        if (_selectedCats.isNotEmpty &&
-            !_selectedCats.contains(n.categoriaGrupo ?? 'institucional')) {
+        if (_filtro.apenasNaoLidas && !n.isUnread) return false;
+        if (_filtro.categorias.isNotEmpty &&
+            !_filtro.categorias.contains(n.categoriaGrupo ?? 'institucional')) {
           return false;
         }
         return true;
@@ -233,14 +261,6 @@ class _FeedScreenState extends State<FeedScreen> {
     }
 
     final hasUnread = _news.any((n) => n.isUnread);
-
-    // Contagens por categoria sobre o que está carregado.
-    final catCounts = <String, int>{};
-    for (final n in _news) {
-      final cat = n.categoriaGrupo ?? 'institucional';
-      catCounts[cat] = (catCounts[cat] ?? 0) + 1;
-    }
-
     final groups = groupNewsByDate(_visibleNews);
 
     final rows = <Widget>[];
@@ -284,40 +304,30 @@ class _FeedScreenState extends State<FeedScreen> {
       children: [
         Column(
           children: [
-            // Barra de recorte: categorias + só não lidas
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: CategoryFilterBar(
-                      counts: catCounts,
-                      selected: _selectedCats,
-                      onToggle: (cat) => setState(() {
-                        if (!_selectedCats.add(cat)) {
-                          _selectedCats.remove(cat);
-                        }
-                      }),
-                    ),
+            // A barra de chips de categoria saiu daqui: era a quarta faixa de
+            // controle empilhada antes da primeira manchete, com cor, contagem
+            // e um toggle, permanente, pra um filtro quase sempre desligado.
+            // Virou o `FILTRAR` da linha de cadernos + a folha de recorte.
+            //
+            // Sobra esta linha, e **só quando existe recorte** — sem filtro não
+            // há nada a dizer, e dizer "todas as categorias" era outro rótulo
+            // que aparece sempre e por isso não informa.
+            if (_filtro.ativo)
+              Container(
+                width: double.infinity,
+                decoration: const BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: SIMEopsColors.rule),
                   ),
-                  InkWell(
-                    onTap: () => setState(() => _unreadOnly = !_unreadOnly),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(10, 13, 18, 13),
-                      child: Text(
-                        'NÃO LIDAS',
-                        style: SIMEopsType.placeTab(active: _unreadOnly)
-                            .copyWith(
-                          color: _unreadOnly
-                              ? SIMEopsColors.greenLight
-                              : SIMEopsColors.faint,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
+                padding: const EdgeInsets.fromLTRB(18, 9, 18, 9),
+                child: Text(
+                  _filtro.descricao,
+                  style: SIMEopsType.slug(color: SIMEopsColors.tealLight),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            ),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _refresh,
@@ -330,9 +340,13 @@ class _FeedScreenState extends State<FeedScreen> {
                           const SizedBox(height: 12),
                           Text(
                             'As ${_news.length} ocorrências carregadas ficaram '
-                            'de fora dos filtros. Toque numa categoria para '
-                            'soltar o recorte.',
+                            'de fora do recorte atual.',
                             style: SIMEopsType.lead(),
+                          ),
+                          const SizedBox(height: 24),
+                          OutlinedButton(
+                            onPressed: _filtro.limpar,
+                            child: const Text('SOLTAR O RECORTE'),
                           ),
                         ],
                       )

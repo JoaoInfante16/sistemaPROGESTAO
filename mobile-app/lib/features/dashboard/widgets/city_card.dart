@@ -4,6 +4,7 @@ import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 import '../../../core/utils/category_colors.dart';
 import '../../../core/utils/crime_labels.dart';
+import '../../../core/utils/state_utils.dart';
 import '../../../core/widgets/cat_chip.dart';
 
 /// Cidade no dashboard, em bloco de fio.
@@ -54,7 +55,9 @@ class CityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final uf = city.parentState;
+    // `abbrState`, não o nome cru: o backend manda "Santa Catarina" e a linha
+    // saía como `SANTA CA…` truncada, comendo a largura do nome da cidade.
+    final uf = city.parentState != null ? abbrState(city.parentState!) : null;
 
     return InkWell(
       onTap: onTap,
@@ -215,7 +218,7 @@ class QuietCityRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final uf = city.parentState;
+    final uf = city.parentState != null ? abbrState(city.parentState!) : null;
     return InkWell(
       onTap: onTap,
       child: Container(
@@ -228,7 +231,7 @@ class QuietCityRow extends StatelessWidget {
             Expanded(
               child: Text(
                 uf != null && uf.isNotEmpty
-                    ? '${city.name} · ${uf.toUpperCase()}'
+                    ? '${city.name} · $uf'
                     : city.name,
                 style: SIMEopsType.placeTab(
                     active: false, color: SIMEopsColors.muted),
@@ -238,7 +241,7 @@ class QuietCityRow extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Text(
-              '${city.totalCrimes30d} em 30d',
+              '${city.totalCrimes30d} EM 30D',
               style: SIMEopsType.placeTab(active: false),
             ),
           ],

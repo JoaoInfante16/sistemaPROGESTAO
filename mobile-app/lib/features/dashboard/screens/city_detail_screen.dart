@@ -7,14 +7,17 @@ import '../../../core/models/crime_point.dart';
 import '../../../core/models/executive_data.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/utils/category_colors.dart';
+import '../../../core/utils/state_utils.dart';
 import '../../../core/utils/type_helpers.dart';
 import '../../../core/widgets/crime_radar_map.dart';
 import '../../../core/widgets/executive_indicators.dart';
 import '../../../core/widgets/fontes_analisadas.dart';
 import '../../../core/widgets/grid_background.dart';
+import '../../../core/widgets/live_dot.dart';
 import '../../../core/widgets/weekly_trend_bars.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
+import '../../feed/feed_filtro.dart';
 import '../../feed/screens/feed_screen.dart';
 
 class CityDetailScreen extends StatefulWidget {
@@ -53,6 +56,12 @@ class _CityDetailScreenState extends State<CityDetailScreen>
 
   /// Cabeçalho recolhido pela rolagem. Ver [_onScroll].
   bool _collapsed = false;
+
+  /// O recorte do feed. Mora aqui, e não no `FeedScreen`, por dois motivos: o
+  /// botão que o abre está na linha de cadernos (que é desta tela), e assim ele
+  /// **sobrevive à troca de cidade** dentro do grupo — quem filtrou Segurança
+  /// quer ver Segurança em Palhoça também.
+  final _filtro = FeedFiltro();
 
   // For groups without sub-city selected, use first city name
   String get _activeCidade {
@@ -258,28 +267,25 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     return false;
   }
 
-  /// Cabeçalho do fio: seta + marca, nome da praça em corpo grande, a contagem
+  /// Cabeçalho do fio: seta + marca, nome da cidade em corpo grande, a contagem
   /// do período, e o filete branco de 2px que fecha o bloco.
   ///
   /// Substitui a `AppBar` centralizada. O nome da cidade é o dado mais
   /// importante da tela e estava a 18px no meio de uma barra de 56px; agora
   /// abre a página a 30px, ancorado à esquerda como manchete de primeira.
   ///
-  /// **Saíram daqui em 08/08, e o motivo de cada um importa:**
+  /// **A linha de estado: o problema era a COR, não a informação.**
   ///
-  /// - `SC` — você chegou tocando um card que dizia `SC · GRANDE
-  ///   FLORIANÓPOLIS`, e a fila logo abaixo nomeia as cidades.
-  /// - `18 NOVAS` — o card do dashboard acabou de dizer, e o próprio feed
-  ///   separa lida de não-lida pela tinta. Terceira aparição do mesmo fato.
-  /// - `● ÚLTIMA HÁ 2H` — o ponto verde **nunca apagava**, e sinal que aparece
-  ///   sempre não é sinal (foi por isso que o "NOVA" e o "1 FONTE" morreram).
-  ///   Além disso a validade já está no conteúdo: o primeiro divisor diz
-  ///   `HOJE · 04 AGO` e o primeiro item diz a hora. Jornal não carimba
-  ///   "impresso há 2 horas" no cabeçalho.
+  /// Primeira tentativa (08/08) foi apagar `SC`, `18 NOVAS` e o ponto verde,
+  /// por serem repetição da tela anterior. Errado — comparando com o protótipo
+  /// de referência ficou claro o que fazia a linha dele funcionar e a nossa
+  /// não: **lá é tudo uma tinta só, costurado por `·`**; aqui eram três
+  /// widgets em três cores (UF em `muted`, a contagem em branco com ícone,
+  /// `18 NOVAS` em verde-claro). Três cores numa faixa de 9.5px é o que
+  /// pesava, não os três dados.
   ///
-  /// Sobrou uma linha de metadado, e ela é a única coisa clicável — o que
-  /// também faz a setinha do período parar de disputar espaço com três textos
-  /// mudos. Estado do sistema mora no dashboard, uma vez só.
+  /// Agora: `● ÚLTIMA HÁ 2H` de um lado, `SC · 107 EM 30D ▾ · 18 NOVAS` do
+  /// outro, tudo em `faint`. A contagem segue clicável — só parou de gritar.
   Widget _buildWireHeader() {
     final c = widget.city;
 
@@ -318,6 +324,8 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   }
 
   Widget _headerFull(CityOverview c) {
+    final uf = c.parentState != null ? abbrState(c.parentState!) : null;
+
     return Column(
       key: const ValueKey('inteiro'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -340,14 +348,46 @@ class _CityDetailScreenState extends State<CityDetailScreen>
         ),
         const SizedBox(height: 9),
         Text(c.name, style: SIMEopsType.title()),
-        const SizedBox(height: 9),
-        _PeriodCount(
-          city: c,
-          period: _statPeriod,
-          onPick: (p) => setState(() => _statPeriod = p),
+        Row(
+          children: [
+            const LiveDot(),
+            const SizedBox(width: 6),
+            // ⚠️ `lastNewsAt` é o created_at da ocorrência mais recente, NÃO a
+            // hora da varredura. Por isso o rótulo é "ÚLTIMA", não "VARREDURA":
+            // cidade quieta com o scan rodando normalmente diria "VARREDURA HÁ
+            // 3D" e faria o robô parecer parado.
+            Text(
+              c.lastNewsAt != null
+                  ? 'ÚLTIMA ${_agoLabel(c.lastNewsAt!)}'
+                  : 'MONITORANDO',
+              style: SIMEopsType.slug(color: SIMEopsColors.faint),
+            ),
+            const Spacer(),
+            // Costurado por "·" numa tinta só, como no protótipo. Cada peça em
+            // sua cor era o que fazia a faixa brigar consigo mesma.
+            if (uf != null)
+              Text('$uf · ', style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+            _PeriodCount(
+              city: c,
+              period: _statPeriod,
+              onPick: (p) => setState(() => _statPeriod = p),
+            ),
+            if (c.unreadCount > 0)
+              Text(
+                ' · ${c.unreadCount} ${c.unreadCount == 1 ? 'NOVA' : 'NOVAS'}',
+                style: SIMEopsType.slug(color: SIMEopsColors.faint),
+              ),
+          ],
         ),
       ],
     );
+  }
+
+  static String _agoLabel(DateTime t) {
+    final d = DateTime.now().difference(t);
+    if (d.inMinutes < 60) return 'AGORA';
+    if (d.inHours < 24) return 'HÁ ${d.inHours}H';
+    return 'HÁ ${d.inDays}D';
   }
 
   Widget _backButton() => InkWell(
@@ -396,6 +436,11 @@ class _CityDetailScreenState extends State<CityDetailScreen>
 
   /// Notícias | Relatório — em corpo de texto, não em caixa alta de `TabBar`.
   /// É a decisão mais permanente da tela e merece o maior peso depois do nome.
+  ///
+  /// O `FILTRAR` mora aqui, no espaço vazio à direita, e não numa faixa
+  /// própria: a tela tinha **quatro faixas de controle** empilhadas antes da
+  /// primeira manchete (abas de cidade, cadernos, chips de categoria e o
+  /// `NÃO LIDAS`). A quarta virou este link. Ver [FeedFiltro].
   Widget _buildCadernos() {
     return Container(
       decoration: const BoxDecoration(
@@ -428,6 +473,23 @@ class _CityDetailScreenState extends State<CityDetailScreen>
             ),
             if (i == 0) const SizedBox(width: 22),
           ],
+          const Spacer(),
+          // Só no caderno de notícias: o relatório tem o período dele.
+          if (_tabController.index == 0)
+            InkWell(
+              onTap: () => FolhaFiltro.abrir(context, _filtro),
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 11, left: 10),
+                child: Text(
+                  'FILTRAR',
+                  style: SIMEopsType.slug(
+                    color: _filtro.ativo
+                        ? SIMEopsColors.greenLight
+                        : SIMEopsColors.tealLight,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -436,10 +498,15 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   Widget _buildFeedTab() {
     if (_isGroup && _selectedSubCity == null) {
       // "Todas" — mostrar noticias de todas as cidades do grupo
-      return FeedScreen(key: const ValueKey('group-all'), citiesFilter: widget.city.cityNames);
+      return FeedScreen(
+        key: const ValueKey('group-all'),
+        filtro: _filtro,
+        citiesFilter: widget.city.cityNames,
+      );
     }
     final cidade = _isGroup ? _selectedSubCity! : widget.city.name;
-    return FeedScreen(key: ValueKey(cidade), cityFilter: cidade);
+    return FeedScreen(
+        key: ValueKey(cidade), filtro: _filtro, cityFilter: cidade);
   }
 
   Widget _buildOverviewTab() {
@@ -862,11 +929,11 @@ class _PeriodCount extends StatelessWidget {
           children: [
             Text(
               '${period.countOf(city)} EM ${period.short}',
-              style: SIMEopsType.slug(),
+              style: SIMEopsType.slug(color: SIMEopsColors.faint),
             ),
             const SizedBox(width: 2),
             const Icon(Icons.expand_more,
-                size: 13, color: SIMEopsColors.muted),
+                size: 13, color: SIMEopsColors.faint),
           ],
         ),
       ),

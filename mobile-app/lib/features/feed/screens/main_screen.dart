@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/utils/category_colors.dart';
-import '../../../core/widgets/simeops_title.dart';
 import '../../dashboard/screens/dashboard_screen.dart';
 import '../../search/screens/search_screen.dart';
 import '../../settings/screens/settings_screen.dart';
@@ -58,13 +57,15 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const SimeopsTitle(),
-        centerTitle: true,
-      ),
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _tabs,
+      // Sem `AppBar`. Cada aba desenha o próprio topo com o `Masthead` — a
+      // barra fixa centralizada duplicava a marca (dois SIMEOPS empilhados no
+      // dashboard) e comia 56px de toda tela, para sempre.
+      body: SafeArea(
+        bottom: false,
+        child: IndexedStack(
+          index: _currentIndex,
+          children: _tabs,
+        ),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,

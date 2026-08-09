@@ -3,9 +3,32 @@ import 'package:provider/provider.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
+import '../../../core/utils/datas.dart';
+import '../../../core/widgets/masthead.dart';
 import '../../feed/widgets/take_card.dart';
 import '../widgets/history_card.dart';
 import 'manual_search_screen.dart';
+
+/// Divisor de dia do histórico: `HOJE ────────────`.
+class _DiaHead extends StatelessWidget {
+  final String label;
+
+  const _DiaHead(this.label);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(18, 22, 18, 6),
+        child: Row(
+          children: [
+            Text(label, style: SIMEopsType.dateline()),
+            const SizedBox(width: 11),
+            const Expanded(
+              child: Divider(color: SIMEopsColors.rule, height: 1),
+            ),
+          ],
+        ),
+      );
+}
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -153,6 +176,41 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
+  /// Agrupa o histórico por dia, preservando a ordem que veio do servidor
+  /// (mais recente primeiro). Devolve pares `(rótulo, consultas)`.
+  static List<(String, List<Map<String, dynamic>>)> _porDia(
+    List<Map<String, dynamic>> historico,
+  ) {
+    const meses = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN',
+                   'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+    final agora = DateTime.now();
+    final hoje = DateTime(agora.year, agora.month, agora.day);
+
+    final grupos = <(String, List<Map<String, dynamic>>)>[];
+    for (final s in historico) {
+      final d = parseApiDate(s['created_at'] as String? ?? '');
+      final String rotulo;
+      if (d == null) {
+        rotulo = 'SEM DATA';
+      } else {
+        final dia = DateTime(d.year, d.month, d.day);
+        if (dia == hoje) {
+          rotulo = 'HOJE';
+        } else if (dia == hoje.subtract(const Duration(days: 1))) {
+          rotulo = 'ONTEM';
+        } else {
+          rotulo = '${d.day.toString().padLeft(2, '0')} ${meses[d.month - 1]}';
+        }
+      }
+      if (grupos.isNotEmpty && grupos.last.$1 == rotulo) {
+        grupos.last.$2.add(s);
+      } else {
+        grupos.add((rotulo, [s]));
+      }
+    }
+    return grupos;
+  }
+
   @override
   Widget build(BuildContext context) {
     return RefreshIndicator(
@@ -185,6 +243,10 @@ class _SearchScreenState extends State<SearchScreen> {
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: EdgeInsets.only(bottom: _selectMode ? 96 : 20),
                       children: [
+                        const Masthead(
+                          titulo: 'Consultas',
+                          direita: 'SEGURE PARA SELECIONAR',
+                        ),
                         if (!_selectMode) ...[
                           Padding(
                             padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
@@ -250,30 +312,26 @@ class _SearchScreenState extends State<SearchScreen> {
                           ),
 
                         if (_history.isNotEmpty) ...[
-                          if (!_selectMode)
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(18, 22, 18, 6),
-                              child: Row(
-                                children: [
-                                  Text('CONSULTAS ANTERIORES',
-                                      style: SIMEopsType.dateline()),
-                                  const SizedBox(width: 11),
-                                  const Expanded(
-                                    child: Divider(
-                                        color: SIMEopsColors.rule, height: 1),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ..._history.map((search) {
-                            final id = search['search_id'] as String? ?? '';
-                            return HistoryCard(
-                              search: search,
-                              selected: _selected.contains(id),
-                              onTap: () => _onTapSearch(search),
-                              onLongPress: () => _onLongPressSearch(search),
-                            );
-                          }),
+                          // Agrupado por dia (HOJE · ONTEM · 04 AGO), como no
+                          // feed. Era um único "CONSULTAS ANTERIORES" com tudo
+                          // embaixo: vinte itens iguais, sem nenhum ponto de
+                          // apoio pro olho. O divisor é o que dá ritmo — e de
+                          // quebra tira a data de dentro de cada item, que
+                          // repetia a mesma informação vinte vezes.
+                          ..._porDia(_history).expand((g) => [
+                                if (!_selectMode) _DiaHead(g.$1),
+                                ...g.$2.map((search) {
+                                  final id =
+                                      search['search_id'] as String? ?? '';
+                                  return HistoryCard(
+                                    search: search,
+                                    selected: _selected.contains(id),
+                                    onTap: () => _onTapSearch(search),
+                                    onLongPress: () =>
+                                        _onLongPressSearch(search),
+                                  );
+                                }),
+                              ]),
                           const EndMark(),
                         ] else ...[
                           Padding(

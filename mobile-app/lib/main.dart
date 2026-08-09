@@ -98,31 +98,67 @@ class SIMEopsApp extends StatelessWidget {
       cardTheme: CardThemeData(
         color: isDark ? SIMEopsColors.navyLight : null,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(
-            color: isDark
-                ? SIMEopsColors.teal.withValues(alpha: 0.15)
-                : Colors.grey.withValues(alpha: 0.2),
+        shape: const RoundedRectangleBorder(),
+      ),
+      // Sem a cápsula teal atrás do ícone: é a peça mais Material que restava
+      // na tela, e desenhava um retângulo arredondado num sistema que declara
+      // canto zero. O ativo se marca pela tinta e pelo filete de topo, igual
+      // às abas de cidade e aos cadernos.
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: isDark ? SIMEopsColors.navy : null,
+        indicatorColor: Colors.transparent,
+        elevation: 0,
+        height: 66,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        labelTextStyle: WidgetStateProperty.resolveWith(
+          (states) => GoogleFonts.jetBrainsMono(
+            fontSize: 10,
+            letterSpacing: 1.6,
+            color: states.contains(WidgetState.selected)
+                ? SIMEopsColors.greenLight
+                : SIMEopsColors.faint,
           ),
         ),
-      ),
-      navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: isDark ? SIMEopsColors.navyMid : null,
-        indicatorColor: SIMEopsColors.teal.withValues(alpha: 0.2),
+        iconTheme: WidgetStateProperty.resolveWith(
+          (states) => IconThemeData(
+            size: 21,
+            color: states.contains(WidgetState.selected)
+                ? SIMEopsColors.greenLight
+                : SIMEopsColors.faint,
+          ),
+        ),
       ),
       // Archivo no lugar de Exo 2: grotesca sólida, aguenta manchete de 23-30px
       // com entrelinha apertada. Exo é geométrica techy — o lugar-comum de que
       // o redesign foge. Ver core/theme/simeops_type.dart.
       textTheme: GoogleFonts.archivoTextTheme(base.textTheme),
+      // ─────────────────────────────────────────────────────────────────
+      // Este bloco é o que fazia o app parecer **pálido**, e por isso está
+      // comentado com detalhe: cada tela do redesign herdava daqui um botão
+      // teal de canto 12, um campo com fundo e borda arredondada, e a Exo 2
+      // que já devia ter morrido. Dava pra reescrever cinco telas em fio de
+      // agência e mesmo assim o elemento mais chamativo de cada uma continuar
+      // sendo um botão Material. **Tema é a camada onde a cor acontece.**
+      // ─────────────────────────────────────────────────────────────────
+      //
       // Hierarquia de botões (uma regra só, sem overrides locais):
-      //   primária    = FilledButton teal
-      //   secundária  = OutlinedButton borda teal, texto teal
-      //   terciária   = TextButton muted
+      //   primária    = FilledButton VERDE, canto zero
+      //   secundária  = OutlinedButton borda discreta, texto muted
+      //   terciária   = TextButton em mono teal
+      //
+      // O verde é a decisão que mais muda a tela. Ele é a única cor saturada
+      // do sistema e passa a marcar **a ação**, uma por tela. Em teal o botão
+      // brigava com o teal do texto de link e com o teal do progresso, e três
+      // coisas na mesma cor querem dizer que nenhuma é especial.
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: SIMEopsColors.teal,
-          foregroundColor: Colors.white,
+          backgroundColor: SIMEopsColors.green,
+          // Tinta escura sobre o verde: 8.9:1. Branco sobre verde daria 2.6:1,
+          // que é reprovado e é o erro clássico de botão colorido.
+          foregroundColor: const Color(0xFF08150A),
+          disabledBackgroundColor: SIMEopsColors.navyLight,
+          disabledForegroundColor: SIMEopsColors.faint,
+          minimumSize: const Size.fromHeight(54),
           // Mono com tracking largo em botão: fala a mesma língua do metadado
           // e separa "comando" de "leitura". Rajdhani fica só na marca.
           textStyle: GoogleFonts.jetBrainsMono(
@@ -130,58 +166,55 @@ class SIMEopsApp extends StatelessWidget {
             fontWeight: FontWeight.w500,
             letterSpacing: 2.86,
           ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          shape: const RoundedRectangleBorder(),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: SIMEopsColors.teal,
-          side: BorderSide(color: SIMEopsColors.teal.withValues(alpha: 0.6)),
+          foregroundColor: SIMEopsColors.muted,
+          side: const BorderSide(color: SIMEopsColors.ruleStrong),
+          minimumSize: const Size.fromHeight(50),
           textStyle: GoogleFonts.jetBrainsMono(
             fontSize: 12,
             fontWeight: FontWeight.w500,
             letterSpacing: 2.4,
           ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          shape: const RoundedRectangleBorder(),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: isDark ? SIMEopsColors.muted : null,
-          textStyle: GoogleFonts.exo2(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
+          foregroundColor: SIMEopsColors.tealLight,
+          textStyle: GoogleFonts.jetBrainsMono(
+            fontSize: 11,
+            letterSpacing: 1.5,
           ),
+          shape: const RoundedRectangleBorder(),
         ),
       ),
+      // Campo é uma LINHA, não uma caixa. Fundo preenchido + borda em volta
+      // desenha um retângulo por campo; num formulário de cinco campos são
+      // cinco caixas competindo com o conteúdo.
       inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: isDark
-            ? SIMEopsColors.navyLight.withValues(alpha: 0.7)
-            : null,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: SIMEopsColors.teal.withValues(alpha: 0.2),
-          ),
+        filled: false,
+        contentPadding: const EdgeInsets.only(top: 12, bottom: 9),
+        border: const UnderlineInputBorder(
+          borderSide: BorderSide(color: SIMEopsColors.ruleStrong),
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: SIMEopsColors.teal.withValues(alpha: 0.2),
-          ),
+        enabledBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: SIMEopsColors.ruleStrong),
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: SIMEopsColors.teal),
+        focusedBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: SIMEopsColors.tealLight),
         ),
-        labelStyle: TextStyle(
-          color: isDark ? SIMEopsColors.muted : null,
-          letterSpacing: 1,
+        hintStyle: GoogleFonts.archivo(
+          fontSize: 17,
+          color: SIMEopsColors.faint,
+        ),
+        labelStyle: GoogleFonts.jetBrainsMono(
+          fontSize: 9.5,
+          letterSpacing: 1.9,
+          color: SIMEopsColors.muted,
         ),
       ),
     );

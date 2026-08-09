@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../../../core/models/city_overview.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/widgets/grid_background.dart';
+import '../../../core/widgets/live_dot.dart';
+import '../../../core/widgets/masthead.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 import '../../feed/widgets/take_card.dart';
@@ -128,16 +130,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// O topo do jornal. A tela não tinha nenhum — abria direto no primeiro card.
-  ///
-  /// Ele nasce recebendo o que **saiu** do cabeçalho da cidade: a validade do
-  /// que está na tela. A regra passou a ser *estado do sistema mora aqui, uma
-  /// vez só; tela de conteúdo mostra conteúdo* — antes essa linha se repetia em
-  /// quatro telas e, em cada uma, disputava espaço com o nome da praça.
+  /// ⚠️ Aqui morava a palavra **"PRAÇAS"**, e ela era jargão de redação (praça =
+  /// a cidade que o jornal cobre). O usuário é gente de segurança pública, não
+  /// de jornal: a metáfora do fio serve pra decidir *forma*, nunca pra escolher
+  /// as palavras que aparecem na tela. Se um termo precisa ser explicado, ele
+  /// não entra.
   ///
   /// `ÚLTIMA HÁ` é a ocorrência mais recente entre **todas** as cidades, não a
-  /// hora da varredura (esse dado não existe; ver a nota no fim do
-  /// `city_detail_screen.dart`). O rótulo diz exatamente isso e nada mais.
+  /// hora da varredura (esse dado não existe — ver `LiveDot`). O rótulo diz
+  /// exatamente isso e nada mais.
   Widget _buildMasthead() {
     DateTime? ultima;
     for (final c in _cities) {
@@ -145,38 +146,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (t != null && (ultima == null || t.isAfter(ultima))) ultima = t;
     }
 
-    final marcas = <String>[
-      '${_cities.length} ${_cities.length == 1 ? 'PRAÇA' : 'PRAÇAS'}',
-      if (ultima != null) 'ÚLTIMA ${_agoLabel(ultima)}',
-    ];
-
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: SIMEopsColors.white, width: 2),
-        ),
+    return Masthead(
+      esquerda: LiveMark(
+        dot: const LiveDot(),
+        label: ultima != null ? 'ÚLTIMA ${_agoLabel(ultima)}' : 'MONITORANDO',
       ),
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text.rich(
-            TextSpan(children: [
-              const TextSpan(text: 'SIME'),
-              TextSpan(
-                text: 'OPS',
-                style: TextStyle(color: SIMEopsColors.greenLight),
-              ),
-            ]),
-            style: SIMEopsType.wordmark(size: 25),
-          ),
-          const SizedBox(height: 9),
-          Text(
-            marcas.join(' · '),
-            style: SIMEopsType.slug(color: SIMEopsColors.faint),
-          ),
-        ],
-      ),
+      direita: '${_cities.length} '
+          '${_cities.length == 1 ? 'CIDADE' : 'CIDADES'}',
     );
   }
 
@@ -189,11 +165,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildGrid() {
     // Cidade com novidade ganha o bloco inteiro; cidade quieta vira linha.
-    // Regra semântica, não "top N": num dia parado a tela toda colapsa, num
-    // dia agitado ela toda expande — é o que faz 4 e 20 cidades funcionarem
-    // no mesmo layout.
-    final loud = _cities.where((c) => c.hasUnread).toList();
-    final quiet = _cities.where((c) => !c.hasUnread).toList();
+    // Regra semântica, não "top N": num dia agitado a tela expande sozinha.
+    //
+    // 🚨 **Com o dia inteiro parado, ninguém colapsa.** A regra existe pra
+    // fazer as cidades com novidade se destacarem; se NENHUMA tem, não há de
+    // que destacar — colapsar só esconde o produto. O João abriu o app com 2
+    // cidades, ambas sem não-lidas, e viu duas linhas de 44px e um vazio de
+    // tela inteira. A regra foi desenhada pensando em 20 cidades e quebrava
+    // silenciosamente em 2, que é o caso real de hoje.
+    final temNovidade = _cities.any((c) => c.hasUnread);
+    final loud = temNovidade
+        ? _cities.where((c) => c.hasUnread).toList()
+        : _cities;
+    final quiet = temNovidade
+        ? _cities.where((c) => !c.hasUnread).toList()
+        : <CityOverview>[];
 
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -218,12 +204,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (quiet.isNotEmpty) ...[
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.only(top: loud.isEmpty ? 8 : 26),
+              padding: const EdgeInsets.only(top: 26),
               child: Row(
                 children: [
                   const SizedBox(width: 18),
                   Text(
-                    loud.isEmpty ? 'MONITORADAS' : 'SEM NOVIDADE HOJE',
+                    'SEM NOVIDADE HOJE',
                     style: SIMEopsType.dateline(color: SIMEopsColors.faint),
                   ),
                   const SizedBox(width: 11),
