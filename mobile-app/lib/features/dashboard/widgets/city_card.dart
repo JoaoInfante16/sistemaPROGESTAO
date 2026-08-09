@@ -4,6 +4,7 @@ import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 import '../../../core/utils/category_colors.dart';
 import '../../../core/utils/crime_labels.dart';
+import '../../../core/widgets/cat_chip.dart';
 
 /// Cidade no dashboard, em bloco de fio.
 ///
@@ -106,8 +107,16 @@ class CityCard extends StatelessWidget {
 /// número colorido a 21px sobre navy perde contraste e faz cinco matizes
 /// brigarem entre si.
 ///
-/// Mostra as **quatro maiores** e soma o resto em OUTRAS. Cinco colunas em
-/// 412px dariam ~70px cada, e `INSTITUCIONAL` não cabe em 70px nem abreviado.
+/// Mostra **toda categoria com contagem > 0**, no máximo cinco.
+///
+/// Antes eram as quatro maiores + `OUTRAS`, e isso era uma mentira estrutural:
+/// as categorias são exatamente cinco, então `OUTRAS` **nunca agregava nada** —
+/// era a 5ª categoria escondida atrás de um rótulo genérico e pintada com a cor
+/// de `institucional`, que podia ser justamente outra. Chip que mente é pior
+/// que chip nenhum, e a regra do projeto é que a cor mora no chip.
+///
+/// Cabe: 412 − 36 de margem − 4×13 de gap = 324px ÷ 5 = 65px por coluna, e
+/// `PATRIM.` em mono 9.5 ocupa ~40px mais o chip.
 class _CategoryFigures extends StatelessWidget {
   final Map<String, int> counts;
 
@@ -131,24 +140,14 @@ class _CategoryFigures extends StatelessWidget {
       ..sort((a, b) => b.value.compareTo(a.value));
     if (ordenado.isEmpty) return const SizedBox.shrink();
 
-    final colunas = <_Figure>[];
-    for (final e in ordenado.take(4)) {
-      colunas.add(_Figure(
-        valor: e.value,
-        rotulo: _curto[e.key] ?? categoryLabel(e.key).toUpperCase(),
-        cor: categoryColor(e.key),
-      ));
-    }
-    if (ordenado.length > 4) {
-      final resto = ordenado.skip(4).fold<int>(0, (soma, e) => soma + e.value);
-      if (resto > 0) {
-        colunas.add(_Figure(
-          valor: resto,
-          rotulo: 'OUTRAS',
-          cor: categoryColor('institucional'),
-        ));
-      }
-    }
+    final colunas = [
+      for (final e in ordenado.take(5))
+        _Figure(
+          valor: e.value,
+          rotulo: _curto[e.key] ?? categoryLabel(e.key).toUpperCase(),
+          categoria: e.key,
+        ),
+    ];
 
     return Container(
       margin: const EdgeInsets.only(top: 15),
@@ -172,9 +171,13 @@ class _CategoryFigures extends StatelessWidget {
 class _Figure extends StatelessWidget {
   final int valor;
   final String rotulo;
-  final Color cor;
+  final String categoria;
 
-  const _Figure({required this.valor, required this.rotulo, required this.cor});
+  const _Figure({
+    required this.valor,
+    required this.rotulo,
+    required this.categoria,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -185,13 +188,13 @@ class _Figure extends StatelessWidget {
         const SizedBox(height: 7),
         Row(
           children: [
-            Container(width: 6, height: 6, color: cor),
+            CatChip(categoria: categoria),
             const SizedBox(width: 5),
             Flexible(
               child: Text(
                 rotulo,
                 style: SIMEopsType.slug(color: SIMEopsColors.faint)
-                    .copyWith(fontSize: 8.5, letterSpacing: 0.77),
+                    .copyWith(letterSpacing: 0.77),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -227,8 +230,8 @@ class QuietCityRow extends StatelessWidget {
                 uf != null && uf.isNotEmpty
                     ? '${city.name} · ${uf.toUpperCase()}'
                     : city.name,
-                style: SIMEopsType.placeTab(active: false)
-                    .copyWith(color: SIMEopsColors.muted, fontSize: 11),
+                style: SIMEopsType.placeTab(
+                    active: false, color: SIMEopsColors.muted),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -236,7 +239,7 @@ class QuietCityRow extends StatelessWidget {
             const SizedBox(width: 12),
             Text(
               '${city.totalCrimes30d} em 30d',
-              style: SIMEopsType.placeTab(active: false).copyWith(fontSize: 11),
+              style: SIMEopsType.placeTab(active: false),
             ),
           ],
         ),

@@ -28,9 +28,10 @@ da `develop` de propósito, porque o release da Play Store está engatilhado.
 | fase | o quê | estado |
 |---|---|---|
 | A | cor de categoria com fonte única | ✅ feito |
+| — | **polimento do fio** (tipografia, tinta, header, card, sanfona) | ✅ feito |
 | B | formulário de busca (11 blocos → 5) | 🔨 `seletor_lugar.dart` criado, não ligado |
 | C | espera de 7 min + resultados | ⬜ |
-| D | remoções (favoritos, detalhe, arrastar, lembrar senha, senha mín. 8) | ⬜ |
+| D | remoções (favoritos, arrastar, lembrar senha, senha mín. 8) | ⬜ |
 | E | relatório + export HTML A4 | ⬜ |
 | F | notificações (migration 030, digest por cidade, tri-estado) | ⬜ |
 
@@ -38,10 +39,19 @@ da `develop` de propósito, porque o release da Play Store está engatilhado.
 ela o backend devolve 400 no feed e no scan — o código já pede a coluna.
 
 **Regras de design que valem como contrato** (nasceram de erro medido, não de
-gosto): urgência é peso (filete branco), não cor — vermelho é da categoria
-Segurança; cor mora no chip, texto fica em tinta legível; "1 FONTE" não aparece;
-cidade sem novidade vira linha, não bloco; verde é da interface, nunca do
-conteúdo; o local trunca, não quebra.
+gosto):
+
+- urgência é **peso** (filete branco), não cor — vermelho é da categoria Segurança
+- cor mora no chip (`CatChip`, 7px), texto fica em tinta legível
+- **mono maiúsculo é campo de máquina, não frase** — prosa vai em
+  `SIMEopsType.note()`, que é Archivo em caixa de sentença
+- `hairline` (1.8:1) **nunca** pinta texto; piso de qualquer texto é `faint` (4.8:1)
+- sinal que aparece sempre não é sinal — "1 FONTE", selo "NOVA" e o ponto verde
+  pulsante morreram todos por isso
+- **estado do sistema mora no dashboard, uma vez só**; tela de conteúdo mostra conteúdo
+- cidade sem novidade vira linha, não bloco
+- verde é da interface, nunca do conteúdo
+- o local trunca, não quebra
 
 ### Em que pé está o projeto (04/08)
 
@@ -189,6 +199,164 @@ produção **na hora, sem deploy**. Quando o significado de uma config mudar,
 Verificado em **04/08**: 026, 027 e 028 aplicadas (`openai` e `jina` com
 `max_concurrent` 20). **024 e 025 seguem não rodadas.** Custo do mês: **$1,75**
 de $100.
+
+---
+
+## 2026-08-08 (noite) — a prosa honesta era o texto mais difícil de ler
+
+Revisão do protótipo de referência (`workdesk/Frontend Fio Completo`) contra o
+código, a pedido do João: *"se ainda houver polimentos que vc perceba vamos
+discutir sobre"*. Saíram oito achados, três deles com número. Tudo discutido e
+aprovado antes de codar.
+
+### 1. Mono maiúsculo estava sendo usado para prosa
+
+O sistema diz "mono = metadado", mas ele pintava **frases inteiras** — e justo
+as que sustentam a credibilidade do produto: `NÃO SAI E-MAIL AUTOMÁTICO`,
+`CITAÇÃO NA MATÉRIA — NÃO É ONDE O FATO OCORREU`, `SE TROCAR DE CELULAR (...) O
+ACESSO SÓ VOLTA COM UMA REDEFINIÇÃO`.
+
+Caixa alta destrói o formato da palavra, que é como se lê rápido; mono a 9px com
+entrelinha 1.7 é ótimo pra coluna alinhada e péssimo pra frase corrida. Ou seja:
+**as ressalvas metodológicas eram o texto mais lento de ler do app.** Honestidade
+decorativa.
+
+`SIMEopsType.note()` deixou de ser mono 9 e virou **Archivo 13 em caixa de
+sentença**, tinta `muted`. A regra ficou mais nítida, não mais frouxa: mono é
+campo de máquina; Archivo é coisa que se lê. O único bloco de várias linhas que
+segue em mono maiúsculo é a `tagline()` sob o logotipo — que é acessório de
+marca, não prosa.
+
+### 2. `hairline` estava pintando texto que precisa ser lido
+
+Contraste medido sobre o navy: `white` 17.8:1 · `muted` 8.0:1 · `faint` 4.8:1 ·
+**`hairline` 1.8:1**. E o hairline pintava duas coisas:
+
+- **placeholder** dos campos (`voce@orgao.gov.br`) — é instrução de formato;
+- na tela de espera, o passo pendente estava em `muted` a 45% de alfa, que
+  compõe **2.5:1** — a tela em que a pessoa encara 7 minutos, e os passos que
+  faltam são a prova de que a busca tem plano.
+
+Ambos foram pra `faint`. `hairline` ficou restrito a ornamento (o `— 30 —`).
+
+### 3. `OUTRAS` no card de cidade era uma mentira estrutural
+
+As categorias são **exatamente cinco**, e o card mostrava as quatro maiores +
+`OUTRAS`. Logo `OUTRAS` nunca agregava nada: era a 5ª categoria escondida atrás
+de um rótulo genérico — e pintada com `categoryColor('institucional')`, que
+podia ser justamente outra. Chip que mente é pior que chip nenhum.
+
+Agora mostra toda categoria com contagem > 0, no máximo cinco. Cabe: 412 − 36 de
+margem − 4×13 de gap = 324px ÷ 5 = 65px por coluna, e `PATRIM.` em mono 9.5
+ocupa ~40px mais o chip. De quebra o `fontSize: 8.5` sumiu.
+
+### 4. O cabeçalho repetia em quatro telas o que a tela anterior já dissera
+
+Queixa do João: *"esse 'varredura há x' em todas as telas ficou meio poluído"*.
+Eram seis faixas antes da primeira manchete, e a linha de estado carregava
+quatro dados. Saíram três:
+
+- **`SC`** — você chegou tocando um card que dizia `SC · GRANDE FLORIANÓPOLIS`,
+  e a fila logo abaixo nomeia as cidades.
+- **`18 NOVAS`** — o card do dashboard acabou de dizer, e o feed separa lida de
+  não-lida pela tinta. Terceira aparição do mesmo fato. E o cabeçalho **nem fica
+  na tela**: rola embora, então não é readout persistente, é um cumprimento.
+- **`● ÚLTIMA HÁ 2H`** — o ponto verde nunca apagava. Sinal que aparece sempre
+  não é sinal; é a mesma armadilha do "1 FONTE". E a validade já está no
+  conteúdo: o divisor diz `HOJE · 04 AGO` e o item diz a hora.
+
+⚠️ **O `_LiveDot` não volta sem dado novo.** Ele só se justificaria podendo ficar
+âmbar, e para isso precisa da **hora da varredura** — que não existe. O que o app
+tem é `lastNewsAt`, o `created_at` da ocorrência mais recente, que mede a
+imprensa e não o robô. Semáforo de saúde em cima disso seria reintroduzir a mesma
+mentira que o rótulo "VARREDURA HÁ" já contou. Está anotado no fim do
+`city_detail_screen.dart`.
+
+Regra que saiu daí: **estado do sistema mora no dashboard, uma vez só.** O
+dashboard **não tinha cabeçalho nenhum** — abria direto no primeiro card. Ganhou
+um: logotipo + `7 PRAÇAS · ÚLTIMA HÁ 2H`, com o rótulo dizendo exatamente o que
+o dado é.
+
+### 5. O cabeçalho passou a encolher — e era mais barato do que eu tinha escrito
+
+Em 08/08 registrei que encolher exigia `NestedScrollView` + `SliverAppBar` e era
+arriscado, porque o corpo é um `TabBarView` cujos filhos têm scroll e
+`RefreshIndicator` próprios. **Reavaliei e estava exagerando:** um
+`NotificationListener<ScrollNotification>` por fora do `TabBarView` escuta a
+rolagem que sobe dos filhos **sem tomar posse do controller de nenhum deles**.
+Zero mudança no `FeedScreen`. Devolve ~85px durante a leitura.
+
+Dois detalhes que custam bug se esquecidos: filtrar `metrics.axis ==
+Axis.vertical` (o arrasto horizontal entre abas também emite notificação, e sem
+o filtro trocar de aba encolhe o cabeçalho), e histerese 56/24 pra não tremer
+quando a rolagem para no limiar.
+
+### 6. O card do feed: forma fixa, e o crédito em tinta única
+
+Duas coisas estavam erradas — a estrutura não.
+
+**Os limites.** `maxLines: 3` na manchete **e** na lide: um item podia ter 6
+linhas e o vizinho 2. Numa lista de 18, altura que oscila assim mata o ritmo
+vertical — e o ritmo é a única razão de a lista ser varrida em vez de lida.
+Medindo: Archivo 23 em 376px úteis dá ~32 caracteres por linha. E havia
+incoerência minha: **o prompt pede 70 caracteres e o código truncava em 90.**
+Agora manchete em `maxLines: 2` e o corte alinhado em 70.
+
+**O crédito.** Era a faixa mais barulhenta e a menos útil: até quatro fichas em
+três matizes — veículo em teal, `OFICIAL` em verde, `REGIÃO` em cinza, `3 FONTES`
+em verde-claro. **Dois verdes diferentes significando coisas diferentes a 9.5px**,
+e conteúdo vestido de verde, contra a regra que o próprio projeto já tinha
+escrito. Agora: veículo e contagem viraram um fato só em tinta única, `OFICIAL` é
+o único token colorido, e `REGIÃO` saiu (a slug logo acima já nomeia a cidade).
+
+**A data.** A lista é agrupada por `HOJE · 04 AGO` e cada item recarimbava
+`31/07` dentro do grupo `31 JUL`. Parâmetro `groupedByDate`: no feed mostra só a
+hora; nos resultados da busca — onde os grupos são baldes, não datas — a data
+continua.
+
+### 7. A sanfona substituiu a tela de detalhe
+
+Decisão do João depois de comparar as duas opções. Tocar na matéria **expande no
+lugar** em vez de subir o `NewsDetailSheet` por cima de tudo.
+
+O motivo não é visual: numa tela em que a pessoa está *varrendo* 18 itens atrás
+do que importa, cada modal quebra a varredura — sai da lista, lê, fecha e tem que
+reencontrar onde parou. A sanfona cresce **pra baixo** do ponto tocado, então a
+manchete que está sendo lida não se move.
+
+Aberta, a matéria mostra o resumo inteiro e a lista de fontes, cada uma abrindo
+no **navegador externo** (nem WebView nem Custom Tab: conteúdo de terceiros não
+deve ser emoldurado como se fosse do app). É também onde o teal volta a fazer
+sentido — ali o nome do veículo é de fato clicável, o que no crédito fechado não
+era.
+
+**Pré-requisito atendido no mesmo turno:** o `resumo` do Filter2 passou de "1-2
+frases" para **2-3**, com a primeira obrigatoriamente auto-suficiente (é a que
+aparece truncada na lista) e as seguintes carregando o que um analista quer em
+seguida — quantos envolvidos, o que foi apreendido, quem agiu. Sem isso a
+sanfona revelaria meia linha e seria um toque que faz o card tremer.
+
+⚠️ `news_detail_sheet.dart` **continua no repositório** — o `manual_search_screen`
+ainda o chama. Morre na Fase D, junto com o resto.
+
+### 8. O que ficou anotado e não foi feito
+
+- **As abas de cidade não dizem onde está a notícia.** O dashboard inteiro se
+  apoia em "o número te diz onde olhar", e aí a fila `TODAS · FLORIANÓPOLIS ·
+  PALHOÇA` fica muda: tem que tocar uma por uma. Bastava `SÃO JOSÉ 4`. **Falta
+  verificar se o feed devolve não-lidas por cidade-filha** — vai para a Fase C.
+- **Os achados ao vivo da espera mostram menos do que o protótipo desenha.**
+  `AchadoProgresso` (`queries.ts:1104`) tem `tipo_crime`, `bairro` e
+  `data_ocorrencia`; falta `categoria_grupo`, `cidade` e `titulo` — os três já
+  existem no Filter2 no exato momento em que o achado é montado. E o worker
+  guarda só os 5 últimos (`ACHADOS_VISIVEIS`), descartando o resto: como o app
+  faz polling de 3s, **ele pode acumular localmente** e deduplicar, sem custo de
+  rede nem migration. Fase C.
+
+### Verificação
+
+`flutter analyze` limpo (os mesmos 3 infos preexistentes), `npx tsc --noEmit`
+limpo, APK de staging buildado com `flutter clean` e instalado no A57 físico.
 
 ---
 

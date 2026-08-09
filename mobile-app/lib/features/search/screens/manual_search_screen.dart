@@ -1060,11 +1060,15 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
             final detail = _groupDetail(stages);
             final showCounter = isCurrent && hasCounter;
 
+            // Pendente em `faint` (4.8:1), não em `muted` a 45% — que dava
+            // 2.5:1 e sumia. É a tela em que a pessoa encara 7 minutos, e os
+            // passos que ainda não rodaram são a prova de que a busca tem
+            // plano: apagá-los mata a função da lista.
             final labelColor = isCompleted
                 ? SIMEopsColors.white
                 : isCurrent
                     ? SIMEopsColors.tealLight
-                    : SIMEopsColors.muted.withValues(alpha: 0.45);
+                    : SIMEopsColors.faint;
 
             // Direita: contador vivo no corrente, duração no concluído.
             Widget trailing;

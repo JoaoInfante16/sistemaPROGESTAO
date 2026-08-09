@@ -19,6 +19,19 @@ import 'simeops_colors.dart';
 /// Rótulo de categoria fica em tinta legível e a cor mora num quadrado de 7px
 /// ao lado. Cinco categorias escritas em cinco matizes a 9.5px sobre navy
 /// viram cinco borrões — o escuro come a diferença de saturação.
+///
+/// **Segunda regra, de 08/08: mono maiúsculo é campo de máquina, não frase.**
+/// Rótulo, contagem, slug e eixo — sim. Frase que alguém precisa *ler* — não.
+/// Caixa alta destrói o formato da palavra, que é como se lê rápido; mono a 9px
+/// com entrelinha larga é ótimo para coluna alinhada e péssimo para prosa. O
+/// app tinha as ressalvas metodológicas (*"citação na matéria, não é onde o
+/// fato ocorreu"*, *"não sai e-mail automático"*) escritas assim — ou seja, o
+/// texto que sustenta a honestidade do produto era o mais difícil de ler da
+/// tela. Prosa vai em [note], que é Archivo em caixa de sentença.
+///
+/// **Escala mono:** 9.5 (rótulo) · 11 (mono legível) · 13 (botão) · [figure].
+/// Havia 8.5, 9, 9.5, 10, 10.5 e 11 convivendo — meio pixel de diferença
+/// ninguém enxerga, mas desalinha coluna e faz o peso óptico oscilar.
 class SIMEopsType {
   const SIMEopsType._();
 
@@ -39,11 +52,15 @@ class SIMEopsType {
   static TextStyle headlineUrgent() => headline().copyWith(fontSize: 30);
 
   /// Título de tela (nome da cidade, "Nova consulta").
+  ///
+  /// 30, igual ao [headlineUrgent]: eram 29 e 30, dois tamanhos a um pixel de
+  /// distância fazendo trabalhos diferentes — ninguém distingue, e a promessa
+  /// de que urgente é "30% maior" só valia contra a manchete normal.
   static TextStyle title({Color? color}) => GoogleFonts.archivo(
-        fontSize: 29,
+        fontSize: 30,
         fontWeight: FontWeight.w700,
         height: 1.03,
-        letterSpacing: -0.58,
+        letterSpacing: -0.6,
         color: color ?? SIMEopsColors.white,
       );
 
@@ -121,11 +138,15 @@ class SIMEopsType {
         color: color ?? SIMEopsColors.tealLight,
       );
 
-  /// Aba de cidade dentro do grupo.
-  static TextStyle placeTab({required bool active}) => GoogleFonts.jetBrainsMono(
-        fontSize: 10,
+  /// Aba de cidade dentro do grupo, e mono legível em geral (linha de cidade
+  /// quieta, marcas do histórico). 11 é o degrau em que mono deixa de ser
+  /// rótulo e vira texto que se lê sem esforço.
+  static TextStyle placeTab({required bool active, Color? color}) =>
+      GoogleFonts.jetBrainsMono(
+        fontSize: 11,
         letterSpacing: 1.5,
-        color: active ? SIMEopsColors.white : SIMEopsColors.faint,
+        color: color ??
+            (active ? SIMEopsColors.white : SIMEopsColors.faint),
       );
 
   /// Rótulo de campo de formulário.
@@ -144,12 +165,19 @@ class SIMEopsType {
         color: color ?? SIMEopsColors.white,
       );
 
-  /// Nota de rodapé de gráfico, ressalva metodológica.
-  static TextStyle note({Color? color}) => GoogleFonts.jetBrainsMono(
-        fontSize: 9,
-        height: 1.7,
-        letterSpacing: 0.54,
-        color: color ?? SIMEopsColors.faint,
+  /// **Prosa**: ressalva metodológica, explicação de campo, mensagem de erro,
+  /// rodapé que alguém precisa ler de verdade.
+  ///
+  /// Era mono 9 em caixa alta. Virou Archivo em caixa de sentença porque essas
+  /// frases são o que separa o produto de um agregador irresponsável — e
+  /// estavam escritas no estilo mais lento de ler do app inteiro. Ver a nota
+  /// no topo do arquivo.
+  ///
+  /// Tinta `muted` (8.0:1), não `faint`: prosa não é metadado.
+  static TextStyle note({Color? color}) => GoogleFonts.archivo(
+        fontSize: 13,
+        height: 1.55,
+        color: color ?? SIMEopsColors.muted,
       );
 
   /// Texto de botão de ação.
@@ -163,9 +191,19 @@ class SIMEopsType {
   /// Item da navegação inferior.
   static TextStyle navLabel({required bool active}) =>
       GoogleFonts.jetBrainsMono(
-        fontSize: 10,
+        fontSize: 11,
         letterSpacing: 1.6,
         color: active ? SIMEopsColors.greenLight : SIMEopsColors.faint,
+      );
+
+  /// Linha sob o logotipo ("MONITORAMENTO DE OCORRÊNCIAS · 24 HORAS").
+  /// É acessório de marca, não prosa — por isso continua mono em caixa alta,
+  /// e é o **único** bloco de várias linhas que pode ser assim.
+  static TextStyle tagline() => GoogleFonts.jetBrainsMono(
+        fontSize: 9.5,
+        height: 1.7,
+        letterSpacing: 1.8,
+        color: SIMEopsColors.faint,
       );
 
   // ─────────── marca ───────────

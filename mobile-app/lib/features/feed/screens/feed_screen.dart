@@ -8,7 +8,6 @@ import '../../../core/theme/simeops_type.dart';
 import '../../../core/utils/date_grouping.dart';
 import '../../../core/widgets/category_filter_bar.dart';
 import '../../../core/widgets/group_header.dart';
-import '../widgets/news_detail_sheet.dart';
 import '../widgets/take_card.dart';
 
 class FeedScreen extends StatefulWidget {
@@ -259,10 +258,10 @@ class _FeedScreenState extends State<FeedScreen> {
           rows.add(TakeCard(
             news: item,
             urgent: TakeCard.isUrgent(item),
-            onTap: () {
-              _markAsRead(item);
-              NewsDetailSheet.show(context, item);
-            },
+            // A lista é agrupada por data logo acima, então o item mostra só
+            // a hora — carimbar "31/07" dentro do grupo "31 JUL" era repetir.
+            groupedByDate: true,
+            onOpen: () => _markAsRead(item),
             onToggleFavorite: () => _toggleFavorite(item),
           ));
           // Filete entre matérias, nunca depois da última: no fim do grupo

@@ -7,7 +7,6 @@ import '../../../core/models/crime_point.dart';
 import '../../../core/models/executive_data.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/utils/category_colors.dart';
-import '../../../core/utils/state_utils.dart';
 import '../../../core/utils/type_helpers.dart';
 import '../../../core/widgets/crime_radar_map.dart';
 import '../../../core/widgets/executive_indicators.dart';
@@ -51,6 +50,9 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   /// Janela da contagem no cabeçalho. Só muda o número exibido ali — o feed
   /// abaixo continua trazendo tudo, e o relatório tem o período dele.
   StatPeriod _statPeriod = StatPeriod.d30;
+
+  /// Cabeçalho recolhido pela rolagem. Ver [_onScroll].
+  bool _collapsed = false;
 
   // For groups without sub-city selected, use first city name
   String get _activeCidade {
@@ -214,12 +216,20 @@ class _CityDetailScreenState extends State<CityDetailScreen>
             if (_isGroup) _buildPlacesRow(),
             _buildCadernos(),
             Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildFeedTab(),
-                  _buildOverviewTab(),
-                ],
+              // Escuta a rolagem que SOBE dos filhos, sem tomar posse do
+              // controller de nenhum deles. É o que permite o cabeçalho
+              // encolher sem `NestedScrollView` + `SliverAppBar` — que
+              // exigiria reescrever o `FeedScreen` e o `RefreshIndicator`
+              // de cada aba, dois riscos por um ganho de layout.
+              child: NotificationListener<ScrollNotification>(
+                onNotification: _onScroll,
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildFeedTab(),
+                    _buildOverviewTab(),
+                  ],
+                ),
               ),
             ),
           ],
@@ -228,21 +238,50 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     );
   }
 
-  /// Cabeçalho do fio: seta + marca, nome da praça em corpo grande, linha de
-  /// estado, e o filete branco de 2px que fecha o bloco.
+  /// Encolhe o cabeçalho ao rolar, devolvendo ~85px de tela durante a leitura.
+  ///
+  /// Só rolagem **vertical**: o arrasto horizontal do `TabBarView` também
+  /// emite `ScrollNotification`, e sem o filtro trocar de aba encolheria o
+  /// cabeçalho. Histerese (56 pra fechar, 24 pra abrir) evita o tremor de
+  /// abre-e-fecha quando a rolagem para exatamente no limiar.
+  ///
+  /// Devolve `false` de propósito: a notificação segue subindo, e o
+  /// `RefreshIndicator` de cada aba continua funcionando.
+  bool _onScroll(ScrollNotification n) {
+    if (n.metrics.axis != Axis.vertical) return false;
+    final p = n.metrics.pixels;
+    if (!_collapsed && p > 56) {
+      setState(() => _collapsed = true);
+    } else if (_collapsed && p < 24) {
+      setState(() => _collapsed = false);
+    }
+    return false;
+  }
+
+  /// Cabeçalho do fio: seta + marca, nome da praça em corpo grande, a contagem
+  /// do período, e o filete branco de 2px que fecha o bloco.
   ///
   /// Substitui a `AppBar` centralizada. O nome da cidade é o dado mais
   /// importante da tela e estava a 18px no meio de uma barra de 56px; agora
-  /// abre a página a 29px, ancorado à esquerda como manchete de primeira.
+  /// abre a página a 30px, ancorado à esquerda como manchete de primeira.
   ///
-  /// ⚠️ Ainda NÃO encolhe na rolagem. Encolher exige `NestedScrollView` +
-  /// `SliverAppBar`, e o corpo é um `TabBarView` cujos filhos têm scroll e
-  /// `RefreshIndicator` próprios — mexer nisso junto com a troca de estética
-  /// era arriscar duas coisas de uma vez. Fica para etapa própria: rende mais
-  /// ~85px durante a leitura.
+  /// **Saíram daqui em 08/08, e o motivo de cada um importa:**
+  ///
+  /// - `SC` — você chegou tocando um card que dizia `SC · GRANDE
+  ///   FLORIANÓPOLIS`, e a fila logo abaixo nomeia as cidades.
+  /// - `18 NOVAS` — o card do dashboard acabou de dizer, e o próprio feed
+  ///   separa lida de não-lida pela tinta. Terceira aparição do mesmo fato.
+  /// - `● ÚLTIMA HÁ 2H` — o ponto verde **nunca apagava**, e sinal que aparece
+  ///   sempre não é sinal (foi por isso que o "NOVA" e o "1 FONTE" morreram).
+  ///   Além disso a validade já está no conteúdo: o primeiro divisor diz
+  ///   `HOJE · 04 AGO` e o primeiro item diz a hora. Jornal não carimba
+  ///   "impresso há 2 horas" no cabeçalho.
+  ///
+  /// Sobrou uma linha de metadado, e ela é a única coisa clicável — o que
+  /// também faz a setinha do período parar de disputar espaço com três textos
+  /// mudos. Estado do sistema mora no dashboard, uma vez só.
   Widget _buildWireHeader() {
     final c = widget.city;
-    final uf = c.parentState != null ? abbrState(c.parentState!) : null;
 
     return Container(
       decoration: const BoxDecoration(
@@ -250,80 +289,75 @@ class _CityDetailScreenState extends State<CityDetailScreen>
           bottom: BorderSide(color: SIMEopsColors.white, width: 2),
         ),
       ),
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              InkWell(
-                onTap: () => Navigator.of(context).pop(),
-                child: const Padding(
-                  padding: EdgeInsets.all(8),
-                  child: Icon(Icons.arrow_back_ios_new,
-                      size: 17, color: SIMEopsColors.muted),
-                ),
-              ),
-              const SizedBox(width: 4),
-              Text.rich(
-                TextSpan(children: [
-                  const TextSpan(text: 'SIME'),
-                  TextSpan(
-                    text: 'OPS',
-                    style: TextStyle(color: SIMEopsColors.greenLight),
-                  ),
-                ]),
-                style: SIMEopsType.wordmark(size: 14),
-              ),
-            ],
-          ),
-          const SizedBox(height: 9),
-          Text(c.name, style: SIMEopsType.title()),
-          const SizedBox(height: 9),
-          Row(
-            children: [
-              const _LiveDot(),
-              const SizedBox(width: 6),
-              // ⚠️ `lastNewsAt` é o created_at da ocorrência mais recente, NÃO
-              // a hora da varredura. Chamar de "VARREDURA HÁ 3D" numa cidade
-              // quieta faz o auto-scan parecer parado quando ele rodou há 20
-              // minutos e não achou nada. O ponto verde é que diz "de pé".
-              Text(
-                c.lastNewsAt != null
-                    ? 'ÚLTIMA ${_agoLabel(c.lastNewsAt!)}'
-                    : 'MONITORANDO',
-                style: SIMEopsType.slug(color: SIMEopsColors.tealLight),
-              ),
-              const Spacer(),
-              if (uf != null) ...[
-                Text(uf, style: SIMEopsType.slug()),
-                const SizedBox(width: 9),
-              ],
-              _PeriodCount(
-                city: c,
-                period: _statPeriod,
-                onPick: (p) => setState(() => _statPeriod = p),
-              ),
-              if (c.unreadCount > 0) ...[
-                const SizedBox(width: 9),
-                Text(
-                  '${c.unreadCount} NOVAS',
-                  style: SIMEopsType.slug(color: SIMEopsColors.greenLight),
-                ),
-              ],
-            ],
-          ),
-        ],
+      padding: EdgeInsets.fromLTRB(18, _collapsed ? 2 : 8, 18, _collapsed ? 6 : 12),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 170),
+        curve: Curves.easeOut,
+        alignment: Alignment.topCenter,
+        child: _collapsed ? _headerCompact(c) : _headerFull(c),
       ),
     );
   }
 
-  static String _agoLabel(DateTime t) {
-    final d = DateTime.now().difference(t);
-    if (d.inMinutes < 60) return 'AGORA';
-    if (d.inHours < 24) return 'HÁ ${d.inHours}H';
-    return 'HÁ ${d.inDays}D';
+  Widget _headerCompact(CityOverview c) {
+    return Row(
+      key: const ValueKey('compacto'),
+      children: [
+        _backButton(),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            c.name,
+            style: SIMEopsType.titleCompact(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
   }
+
+  Widget _headerFull(CityOverview c) {
+    return Column(
+      key: const ValueKey('inteiro'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            _backButton(),
+            const SizedBox(width: 4),
+            Text.rich(
+              TextSpan(children: [
+                const TextSpan(text: 'SIME'),
+                TextSpan(
+                  text: 'OPS',
+                  style: TextStyle(color: SIMEopsColors.greenLight),
+                ),
+              ]),
+              style: SIMEopsType.wordmark(size: 14),
+            ),
+          ],
+        ),
+        const SizedBox(height: 9),
+        Text(c.name, style: SIMEopsType.title()),
+        const SizedBox(height: 9),
+        _PeriodCount(
+          city: c,
+          period: _statPeriod,
+          onPick: (p) => setState(() => _statPeriod = p),
+        ),
+      ],
+    );
+  }
+
+  Widget _backButton() => InkWell(
+        onTap: () => Navigator.of(context).pop(),
+        child: const Padding(
+          padding: EdgeInsets.all(8),
+          child: Icon(Icons.arrow_back_ios_new,
+              size: 17, color: SIMEopsColors.muted),
+        ),
+      );
 
   /// As cidades do grupo. Rola na horizontal com degradê na borda direita —
   /// sem ele o scroll é invisível e o usuário nunca descobre que existe
@@ -881,57 +915,16 @@ class _PlaceTab extends StatelessWidget {
   }
 }
 
-/// Ponto que respira ao lado de "VARREDURA HÁ 2H". É o único movimento da
-/// tela — o sinal de que o robô está de pé enquanto o usuário não olha.
-class _LiveDot extends StatefulWidget {
-  const _LiveDot();
-
-  @override
-  State<_LiveDot> createState() => _LiveDotState();
-}
-
-class _LiveDotState extends State<_LiveDot>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 3400),
-  )..repeat(reverse: true);
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Respeita "reduzir movimento" do sistema: pulsar sem parar é desconforto
-    // real pra quem tem sensibilidade vestibular, e a informação não depende
-    // da animação — o texto ao lado já diz há quanto tempo foi.
-    final reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
-    if (reduce) {
-      return Container(
-        width: 5,
-        height: 5,
-        decoration: const BoxDecoration(
-          color: SIMEopsColors.greenLight,
-          shape: BoxShape.circle,
-        ),
-      );
-    }
-    return FadeTransition(
-      opacity: Tween<double>(begin: 0.3, end: 1).animate(
-        CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
-      ),
-      child: Container(
-        width: 5,
-        height: 5,
-        decoration: const BoxDecoration(
-          color: SIMEopsColors.greenLight,
-          shape: BoxShape.circle,
-        ),
-      ),
-    );
-  }
-}
+// O `_LiveDot` (ponto verde que pulsava ao lado de "ÚLTIMA HÁ 2H") foi
+// removido em 08/08, e vale registrar por quê, porque a tentação de trazer de
+// volta é grande: ele nunca apagava. Um indicador que está sempre no mesmo
+// estado não informa nada — é a mesma armadilha do "1 FONTE" e do selo "NOVA".
+//
+// Ele só ganharia o lugar de volta podendo ficar âmbar, e para isso precisa de
+// um dado que hoje NÃO existe: a hora da última varredura. O que o app tem é
+// `lastNewsAt`, o `created_at` da ocorrência mais recente — que mede a
+// imprensa, não o robô. Construir semáforo de saúde em cima disso seria
+// reintroduzir a mesma mentira que o rótulo "VARREDURA HÁ" já contou uma vez.
+//
+// Se um dia valer a pena: o backend precisa expor o timestamp do scan.
 

@@ -128,6 +128,65 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  /// O topo do jornal. A tela não tinha nenhum — abria direto no primeiro card.
+  ///
+  /// Ele nasce recebendo o que **saiu** do cabeçalho da cidade: a validade do
+  /// que está na tela. A regra passou a ser *estado do sistema mora aqui, uma
+  /// vez só; tela de conteúdo mostra conteúdo* — antes essa linha se repetia em
+  /// quatro telas e, em cada uma, disputava espaço com o nome da praça.
+  ///
+  /// `ÚLTIMA HÁ` é a ocorrência mais recente entre **todas** as cidades, não a
+  /// hora da varredura (esse dado não existe; ver a nota no fim do
+  /// `city_detail_screen.dart`). O rótulo diz exatamente isso e nada mais.
+  Widget _buildMasthead() {
+    DateTime? ultima;
+    for (final c in _cities) {
+      final t = c.lastNewsAt;
+      if (t != null && (ultima == null || t.isAfter(ultima))) ultima = t;
+    }
+
+    final marcas = <String>[
+      '${_cities.length} ${_cities.length == 1 ? 'PRAÇA' : 'PRAÇAS'}',
+      if (ultima != null) 'ÚLTIMA ${_agoLabel(ultima)}',
+    ];
+
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: SIMEopsColors.white, width: 2),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text.rich(
+            TextSpan(children: [
+              const TextSpan(text: 'SIME'),
+              TextSpan(
+                text: 'OPS',
+                style: TextStyle(color: SIMEopsColors.greenLight),
+              ),
+            ]),
+            style: SIMEopsType.wordmark(size: 25),
+          ),
+          const SizedBox(height: 9),
+          Text(
+            marcas.join(' · '),
+            style: SIMEopsType.slug(color: SIMEopsColors.faint),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _agoLabel(DateTime t) {
+    final d = DateTime.now().difference(t);
+    if (d.inMinutes < 60) return 'AGORA';
+    if (d.inHours < 24) return 'HÁ ${d.inHours}H';
+    return 'HÁ ${d.inDays}D';
+  }
+
   Widget _buildGrid() {
     // Cidade com novidade ganha o bloco inteiro; cidade quieta vira linha.
     // Regra semântica, não "top N": num dia parado a tela toda colapsa, num
@@ -139,7 +198,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
-        const SliverToBoxAdapter(child: SizedBox(height: 4)),
+        SliverToBoxAdapter(child: _buildMasthead()),
 
         SliverList(
           delegate: SliverChildBuilderDelegate(

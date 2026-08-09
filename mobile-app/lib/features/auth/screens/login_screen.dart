@@ -213,8 +213,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 12),
                   Text(
                     'MONITORAMENTO DE OCORRÊNCIAS\nNA IMPRENSA · 24 HORAS',
-                    style: SIMEopsType.note(color: SIMEopsColors.faint)
-                        .copyWith(letterSpacing: 1.8),
+                    style: SIMEopsType.tagline(),
                   ),
 
                   if (_error != null) ...[
@@ -359,10 +358,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
+                  // Caixa de sentença de propósito: é a frase que evita o
+                  // usuário esperar por um e-mail que nunca vai chegar.
                   Text(
-                    'NÃO EXISTE CADASTRO PÚBLICO E NÃO SAI E-MAIL\n'
-                    'AUTOMÁTICO. AS CONTAS SÃO CRIADAS E LIBERADAS\n'
-                    'POR UM ADMINISTRADOR.',
+                    'Não existe cadastro público e não sai e-mail automático. '
+                    'As contas são criadas e liberadas por um administrador.',
                     style: SIMEopsType.note(),
                   ),
                 ],
@@ -376,8 +376,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   InputDecoration _lineField(String hint) => InputDecoration(
         hintText: hint,
+        // `faint`, não `hairline`: o placeholder é instrução de formato
+        // ("voce@orgao.gov.br"), e a 1.8:1 ele simplesmente não existia.
         hintStyle: SIMEopsType.body()
-            .copyWith(fontSize: 17, color: SIMEopsColors.hairline),
+            .copyWith(fontSize: 17, color: SIMEopsColors.faint),
         filled: false,
         contentPadding: const EdgeInsets.only(top: 12, bottom: 9),
         enabledBorder: const UnderlineInputBorder(

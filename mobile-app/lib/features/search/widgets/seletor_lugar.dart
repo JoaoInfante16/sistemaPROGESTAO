@@ -52,7 +52,7 @@ class SeletorLugar extends StatelessWidget {
                   fontSize: 17,
                   color: preenchido
                       ? (habilitado ? SIMEopsColors.white : SIMEopsColors.faint)
-                      : SIMEopsColors.hairline,
+                      : SIMEopsColors.faint,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -174,7 +174,7 @@ class _FolhaEscolhaState extends State<FolhaEscolha> {
                     decoration: InputDecoration(
                       hintText: 'digite para filtrar',
                       hintStyle: SIMEopsType.body()
-                          .copyWith(fontSize: 17, color: SIMEopsColors.hairline),
+                          .copyWith(fontSize: 17, color: SIMEopsColors.faint),
                       filled: false,
                       contentPadding: const EdgeInsets.only(top: 10, bottom: 8),
                       enabledBorder: const UnderlineInputBorder(

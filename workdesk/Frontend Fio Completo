@@ -1,0 +1,952 @@
+
+
+Simeops fio completo · HTML
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SIMEops — proposta completa</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Rajdhani:wght@600;700&display=swap');
+ 
+:root{
+  --navy:#060D18; --navy-mid:#0A1828; --navy-light:#112233;
+  --branco:#F0F4F8;
+  --teal:#1A8F9A; --teal-claro:#22B5C4;
+  --verde:#7AB648; --verde-claro:#92D050;
+  --alerta:#E5484D;
+ 
+  --meta:#8FA9C0;
+  --fraco:#6E8092;
+  --apagado:#2A3F55;
+  --regua:#16293C; --regua-forte:#22394F;
+ 
+  --c1:#DA4358; --c2:#B39026; --c3:#1F98AB; --c4:#8F62CB; --c5:#4E8F45;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:var(--navy);color:var(--branco);font-family:'Archivo',system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;display:flex;justify-content:center}
+button,input,select{font:inherit;color:inherit;background:0;border:0}
+button{cursor:pointer}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--teal-claro);outline-offset:3px;border-radius:2px}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.aparelho{width:100%;max-width:412px;min-height:100vh;padding-bottom:96px}
+ 
+.demo{position:fixed;top:0;left:0;right:0;z-index:60;background:#000;border-bottom:1px solid #2a2a2a}
+.demo .in{max-width:412px;margin:0 auto;display:flex;gap:14px;overflow-x:auto;padding:8px 14px;scrollbar-width:none}
+.demo .in::-webkit-scrollbar{display:none}
+.demo button{flex:none;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.13em;
+  color:#5c5c5c;padding-bottom:3px;border-bottom:1.5px solid transparent;white-space:nowrap}
+.demo button.on{color:var(--verde-claro);border-bottom-color:var(--verde-claro)}
+.tela{display:none;padding-top:34px}
+.tela.ativa{display:block}
+.semnav{padding-bottom:0}
+ 
+.topo{position:sticky;top:34px;z-index:20;background:var(--navy);border-bottom:2px solid var(--branco);
+  padding:12px 18px 11px;transition:padding .18s ease,border-color .18s ease}
+.topo .l1{display:flex;align-items:center;gap:12px}
+.topo .voltar{padding:4px;margin:-4px 0 -4px -4px;flex:none}
+.topo .voltar svg{width:20px;height:20px;stroke:var(--meta);fill:none;stroke-width:1.7;stroke-linecap:square;display:block}
+.topo h1{font-size:29px;font-weight:700;line-height:1.03;letter-spacing:-.02em;transition:font-size .18s}
+.topo .l1 h1{display:none}
+.topo .bloco h1{margin-top:9px}
+.topo .marca{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:15px;letter-spacing:.16em}
+.topo .marca b{color:var(--verde-claro)}
+.topo .linha{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-top:9px;
+  font-size:9.5px;letter-spacing:.13em;color:var(--meta);max-height:24px;overflow:hidden;transition:max-height .18s}
+.vivo{display:flex;align-items:center;gap:6px;color:var(--teal-claro);white-space:nowrap}
+.vivo i{width:5px;height:5px;border-radius:50%;background:var(--verde-claro);flex:none;
+  animation:resp 3.4s ease-in-out infinite;display:block}
+@keyframes resp{0%,100%{opacity:.3}50%{opacity:1}}
+@media(prefers-reduced-motion:reduce){.vivo i{animation:none;opacity:1}}
+.topo.min{padding:10px 18px;border-bottom-color:var(--regua-forte)}
+.topo.min .bloco{display:none}
+.topo.min .l1 h1{display:block;font-size:16px;letter-spacing:-.008em}
+.topo.min .l1 .marca{display:none}
+ 
+.pracas-wrap{position:relative}
+.pracas-wrap::after{content:'';position:absolute;inset:0 0 0 auto;width:38px;pointer-events:none;
+  background:linear-gradient(90deg,transparent,var(--navy) 72%)}
+.pracas{display:flex;gap:17px;overflow-x:auto;scrollbar-width:none;padding:12px 34px 0 18px}
+.pracas::-webkit-scrollbar{display:none}
+.pracas button{flex:none;padding:0 0 4px;border-bottom:1.5px solid transparent;
+  font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.15em;color:var(--fraco);white-space:nowrap}
+.pracas button.on{color:var(--branco);border-bottom-color:var(--verde-claro)}
+ 
+.cadernos{display:flex;align-items:flex-end;gap:22px;padding:15px 18px 0;border-bottom:1px solid var(--regua)}
+.cadernos button{padding:0 0 10px;border-bottom:2px solid transparent;margin-bottom:-1px;
+  font-size:18px;font-weight:600;letter-spacing:-.01em;color:var(--fraco)}
+.cadernos button.on{color:var(--branco);border-bottom-color:var(--verde-claro)}
+.cadernos .filtro{margin-left:auto;padding-bottom:11px;flex:none;
+  font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.14em;color:var(--teal-claro)}
+.recorte{padding:9px 18px;border-bottom:1px solid var(--regua);font-family:'JetBrains Mono',monospace;
+  font-size:9.5px;letter-spacing:.12em;color:var(--fraco);text-transform:uppercase}
+ 
+.dateline,.secao{display:flex;align-items:center;gap:11px;padding:22px 18px 0}
+.dateline span,.secao span{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.2em;
+  color:var(--meta);text-transform:uppercase;white-space:nowrap}
+.dateline i,.secao i{flex:1;height:1px;background:var(--regua)}
+.secao{padding-top:30px}
+.secao span{color:var(--fraco)}
+ 
+.take{padding:17px 18px 0;position:relative;display:block;width:100%;text-align:left}
+.take.urgente::before{content:'';position:absolute;left:0;top:17px;bottom:0;width:2px;background:var(--branco)}
+.take.urgente h2{font-size:30px}
+.slug{display:flex;align-items:center;gap:9px;font-family:'JetBrains Mono',monospace;
+  font-size:9.5px;letter-spacing:.13em;color:var(--meta)}
+.slug .chip{width:7px;height:7px;flex:none;background:var(--cat)}
+.slug .cat{flex:none}
+.slug .local{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fraco)}
+.slug .hora{flex:none;color:var(--fraco)}
+.take h2{font-size:23px;font-weight:700;line-height:1.13;letter-spacing:-.015em;margin-top:9px}
+.take .lide{font-size:14.5px;line-height:1.52;color:var(--meta);margin-top:8px}
+.creditos{display:flex;align-items:baseline;gap:10px;margin-top:11px;
+  font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.06em}
+.creditos .veiculo{color:var(--teal-claro);flex:1 1 auto;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.creditos .fontes{flex:none;color:var(--verde-claro);letter-spacing:.13em}
+.take.lida h2{color:var(--fraco);font-weight:600}
+.take.lida .lide{color:var(--fraco);opacity:.72}
+.regua{height:1px;background:var(--regua);margin:19px 18px 0}
+.trinta{text-align:center;padding:34px 0 8px;font-family:'JetBrains Mono',monospace;
+  font-size:10px;letter-spacing:.34em;color:var(--apagado)}
+ 
+.dash-topo{padding:16px 18px 13px;border-bottom:2px solid var(--branco);display:flex;align-items:flex-start;gap:12px}
+.dash-topo .marca{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:25px;letter-spacing:.1em;line-height:1}
+.dash-topo .marca b{color:var(--verde-claro)}
+.dash-topo .linha{display:flex;gap:14px;margin-top:9px;font-family:'JetBrains Mono',monospace;
+  font-size:9.5px;letter-spacing:.13em;color:var(--meta)}
+.dash-topo .eng{margin-left:auto;flex:none;padding:2px}
+.dash-topo .eng svg{width:20px;height:20px;stroke:var(--meta);fill:none;stroke-width:1.5;display:block}
+.praca{padding:21px 18px 0;display:block;width:100%;text-align:left}
+.praca .cab{display:flex;align-items:center;gap:9px;font-family:'JetBrains Mono',monospace;
+  font-size:9.5px;letter-spacing:.14em;color:var(--fraco)}
+.praca .cab .uf{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.praca .cab .novas{flex:none;color:var(--verde-claro)}
+.praca h2{font-size:27px;font-weight:700;line-height:1.05;letter-spacing:-.02em;margin-top:8px}
+.praca .resumo{font-size:14.5px;line-height:1.5;color:var(--meta);margin-top:8px}
+.praca .resumo b{color:var(--branco);font-weight:600}
+.numeros{display:flex;margin-top:15px;border-top:1px solid var(--regua);padding-top:12px;gap:13px}
+.numeros div{flex:1;min-width:0}
+.numeros .n{font-family:'JetBrains Mono',monospace;font-size:21px;line-height:1;color:var(--branco)}
+.numeros .r{display:flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;
+  font-size:8.5px;letter-spacing:.09em;color:var(--fraco);margin-top:7px}
+.numeros .r i{width:6px;height:6px;flex:none;background:var(--cat)}
+.quieta{display:flex;align-items:baseline;gap:12px;width:100%;text-align:left;padding:13px 18px;
+  border-bottom:1px solid var(--regua);font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.08em}
+.quieta .nome{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--meta);letter-spacing:.05em}
+.quieta .tot{flex:none;color:var(--fraco)}
+ 
+.bloco-g{padding:26px 18px 0}
+.bloco-g>h3{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.2em;
+  color:var(--meta);text-transform:uppercase;font-weight:400}
+.bloco-g .nota{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.06em;
+  color:var(--fraco);margin-top:5px}
+.heroi{padding:24px 18px 0}
+.heroi .v{font-size:52px;font-weight:700;letter-spacing:-.035em;line-height:1}
+.heroi .l{font-size:15px;color:var(--meta);margin-top:6px;line-height:1.45}
+.heroi .l b{color:var(--branco);font-weight:600}
+.faixa{display:flex;gap:2px;margin-top:13px;height:11px}
+.faixa i{display:block;background:var(--cat);border-radius:1px}
+.legenda{margin-top:15px}
+.legenda button{display:flex;align-items:center;gap:10px;width:100%;padding:8px 0;
+  border-bottom:1px solid var(--regua);font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.05em}
+.legenda .ch{width:8px;height:8px;flex:none;background:var(--cat)}
+.legenda .nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--meta);text-align:left;letter-spacing:.11em}
+.legenda .pc{flex:none;color:var(--fraco);width:42px;text-align:right}
+.legenda .qt{flex:none;color:var(--branco);width:30px;text-align:right;font-variant-numeric:tabular-nums}
+.rank{margin-top:12px}
+.rank .li{padding:9px 0}
+.rank .cab{display:flex;align-items:baseline;gap:10px;font-family:'JetBrains Mono',monospace;font-size:10.5px}
+.rank .nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--meta);letter-spacing:.05em}
+.rank .vl{flex:none;color:var(--branco);font-variant-numeric:tabular-nums}
+.rank .tr{height:4px;background:var(--navy-light);margin-top:7px;border-radius:2px;overflow:hidden}
+.rank .tr i{display:block;height:100%;background:var(--teal);border-radius:2px}
+.tend{margin-top:14px;position:relative}
+.tend svg{display:block;width:100%;height:96px;overflow:visible}
+.tend .eixo{display:flex;justify-content:space-between;margin-top:8px;
+  font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;color:var(--fraco)}
+.tip{position:absolute;pointer-events:none;background:var(--navy-light);border:1px solid var(--regua-forte);
+  padding:6px 9px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--branco);
+  white-space:nowrap;opacity:0;transition:opacity .12s;transform:translate(-50%,-100%);z-index:5}
+.tabela{margin-top:12px;display:none}
+.tabela.on{display:block}
+.tabela .lin{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--regua);
+  font-family:'JetBrains Mono',monospace;font-size:10.5px}
+.tabela .lin span:first-child{flex:1;color:var(--meta)}
+.tabela .lin span+span{flex:none;color:var(--branco);font-variant-numeric:tabular-nums}
+.vertab{margin-top:11px;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.15em;color:var(--teal-claro)}
+ 
+.campo{padding:22px 18px 0}
+.campo>label{display:block;font-family:'JetBrains Mono',monospace;font-size:9.5px;
+  letter-spacing:.2em;color:var(--meta);text-transform:uppercase}
+.linha-in{display:flex;align-items:baseline;gap:10px;border-bottom:1px solid var(--regua-forte);padding:11px 0 9px}
+.linha-in input,.linha-in select{flex:1;font-size:17px;outline:0;min-width:0}
+.linha-in input::placeholder{color:var(--apagado)}
+.linha-in .ic{flex:none;font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--fraco);letter-spacing:.12em}
+.opcoes{display:flex;gap:2px;margin-top:12px}
+.opcoes button{flex:1;padding:11px 2px;background:var(--navy-mid);font-family:'JetBrains Mono',monospace;
+  font-size:11px;letter-spacing:.05em;color:var(--fraco);border-bottom:2px solid transparent}
+.opcoes button.on{background:var(--navy-light);color:var(--branco);border-bottom-color:var(--verde-claro)}
+.presets{margin-top:12px}
+.presets button{display:flex;align-items:baseline;gap:11px;width:100%;text-align:left;padding:13px 0;
+  border-bottom:1px solid var(--regua)}
+.presets .nm{flex:1 1 auto;font-size:16px;font-weight:600;color:var(--meta)}
+.presets .cst{flex:none;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;color:var(--fraco)}
+.presets button.on .nm{color:var(--branco)}
+.presets button.on .cst{color:var(--teal-claro)}
+.presets .mk{flex:none;width:11px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--verde-claro)}
+.tags{display:flex;flex-wrap:wrap;gap:7px;margin-top:13px}
+.tags span{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em;color:var(--meta);
+  border:1px solid var(--regua-forte);padding:5px 9px}
+.tags .add{color:var(--teal-claro);border-style:dashed;border-color:var(--regua-forte)}
+.custo{margin:26px 18px 0;border-top:2px solid var(--branco);padding-top:14px;
+  display:flex;align-items:flex-end;gap:14px}
+.custo .t{font-size:38px;font-weight:700;letter-spacing:-.03em;line-height:.95}
+.custo .t small{font-size:15px;font-weight:600;color:var(--meta);letter-spacing:0}
+.custo .d{flex:1;font-family:'JetBrains Mono',monospace;font-size:9.5px;line-height:1.65;
+  letter-spacing:.08em;color:var(--fraco);text-align:right}
+.acao{display:block;width:100%;margin-top:22px;padding:19px;background:var(--verde);
+  color:#08150A;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500;letter-spacing:.22em}
+.acao.vazio{background:0;border:1px solid var(--regua-forte);color:var(--meta)}
+ 
+.consulta{display:block;width:100%;text-align:left;padding:16px 18px;border-bottom:1px solid var(--regua)}
+.consulta .l1{display:flex;align-items:baseline;gap:10px;font-family:'JetBrains Mono',monospace;
+  font-size:9.5px;letter-spacing:.13em;color:var(--fraco)}
+.consulta .l1 .qt{flex:none;color:var(--branco)}
+.consulta .l1 .dt{flex:1;text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.consulta h3{font-size:20px;font-weight:700;letter-spacing:-.015em;margin-top:7px}
+.consulta .sub{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.07em;color:var(--fraco);margin-top:5px}
+.consulta.falhou h3{color:var(--fraco)}
+.consulta .erro{color:var(--alerta)}
+.balde{width:100%;display:flex;align-items:baseline;gap:11px;padding:15px 18px;
+  border-top:1px solid var(--regua-forte);background:var(--navy-mid);text-align:left}
+.balde .nm{flex:1 1 auto;font-family:'JetBrains Mono',monospace;font-size:10px;
+  letter-spacing:.16em;color:var(--meta)}
+.balde .qt{flex:none;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--branco)}
+.balde .ch{flex:none;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--fraco)}
+.aviso{margin:15px 18px 0;padding:12px 13px;background:var(--navy-mid);border-left:2px solid var(--teal);
+  font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.7;letter-spacing:.05em;color:var(--meta)}
+ 
+.esp-topo{padding:18px 18px 15px;border-bottom:2px solid var(--branco)}
+.esp-topo .k{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.2em;color:var(--teal-claro)}
+.esp-topo h1{font-size:29px;font-weight:700;line-height:1.03;letter-spacing:-.02em;margin-top:9px}
+.esp-topo .sub{display:flex;justify-content:space-between;gap:12px;margin-top:9px;
+  font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.13em;color:var(--meta)}
+.esp-topo .cron{color:var(--branco)}
+.passos{padding:6px 18px 0}
+.passo{display:flex;align-items:baseline;gap:12px;padding:9px 0;font-family:'JetBrains Mono',monospace;
+  font-size:11px;letter-spacing:.04em;color:var(--apagado)}
+.passo .mk{flex:none;width:13px;text-align:center;font-size:10px}
+.passo .nm{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.passo .vl{flex:none;font-size:10px;letter-spacing:.08em}
+.passo.feito{color:var(--fraco)} .passo.feito .mk{color:var(--verde-claro)} .passo.feito .vl{color:var(--meta)}
+.passo.agora{color:var(--branco)} .passo.agora .mk,.passo.agora .vl{color:var(--teal-claro)}
+.barra{height:2px;background:var(--regua);margin:1px 0 6px 25px;overflow:hidden}
+.barra i{display:block;height:100%;background:var(--teal-claro);transition:width .6s ease}
+.achado{padding:15px 18px 0;animation:entra .45s ease both}
+@keyframes entra{from{opacity:0;transform:translateY(-7px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.achado{animation:none}}
+.achado h3{font-size:16.5px;font-weight:600;line-height:1.22;letter-spacing:-.01em;margin-top:6px}
+.achado .sep{height:1px;background:var(--regua);margin-top:15px}
+.rodape-esp{padding:26px 18px 0;font-family:'JetBrains Mono',monospace;font-size:10px;
+  line-height:1.7;letter-spacing:.06em;color:var(--fraco)}
+.rodape-esp b{color:var(--meta);font-weight:400}
+ 
+.centro{min-height:calc(100vh - 34px);display:flex;flex-direction:column;justify-content:center;padding:0 18px 60px}
+.centro .marca{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:38px;letter-spacing:.1em;line-height:1}
+.centro .marca b{color:var(--verde-claro)}
+.centro .sub{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.19em;
+  color:var(--fraco);margin-top:11px;line-height:1.7}
+.centro .campo{padding:0;margin-top:26px}
+.centro .rod{margin-top:24px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
+  line-height:1.8;letter-spacing:.07em;color:var(--fraco)}
+.centro .rod a{color:var(--teal-claro)}
+ 
+.item{display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:17px 18px;
+  border-bottom:1px solid var(--regua)}
+.item .nm{flex:1 1 auto;font-size:16px;color:var(--branco)}
+.item .vl{flex:none;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.08em;color:var(--fraco)}
+.item .sw{flex:none;width:40px;height:22px;background:var(--navy-light);border:1px solid var(--regua-forte);
+  position:relative;transition:background .16s}
+.item .sw::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;
+  background:var(--fraco);transition:transform .16s,background .16s}
+.item .sw.on{background:rgba(122,182,72,.18);border-color:var(--verde)}
+.item .sw.on::after{transform:translateX(18px);background:var(--verde-claro)}
+.item .dsc{font-size:12.5px;color:var(--fraco);margin-top:4px;line-height:1.45}
+ 
+nav{position:fixed;bottom:0;left:0;right:0;z-index:40;display:flex;justify-content:center;
+  background:var(--navy);border-top:1px solid var(--regua)}
+nav .in{width:100%;max-width:412px;display:flex}
+nav button{flex:1;padding:16px 4px 20px;border-top:2px solid transparent;margin-top:-1px;
+  font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--fraco);position:relative}
+nav button.on{color:var(--verde-claro);border-top-color:var(--verde-claro)}
+nav .selo{position:absolute;top:5px;left:50%;transform:translateX(14px);
+  font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--verde-claro)}
+</style>
+ 
+<div class="demo"><div class="in">
+  <button class="on" data-t="login">LOGIN</button>
+  <button data-t="senha">SENHA</button>
+  <button data-t="dash">DASHBOARD</button>
+  <button data-t="feed">FEED</button>
+  <button data-t="rel-cidade">RELATÓRIO CIDADE</button>
+  <button data-t="busca">CONSULTAS</button>
+  <button data-t="nova">NOVA CONSULTA</button>
+  <button data-t="esp">ESPERA</button>
+  <button data-t="result">RESULTADOS</button>
+  <button data-t="rel-risco">RELATÓRIO RISCO</button>
+  <button data-t="salvos">SALVOS</button>
+  <button data-t="config">CONFIG</button>
+</div></div>
+ 
+<div class="aparelho">
+ 
+<section class="tela ativa semnav" id="login">
+  <div class="centro">
+    <div class="marca">SIME<b>OPS</b></div>
+    <div class="sub">MONITORAMENTO DE OCORRÊNCIAS<br>NA IMPRENSA · 24H</div>
+    <div class="campo">
+      <label>E-mail</label>
+      <div class="linha-in"><input type="email" placeholder="voce@orgao.gov.br"></div>
+    </div>
+    <div class="campo">
+      <label>Senha</label>
+      <div class="linha-in"><input type="password" placeholder="••••••••"><button class="ic">VER</button></div>
+    </div>
+    <button class="acao">ENTRAR</button>
+    <p class="rod">ESQUECEU A SENHA?<br>
+      <a href="#">SOLICITAR REDEFINIÇÃO AO ADMINISTRADOR →</a><br>
+      NÃO É ENVIADO E-MAIL AUTOMÁTICO. UM<br>ADMINISTRADOR LIBERA O ACESSO.</p>
+  </div>
+</section>
+ 
+<section class="tela semnav" id="senha">
+  <div class="centro">
+    <div class="sub" style="color:var(--teal-claro);margin:0">PRIMEIRO ACESSO</div>
+    <h1 style="font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.05;margin-top:12px">
+      Defina sua senha</h1>
+    <p style="font-size:14.5px;color:var(--meta);margin-top:10px;line-height:1.5">
+      Sua conta foi criada com uma senha provisória. Escolha uma nova para continuar.</p>
+    <div class="campo"><label>Nova senha</label>
+      <div class="linha-in"><input type="password" placeholder="••••••••"><span class="ic">MÍN. 8</span></div></div>
+    <div class="campo"><label>Repita a nova senha</label>
+      <div class="linha-in"><input type="password" placeholder="••••••••"></div></div>
+    <button class="acao">SALVAR E CONTINUAR</button>
+    <p class="rod">ESTA TELA APARECE UMA ÚNICA VEZ.</p>
+  </div>
+</section>
+ 
+<section class="tela" id="dash">
+  <header class="dash-topo">
+    <div>
+      <div class="marca">SIME<b>OPS</b></div>
+      <div class="linha"><span class="vivo"><i></i> VARREDURA HÁ 2H</span><span>41 FONTES</span></div>
+    </div>
+    <button class="eng" aria-label="Configurações" data-ir="config">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v3M12 18.4v3M21.4 12h-3M5.6 12h-3M18.6 5.4l-2.1 2.1M7.5 16.5l-2.1 2.1M18.6 18.6l-2.1-2.1M7.5 7.5L5.4 5.4"/></svg>
+    </button>
+  </header>
+ 
+  <button class="praca" data-ir="feed">
+    <div class="cab mono"><span class="uf">SC · GRANDE FLORIANÓPOLIS</span><span class="novas">18 NOVAS</span></div>
+    <h2>Grande Florianópolis</h2>
+    <p class="resumo"><b>107 ocorrências</b> em trinta dias. Patrimonial responde por 41%, a maior fatia.</p>
+    <div class="numeros">
+      <div style="--cat:var(--c1)"><span class="n">25</span><span class="r"><i></i>SEGUR.</span></div>
+      <div style="--cat:var(--c2)"><span class="n">44</span><span class="r"><i></i>PATRIM.</span></div>
+      <div style="--cat:var(--c3)"><span class="n">28</span><span class="r"><i></i>OPERAC.</span></div>
+      <div style="--cat:var(--c4)"><span class="n">10</span><span class="r"><i></i>OUTRAS</span></div>
+    </div>
+  </button>
+  <div class="regua" style="margin-top:21px"></div>
+ 
+  <button class="praca">
+    <div class="cab mono"><span class="uf">RS · PORTO ALEGRE</span><span class="novas">15 NOVAS</span></div>
+    <h2>Porto Alegre</h2>
+    <p class="resumo"><b>90 ocorrências</b> em trinta dias. Segurança responde por 38%, a maior fatia.</p>
+    <div class="numeros">
+      <div style="--cat:var(--c1)"><span class="n">34</span><span class="r"><i></i>SEGUR.</span></div>
+      <div style="--cat:var(--c2)"><span class="n">27</span><span class="r"><i></i>PATRIM.</span></div>
+      <div style="--cat:var(--c3)"><span class="n">21</span><span class="r"><i></i>OPERAC.</span></div>
+      <div style="--cat:var(--c4)"><span class="n">8</span><span class="r"><i></i>OUTRAS</span></div>
+    </div>
+  </button>
+  <div class="regua" style="margin-top:21px"></div>
+ 
+  <button class="praca">
+    <div class="cab mono"><span class="uf">BA · SALVADOR</span><span class="novas">4 NOVAS</span></div>
+    <h2>Salvador</h2>
+    <p class="resumo"><b>63 ocorrências</b> em trinta dias. Segurança responde por 52%, a maior fatia.</p>
+    <div class="numeros">
+      <div style="--cat:var(--c1)"><span class="n">33</span><span class="r"><i></i>SEGUR.</span></div>
+      <div style="--cat:var(--c2)"><span class="n">18</span><span class="r"><i></i>PATRIM.</span></div>
+      <div style="--cat:var(--c3)"><span class="n">9</span><span class="r"><i></i>OPERAC.</span></div>
+      <div style="--cat:var(--c4)"><span class="n">3</span><span class="r"><i></i>OUTRAS</span></div>
+    </div>
+  </button>
+ 
+  <div class="secao"><span>SEM NOVIDADE HOJE</span><i></i></div>
+  <button class="quieta"><span class="nome">Vitória · ES</span><span class="tot">31 em 30d</span></button>
+  <button class="quieta"><span class="nome">Goiânia · GO</span><span class="tot">77 em 30d</span></button>
+  <button class="quieta"><span class="nome">Campo Grande · MS</span><span class="tot">19 em 30d</span></button>
+  <button class="quieta"><span class="nome">Caxias do Sul · RS</span><span class="tot">8 em 30d</span></button>
+  <p class="trinta">— 30 —</p>
+</section>
+ 
+<section class="tela" id="feed">
+  <header class="topo" id="topo">
+    <div class="l1">
+      <button class="voltar" data-ir="dash" aria-label="Voltar"><svg viewBox="0 0 24 24"><path d="M14.5 5L7.5 12l7 7"/></svg></button>
+      <span class="marca mono">SIME<b>OPS</b></span>
+      <h1>Grande Florianópolis</h1>
+    </div>
+    <div class="bloco">
+      <h1>Grande Florianópolis</h1>
+      <div class="linha mono"><span class="vivo"><i></i> VARREDURA HÁ 2H</span><span>SC · 107 EM 30D · 18 NOVAS</span></div>
+    </div>
+  </header>
+ 
+  <div class="pracas-wrap"><div class="pracas">
+    <button class="on">TODAS</button><button>FLORIANÓPOLIS</button><button>PALHOÇA</button>
+    <button>SÃO JOSÉ</button><button>BIGUAÇU</button><button>SANTO AMARO DA IMPERATRIZ</button>
+  </div></div>
+ 
+  <div class="cadernos">
+    <button class="on">Notícias</button><button data-ir="rel-cidade">Relatório</button>
+    <button class="filtro mono">FILTRAR</button>
+  </div>
+  <div class="recorte mono">30 dias · todas as categorias</div>
+ 
+  <div class="dateline"><span>Hoje · 04 ago</span><i></i></div>
+ 
+  <article class="take urgente" style="--cat:var(--c1)">
+    <div class="slug"><i class="chip"></i><span class="cat">SEGURANÇA</span><span class="local">São José · Frei Damião</span><span class="hora">07:40</span></div>
+    <h2>Adolescente é morto após reagir armado a abordagem policial</h2>
+    <p class="lide">Um jovem de 15 anos morreu depois de reagir armado durante abordagem da Polícia Militar, na sequência de um roubo a uma farmácia em São José. O suspeito foi socorrido e não resistiu aos ferimentos.</p>
+    <div class="creditos"><span class="veiculo">jornalrazao.com</span></div>
+  </article>
+  <div class="regua"></div>
+ 
+  <article class="take" style="--cat:var(--c2)">
+    <div class="slug"><i class="chip"></i><span class="cat">PATRIMONIAL</span><span class="local">Palhoça · Ponte do Imaruim</span><span class="hora">09:14</span></div>
+    <h2>Empresário é preso vendendo peças de veículos roubados</h2>
+    <p class="lide">A Operação 311 prendeu em flagrante um empresário que comercializava peças de veículos roubados em Palhoça. Foram apreendidos componentes de sete veículos, dois deles com registro de roubo.</p>
+    <div class="creditos"><span class="veiculo">agorafloripa.com.br</span><span class="fontes">3 FONTES</span></div>
+  </article>
+  <div class="regua"></div>
+ 
+  <article class="take" style="--cat:var(--c4)">
+    <div class="slug"><i class="chip"></i><span class="cat">FRAUDE</span><span class="local">Florianópolis · Jardim Atlântico</span><span class="hora">11:12</span></div>
+    <h2>Golpe com falsa central bancária atinge moradores da região continental</h2>
+    <p class="lide">Vítimas relatam ligações de pessoas que se apresentam como funcionários do banco e pedem transferência para uma suposta conta segura. A delegacia registrou seis casos na semana.</p>
+    <div class="creditos"><span class="veiculo">sctd.com.br</span><span class="fontes">2 FONTES</span></div>
+  </article>
+  <div class="regua"></div>
+ 
+  <div class="dateline"><span>Ontem · 03 ago</span><i></i></div>
+ 
+  <article class="take lida" style="--cat:var(--c2)">
+    <div class="slug"><i class="chip"></i><span class="cat">PATRIMONIAL</span><span class="local">São José · Campinas</span><span class="hora">18:02</span></div>
+    <h2>Guarda Municipal recupera 21 vergalhões furtados</h2>
+    <p class="lide">Três suspeitos foram detidos depois que o monitoramento identificou movimentação atípica em um depósito de materiais de construção.</p>
+    <div class="creditos"><span class="veiculo">agorafloripa.com.br</span><span class="fontes">2 FONTES</span></div>
+  </article>
+  <div class="regua"></div>
+ 
+  <article class="take lida" style="--cat:var(--c3)">
+    <div class="slug"><i class="chip"></i><span class="cat">OPERACIONAL</span><span class="local">Florianópolis · Trindade</span><span class="hora">14:35</span></div>
+    <h2>Operação integrada apreende armas e detém três pessoas</h2>
+    <p class="lide">Polícia Civil e Guarda Municipal cumpriram mandados na região central. Foram apreendidas duas armas de fogo e munição.</p>
+    <div class="creditos"><span class="veiculo">ndmais.com.br</span></div>
+  </article>
+  <div class="regua"></div>
+ 
+  <article class="take lida" style="--cat:var(--c5)">
+    <div class="slug"><i class="chip"></i><span class="cat">INSTITUCIONAL</span><span class="local">Biguaçu · Centro</span><span class="hora">10:20</span></div>
+    <h2>Prefeitura assina convênio para ampliar videomonitoramento</h2>
+    <p class="lide">O acordo prevê 42 novas câmeras até dezembro, com integração ao centro de operações da Guarda Municipal.</p>
+    <div class="creditos"><span class="veiculo">ocp.news</span><span class="fontes">2 FONTES</span></div>
+  </article>
+  <p class="trinta">— 30 —</p>
+</section>
+ 
+<section class="tela" id="rel-cidade">
+  <header class="topo">
+    <div class="l1">
+      <button class="voltar" data-ir="dash" aria-label="Voltar"><svg viewBox="0 0 24 24"><path d="M14.5 5L7.5 12l7 7"/></svg></button>
+      <span class="marca mono">SIME<b>OPS</b></span>
+      <h1>Grande Florianópolis</h1>
+    </div>
+    <div class="bloco">
+      <h1>Grande Florianópolis</h1>
+      <div class="linha mono"><span class="vivo"><i></i> VARREDURA HÁ 2H</span><span>SC · 3 CIDADES</span></div>
+    </div>
+  </header>
+ 
+  <div class="pracas-wrap"><div class="pracas">
+    <button class="on">TODAS</button><button>FLORIANÓPOLIS</button><button>PALHOÇA</button>
+    <button>SÃO JOSÉ</button><button>BIGUAÇU</button>
+  </div></div>
+  <div class="cadernos">
+    <button data-ir="feed">Notícias</button><button class="on">Relatório</button>
+    <button class="filtro mono">FILTRAR</button>
+  </div>
+  <div class="recorte mono">1 jul – 4 ago · 35 dias · todas as categorias</div>
+ 
+  <div class="heroi">
+    <div class="v">107</div>
+    <p class="l"><b>ocorrências publicadas</b> por 41 veículos em 35 dias. É o que a imprensa noticiou — não o total registrado pelas polícias.</p>
+  </div>
+ 
+  <div class="bloco-g">
+    <h3>Por categoria</h3>
+    <div class="faixa">
+      <i style="--cat:var(--c1);flex:25"></i><i style="--cat:var(--c2);flex:44"></i>
+      <i style="--cat:var(--c3);flex:28"></i><i style="--cat:var(--c4);flex:6"></i>
+      <i style="--cat:var(--c5);flex:4"></i>
+    </div>
+    <div class="legenda">
+      <button style="--cat:var(--c2)"><i class="ch"></i><span class="nm">PATRIMONIAL</span><span class="pc">41%</span><span class="qt">44</span></button>
+      <button style="--cat:var(--c3)"><i class="ch"></i><span class="nm">OPERACIONAL</span><span class="pc">26%</span><span class="qt">28</span></button>
+      <button style="--cat:var(--c1)"><i class="ch"></i><span class="nm">SEGURANÇA</span><span class="pc">23%</span><span class="qt">25</span></button>
+      <button style="--cat:var(--c4)"><i class="ch"></i><span class="nm">FRAUDE</span><span class="pc">6%</span><span class="qt">6</span></button>
+      <button style="--cat:var(--c5)"><i class="ch"></i><span class="nm">INSTITUCIONAL</span><span class="pc">4%</span><span class="qt">4</span></button>
+    </div>
+  </div>
+ 
+  <div class="bloco-g">
+    <h3>Bairros mais citados</h3>
+    <p class="nota">CITAÇÃO NA MATÉRIA — NÃO É ONDE O FATO OCORREU EM 100% DOS CASOS</p>
+    <div class="rank">
+      <div class="li"><div class="cab"><span class="nm">Centro · Florianópolis</span><span class="vl">19</span></div><div class="tr"><i style="width:100%"></i></div></div>
+      <div class="li"><div class="cab"><span class="nm">Campinas · São José</span><span class="vl">14</span></div><div class="tr"><i style="width:74%"></i></div></div>
+      <div class="li"><div class="cab"><span class="nm">Ponte do Imaruim · Palhoça</span><span class="vl">11</span></div><div class="tr"><i style="width:58%"></i></div></div>
+      <div class="li"><div class="cab"><span class="nm">Trindade · Florianópolis</span><span class="vl">9</span></div><div class="tr"><i style="width:47%"></i></div></div>
+      <div class="li"><div class="cab"><span class="nm">Kobrasol · São José</span><span class="vl">8</span></div><div class="tr"><i style="width:42%"></i></div></div>
+      <div class="li"><div class="cab"><span class="nm">Ingleses · Florianópolis</span><span class="vl">6</span></div><div class="tr"><i style="width:32%"></i></div></div>
+      <div class="li"><div class="cab"><span class="nm">Estreito · Florianópolis</span><span class="vl">5</span></div><div class="tr"><i style="width:26%"></i></div></div>
+    </div>
+  </div>
+ 
+  <div class="bloco-g">
+    <h3>Volume por dia</h3>
+    <div class="tend" id="tend">
+      <svg viewBox="0 0 340 96" preserveAspectRatio="none" id="svg-t"></svg>
+      <div class="eixo"><span>1 JUL</span><span>18 JUL</span><span>4 AGO</span></div>
+      <div class="tip" id="tip-t"></div>
+    </div>
+    <p class="nota" style="margin-top:9px">PICO EM 22 JUL · 9 OCORRÊNCIAS</p>
+  </div>
+ 
+  <div class="bloco-g">
+    <h3>Veículos analisados</h3>
+    <div class="rank">
+      <div class="li"><div class="cab"><span class="nm">ndmais.com.br</span><span class="vl">23</span></div><div class="tr"><i style="width:100%"></i></div></div>
+      <div class="li"><div class="cab"><span class="nm">agorafloripa.com.br</span><span class="vl">18</span></div><div class="tr"><i style="width:78%"></i></div></div>
+      <div class="li"><div class="cab"><span class="nm">ocp.news</span><span class="vl">12</span></div><div class="tr"><i style="width:52%"></i></div></div>
+      <div class="li"><div class="cab"><span class="nm">jornalrazao.com</span><span class="vl">9</span></div><div class="tr"><i style="width:39%"></i></div></div>
+    </div>
+    <p class="nota" style="margin-top:13px">+ 37 VEÍCULOS COM MENOS DE 9 PUBLICAÇÕES</p>
+  </div>
+ 
+  <p class="trinta">— 30 —</p>
+</section>
+ 
+<section class="tela" id="busca">
+  <header class="dash-topo" style="display:block">
+    <div class="marca" style="font-size:25px">Consultas</div>
+    <div class="linha"><span>20 MAIS RECENTES · SEGURE PARA SELECIONAR</span></div>
+  </header>
+  <div style="padding:18px 18px 0"><button class="acao" data-ir="nova">NOVA CONSULTA</button></div>
+ 
+  <div class="secao"><span>HOJE</span><i></i></div>
+  <button class="consulta" data-ir="result">
+    <div class="l1"><span class="qt">13 RESULTADOS</span><span class="dt">11:22</span></div>
+    <h3>Salvador</h3>
+    <div class="sub">BA · 30 DIAS · 12 ASSUNTOS · +6 CIDADES DA REGIÃO</div>
+  </button>
+  <button class="consulta">
+    <div class="l1"><span class="qt">5 RESULTADOS</span><span class="dt">11:19</span></div>
+    <h3>Vitória</h3>
+    <div class="sub">ES · 7 DIAS · 6 ASSUNTOS</div>
+  </button>
+ 
+  <div class="secao"><span>ONTEM</span><i></i></div>
+  <button class="consulta">
+    <div class="l1"><span class="qt">1 RESULTADO</span><span class="dt">13:35</span></div>
+    <h3>Porto Alegre</h3>
+    <div class="sub">RS · 7 DIAS · 6 ASSUNTOS</div>
+  </button>
+  <div class="aviso">1 RESULTADO EM 7 DIAS É NORMAL PARA<br>RECORTE CURTO. AMPLIE O PERÍODO OU<br>OS ASSUNTOS PARA ALCANÇAR MAIS.</div>
+ 
+  <button class="consulta falhou">
+    <div class="l1"><span class="qt erro">FALHOU</span><span class="dt">09:04</span></div>
+    <h3>Goiânia</h3>
+    <div class="sub erro" style="color:var(--alerta)">TEMPO ESGOTADO NA COLETA · TOQUE PARA REPETIR</div>
+  </button>
+  <p class="trinta">— 30 —</p>
+</section>
+ 
+<section class="tela" id="nova">
+  <header class="topo">
+    <div class="l1">
+      <button class="voltar" data-ir="busca" aria-label="Voltar"><svg viewBox="0 0 24 24"><path d="M14.5 5L7.5 12l7 7"/></svg></button>
+      <span class="marca mono">SIME<b>OPS</b></span>
+      <h1>Nova consulta</h1>
+    </div>
+    <div class="bloco"><h1>Nova consulta</h1>
+      <div class="linha mono"><span>UMA CIDADE POR CONSULTA</span><span>REGIÃO INCLUSA</span></div></div>
+  </header>
+ 
+  <div class="campo">
+    <label>Onde</label>
+    <div class="linha-in"><select><option>Bahia</option><option>Santa Catarina</option></select><span class="ic">UF</span></div>
+    <div class="linha-in"><select><option>Salvador</option><option>Feira de Santana</option></select><span class="ic">CIDADE</span></div>
+    <div class="tags"><span>+ LAURO DE FREITAS</span><span>+ CAMAÇARI</span><span>+ SIMÕES FILHO</span><span>+ 3</span></div>
+    <p class="mono" style="font-size:9px;letter-spacing:.06em;color:var(--fraco);margin-top:9px">
+      A REGIÃO METROPOLITANA VEM JUNTO, SEM CUSTO EXTRA</p>
+  </div>
+ 
+  <div class="campo">
+    <label>O que perguntar</label>
+    <div class="presets">
+      <button><span class="mk"></span><span class="nm">Essencial</span><span class="cst">6 ASSUNTOS · ~4 MIN</span></button>
+      <button class="on"><span class="mk">▸</span><span class="nm">Padrão</span><span class="cst">12 ASSUNTOS · ~7 MIN</span></button>
+      <button><span class="mk"></span><span class="nm">Completa</span><span class="cst">17 ASSUNTOS · ~11 MIN</span></button>
+    </div>
+    <div class="tags">
+      <span>HOMICÍDIO</span><span>ROUBO</span><span>TRÁFICO</span><span>FURTO</span>
+      <span>MILÍCIA</span><span>+ 7</span><span class="add">+ ASSUNTO LIVRE</span>
+    </div>
+  </div>
+ 
+  <div class="campo">
+    <label>Desde quando</label>
+    <div class="opcoes">
+      <button>7D</button><button class="on">30D</button><button>60D</button>
+      <button>90D</button><button>180D</button>
+    </div>
+    <div class="linha-in" style="margin-top:14px"><input value="05/07/2026" readonly><span class="ic">OU DATA EXATA</span></div>
+  </div>
+ 
+  <div class="custo">
+    <div class="t">~7<small> min</small></div>
+    <div class="d">12 ASSUNTOS × 7 CIDADES<br>ESTIMATIVA, NÃO GARANTIA</div>
+  </div>
+  <div style="padding:0 18px"><button class="acao" data-ir="esp">INICIAR CONSULTA</button></div>
+  <p class="trinta">— 30 —</p>
+</section>
+ 
+<section class="tela" id="esp">
+  <header class="esp-topo">
+    <div class="k">CONSULTA EM ANDAMENTO</div>
+    <h1>Salvador</h1>
+    <div class="sub"><span>BA · 30 DIAS · 12 ASSUNTOS</span><span class="cron" id="cron">04:12</span></div>
+  </header>
+  <div class="passos">
+    <div class="passo feito"><span class="mk">✓</span><span class="nm">Consultar a imprensa</span><span class="vl">619 LINKS</span></div>
+    <div class="passo feito"><span class="mk">✓</span><span class="nm">Descartar o que não é ocorrência</span><span class="vl">619 → 412</span></div>
+    <div class="passo feito"><span class="mk">✓</span><span class="nm">Triagem por relevância</span><span class="vl">412 → 155</span></div>
+    <div class="passo agora"><span class="mk">▸</span><span class="nm">Baixar as matérias</span><span class="vl" id="c1">98 / 155</span></div>
+    <div class="barra"><i id="b1" style="width:63%"></i></div>
+    <div class="passo"><span class="mk">·</span><span class="nm">Extrair local, data e tipo</span><span class="vl">—</span></div>
+    <div class="passo"><span class="mk">·</span><span class="nm">Juntar as repetidas</span><span class="vl">—</span></div>
+    <div class="passo"><span class="mk">·</span><span class="nm">Montar o relatório</span><span class="vl">—</span></div>
+  </div>
+  <div style="padding-top:26px">
+    <div class="secao" style="padding-top:0"><span id="ct">JÁ ENCONTRADO · 14</span><i></i></div>
+    <div id="lista"></div>
+  </div>
+  <p class="rodape-esp">PODE FECHAR O APP.<br><b>UM AVISO CHEGA QUANDO TERMINAR.</b></p>
+  <p class="trinta">— 30 —</p>
+</section>
+ 
+<section class="tela" id="result">
+  <header class="topo">
+    <div class="l1">
+      <button class="voltar" data-ir="busca" aria-label="Voltar"><svg viewBox="0 0 24 24"><path d="M14.5 5L7.5 12l7 7"/></svg></button>
+      <span class="marca mono">SIME<b>OPS</b></span><h1>Salvador</h1>
+    </div>
+    <div class="bloco"><h1>Salvador</h1>
+      <div class="linha mono"><span>BA · 5 JUL – 4 AGO</span><span>CONCLUÍDA 11:22</span></div></div>
+  </header>
+ 
+  <div style="padding:20px 18px 0;display:flex;gap:0">
+    <div style="flex:1"><div style="font-size:34px;font-weight:700;letter-spacing:-.03em;line-height:1">13</div>
+      <div class="mono" style="font-size:8.5px;letter-spacing:.1em;color:var(--fraco);margin-top:7px">SALVADOR<br>NO PERÍODO</div></div>
+    <div style="flex:1"><div style="font-size:34px;font-weight:700;letter-spacing:-.03em;line-height:1;color:var(--meta)">12</div>
+      <div class="mono" style="font-size:8.5px;letter-spacing:.1em;color:var(--fraco);margin-top:7px">REGIÃO<br>METROPOLITANA</div></div>
+    <div style="flex:1"><div style="font-size:34px;font-weight:700;letter-spacing:-.03em;line-height:1;color:var(--meta)">9</div>
+      <div class="mono" style="font-size:8.5px;letter-spacing:.1em;color:var(--fraco);margin-top:7px">FORA DO<br>PERÍODO</div></div>
+  </div>
+  <div style="padding:16px 18px 0"><button class="acao vazio" data-ir="rel-risco">VER RELATÓRIO DE RISCO</button></div>
+ 
+  <div class="dateline" style="padding-top:26px"><span>Salvador · no período</span><i></i></div>
+  <article class="take" style="--cat:var(--c1)">
+    <div class="slug"><i class="chip"></i><span class="cat">SEGURANÇA</span><span class="local">Salvador · Cabula</span><span class="hora">31/07</span></div>
+    <h2>Homicídio é registrado no Cabula durante a madrugada</h2>
+    <p class="lide">A vítima foi encontrada por moradores na região do Cabula VI. A Polícia Civil investiga a motivação.</p>
+    <div class="creditos"><span class="veiculo">correio24horas.com.br</span><span class="fontes">3 FONTES</span></div>
+  </article>
+  <div class="regua"></div>
+  <article class="take" style="--cat:var(--c2)">
+    <div class="slug"><i class="chip"></i><span class="cat">PATRIMONIAL</span><span class="local">Salvador · Liberdade</span><span class="hora">30/07</span></div>
+    <h2>Dupla é presa após roubo a comércio na Liberdade</h2>
+    <p class="lide">Os suspeitos foram detidos a dois quarteirões do estabelecimento, com os produtos e uma arma simulada.</p>
+    <div class="creditos"><span class="veiculo">bahianoticias.com.br</span><span class="fontes">2 FONTES</span></div>
+  </article>
+  <div class="regua"></div>
+  <article class="take" style="--cat:var(--c4)">
+    <div class="slug"><i class="chip"></i><span class="cat">FRAUDE</span><span class="local">Salvador · Pituba</span><span class="hora">29/07</span></div>
+    <h2>Golpe do falso empréstimo consignado atinge aposentados</h2>
+    <p class="lide">A delegacia especializada registrou 11 boletins no mês, todos com o mesmo modo de abordagem por telefone.</p>
+    <div class="creditos"><span class="veiculo">atarde.com.br</span></div>
+  </article>
+ 
+  <button class="balde" style="margin-top:26px">
+    <span class="nm">REGIÃO METROPOLITANA</span><span class="qt">12</span><span class="ch">▾</span></button>
+  <button class="balde">
+    <span class="nm">ANTES DE 5 JUL</span><span class="qt">9</span><span class="ch">▾</span></button>
+  <p class="trinta">— 30 —</p>
+</section>
+ 
+<section class="tela" id="rel-risco">
+  <header class="topo">
+    <div class="l1">
+      <button class="voltar" data-ir="result" aria-label="Voltar"><svg viewBox="0 0 24 24"><path d="M14.5 5L7.5 12l7 7"/></svg></button>
+      <span class="marca mono">SIME<b>OPS</b></span><h1>Relatório de risco</h1>
+    </div>
+    <div class="bloco"><h1>Relatório de risco</h1>
+      <div class="linha mono"><span>SALVADOR · BA</span><span>GERADO 04 AGO 11:24</span></div></div>
+  </header>
+ 
+  <div class="aviso" style="margin-top:18px;border-left-color:var(--branco)">
+    RECORTE DESTE DOCUMENTO<br>
+    <b style="color:var(--branco);font-weight:400">5 DE JULHO A 4 DE AGOSTO DE 2026 · 30 DIAS</b><br>
+    SALVADOR E MAIS 6 CIDADES DA REGIÃO<br>
+    FONTE: 41 VEÍCULOS DE IMPRENSA
+  </div>
+ 
+  <div class="campo" style="padding-top:18px">
+    <div class="item" style="padding:14px 0;border-bottom:1px solid var(--regua)">
+      <div style="flex:1"><div class="nm" style="font-size:15px">Incluir região metropolitana</div>
+        <div class="dsc">Soma 12 ocorrências de 6 cidades vizinhas</div></div>
+      <span class="sw on" data-sw></span>
+    </div>
+  </div>
+ 
+  <div class="heroi" style="padding-top:22px">
+    <div class="v">25</div>
+    <p class="l"><b>ocorrências publicadas</b> em 30 dias, sendo 13 em Salvador e 12 na região metropolitana.</p>
+  </div>
+ 
+  <div class="bloco-g">
+    <h3>Por categoria</h3>
+    <div class="faixa">
+      <i style="--cat:var(--c1);flex:11"></i><i style="--cat:var(--c2);flex:7"></i>
+      <i style="--cat:var(--c3);flex:4"></i><i style="--cat:var(--c4);flex:3"></i>
+    </div>
+    <div class="legenda">
+      <button style="--cat:var(--c1)"><i class="ch"></i><span class="nm">SEGURANÇA</span><span class="pc">44%</span><span class="qt">11</span></button>
+      <button style="--cat:var(--c2)"><i class="ch"></i><span class="nm">PATRIMONIAL</span><span class="pc">28%</span><span class="qt">7</span></button>
+      <button style="--cat:var(--c3)"><i class="ch"></i><span class="nm">OPERACIONAL</span><span class="pc">16%</span><span class="qt">4</span></button>
+      <button style="--cat:var(--c4)"><i class="ch"></i><span class="nm">FRAUDE</span><span class="pc">12%</span><span class="qt">3</span></button>
+    </div>
+    <button class="vertab" data-tab="tb1">VER COMO TABELA →</button>
+    <div class="tabela" id="tb1">
+      <div class="lin"><span>Segurança</span><span>11</span><span>44%</span></div>
+      <div class="lin"><span>Patrimonial</span><span>7</span><span>28%</span></div>
+      <div class="lin"><span>Operacional</span><span>4</span><span>16%</span></div>
+      <div class="lin"><span>Fraude</span><span>3</span><span>12%</span></div>
+    </div>
+  </div>
+ 
+  <div class="bloco-g">
+    <h3>Concentração por local</h3>
+    <div class="rank">
+      <div class="li"><div class="cab"><span class="nm">Cabula · Salvador</span><span class="vl">5</span></div><div class="tr"><i style="width:100%"></i></div></div>
+      <div class="li"><div class="cab"><span class="nm">Liberdade · Salvador</span><span class="vl">4</span></div><div class="tr"><i style="width:80%"></i></div></div>
+      <div class="li"><div class="cab"><span class="nm">Centro · Lauro de Freitas</span><span class="vl">3</span></div><div class="tr"><i style="width:60%"></i></div></div>
+      <div class="li"><div class="cab"><span class="nm">Pituba · Salvador</span><span class="vl">3</span></div><div class="tr"><i style="width:60%"></i></div></div>
+      <div class="li"><div class="cab"><span class="nm">Cajazeiras · Salvador</span><span class="vl">2</span></div><div class="tr"><i style="width:40%"></i></div></div>
+    </div>
+    <p class="nota" style="margin-top:13px">7 OCORRÊNCIAS SEM BAIRRO IDENTIFICADO NA MATÉRIA</p>
+  </div>
+ 
+  <div class="bloco-g">
+    <h3>Distribuição no mapa</h3>
+    <div style="margin-top:12px;border:1px solid var(--regua-forte);height:172px;display:flex;
+         align-items:center;justify-content:center;text-align:center;padding:18px">
+      <p class="mono" style="font-size:9.5px;line-height:1.9;letter-spacing:.11em;color:var(--fraco)">
+        MAPA COM PINOS POR BAIRRO<br>
+        <span style="color:var(--apagado)">PRECISA DE COORDENADAS REAIS —<br>NÃO DESENHEI GEOGRAFIA FALSA</span></p>
+    </div>
+    <p class="nota" style="margin-top:9px">7 DOS 25 ITENS NÃO TÊM BAIRRO E NÃO ENTRAM NO MAPA</p>
+  </div>
+ 
+  <div style="padding:26px 18px 0"><button class="acao">COMPARTILHAR RELATÓRIO</button></div>
+  <p class="trinta">— 30 —</p>
+</section>
+ 
+<section class="tela" id="salvos">
+  <header class="dash-topo" style="display:block">
+    <div class="marca" style="font-size:25px">Salvos</div>
+    <div class="linha"><span>7 ITENS · DE QUALQUER CIDADE</span></div>
+  </header>
+  <div class="dateline"><span>Salvos esta semana</span><i></i></div>
+  <article class="take" style="--cat:var(--c1)">
+    <div class="slug"><i class="chip"></i><span class="cat">SEGURANÇA</span><span class="local">Salvador · Cabula</span><span class="hora">31/07</span></div>
+    <h2>Homicídio é registrado no Cabula durante a madrugada</h2>
+    <div class="creditos"><span class="veiculo">correio24horas.com.br</span><span class="fontes">3 FONTES</span></div>
+  </article>
+  <div class="regua"></div>
+  <article class="take" style="--cat:var(--c2)">
+    <div class="slug"><i class="chip"></i><span class="cat">PATRIMONIAL</span><span class="local">Palhoça · Ponte do Imaruim</span><span class="hora">04/08</span></div>
+    <h2>Empresário é preso vendendo peças de veículos roubados</h2>
+    <div class="creditos"><span class="veiculo">agorafloripa.com.br</span><span class="fontes">3 FONTES</span></div>
+  </article>
+  <div class="regua"></div>
+  <article class="take" style="--cat:var(--c3)">
+    <div class="slug"><i class="chip"></i><span class="cat">OPERACIONAL</span><span class="local">Florianópolis · Trindade</span><span class="hora">03/08</span></div>
+    <h2>Operação integrada apreende armas e detém três pessoas</h2>
+    <div class="creditos"><span class="veiculo">ndmais.com.br</span></div>
+  </article>
+  <p class="trinta">— 30 —</p>
+</section>
+ 
+<section class="tela" id="config">
+  <header class="topo">
+    <div class="l1">
+      <button class="voltar" data-ir="dash" aria-label="Voltar"><svg viewBox="0 0 24 24"><path d="M14.5 5L7.5 12l7 7"/></svg></button>
+      <span class="marca mono">SIME<b>OPS</b></span><h1>Configurações</h1>
+    </div>
+    <div class="bloco"><h1>Configurações</h1>
+      <div class="linha mono"><span>joao@progestao.com.br</span><span>SIMEOPS 1.2.0</span></div></div>
+  </header>
+ 
+  <div class="secao"><span>ALERTAS</span><i></i></div>
+  <button class="item"><div style="flex:1"><div class="nm">Notificações push</div>
+    <div class="dsc">Aviso quando uma consulta termina e quando chega ocorrência nova</div></div><span class="sw on" data-sw></span></button>
+  <button class="item"><div style="flex:1"><div class="nm">Só categoria Segurança</div>
+    <div class="dsc">Reduz o volume de avisos ao que é mais grave</div></div><span class="sw" data-sw></span></button>
+ 
+  <div class="secao"><span>PADRÕES DA CONSULTA</span><i></i></div>
+  <button class="item"><span class="nm">Período inicial</span><span class="vl">30 DIAS</span></button>
+  <button class="item"><span class="nm">Conjunto de assuntos</span><span class="vl">PADRÃO · 12</span></button>
+  <button class="item"><span class="nm">Incluir região metropolitana</span><span class="sw on" data-sw></span></button>
+ 
+  <div class="secao"><span>CIDADES MONITORADAS</span><i></i></div>
+  <button class="item"><div style="flex:1"><div class="nm">7 cidades ativas</div>
+    <div class="dsc">Alterações são feitas pelo administrador</div></div><span class="vl">VER</span></button>
+ 
+  <div class="secao"><span>CONTA</span><i></i></div>
+  <button class="item"><span class="nm">Trocar senha</span><span class="vl">→</span></button>
+  <button class="item"><span class="nm" style="color:var(--alerta)">Sair</span></button>
+  <p class="trinta">— 30 —</p>
+</section>
+ 
+</div>
+ 
+<nav><div class="in">
+  <button class="on" data-ir="dash">Dashboard<span class="selo">42</span></button>
+  <button data-ir="busca">Consultas</button>
+  <button data-ir="salvos">Salvos</button>
+</div></nav>
+ 
+<script>
+function ir(id){
+  document.querySelectorAll('.tela').forEach(x=>x.classList.remove('ativa'));
+  document.getElementById(id).classList.add('ativa');
+  document.querySelectorAll('.demo button').forEach(x=>x.classList.toggle('on',x.dataset.t===id));
+  var semNav=['login','senha'].indexOf(id)>=0;
+  document.querySelector('nav').style.display=semNav?'none':'flex';
+  window.scrollTo(0,0);
+}
+document.querySelectorAll('.demo button').forEach(b=>b.onclick=()=>ir(b.dataset.t));
+document.querySelectorAll('[data-ir]').forEach(b=>b.addEventListener('click',function(e){
+  e.stopPropagation(); ir(b.dataset.ir);
+}));
+ir('login');
+ 
+document.querySelectorAll('.pracas button, .opcoes button, .presets button').forEach(function(b){
+  b.onclick=function(){
+    b.parentElement.querySelectorAll('button').forEach(function(x){
+      x.classList.remove('on'); var m=x.querySelector('.mk'); if(m)m.textContent='';
+    });
+    b.classList.add('on'); var m=b.querySelector('.mk'); if(m)m.textContent='▸';
+  };
+});
+document.querySelectorAll('[data-sw]').forEach(s=>s.onclick=e=>{e.stopPropagation();s.classList.toggle('on')});
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=function(){
+  var t=document.getElementById(b.dataset.tab), on=t.classList.toggle('on');
+  b.textContent=on?'OCULTAR TABELA':'VER COMO TABELA →';
+});
+var topo=document.getElementById('topo');
+window.addEventListener('scroll',()=>{if(topo)topo.classList.toggle('min',scrollY>52)},{passive:true});
+ 
+(function(){
+  var d=[2,4,3,5,3,6,4,2,5,7,4,3,6,5,8,4,3,5,6,4,7,9,5,4,3,6,5,7,4,3,5,4,2,3,4];
+  var dia=function(i){return i<31?(i+1)+' jul':(i-30)+' ago';};
+  var W=340,H=96,mx=Math.max.apply(null,d),sv=document.getElementById('svg-t');
+  if(!sv) return;
+  var pts=d.map(function(v,i){return [i/(d.length-1)*W, H-(v/mx)*(H-10)];});
+  var lin=pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  sv.innerHTML=
+    '<line x1="0" y1="'+H+'" x2="'+W+'" y2="'+H+'" stroke="#16293C" stroke-width="1"/>'+
+    '<polygon points="0,'+H+' '+lin+' '+W+','+H+'" fill="#1A8F9A" fill-opacity=".14"/>'+
+    '<polyline points="'+lin+'" fill="none" stroke="#22B5C4" stroke-width="2" '+
+      'stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>'+
+    '<circle cx="'+pts[21][0].toFixed(1)+'" cy="'+pts[21][1].toFixed(1)+'" r="3.5" fill="#22B5C4" '+
+      'stroke="#060D18" stroke-width="2"/>';
+  var box=document.getElementById('tend'),tip=document.getElementById('tip-t');
+  box.addEventListener('pointermove',function(e){
+    var r=box.getBoundingClientRect(),i=Math.round((e.clientX-r.left)/r.width*(d.length-1));
+    i=Math.max(0,Math.min(d.length-1,i));
+    tip.style.opacity=1;
+    tip.style.left=(i/(d.length-1)*r.width)+'px';
+    tip.style.top=(pts[i][1]/H*96-6)+'px';
+    tip.textContent=dia(i)+' · '+d[i]+(d[i]===1?' ocorrência':' ocorrências');
+  });
+  box.addEventListener('pointerleave',()=>tip.style.opacity=0);
+})();
+ 
+(function(){
+  var cats=[['SEGURANÇA','var(--c1)'],['PATRIMONIAL','var(--c2)'],['OPERACIONAL','var(--c3)'],['FRAUDE','var(--c4)']];
+  var am=[['Homicídio é registrado no bairro Cabula durante a madrugada',0,'Salvador · Cabula','31/07'],
+    ['Dupla é presa após roubo a comércio na Liberdade',1,'Salvador · Liberdade','30/07'],
+    ['Operação apreende 40 kg de entorpecentes em Lauro de Freitas',2,'Lauro de Freitas · Centro','30/07'],
+    ['Golpe do falso empréstimo atinge aposentados na Pituba',3,'Salvador · Pituba','29/07'],
+    ['Assalto a ônibus deixa passageiro ferido em Cajazeiras',1,'Salvador · Cajazeiras','29/07'],
+    ['Corpo é encontrado às margens da BR-324',0,'Simões Filho · BR-324','28/07']];
+  var lista=document.getElementById('lista'),i=0,n=14;
+  function novo(){
+    var a=am[i%am.length];i++;n++;
+    var d=document.createElement('div');d.className='achado';
+    d.innerHTML='<div class="slug" style="--cat:'+cats[a[1]][1]+'"><i class="chip"></i>'+
+      '<span class="cat">'+cats[a[1]][0]+'</span><span class="local">'+a[2]+'</span>'+
+      '<span class="hora">'+a[3]+'</span></div><h3>'+a[0]+'</h3><div class="sep"></div>';
+    lista.insertBefore(d,lista.firstChild);
+    while(lista.children.length>5)lista.removeChild(lista.lastChild);
+    document.getElementById('ct').textContent='JÁ ENCONTRADO · '+n;
+  }
+  novo();novo();novo();setInterval(novo,3400);
+  var k=98;
+  setInterval(function(){if(k<155){k=Math.min(155,k+Math.floor(Math.random()*3)+1);
+    document.getElementById('c1').textContent=k+' / 155';
+    document.getElementById('b1').style.width=Math.round(k/155*100)+'%';}},1700);
+  var s=252;
+  setInterval(function(){s++;document.getElementById('cron').textContent=
+    String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');},1000);
+})();
+</script>
+ 
+
+
+
+
+
+
+
+

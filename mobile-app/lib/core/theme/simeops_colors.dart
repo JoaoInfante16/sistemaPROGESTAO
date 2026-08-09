@@ -19,11 +19,18 @@ class SIMEopsColors {
   // Escala de tinta — contraste medido sobre navy (#060D18), WCAG AA pede
   // 4.5:1 pra texto pequeno. O app roda no sol, em celular com brilho baixo:
   // metadado ilegível some, e metadado é onde mora bairro e hora.
-  //   white  17.8:1  |  muted 8.0:1  |  faint 4.8:1  |  hairline 1.9:1
-  /// Terciário — ainda passa AA. Piso pra qualquer texto.
+  //   white  17.8:1  |  muted 8.0:1  |  faint 4.8:1  |  hairline 1.8:1
+  /// Terciário — ainda passa AA. **Piso pra qualquer texto**, inclusive
+  /// placeholder e estado inativo.
   static const faint = Color(0xFF6E8092);
 
-  /// SÓ decoração (marca de fim de matéria, separador). Nunca texto.
+  /// SÓ decoração (marca de fim de matéria, separador). **Nunca texto.**
+  ///
+  /// 1.8:1 não é "discreto", é invisível. Estava pintando duas coisas que
+  /// precisavam ser lidas: o placeholder dos campos (que é instrução de
+  /// formato) e os passos ainda não executados da tela de espera — justo a
+  /// tela em que a pessoa encara 7 minutos, e em que os passos que faltam são
+  /// a prova de que a busca tem plano. Ambos foram para [faint].
   static const hairline = Color(0xFF2A3F55);
 
   /// Filete entre matérias e sob as faixas de controle.

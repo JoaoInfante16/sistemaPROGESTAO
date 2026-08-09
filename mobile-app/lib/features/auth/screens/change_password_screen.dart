@@ -195,8 +195,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   const SizedBox(height: 12),
                   // A ressalva fica JUNTO da opção, não num rodapé que ninguém lê.
                   Text(
-                    'SE TROCAR DE CELULAR OU LIMPAR OS DADOS DO APP, O ACESSO\n'
-                    'SÓ VOLTA COM UMA REDEFINIÇÃO DO ADMINISTRADOR.',
+                    'Se trocar de celular ou limpar os dados do app, o acesso '
+                    'só volta com uma redefinição do administrador.',
                     style: SIMEopsType.note(),
                   ),
                   const SizedBox(height: 16),
@@ -264,7 +264,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 ],
 
                 const SizedBox(height: 30),
-                Text('ESTA TELA APARECE UMA ÚNICA VEZ.',
+                Text('Esta tela aparece uma única vez.',
                     style: SIMEopsType.note()),
               ],
             ),
@@ -318,7 +318,7 @@ class _PasswordField extends StatelessWidget {
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: SIMEopsType.body()
-            .copyWith(fontSize: 17, color: SIMEopsColors.hairline),
+            .copyWith(fontSize: 17, color: SIMEopsColors.faint),
         filled: false,
         contentPadding: const EdgeInsets.only(top: 12, bottom: 9),
         enabledBorder: const UnderlineInputBorder(

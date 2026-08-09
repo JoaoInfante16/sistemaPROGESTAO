@@ -92,9 +92,14 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
   const bairro = typeof neighborhood === 'string' && neighborhood.trim() ? neighborhood.trim() : undefined;
   const rua = typeof street === 'string' && street.trim() ? street.trim() : undefined;
 
-  // Manchete: cosmetica, entao NUNCA rejeita o item. Corta em 90 pra caber em
-  // 3 linhas de manchete no app; o GPT recebe teto de 70 e passa as vezes.
-  const titulo = headline.length > 0 ? headline.substring(0, 90).trim() : undefined;
+  // Manchete: cosmetica, entao NUNCA rejeita o item.
+  //
+  // Corta em 70, o MESMO teto que o prompt pede (a regra 9). Cortava em 90, e
+  // isso era incoerencia minha: o app le manchete em Archivo 23 sobre 376px
+  // uteis, ~32 caracteres por linha — 70 dao 2.2 linhas e cabem no maxLines: 2
+  // do TakeCard, 90 dao 2.8 e estouravam com reticencias. Deixar o codigo mais
+  // frouxo que o prompt so servia pra esconder quando o modelo desobedecia.
+  const titulo = headline.length > 0 ? headline.substring(0, 70).trim() : undefined;
 
   return {
     extraction: {
@@ -181,6 +186,10 @@ HEADLINE RULES:
 10. State what happened and where. Journalistic present tense ("Homem é preso após...", not "Homem foi preso"). No ALL CAPS, no exclamation marks, no "VEJA", "URGENTE", "CHOCANTE", no value judgments, no victim/suspect full names, no gore.
 11. The headline must stand alone: a reader seeing only it should know the event. It is NOT a shortened summary — "summary" adds the detail the headline leaves out, so avoid repeating the headline verbatim there.
 
+SUMMARY RULES:
+12. "summary": 2 to 3 sentences in Brazilian Portuguese. The app shows the first two lines in the list and the rest when the reader taps — so the FIRST sentence must carry the essential fact on its own, and the following ones add what a public-safety analyst would want next: how many people involved, what was seized or recovered, whether anyone was arrested, which force acted.
+13. No speculation and no adjectives of severity. If the article does not say something, leave it out — do not fill the third sentence with filler.
+
 ARTICLE:
 ${truncated}
 
@@ -195,7 +204,7 @@ Return ONLY JSON:
   "street": "Street Name" or null,
   "date": "YYYY-MM-DD (publication date of the article, NOT dates mentioned in the text)",
   "headline": "Factual headline in Brazilian Portuguese, max 70 chars, neutral tone",
-  "summary": "1-2 sentence summary in Brazilian Portuguese",
+  "summary": "2-3 sentence summary in Brazilian Portuguese, first sentence self-contained",
   "confidence": 0.0 to 1.0
 }
 
