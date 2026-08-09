@@ -28,15 +28,39 @@ da `develop` de propósito, porque o release da Play Store está engatilhado.
 | fase | o quê | estado |
 |---|---|---|
 | A | cor de categoria com fonte única | ✅ feito |
-| — | **polimento do fio** (tipografia, tinta, header, card, sanfona) | ✅ feito |
-| B | formulário de busca (11 blocos → 5) | 🔨 `seletor_lugar.dart` criado, não ligado |
-| C | espera de 7 min + resultados | ⬜ |
+| — | **polimento do fio** (tipografia, tinta, header, card) | ✅ feito |
+| — | **tema global** em linguagem de fio (era o "pálido") | ✅ feito |
+| B | formulário de busca (11 blocos → 5) | ✅ feito |
+| C | espera de 7 min + resultados | ⬜ **próxima** |
 | D | remoções (favoritos, arrastar, lembrar senha, senha mín. 8) | ⬜ |
 | E | relatório + export HTML A4 | ⬜ |
-| F | notificações (migration 030, digest por cidade, tri-estado) | ⬜ |
+| F | notificações (digest por cidade, tri-estado) — migration **031** | ⬜ |
+| — | **revisão de todas as copys** (pedido do João, DEPOIS das fases) | ⬜ |
 
-🚨 **A migration 029 (`news.titulo`) é PRÉ-REQUISITO do staging funcionar.** Sem
-ela o backend devolve 400 no feed e no scan — o código já pede a coluna.
+**`staging` = `feature/design-fio` = `47b8cd8`**, ambas empurradas em 09/08.
+
+🚨 **A migration 030 (`news.hora_publicacao`) é PRÉ-REQUISITO.** O código já faz
+`insert` e `select` da coluna; sem ela o PostgREST devolve 400 no feed e no
+scan. A **029 já foi aplicada** (confirmada pelo João em 09/08).
+
+⚠️ **A 030 do plano original era a de notificações — renumerar pra 031.** A hora
+de publicação entrou na frente porque era correção de bug em produção de dado.
+
+### O que a Fase C tem que resolver (levantado e não feito)
+
+- **as abas de cidade não dizem onde está a notícia.** O dashboard se apoia em
+  "o número te diz onde olhar" e a fila `TODAS · FLORIANÓPOLIS · PALHOÇA` fica
+  muda. Bastava `SÃO JOSÉ 4`. **Verificar antes se o feed devolve não-lidas por
+  cidade-filha** — pode não existir o dado.
+- **os achados ao vivo mostram menos do que o protótipo desenha.**
+  `AchadoProgresso` (`queries.ts`) tem `tipo_crime`, `bairro` e
+  `data_ocorrencia`; faltam `categoria_grupo`, `cidade` e `titulo` — os três já
+  existem no Filter2 no instante em que o achado é montado.
+- **o worker guarda só os 5 últimos** (`ACHADOS_VISIVEIS`) e descarta o resto.
+  O app faz polling de 3s: **ele pode acumular localmente** e deduplicar, sem
+  custo de rede nem migration. Sete minutos de espera viram sete de leitura.
+- `news_detail_sheet.dart` **não morre mais** (decisão do João em 09/08) — sai
+  da lista de remoções da Fase D.
 
 **Regras de design que valem como contrato** (nasceram de erro medido, não de
 gosto):
