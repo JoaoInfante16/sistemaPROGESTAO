@@ -202,6 +202,72 @@ de $100.
 
 ---
 
+## 2026-08-09 (noite) — o `00:00` estava em 100% dos itens
+
+### 🚨 O carimbo de hora mentia em toda matéria do app
+
+Achado do João olhando o aparelho:
+
+> *"é muito melhor saber que hora que foi o acontecimento do que que hora foi a
+> varredura, esse 00:00 aí é inútil"*
+
+Fui ao schema: **`data_ocorrencia` é coluna `DATE`**. O carimbo da slug lia a
+hora dela, e coluna DATE volta sempre à meia-noite. Não era um caso raro — era
+**todo item, sempre**, ocupando a linha mais disputada do card pra dizer nada.
+
+**Migration 030** (`hora_publicacao TIME`, nullable) + o Filter2 extraindo.
+
+Três decisões que valem registro:
+
+- **hora de PUBLICAÇÃO, não do fato.** A do fato quase nunca é extraível ("por
+  volta das 3h da madrugada" é aproximação, às vezes de outro dia); a de
+  publicação está impressa em praticamente todo portal. E é o que um carimbo de
+  fio significa: quando a matéria entrou no fio.
+- **não usar `created_at`.** Essa é a hora da *varredura* — exatamente o que o
+  João apontou como inútil. Matéria publicada 07:40 e varrida 23:10 carimbaria
+  23:10.
+- **`TIME` sem fuso, de propósito.** É a hora local que o portal imprimiu, e não
+  sabemos com que offset foi escrita. **Exibir cru, nunca converter.**
+
+Nullable dos dois lados, e **o app omite o carimbo quando vem null** — inventar
+meia-noite é o bug que a coluna existe pra corrigir. O regex `HH:MM` no backend
+descarta `"14h32"`, `"por volta das 3h"` e a string `"null"`, que é o que o
+modelo devolve quando não acha.
+
+`data_ocorrencia` **não** foi tocada: é DATE, indexada, usada em todo filtro e
+ordenação do sistema.
+
+### O resumo passa a ter o tamanho que o fato pedir
+
+*"n precisa ser exatamente esse. O modelo vê o quanto precisa gastar pra
+descrever o acontecimento."* — o prompt saiu de "exatamente 2 frases" para
+"quantas frases o fato precisar, normalmente 2, às vezes 1". O teto de 190 virou
+**orçamento, não meta**, com a instrução explícita de nunca encher pra chegar
+nele.
+
+### A folha voltou, e agora justifica existir
+
+O toque tinha passado a ir **direto pra URL externa**. O João barrou: jogar o
+usuário pra fora do app é decisão grande demais pra um toque, e a folha ainda
+tem o que dizer.
+
+Ela voltou com a condição dele — **trazer o que o card não tem**:
+
+| | card | folha |
+|---|---|---|
+| rua | — | ✓ |
+| tipo granular (`Roubo`) | categoria (`Patrimonial`) | ✓ |
+| data por extenso com dia da semana | só a hora | ✓ |
+| todas as fontes, cada uma abrindo | só a primeira | ✓ |
+
+O tipo granular é o campo com que o **relatório conta**, e o card mostra só o
+grupo — ali é informação nova, não repetição. A data por extenso é feita à mão
+em vez de `DateFormat(..., 'pt_BR')`: o locale do intl exige carregar dados de
+localização na partida do app, dependência de inicialização pra formatar uma
+data por tela.
+
+---
+
 ## 2026-08-09 — Fase B: o formulário, e a sanfona morreu com um argumento melhor
 
 ### O formulário: 11 blocos → 5

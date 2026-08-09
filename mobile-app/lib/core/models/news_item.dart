@@ -19,6 +19,15 @@ class NewsSource {
   }
 }
 
+/// `"14:32:00"` → `"14:32"`. O Postgres devolve `TIME` com segundos, e segundo
+/// em carimbo de matéria é ruído. Devolve null pro que não for `HH:MM…`, porque
+/// carimbo torto é pior que carimbo ausente.
+String? hhmm(String? bruto) {
+  if (bruto == null || bruto.length < 5) return null;
+  final corte = bruto.substring(0, 5);
+  return RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(corte) ? corte : null;
+}
+
 class NewsItem {
   final String id;
   final String tipoCrime;
@@ -28,6 +37,15 @@ class NewsItem {
   final String? bairro;
   final String? rua;
   final DateTime dataOcorrencia;
+
+  /// Hora que o **veículo publicou**, `HH:MM`, como impressa na página
+  /// (migration 030). Pode ser null: linha antiga, ou artigo que não informa.
+  ///
+  /// ⚠️ Não derivar hora de [dataOcorrencia]: a coluna é `DATE`, então ela
+  /// sempre volta à meia-noite. Era daí que vinha o `00:00` que aparecia em
+  /// **100% dos itens** do feed. Sem esta hora, o carimbo simplesmente não
+  /// aparece — campo que mente é pior que campo ausente.
+  final String? horaPublicacao;
 
   /// Manchete escrita pelo Filter2 (migration 029). **Pode ser null** — toda
   /// linha anterior a 06/08/2026 não tem, e não vale reprocessar (custaria
@@ -62,6 +80,7 @@ class NewsItem {
     this.bairro,
     this.rua,
     required this.dataOcorrencia,
+    this.horaPublicacao,
     this.titulo,
     required this.resumo,
     this.confianca,
@@ -85,6 +104,7 @@ class NewsItem {
       bairro: json['bairro'] as String?,
       rua: json['rua'] as String?,
       dataOcorrencia: DateTime.parse(json['data_ocorrencia'] as String),
+      horaPublicacao: hhmm(json['hora_publicacao'] as String?),
       titulo: json['titulo'] as String?,
       resumo: json['resumo'] as String,
       confianca: safeDoubleOrNull(json['confianca']),
@@ -141,6 +161,7 @@ class NewsItem {
       bairro: json['bairro'] as String?,
       rua: json['rua'] as String?,
       dataOcorrencia: DateTime.tryParse(json['data_ocorrencia'] as String? ?? '') ?? DateTime.now(),
+      horaPublicacao: hhmm(json['hora_publicacao'] as String?),
       titulo: json['titulo'] as String?,
       resumo: json['resumo'] as String? ?? '',
       confianca: safeDoubleOrNull(json['confianca']),

@@ -81,6 +81,7 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
   const summary = ((data.summary ?? data.resumo) as string | undefined)?.trim() ?? '';
   const headline = ((data.headline ?? data.titulo) as string | undefined)?.trim() ?? '';
   const date = ((data.date ?? data.data_ocorrencia) as string | undefined)?.trim() ?? '';
+  const time = ((data.time ?? data.hora) as string | undefined)?.trim() ?? '';
   const state = ((data.state ?? data.estado) as string | undefined)?.trim() ?? '';
   const neighborhood = (data.neighborhood ?? data.bairro) as string | undefined;
   const street = (data.street ?? data.rua) as string | undefined;
@@ -134,6 +135,16 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
   // artigo", e o usuario nao sabia qual antes de tocar.
   const resumo = cortarNaFrase(summary, 195);
 
+  // Hora de publicacao (migration 030). Cosmetica: NUNCA rejeita o item.
+  //
+  // Aceita so `HH:MM` valido — o modelo as vezes devolve "14h32", "por volta
+  // das 3h" ou a string "null". Qualquer coisa fora do formato vira undefined,
+  // e o app **omite o carimbo** em vez de exibir 00:00, que era o bug que esta
+  // coluna existe pra corrigir: `data_ocorrencia` e DATE, entao a hora lida
+  // dela era meia-noite em 100% dos itens.
+  const horaOk = /^([01]\d|2[0-3]):([0-5]\d)$/.test(time);
+  const horaPublicacao = horaOk ? time : undefined;
+
   // Manchete: cosmetica, entao NUNCA rejeita o item.
   //
   // Corta em 70, o MESMO teto que o prompt pede (a regra 9). Cortava em 90, e
@@ -154,6 +165,7 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
       bairro,
       rua,
       data_ocorrencia: date,
+      hora_publicacao: horaPublicacao,
       titulo,
       resumo,
       confianca: confidence,
@@ -228,8 +240,11 @@ HEADLINE RULES:
 10. State what happened and where. Journalistic present tense ("Homem é preso após...", not "Homem foi preso"). No ALL CAPS, no exclamation marks, no "VEJA", "URGENTE", "CHOCANTE", no value judgments, no victim/suspect full names, no gore.
 11. The headline must stand alone: a reader seeing only it should know the event. It is NOT a shortened summary — "summary" adds the detail the headline leaves out, so avoid repeating the headline verbatim there.
 
+PUBLICATION TIME:
+16. "time": the time the OUTLET published the article, exactly as printed on the page ("Publicado em 04/08/2026 às 14:32" → "14:32"). 24h format "HH:MM". Return null if the page does not state a time — do NOT guess it, do NOT use a time mentioned inside the story ("por volta das 3h da madrugada" is when the event happened, which is approximate and sometimes another day).
+
 SUMMARY RULES:
-12. "summary": exactly 2 sentences in Brazilian Portuguese, **at most 190 characters in total**. This is a hard budget, not a suggestion: the app prints the summary WHOLE, with no "read more" — anything past the budget is cut off by the server and the reader loses it.
+12. "summary": Brazilian Portuguese, **at most 190 characters in total**. Use as many sentences as the event actually needs — usually 2, sometimes 1 when the fact is simple. The ceiling is a hard budget, not a target: the app prints the summary WHOLE, with no "read more", and anything past it is cut by the server. Never pad to reach the limit.
 
 13. The summary must be COMPLEMENTARY to the headline, never a paraphrase of it. The reader has already read the headline; every clause here must earn its place by adding something the headline could not fit: exact figures, the force that acted, what was seized or recovered, how many people, the trigger, the outcome.
 
@@ -237,7 +252,7 @@ SUMMARY RULES:
     BAD  (says the same thing again): "Um empresário foi preso por vender peças de veículos roubados. A prisão aconteceu em flagrante."
     GOOD (adds what the headline left out): "A Operação 311 prendeu o homem em flagrante em Palhoça. Foram apreendidos componentes de sete veículos, dois deles com registro de roubo."
 
-14. Sentence 1 carries the specifics of the event; sentence 2 carries the consequence or what came out of it. Both must stand without the headline — do not start with "ele", "o caso" or any pronoun pointing back at the headline.
+14. Sentence 1 carries the specifics of the event; the next one carries the consequence or what came out of it. Every sentence must stand without the headline — do not start with "ele", "o caso" or any pronoun pointing back at the headline.
 
 15. No speculation, no adjectives of severity, no victim/suspect full names. If the article does not say something, leave it out — a summary of 120 characters that adds facts beats one of 190 that repeats the headline.
 
@@ -254,6 +269,7 @@ Return ONLY JSON:
   "neighborhood": "Neighborhood/bairro within the city" or null,
   "street": "Street Name" or null,
   "date": "YYYY-MM-DD (publication date of the article, NOT dates mentioned in the text)",
+  "time": "HH:MM as printed by the outlet" or null,
   "headline": "Factual headline in Brazilian Portuguese, max 70 chars, neutral tone",
   "summary": "2 sentences in Brazilian Portuguese, max 190 chars TOTAL, first sentence self-contained",
   "confidence": 0.0 to 1.0

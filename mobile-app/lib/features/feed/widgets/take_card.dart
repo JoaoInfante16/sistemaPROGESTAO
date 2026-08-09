@@ -7,6 +7,7 @@ import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 import '../../../core/utils/category_colors.dart';
 import '../../../core/widgets/cat_chip.dart';
+import 'news_detail_sheet.dart';
 
 /// A matéria no fio — substitui o `NewsCard` de caixa.
 ///
@@ -84,25 +85,25 @@ class _TakeCardState extends State<TakeCard> {
 
   NewsItem get news => widget.news;
 
-  /// "07:40" sempre que a lista já está agrupada por data; fora disso,
-  /// "07:40" para hoje/ontem e "31/07" para o resto.
+  /// O carimbo da slug: hora quando ela existe, data quando é o que há, e
+  /// **nada** quando não há nem uma nem outra.
+  ///
+  /// 🚨 Aqui morava um bug que aparecia em **100% dos itens**: o carimbo lia a
+  /// hora de `dataOcorrencia`, e essa coluna é `DATE` no Postgres — ou seja,
+  /// sempre meia-noite. Toda matéria do app exibia `00:00`, na linha mais
+  /// disputada do card, dizendo nada. Pego pelo João olhando o aparelho.
+  ///
+  /// A hora agora vem de `hora_publicacao` (migration 030), que é a que o
+  /// veículo imprimiu. Quando o artigo não informa, o campo some — inventar
+  /// meia-noite é pior do que não carimbar.
   String get _stamp {
+    final hora = news.horaPublicacao;
+    if (widget.groupedByDate) return hora ?? '';
+
     final d = news.dataOcorrencia;
-    final hm = '${d.hour.toString().padLeft(2, '0')}:'
-        '${d.minute.toString().padLeft(2, '0')}';
-    if (widget.groupedByDate) return hm;
-
-    final now = DateTime.now();
-    final sameDay =
-        d.year == now.year && d.month == now.month && d.day == now.day;
-    final yesterday = now.subtract(const Duration(days: 1));
-    final isYesterday = d.year == yesterday.year &&
-        d.month == yesterday.month &&
-        d.day == yesterday.day;
-    if (sameDay || isYesterday) return hm;
-
-    return '${d.day.toString().padLeft(2, '0')}/'
+    final data = '${d.day.toString().padLeft(2, '0')}/'
         '${d.month.toString().padLeft(2, '0')}';
+    return hora != null ? '$data · $hora' : data;
   }
 
   /// Cidade · bairro. É o campo elástico da slug: **trunca, não quebra**.
@@ -127,13 +128,15 @@ class _TakeCardState extends State<TakeCard> {
 
   bool get _isIndicador => news.natureza == 'estatistica';
 
-  /// Toque na matéria: marca lida e abre a fonte principal no navegador
-  /// **externo**. Nem WebView nem Custom Tab — conteúdo de terceiros não deve
-  /// ser emoldurado como se fosse do app.
-  Future<void> _abrir() async {
+  /// Toque na matéria: marca lida e abre a folha.
+  ///
+  /// Chegou a ir **direto pra URL externa** por algumas horas em 09/08, e o
+  /// João barrou: jogar o usuário pra fora do app num toque é decisão grande
+  /// demais pra um toque, e a folha ainda tem o que dizer — rua, tipo granular,
+  /// data por extenso e todas as fontes. Ver `NewsDetailSheet`.
+  void _abrir() {
     widget.onOpen?.call();
-    if (news.sources.isEmpty) return;
-    await _abrirFonte(news.sources.first.url);
+    NewsDetailSheet.show(context, news);
   }
 
   Future<void> _abrirFonte(String url) async {
@@ -317,8 +320,12 @@ class _Slug extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        const SizedBox(width: 9),
-        Text(stamp, style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+        // Some inteiro quando não há hora nem data pra dizer — inclusive o
+        // espaçador, senão sobra um buraco à direita.
+        if (stamp.isNotEmpty) ...[
+          const SizedBox(width: 9),
+          Text(stamp, style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+        ],
       ],
     );
   }

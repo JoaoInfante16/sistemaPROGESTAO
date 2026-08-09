@@ -1,240 +1,255 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../../../core/models/news_item.dart';
 import '../../../core/theme/simeops_colors.dart';
+import '../../../core/theme/simeops_type.dart';
 import '../../../core/utils/category_colors.dart';
 import '../../../core/utils/crime_labels.dart';
+import '../../../core/widgets/cat_chip.dart';
 
+/// A matéria aberta.
+///
+/// Existiu, foi marcada pra morrer (a ideia era o toque ir direto pra fonte), e
+/// voltou por decisão do João — com a condição de **trazer informação que o
+/// card não tem**. A folha antiga repetia manchete e resumo e acrescentava
+/// pouco; era um degrau a mais entre a lista e o artigo.
+///
+/// O que só existe aqui:
+///
+/// - **rua**, quando o Filter2 extraiu (o card mostra até o bairro);
+/// - o **tipo de crime granular** (`Roubo`) contra a categoria do card
+///   (`Patrimonial`) — é o campo que o relatório usa pra contar;
+/// - a **data por extenso**, com dia da semana;
+/// - **todas as fontes**, cada uma abrindo sozinha, com a oficial marcada.
+///
+/// A fonte abre no navegador **externo**: nem WebView nem Custom Tab. Conteúdo
+/// de terceiros não deve ser emoldurado como se fosse do app.
 class NewsDetailSheet extends StatelessWidget {
   final NewsItem news;
 
   const NewsDetailSheet({super.key, required this.news});
 
-  static void show(BuildContext context, NewsItem news) {
-    showModalBottomSheet(
+  static Future<void> show(BuildContext context, NewsItem news) {
+    return showModalBottomSheet<void>(
       context: context,
+      backgroundColor: SIMEopsColors.navy,
       isScrollControlled: true,
-      backgroundColor: SIMEopsColors.navyMid,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      shape: const RoundedRectangleBorder(),
       builder: (_) => NewsDetailSheet(news: news),
     );
   }
 
-  // Nome exibível de uma fonte: source_name ou hostname sem www.
-  static String _sourceLabel(NewsSource source) {
-    final name = source.sourceName ?? '';
-    if (name.isNotEmpty) return name;
+  static const _diasDaSemana = [
+    'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira',
+    'sexta-feira', 'sábado', 'domingo',
+  ];
+  static const _meses = [
+    'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+    'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+  ];
+
+  /// "sábado, 9 de agosto de 2026 · 14:32".
+  ///
+  /// À mão em vez de `DateFormat(..., 'pt_BR')` porque o locale do intl exige
+  /// carregar dados de localização na partida do app — dependência de inicialização
+  /// para formatar uma data por tela.
+  String get _quando {
+    final d = news.dataOcorrencia;
+    final base = '${_diasDaSemana[d.weekday - 1]}, ${d.day} de '
+        '${_meses[d.month - 1]} de ${d.year}';
+    final h = news.horaPublicacao;
+    return h != null ? '$base · $h' : base;
+  }
+
+  String get _onde {
+    final partes = <String>[
+      news.cidade,
+      if (news.bairro != null && news.bairro!.isNotEmpty) news.bairro!,
+    ];
+    final uf = news.estadoUf;
+    final cabeca = uf != null && uf.isNotEmpty
+        ? '${partes.first}/$uf'
+        : partes.first;
+    return [cabeca, ...partes.skip(1)].join(' · ');
+  }
+
+  Future<void> _abrir(String url) async {
     try {
-      return Uri.parse(source.url).host.replaceFirst('www.', '');
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint('[NewsDetailSheet] falha ao abrir $url — $e');
+    }
+  }
+
+  static String _host(NewsSource s) {
+    final nome = s.sourceName;
+    if (nome != null && nome.isNotEmpty) return nome;
+    try {
+      return Uri.parse(s.url).host.replaceFirst('www.', '');
     } catch (_) {
-      return source.url;
+      return s.url;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final catColor = categoryColor(news.categoriaGrupo);
+    final indicador = news.natureza == 'estatistica';
+    final cat = indicador
+        ? 'institucional'
+        : (news.categoriaGrupo ?? 'institucional');
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      minChildSize: 0.4,
-      maxChildSize: 0.95,
-      expand: false,
-      builder: (_, controller) {
-        return SingleChildScrollView(
-          controller: controller,
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Drag handle
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: SIMEopsColors.muted.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
+    return SizedBox(
+      height: MediaQuery.sizeOf(context).height * 0.88,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: SIMEopsColors.white, width: 2),
               ),
-              const SizedBox(height: 20),
-
-              // Tipo de crime — cor da categoria
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: catColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(6),
+            ),
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+            child: Row(
+              children: [
+                CatChip(categoria: cat),
+                const SizedBox(width: 9),
+                Text(
+                  indicador ? 'INDICADOR' : categoryLabel(cat).toUpperCase(),
+                  style: SIMEopsType.slug(),
                 ),
-                child: Text(
-                  crimeTypeLabel(news.tipoCrime).toUpperCase(),
-                  style: GoogleFonts.rajdhani(
-                    color: catColor,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.5,
+                const Spacer(),
+                InkWell(
+                  onTap: () => Navigator.pop(context),
+                  child: const Padding(
+                    padding: EdgeInsets.all(6),
+                    child: Icon(Icons.close,
+                        size: 20, color: SIMEopsColors.muted),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-
-              // Data
-              Row(
-                children: [
-                  Icon(Icons.calendar_today,
-                      size: 14, color: SIMEopsColors.muted),
-                  const SizedBox(width: 8),
-                  Text(
-                    DateFormat('dd/MM/yyyy').format(news.dataOcorrencia),
-                    style: GoogleFonts.jetBrainsMono(
-                      fontSize: 13,
-                      color: SIMEopsColors.white,
-                    ),
-                  ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(18, 20, 18, 28),
+              children: [
+                Text(news.headline,
+                    style: SIMEopsType.title().copyWith(fontSize: 27)),
+                if (news.resumo.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(news.resumo,
+                      style: SIMEopsType.lead().copyWith(fontSize: 15.5)),
                 ],
-              ),
-              const SizedBox(height: 8),
+                const SizedBox(height: 26),
 
-              // Local
-              Row(
-                children: [
-                  Icon(Icons.location_on,
-                      size: 14, color: SIMEopsColors.muted),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      news.localFormatted,
-                      style: GoogleFonts.exo2(
-                        fontSize: 13.5,
-                        color: SIMEopsColors.white,
-                      ),
-                    ),
+                // A ficha. É o que justifica a folha existir: o card mostra
+                // categoria e bairro; aqui saem a rua e o tipo granular, que é
+                // o campo com que o relatório conta.
+                _Campo(rotulo: 'ONDE', valor: _onde),
+                if (news.rua != null && news.rua!.isNotEmpty)
+                  _Campo(rotulo: 'RUA', valor: news.rua!),
+                _Campo(rotulo: 'QUANDO', valor: _quando),
+                if (!indicador)
+                  _Campo(rotulo: 'TIPO', valor: crimeTypeLabel(news.tipoCrime)),
+                if (news.cidadeVizinha)
+                  _Campo(
+                    rotulo: 'RECORTE',
+                    valor: 'Município vizinho, não a cidade consultada',
                   ),
-                ],
-              ),
 
-              Divider(
-                height: 32,
-                color: SIMEopsColors.teal.withValues(alpha: 0.15),
-              ),
-
-              // Resumo completo
-              Text(
-                news.resumo,
-                style: GoogleFonts.exo2(
-                  fontSize: 15,
-                  height: 1.45,
-                  color: SIMEopsColors.white,
-                ),
-              ),
-
-              // Fontes
-              if (news.sources.isNotEmpty) ...[
-                const SizedBox(height: 24),
+                const SizedBox(height: 26),
                 Row(
                   children: [
                     Text(
-                      'FONTES',
-                      style: GoogleFonts.rajdhani(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 2,
-                        color: SIMEopsColors.muted,
-                      ),
+                      news.sources.length == 1
+                          ? 'A FONTE'
+                          : 'AS ${news.sources.length} FONTES',
+                      style: SIMEopsType.dateline(),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Container(
-                        height: 1,
-                        color: SIMEopsColors.teal.withValues(alpha: 0.15),
-                      ),
+                    const SizedBox(width: 11),
+                    const Expanded(
+                      child: Divider(color: SIMEopsColors.rule, height: 1),
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                ...news.sources.map(
-                  (source) {
-                    final isOfficial = RegExp(
-                      r'\.gov\.br|\.ssp\.|\.seguranca\.|\.sesp\.|\.sspds\.|\.sejusp\.|\.segup\.',
-                      caseSensitive: false,
-                    ).hasMatch(source.url);
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: InkWell(
-                        onTap: () => _openUrl(source.url),
-                        borderRadius: BorderRadius.circular(6),
-                        child: Row(
-                          children: [
-                            Icon(
-                              isOfficial ? Icons.shield : Icons.open_in_new,
-                              size: 14,
-                              color: isOfficial
-                                  ? SIMEopsColors.official
-                                  : SIMEopsColors.tealLight,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _sourceLabel(source),
-                                style: GoogleFonts.exo2(
-                                  color: isOfficial
-                                      ? SIMEopsColors.official
-                                      : SIMEopsColors.tealLight,
-                                  fontSize: 13.5,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (isOfficial) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 4, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: SIMEopsColors.official
-                                      .withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  'GOV',
-                                  style: GoogleFonts.rajdhani(
-                                    color: SIMEopsColors.official,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 1,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
+                for (final s in news.sources)
+                  InkWell(
+                    onTap: () => _abrir(s.url),
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: SIMEopsColors.rule),
                         ),
                       ),
-                    );
-                  },
-                ),
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _host(s),
+                              style: SIMEopsType.credit(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 9),
+                          Text('LER →',
+                              style: SIMEopsType.credit(
+                                  color: SIMEopsColors.tealLight)),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (news.hasOfficialSource) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Uma das fontes é órgão oficial (prefeitura, polícia ou '
+                    'governo), não imprensa.',
+                    style: SIMEopsType.note(),
+                  ),
+                ],
               ],
-
-              const SizedBox(height: 24),
-            ],
+            ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
+}
 
-  Future<void> _openUrl(String url) async {
-    try {
-      final uri = Uri.parse(url);
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (e) {
-      debugPrint('[URL] Failed to open: $url — $e');
-    }
+/// Linha da ficha: rótulo em mono na esquerda, valor em corpo na direita.
+class _Campo extends StatelessWidget {
+  final String rotulo;
+  final String valor;
+
+  const _Campo({required this.rotulo, required this.valor});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: SIMEopsColors.rule)),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 13),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 78,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Text(rotulo,
+                  style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+            ),
+          ),
+          Expanded(
+            child: Text(valor, style: SIMEopsType.body().copyWith(fontSize: 15)),
+          ),
+        ],
+      ),
+    );
   }
 }

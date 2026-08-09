@@ -37,6 +37,16 @@ export interface NewsExtraction {
   rua?: string;
   data_ocorrencia: string; // YYYY-MM-DD
   /**
+   * Hora que o VEICULO publicou, `HH:MM`, como impressa na pagina (migration
+   * 030). Sem fuso de proposito — e horario local do portal, e converter so
+   * pioraria.
+   *
+   * Opcional: artigo que nao informa hora nao e rejeitado, e o app **omite** o
+   * carimbo em vez de exibir `00:00`. Esse `00:00` era o bug: o carimbo lia
+   * `data_ocorrencia`, que e DATE, entao dava meia-noite em 100% dos itens.
+   */
+  hora_publicacao?: string;
+  /**
    * Manchete curta e neutra, escrita pelo Filter2 — nao copiada do veiculo.
    *
    * Opcional de proposito: item sem titulo NAO e rejeitado (seria jogar fora
