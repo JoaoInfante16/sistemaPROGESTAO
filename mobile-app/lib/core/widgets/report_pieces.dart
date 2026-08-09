@@ -84,11 +84,15 @@ class RankBarras extends StatelessWidget {
                     textBaseline: TextBaseline.alphabetic,
                     children: [
                       Expanded(
-                        child: Text(nome,
-                            style: SIMEopsType.placeTab(
-                                active: false, color: SIMEopsColors.muted),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
+                        child: Text(
+                          nome,
+                          style: SIMEopsType.placeTab(
+                            active: false,
+                            color: SIMEopsColors.muted,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Text('$valor', style: SIMEopsType.placeTab(active: true)),
@@ -157,21 +161,29 @@ class _TabelaGemeaState extends State<TabelaGemea> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(a,
-                        style: SIMEopsType.placeTab(
-                            active: false, color: SIMEopsColors.muted),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
+                    child: Text(
+                      a,
+                      style: SIMEopsType.placeTab(
+                        active: false,
+                        color: SIMEopsColors.muted,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                   Text(b, style: SIMEopsType.placeTab(active: true)),
                   if (c.isNotEmpty) ...[
                     const SizedBox(width: 14),
                     SizedBox(
                       width: 44,
-                      child: Text(c,
-                          textAlign: TextAlign.right,
-                          style: SIMEopsType.placeTab(
-                              active: false, color: SIMEopsColors.faint)),
+                      child: Text(
+                        c,
+                        textAlign: TextAlign.right,
+                        style: SIMEopsType.placeTab(
+                          active: false,
+                          color: SIMEopsColors.faint,
+                        ),
+                      ),
                     ),
                   ],
                 ],
@@ -230,12 +242,14 @@ class RoscaCategorias extends StatelessWidget {
                     PieChart(
                       PieChartData(
                         sections: ordenado.map((e) {
-                          final apagada = selecionadas.isNotEmpty &&
+                          final apagada =
+                              selecionadas.isNotEmpty &&
                               !selecionadas.contains(e.key);
                           return PieChartSectionData(
                             value: e.value.toDouble(),
-                            color: categoryColor(e.key)
-                                .withValues(alpha: apagada ? 0.22 : 1),
+                            color: categoryColor(
+                              e.key,
+                            ).withValues(alpha: apagada ? 0.22 : 1),
                             radius: 9,
                             showTitle: false,
                           );
@@ -249,8 +263,10 @@ class RoscaCategorias extends StatelessWidget {
                       children: [
                         Text('$total', style: SIMEopsType.figure(size: 26)),
                         const SizedBox(height: 4),
-                        Text('TOTAL',
-                            style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+                        Text(
+                          'TOTAL',
+                          style: SIMEopsType.slug(color: SIMEopsColors.faint),
+                        ),
                       ],
                     ),
                   ],
@@ -266,11 +282,10 @@ class RoscaCategorias extends StatelessWidget {
                         categoria: e.key,
                         valor: e.value,
                         pct: pct(e.value),
-                        apagada: selecionadas.isNotEmpty &&
+                        apagada:
+                            selecionadas.isNotEmpty &&
                             !selecionadas.contains(e.key),
-                        onTap: onToggle == null
-                            ? null
-                            : () => onToggle!(e.key),
+                        onTap: onToggle == null ? null : () => onToggle!(e.key),
                       ),
                   ],
                 ),
@@ -320,26 +335,102 @@ class _LinhaDaLegenda extends StatelessWidget {
               CatChip(categoria: categoria),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(categoryLabel(categoria).toUpperCase(),
-                    style: SIMEopsType.slug(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
+                child: Text(
+                  categoryLabel(categoria).toUpperCase(),
+                  style: SIMEopsType.slug(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
               SizedBox(
                 width: 38,
-                child: Text(pct,
-                    textAlign: TextAlign.right,
-                    style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+                child: Text(
+                  pct,
+                  textAlign: TextAlign.right,
+                  style: SIMEopsType.slug(color: SIMEopsColors.faint),
+                ),
               ),
               SizedBox(
                 width: 30,
-                child: Text('$valor',
-                    textAlign: TextAlign.right,
-                    style: SIMEopsType.slug(color: SIMEopsColors.white)),
+                child: Text(
+                  '$valor',
+                  textAlign: TextAlign.right,
+                  style: SIMEopsType.slug(color: SIMEopsColors.white),
+                ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// A janela do relatório: `7D · 30D · 90D · 1A · TUDO`.
+///
+/// Nasceu de um defeito que o João pegou olhando a tela: o relatório da cidade
+/// mostrava **sempre 30 dias**, sem dizer, e sem oferecer outra coisa — a
+/// constante estava chumbada em três lugares. E logo abaixo havia um seletor
+/// que ia até 1 ano mexendo **só no gráfico de volume**: a mesma página com
+/// dois períodos, o que é pior que um período errado, porque quem lê soma os
+/// dois sem saber.
+///
+/// `TUDO` é o ponto do exercício. O produto acumula desde que o auto-scan
+/// começou a rodar, e até aqui não havia como ver isso — a cidade tinha
+/// memória e a tela só mostrava o último mês.
+///
+/// Sem cápsula: é o mesmo vocabulário das abas de cidade, rótulo mono e filete
+/// no ativo.
+class JanelaDoRelatorio extends StatelessWidget {
+  /// Dias da janela. `null` = desde o início.
+  final int? dias;
+  final ValueChanged<int?> onMudar;
+
+  const JanelaDoRelatorio({
+    super.key,
+    required this.dias,
+    required this.onMudar,
+  });
+
+  static const _opcoes = <(String, int?)>[
+    ('7D', 7),
+    ('30D', 30),
+    ('90D', 90),
+    ('1A', 365),
+    ('TUDO', null),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 22, 18, 0),
+      child: Row(
+        children: [
+          for (final (rotulo, valor) in _opcoes)
+            Padding(
+              padding: const EdgeInsets.only(right: 17),
+              child: InkWell(
+                onTap: () => onMudar(valor),
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: dias == valor
+                            ? SIMEopsColors.greenLight
+                            : Colors.transparent,
+                        width: 1.5,
+                      ),
+                    ),
+                  ),
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    rotulo,
+                    style: SIMEopsType.placeTab(active: dias == valor),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

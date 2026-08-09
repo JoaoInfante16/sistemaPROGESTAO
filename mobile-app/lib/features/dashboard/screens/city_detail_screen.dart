@@ -35,7 +35,23 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   Map<String, dynamic>? _summary;
   List<dynamic>? _trend;
   bool _loadingOverview = true;
-  String _trendPeriod = '30d';
+
+  /// Janela do relatório da cidade, em dias. `null` = **desde o início**.
+  ///
+  /// Existia uma constante `30` chumbada em **três lugares** (`_loadOverview`,
+  /// `_loadMapPoints` e o `rangeDays` do executivo), e ao lado delas um
+  /// `_trendPeriod` que ia até 1 ano — mas mexia **só no gráfico de volume**.
+  /// Ou seja: a página inteira dizia "30 dias" com um gráfico embaixo dizendo
+  /// "1 ano", e nada na tela avisava. Dois períodos numa página é pior que um
+  /// período errado, porque o leitor soma os dois sem saber.
+  ///
+  /// Agora é um só, no topo do relatório, e ele move tudo — números, mapa,
+  /// bairros, volume e indicadores.
+  int? _relatorioDias = 30;
+
+  /// Piso do "desde o início". O banco não tem nada antes de 2026; qualquer
+  /// data anterior devolve tudo, e é isso que a opção promete.
+  static const _inicioDosTempos = '2000-01-01';
 
   // Radar de ocorrências — pontos vem do backend já geocodados
   List<CrimePoint> _mapPoints = [];
@@ -64,11 +80,14 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   // For groups without sub-city selected, use first city name
   String get _activeCidade {
     if (_selectedSubCity != null) return _selectedSubCity!;
-    if (widget.city.isGroup && widget.city.cityNames != null && widget.city.cityNames!.isNotEmpty) {
+    if (widget.city.isGroup &&
+        widget.city.cityNames != null &&
+        widget.city.cityNames!.isNotEmpty) {
       return widget.city.cityNames!.first;
     }
     return widget.city.name;
   }
+
   bool get _isGroup => widget.city.isGroup;
 
   @override
@@ -96,13 +115,22 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   String _dateStr(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  int get _trendDays {
-    switch (_trendPeriod) {
-      case '7d': return 7;
-      case '90d': return 90;
-      case '1a': return 365;
-      default: return 30;
-    }
+  /// Início da janela, no formato que o backend espera.
+  String get _relatorioDe {
+    final d = _relatorioDias;
+    if (d == null) return _inicioDosTempos;
+    return _dateStr(DateTime.now().subtract(Duration(days: d)));
+  }
+
+  /// `rangeDays` do executivo — ele é chave de cache no backend, então "desde
+  /// o início" precisa de um número, não de nulo.
+  int get _relatorioRangeDays => _relatorioDias ?? 3650;
+
+  /// Troca a janela e recarrega **tudo** — era só o gráfico de volume.
+  void _mudarJanela(int? dias) {
+    if (_relatorioDias == dias) return;
+    setState(() => _relatorioDias = dias);
+    _loadOverview();
   }
 
   Future<void> _loadOverview() async {
@@ -110,9 +138,9 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     try {
       final api = context.read<ApiService>();
       final now = DateTime.now();
-      final d30 = now.subtract(const Duration(days: 30));
 
-      final summary = await api.getCrimeSummary(_activeCidade, _dateStr(d30), _dateStr(now))
+      final summary = await api
+          .getCrimeSummary(_activeCidade, _relatorioDe, _dateStr(now))
           .catchError((_) => <String, dynamic>{});
 
       if (mounted) {
@@ -139,7 +167,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
       final raw = await api.getExecutive(
         cidade: _activeCidade,
         estado: estado,
-        rangeDays: 30,
+        rangeDays: _relatorioRangeDays,
       );
       if (!mounted) return;
       setState(() {
@@ -157,8 +185,8 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     try {
       final api = context.read<ApiService>();
       final now = DateTime.now();
-      final from = now.subtract(Duration(days: _trendDays));
-      final trendData = await api.getCrimeTrend(_activeCidade, _dateStr(from), _dateStr(now))
+      final trendData = await api
+          .getCrimeTrend(_activeCidade, _relatorioDe, _dateStr(now))
           .catchError((_) => <String, dynamic>{});
       if (mounted) {
         setState(() {
@@ -172,13 +200,8 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     }
   }
 
-  void _changePeriod(String period) {
-    setState(() => _trendPeriod = period);
-    _loadTrend();
-  }
-
   // Radar: backend geocoda + devolve lista pronta (CrimePoint).
-  // Período: últimos 30 dias (coerente com _loadOverview).
+  // Segue a MESMA janela do resto do relatório.
   Future<void> _loadMapPoints() async {
     final cidade = _activeCidade;
     final estado = widget.city.parentState ?? '';
@@ -188,11 +211,10 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     try {
       final api = context.read<ApiService>();
       final now = DateTime.now();
-      final d30 = now.subtract(const Duration(days: 30));
       final raw = await api.getMapPoints(
         cidade: cidade,
         estado: estado,
-        dateFrom: _dateStr(d30),
+        dateFrom: _relatorioDe,
         dateTo: _dateStr(now),
       );
       if (!mounted) return;
@@ -232,10 +254,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
                 onNotification: _onScroll,
                 child: TabBarView(
                   controller: _tabController,
-                  children: [
-                    _buildFeedTab(),
-                    _buildOverviewTab(),
-                  ],
+                  children: [_buildFeedTab(), _buildOverviewTab()],
                 ),
               ),
             ),
@@ -293,7 +312,12 @@ class _CityDetailScreenState extends State<CityDetailScreen>
           bottom: BorderSide(color: SIMEopsColors.white, width: 2),
         ),
       ),
-      padding: EdgeInsets.fromLTRB(18, _collapsed ? 2 : 8, 18, _collapsed ? 6 : 12),
+      padding: EdgeInsets.fromLTRB(
+        18,
+        _collapsed ? 2 : 8,
+        18,
+        _collapsed ? 6 : 12,
+      ),
       child: AnimatedSize(
         duration: const Duration(milliseconds: 170),
         curve: Curves.easeOut,
@@ -333,13 +357,15 @@ class _CityDetailScreenState extends State<CityDetailScreen>
             _backButton(),
             const SizedBox(width: 4),
             Text.rich(
-              TextSpan(children: [
-                const TextSpan(text: 'SIME'),
-                TextSpan(
-                  text: 'OPS',
-                  style: TextStyle(color: SIMEopsColors.greenLight),
-                ),
-              ]),
+              TextSpan(
+                children: [
+                  const TextSpan(text: 'SIME'),
+                  TextSpan(
+                    text: 'OPS',
+                    style: TextStyle(color: SIMEopsColors.greenLight),
+                  ),
+                ],
+              ),
               style: SIMEopsType.wordmark(size: 14),
             ),
           ],
@@ -364,7 +390,10 @@ class _CityDetailScreenState extends State<CityDetailScreen>
             // Costurado por "·" numa tinta só, como no protótipo. Cada peça em
             // sua cor era o que fazia a faixa brigar consigo mesma.
             if (uf != null)
-              Text('$uf · ', style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+              Text(
+                '$uf · ',
+                style: SIMEopsType.slug(color: SIMEopsColors.faint),
+              ),
             _PeriodCount(
               city: c,
               period: _statPeriod,
@@ -389,13 +418,16 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   }
 
   Widget _backButton() => InkWell(
-        onTap: () => Navigator.of(context).pop(),
-        child: const Padding(
-          padding: EdgeInsets.all(8),
-          child: Icon(Icons.arrow_back_ios_new,
-              size: 17, color: SIMEopsColors.muted),
-        ),
-      );
+    onTap: () => Navigator.of(context).pop(),
+    child: const Padding(
+      padding: EdgeInsets.all(8),
+      child: Icon(
+        Icons.arrow_back_ios_new,
+        size: 17,
+        color: SIMEopsColors.muted,
+      ),
+    ),
+  );
 
   /// As cidades do grupo. Rola na horizontal com degradê na borda direita —
   /// sem ele o scroll é invisível e o usuário nunca descobre que existe
@@ -424,12 +456,14 @@ class _CityDetailScreenState extends State<CityDetailScreen>
               selected: _selectedSubCity == null,
               onTap: () => _onSubCityChanged(null),
             ),
-            ...names.map((c) => _PlaceTab(
-                  label: c,
-                  selected: _selectedSubCity == c,
-                  naoLidas: widget.city.naoLidasPorCidade[c] ?? 0,
-                  onTap: () => _onSubCityChanged(c),
-                )),
+            ...names.map(
+              (c) => _PlaceTab(
+                label: c,
+                selected: _selectedSubCity == c,
+                naoLidas: widget.city.naoLidasPorCidade[c] ?? 0,
+                onTap: () => _onSubCityChanged(c),
+              ),
+            ),
           ],
         ),
       ),
@@ -508,7 +542,10 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     }
     final cidade = _isGroup ? _selectedSubCity! : widget.city.name;
     return FeedScreen(
-        key: ValueKey(cidade), filtro: _filtro, cityFilter: cidade);
+      key: ValueKey(cidade),
+      filtro: _filtro,
+      cityFilter: cidade,
+    );
   }
 
   /// A aba Relatório da cidade — **a mesma peça** do relatório da busca manual.
@@ -538,10 +575,17 @@ class _CityDetailScreenState extends State<CityDetailScreen>
         (c['category'] as String? ?? 'institucional'): safeInt(c['count']),
     };
 
-    final rankBairros = (bairros.toList()
-          ..sort((a, b) => safeInt(b['count']).compareTo(safeInt(a['count']))))
-        .map((b) => ((b['bairro'] as String? ?? 'Desconhecido'), safeInt(b['count'])))
-        .toList();
+    final rankBairros =
+        (bairros.toList()..sort(
+              (a, b) => safeInt(b['count']).compareTo(safeInt(a['count'])),
+            ))
+            .map(
+              (b) => (
+                (b['bairro'] as String? ?? 'Desconhecido'),
+                safeInt(b['count']),
+              ),
+            )
+            .toList();
 
     return RefreshIndicator(
       onRefresh: _loadOverview,
@@ -567,6 +611,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
               ],
             ),
           ),
+          JanelaDoRelatorio(dias: _relatorioDias, onMudar: _mudarJanela),
 
           if (porCategoria.isNotEmpty)
             BlocoRelatorio(
@@ -580,7 +625,8 @@ class _CityDetailScreenState extends State<CityDetailScreen>
           if (rankBairros.isNotEmpty)
             BlocoRelatorio(
               titulo: 'Bairros mais citados',
-              nota: 'Citação na matéria — não é onde o fato ocorreu em 100% '
+              nota:
+                  'Citação na matéria — não é onde o fato ocorreu em 100% '
                   'dos casos.',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -627,16 +673,15 @@ class _CityDetailScreenState extends State<CityDetailScreen>
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(
-                        strokeWidth: 2, color: SIMEopsColors.teal),
+                      strokeWidth: 2,
+                      color: SIMEopsColors.teal,
+                    ),
                   ),
                 ),
               ),
             ),
 
-          BlocoRelatorio(
-            titulo: 'Volume no tempo',
-            child: _buildTendencia(),
-          ),
+          BlocoRelatorio(titulo: 'Volume no tempo', child: _buildTendencia()),
 
           if (_executiveLoading || !_executive.isEmpty)
             BlocoRelatorio(
@@ -664,21 +709,32 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   /// número aqui é o que a imprensa publicou, e quem for citá-lo numa reunião
   /// precisa saber disso antes.
   String _fraseDaCidade(int total, int bairros, int tipos) {
+    // A frase segue a janela — dizer "nos últimos 30 dias" com o seletor em
+    // TUDO seria a mesma mentira que o carimbo `00:00` contava.
+    final d = _relatorioDias;
+    final janela = d == null
+        ? 'desde o início do monitoramento'
+        : d == 365
+        ? 'no último ano'
+        : 'nos últimos $d dias';
+
     if (total == 0) {
-      return 'Nenhuma ocorrência publicada nos últimos 30 dias. Cidade quieta '
+      return 'Nenhuma ocorrência publicada $janela. Cidade quieta '
           'na imprensa não é cidade sem ocorrência — é o que não virou notícia.';
     }
     final b = StringBuffer();
     b.write(total == 1 ? 'ocorrência publicada' : 'ocorrências publicadas');
-    b.write(' nos últimos 30 dias');
+    b.write(' $janela');
     if (bairros > 0) {
       b.write(', em $bairros ${bairros == 1 ? 'bairro' : 'bairros'}');
     }
     if (tipos > 0) {
       b.write(' e $tipos ${tipos == 1 ? 'tipo' : 'tipos'} de ocorrência');
     }
-    b.write('. É o que a imprensa noticiou — não o total registrado pelas '
-        'polícias.');
+    b.write(
+      '. É o que a imprensa noticiou — não o total registrado pelas '
+      'polícias.',
+    );
     return b.toString();
   }
 
@@ -714,54 +770,19 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     return FontesAnalisadas(oficiais: oficiais, midias: midias);
   }
 
-  /// Volume no tempo, com a janela em abas de fio.
+  /// Volume no tempo.
   ///
-  /// Eram quatro cápsulas r14 preenchidas de teal — o mesmo vocabulário do
-  /// botão primário, para uma escolha que não é ação nenhuma. Agora são as
-  /// mesmas abas da fila de cidades: rótulo mono e filete embaixo do ativo.
+  /// Perdeu o seletor próprio: ele tinha quatro períodos que moviam **só este
+  /// gráfico**, enquanto o resto da página ficava preso em 30 dias. Agora
+  /// quem manda é a [JanelaDoRelatorio] lá em cima, e ela move tudo junto.
   Widget _buildTendencia() {
-    const periodos = ['7d', '30d', '90d', '1a'];
-    const rotulos = {'7d': '7 DIAS', '30d': '30 DIAS', '90d': '90 DIAS', '1a': '1 ANO'};
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 14),
-          child: Row(
-            children: [
-              for (final p in periodos)
-                Padding(
-                  padding: const EdgeInsets.only(right: 17),
-                  child: InkWell(
-                    onTap: () => _changePeriod(p),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(
-                            color: _trendPeriod == p
-                                ? SIMEopsColors.greenLight
-                                : Colors.transparent,
-                            width: 1.5,
-                          ),
-                        ),
-                      ),
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(rotulos[p]!,
-                          style: SIMEopsType.placeTab(active: _trendPeriod == p)),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        WeeklyTrendBars(
-          data: (_trend ?? const [])
-              .map((e) => e as Map<String, dynamic>)
-              .toList(),
-        ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: WeeklyTrendBars(
+        data: (_trend ?? const [])
+            .map((e) => e as Map<String, dynamic>)
+            .toList(),
+      ),
     );
   }
 }
@@ -781,9 +802,9 @@ enum StatPeriod {
   final String short;
 
   int countOf(CityOverview c) => switch (this) {
-        StatPeriod.d30 => c.totalCrimes30d,
-        StatPeriod.all => c.totalCrimes,
-      };
+    StatPeriod.d30 => c.totalCrimes30d,
+    StatPeriod.all => c.totalCrimes,
+  };
 }
 
 /// `107 EM 30D ▾` — toca e alterna entre o mês e o acumulado.
@@ -826,8 +847,9 @@ class _PeriodCount extends StatelessWidget {
                 const SizedBox(width: 18),
                 Text(
                   '${p.countOf(city)}',
-                  style: SIMEopsType.placeTab(active: false)
-                      .copyWith(color: SIMEopsColors.faint),
+                  style: SIMEopsType.placeTab(
+                    active: false,
+                  ).copyWith(color: SIMEopsColors.faint),
                 ),
               ],
             ),
@@ -844,8 +866,7 @@ class _PeriodCount extends StatelessWidget {
               style: SIMEopsType.slug(color: SIMEopsColors.faint),
             ),
             const SizedBox(width: 2),
-            const Icon(Icons.expand_more,
-                size: 13, color: SIMEopsColors.faint),
+            const Icon(Icons.expand_more, size: 13, color: SIMEopsColors.faint),
           ],
         ),
       ),
@@ -883,8 +904,7 @@ class _PlaceTab extends StatelessWidget {
           decoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(
-                color:
-                    selected ? SIMEopsColors.greenLight : Colors.transparent,
+                color: selected ? SIMEopsColors.greenLight : Colors.transparent,
                 width: 1.5,
               ),
             ),
@@ -932,4 +952,3 @@ class _PlaceTab extends StatelessWidget {
 // reintroduzir a mesma mentira que o rótulo "VARREDURA HÁ" já contou uma vez.
 //
 // Se um dia valer a pena: o backend precisa expor o timestamp do scan.
-

@@ -53,6 +53,38 @@ do veículo.
 ⚠️ **A 030 do plano original era a de notificações — renumerar pra 031.** A hora
 de publicação entrou na frente porque era correção de bug em produção de dado.
 
+### 🐛 ACHADO NÃO CORRIGIDO — o relatório do GRUPO mostra só uma cidade
+
+Medido em 09/08 na Grande Florianópolis: o cabeçalho diz **21 EM 30D** e o
+relatório abre com **12**. Não é arredondamento — são coisas diferentes.
+
+`getCrimeSummary` (`analyticsQueries.ts:96`) filtra com `.eq('cidade', cidade)`,
+uma cidade só. E o `_activeCidade` do `city_detail_screen.dart`, com a aba
+`TODAS` selecionada, devolve **a primeira cidade do grupo**. Então o relatório
+de um grupo de quatro cidades é o relatório de Florianópolis, e nada na tela
+diz isso. Vale para os quatro endpoints: `crime-summary`, `crime-trend`,
+`news-sources` e `map-points`.
+
+Conserto: aceitar `cidades` (lista) e trocar `.eq` por `.in` nas quatro
+consultas — aditivo e retrocompatível. O app já sabe fazer isso no feed
+(`FeedScreen(citiesFilter:)`); só a analytics não sabe.
+
+
+
+Medido em 09/08 com a Grande Florianópolis: o cabeçalho diz **21 EM 30D** e o
+relatório abre com **12**. Não é arredondamento — são coisas diferentes.
+
+ () filtra com ,
+uma cidade só. E  (), quando a aba
+ está selecionada, devolve **a primeira cidade do grupo**. Então o
+relatório de um grupo de 4 cidades é o relatório de Florianópolis, sem dizer.
+Vale para os quatro: , ,  e
+.
+
+Conserto: aceitar  (lista) e trocar  por  nas quatro
+consultas — aditivo e retrocompatível. O app já sabe fazer isso no feed
+(); só a analytics não.
+
 ### O que falta na Fase E (o export)
 
 - o botão `COMPARTILHAR RELATÓRIO` ainda **manda um link de texto** para o
@@ -228,6 +260,67 @@ produção **na hora, sem deploy**. Quando o significado de uma config mudar,
 Verificado em **04/08**: 026, 027 e 028 aplicadas (`openai` e `jina` com
 `max_concurrent` 20). **024 e 025 seguem não rodadas.** Custo do mês: **$1,75**
 de $100.
+
+---
+
+## 2026-08-09 (noite) — o que as fotos do aparelho pegaram, em três rodadas
+
+Tudo nesta entrada saiu de foto de tela, não de análise. Vale registrar porque
+os três achados são do mesmo tipo: **o app já sabia fazer certo em algum
+lugar** e fazia diferente em outro.
+
+**1. O relatório da consulta abria por um botão verde de largura inteira**, e a
+tela da cidade resolve a MESMA decisão — ver a lista ou ver o relatório — com
+uma aba de duas palavras. João, com as duas telas lado a lado: *"um é esse
+botão com CTA horrível, e o outro a tabzinha relatório/notícias, perfeita ali"*.
+O `report_screen` deixou de ser tela (sem `Scaffold`, sem `Masthead`) e virou
+corpo de um caderno; quem desenha o topo é quem hospeda. Junto foram embora o
+`_reportId`/`_openReport`/`_checkForReport`, que existiam só pra decidir se o
+botão dizia "gerar" ou "ver" um relatório que **sempre existiu** — ele é
+calculado do resultado que já está na mão.
+
+**2. "Olha a fonte, muito ruim, as fontes do feed são melhores."** A fonte era
+a mesma (Archivo). O errado era a **entrelinha**: o título do item do histórico
+era `body().copyWith(fontSize: 20)`, e o `body` carrega `height: 1.4` —
+entrelinha de parágrafo num título de uma linha, que faz o nome flutuar dentro
+do próprio espaço. A manchete do feed usa 1.13.
+
+A causa era maior que a tela: **30 chamadas de `copyWith(fontSize:)` espalhadas
+pelo app, em 14 tamanhos** (12.5, 13, 15, 15.5, 16, 17, 18, 19, 20, 21, 22, 25,
+27, 40). Um arquivo de escala existe pra ser fonte única e estava sendo
+contornado 30 vezes — e **cada contorno herda a entrelinha de onde saiu**, que
+quase nunca é a certa. Os quatro degraus repetidos viraram nome (`sheetTitle`,
+`dialogTitle`, `fieldValue`, `rowTitle`) sem mudar um pixel do que já estava
+certo, mais o `entryTitle` que conserta o histórico.
+
+**3. "Esse recorte deste documento tá poluindo muito"** — e o diagnóstico dele
+foi mais preciso que "tem coisa demais": *"tudo importante, mas mal colocado"*.
+Era uma caixa de quatro linhas com filete branco **antes do número**, dizendo
+coisas que a frase de abertura já diz. Virou uma linha em mono embaixo da
+frase, com o que sobrava de exclusivo (intervalo exato + hora de geração). A
+caixa inteira continua fazendo sentido no **documento exportado**, onde quem lê
+não tem a frase acima.
+
+E o mais importante: **a ordem inverteu**. O número vem primeiro, os controles
+depois. Eles só interessam a quem já viu o resultado e quer mexer nele —
+ninguém abre um relatório decidindo antes se inclui a região metropolitana.
+
+### O relatório da cidade tinha DOIS períodos
+
+Também da foto: *"por que no auto-scan o relatório da Grande Florianópolis está
+mostrando os últimos 30? Tem que poder mostrar desde o início."*
+
+Estava pior do que ele viu. A constante `30` estava chumbada em **três**
+lugares (`_loadOverview`, `_loadMapPoints` e o `rangeDays` do executivo), e
+logo abaixo havia um seletor de `7d/30d/90d/1a` que mexia **só no gráfico de
+volume**. A mesma página com dois períodos, sem nada avisando — o que é pior
+que um período errado, porque quem lê soma os dois.
+
+Agora é uma janela só (`JanelaDoRelatorio`, em `report_pieces.dart`), no topo,
+movendo tudo: números, rosca, bairros, mapa, volume e indicadores. Com `TUDO`,
+que era o pedido — o produto acumula desde que o auto-scan começou e não havia
+como ver isso. A frase de abertura segue a janela: dizer "nos últimos 30 dias"
+com o seletor em TUDO seria a mesma mentira que o carimbo `00:00` contava.
 
 ---
 

@@ -426,8 +426,14 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
   // Datas escritas à mão, sem `DateFormat('pt_BR')`: a localização do intl
   // precisa de `initializeDateFormatting`, e sem ela a data sai em inglês —
   // num documento que o cliente encaminha pra outra pessoa.
-  String _dataLonga(DateTime d) =>
-      '${d.day} de ${_mesesLongos[d.month - 1]} de ${d.year}';
+  // A forma por extenso (`10 de julho de 2026`) saiu junto com a caixa de
+  // recorte. Ela volta no documento exportado (Fase E2), que é onde a data
+  // precisa ser lida por alguém que não estava nesta tela.
+
+  /// `10 JUL` — a forma da tela, onde ela divide uma linha com mais três
+  /// coisas e não pode gastar dezoito caracteres.
+  String _dataMes(DateTime d) =>
+      '${d.day} ${_mesesLongos[d.month - 1].substring(0, 3)}';
   String _horaCurta(DateTime d) =>
       '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   String _dataCurta(DateTime d) =>
@@ -477,57 +483,35 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
   // PEÇAS
   // ══════════════════════════════════════════════════════════════════════
 
-  /// A caixa que declara o recorte.
+  /// O recorte, em **uma linha**.
   ///
-  /// ⚠️ ISTO EXISTE PORQUE O RELATÓRIO PODIA MENTIR SEM QUERER. Ligado o
-  /// "+ antigas", um relatório pedido de 30 dias passava a conter matéria de
-  /// até **180 dias** atrás (`manual_search_horizon_days`), e nada — nem a
-  /// rosca, nem o ranking de bairro, nem o total — dizia isso. É um documento
-  /// que o cliente manda pra outra pessoa; ele tem que declarar o próprio
-  /// recorte, em datas e cidades, não em adjetivos.
-  Widget _recorteDeclarado() {
+  /// ⚠️ ELE EXISTE PORQUE O RELATÓRIO PODIA MENTIR SEM QUERER. Ligado o
+  /// "+ antigas", um relatório pedido de 30 dias passa a conter matéria de até
+  /// **180 dias** atrás (`manual_search_horizon_days`), e nada — nem a rosca,
+  /// nem o ranking de bairro, nem o total — dizia isso.
+  ///
+  /// Era uma caixa de quatro linhas com filete branco, **antes** do número, e
+  /// o João apontou o óbvio: ela empurrava o resultado pra fora da primeira
+  /// tela pra dizer coisas que a frase de abertura já diz ("por 29 veículos em
+  /// 30 dias", e quais cidades). O que sobrava de exclusivo era o intervalo
+  /// exato e a hora de geração — e isso cabe numa linha, embaixo da frase.
+  ///
+  /// A caixa inteira continua fazendo sentido **no documento exportado**
+  /// (Fase E2), onde quem lê nunca viu esta tela e não tem a frase acima.
+  Widget _linhaDoRecorte() {
     final hoje = DateTime.now();
-    final linhas = <String>[
-      '${_dataLonga(_inicioDoRecorte)} a ${_dataLonga(hoje)} · $_diasDoRecorte dias',
-      widget.cidades.join(', ') +
-          (_includeRegiao && widget.regiao.isNotEmpty
-              ? ' e mais ${_cidadesDaRegiao()}'
-              : ''),
-      if (_veiculos > 0)
-        'Fonte: $_veiculos ${_plural(_veiculos, 'veículo', 'veículos')} de imprensa',
+    final partes = <String>[
+      '${_dataMes(_inicioDoRecorte)} – ${_dataMes(hoje)}',
       if (_includeOld && widget.foraDoPeriodo.isNotEmpty)
-        'Inclui ${widget.foraDoPeriodo.length} anteriores a '
-            '${_dataCurta(_inicioDoRecorte)} — até ${widget.horizonteDias} dias atrás',
-      // Um documento que alguém encaminha precisa dizer de quando ele é.
-      'Gerado em ${_dataCurta(hoje)} às ${_horaCurta(hoje)}',
+        'INCLUI ATÉ ${widget.horizonteDias} DIAS ATRÁS',
+      'GERADO ${_dataCurta(hoje)} ${_horaCurta(hoje)}',
     ];
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(13, 12, 13, 13),
-        decoration: const BoxDecoration(
-          color: SIMEopsColors.navyMid,
-          border: Border(
-            left: BorderSide(color: SIMEopsColors.white, width: 2),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'RECORTE DESTE DOCUMENTO',
-              style: SIMEopsType.slug(color: SIMEopsColors.faint),
-            ),
-            const SizedBox(height: 8),
-            for (final l in linhas)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 3),
-                child: Text(l, style: SIMEopsType.note()),
-              ),
-          ],
-        ),
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+      child: Text(
+        partes.join(' · ').toUpperCase(),
+        style: SIMEopsType.slug(color: SIMEopsColors.faint),
       ),
     );
   }
@@ -646,7 +630,25 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
     return ListView(
       padding: const EdgeInsets.only(bottom: 20),
       children: [
-        _recorteDeclarado(),
+        // A abertura primeiro. Os controles vêm **depois**, porque só
+        // interessam a quem já viu o número e quer mexer nele — ninguém abre um
+        // relatório decidindo antes se inclui a região metropolitana. Estavam
+        // em cima, e empurravam o resultado pra fora da primeira tela.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('$_totalOcorrencias', style: SIMEopsType.hero()),
+              const SizedBox(height: 7),
+              Text(
+                _fraseDeAbertura,
+                style: SIMEopsType.lead().copyWith(fontSize: 15),
+              ),
+            ],
+          ),
+        ),
+        _linhaDoRecorte(),
         _fatias(),
 
         if (widget.foraDoPeriodo.isNotEmpty || widget.regiao.isNotEmpty)
@@ -676,22 +678,6 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
               _computeAnalytics();
             }),
           ),
-
-        // A abertura: o número e o que ele quer dizer.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 26, 18, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('$_totalOcorrencias', style: SIMEopsType.hero()),
-              const SizedBox(height: 7),
-              Text(
-                _fraseDeAbertura,
-                style: SIMEopsType.lead().copyWith(fontSize: 15),
-              ),
-            ],
-          ),
-        ),
 
         if (_categoryCounts.isNotEmpty)
           BlocoRelatorio(
