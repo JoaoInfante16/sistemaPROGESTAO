@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../core/data/brazilian_locations.dart';
@@ -11,7 +10,8 @@ import '../../../core/utils/category_colors.dart';
 import '../../../core/utils/crime_labels.dart';
 import '../../../core/utils/datas.dart';
 import '../../../core/utils/date_grouping.dart';
-import '../../../core/widgets/category_filter_bar.dart';
+import '../../../core/utils/state_utils.dart';
+import '../../../core/widgets/cat_chip.dart';
 import '../../../core/widgets/group_header.dart';
 import '../../../core/widgets/grid_background.dart';
 import '../../../core/widgets/masthead.dart';
@@ -19,8 +19,8 @@ import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 import '../widgets/assuntos_field.dart';
 import '../widgets/seletor_lugar.dart';
-import '../../feed/widgets/news_card.dart';
-import '../../feed/widgets/news_detail_sheet.dart';
+import '../../feed/feed_filtro.dart';
+import '../../feed/widgets/take_card.dart';
 import '../../../core/models/news_item.dart';
 import 'report_screen.dart';
 
@@ -62,9 +62,20 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   List<NewsItem> _items = [];
   List<NewsItem> _regiaoItems = [];
   List<NewsItem> _foraItems = [];
-  // Recorte da lista: categorias (vazio = todas) + seções com toggle invertido.
-  final Set<String> _filterCats = {};
+  // Recorte da lista: a MESMA folha do feed (`FILTRAR`), não uma barra de
+  // chips própria. A tela de resultado tinha a `CategoryFilterBar` fixa — cinco
+  // fichas com cor e contagem permanentes na tela para um filtro que quase
+  // sempre está desligado. Mora aqui e não no `FeedFiltro` global porque o
+  // recorte de uma consulta morre com ela.
+  final FeedFiltro _filtro = FeedFiltro();
   final Set<String> _toggledSections = {};
+
+  /// Chaves dos achados que já passaram pela janela do worker — a contagem
+  /// real do "já encontrado". Ver [_ingestAchados].
+  final Set<String> _achadosVistos = {};
+
+  /// Os últimos achados, pra mostrar. Janela, não histórico: ver [_ingestAchados].
+  final List<Map<String, dynamic>> _achadosRecentes = [];
   Map<String, dynamic>? _progress;
   Timer? _pollTimer;
   DateTime? _searchStartTime;
@@ -155,7 +166,12 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         // Realmente ainda processando — reconstrói cronologia dos stages
         // anteriores a partir do history persistido, depois inicia polling.
         final progress = status['progress'] as Map<String, dynamic>?;
-        if (progress != null) _ingestProgressHistory(progress);
+        if (progress != null) {
+          _ingestProgressHistory(progress);
+          // Quem retoma pelo histórico entra com os últimos achados na tela em
+          // vez de uma seção vazia até o primeiro polling.
+          _ingestAchados(progress);
+        }
         if (mounted) {
           setState(() {
             _searchStatus = 'processing';
@@ -179,6 +195,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   void dispose() {
     _pollTimer?.cancel();
     _elapsedTimer?.cancel();
+    _filtro.dispose();
     super.dispose();
   }
 
@@ -248,9 +265,23 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
           .map((r) => NewsItem.fromSearchResult(r, cidadeVizinha: true))
           .toList();
       _foraItems = res.foraDoPeriodo.map(NewsItem.fromSearchResult).toList();
-      _filterCats.clear();
+      _filtro.limpar();
       _toggledSections.clear();
     });
+    _publicarContagens();
+  }
+
+  /// A folha do recorte precisa saber quantas ocorrências tem cada categoria.
+  /// Publicado ao ingerir — nunca durante o build, que dispararia
+  /// `notifyListeners` no meio de um frame.
+  void _publicarContagens() {
+    final counts = <String, int>{};
+    for (final n in _items) {
+      if (n.natureza == 'estatistica') continue;
+      final cat = n.categoriaGrupo ?? 'institucional';
+      counts[cat] = (counts[cat] ?? 0) + 1;
+    }
+    _filtro.publicarContagens(counts);
   }
 
   // Popula _stageStartTimes + _stageDetails do `history` persistido no backend.
@@ -304,6 +335,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         final progress = status['progress'] as Map<String, dynamic>?;
         if (mounted && progress != null) {
           _ingestProgressHistory(progress);
+          _ingestAchados(progress);
           setState(() => _progress = progress);
         }
 
@@ -417,8 +449,10 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       _items = [];
       _regiaoItems = [];
       _foraItems = [];
-      _filterCats.clear();
+      _filtro.limpar();
       _toggledSections.clear();
+      _achadosVistos.clear();
+      _achadosRecentes.clear();
       _progress = null;
       _searchStartTime = null;
       _elapsedText = '0s';
@@ -432,10 +466,22 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Título contextual: "NOVA BUSCA" só quando o user está preenchendo o form
-    // (estado idle). Assim que a busca inicia ou ao ver resultados (inclusive de
-    // busca anterior via histórico), usa a marca SIMEops — padrão do main_screen.
     final isFormView = _searchStatus == 'idle';
+
+    // O topo diz **de qual consulta** se trata assim que ela começa: o nome da
+    // cidade no lugar da palavra "Consulta", o recorte à esquerda e, à direita,
+    // o cronômetro enquanto roda ou o número quando acaba. Antes eram sete
+    // minutos encarando um título genérico enquanto a cidade pedida — a única
+    // coisa que importa na tela — não aparecia em lugar nenhum.
+    final cidade = _selectedCidades.isNotEmpty
+        ? _selectedCidades.first
+        : (_selectedEstado ?? 'Consulta');
+    final uf = _selectedEstado != null ? abbrState(_selectedEstado!) : null;
+    final recorte = [
+      if (uf != null) uf.toUpperCase(),
+      '$_periodoDias DIAS',
+    ].join(' · ');
+    final concluida = _searchStatus == 'completed';
 
     return Scaffold(
       backgroundColor: SIMEopsColors.navy,
@@ -444,9 +490,17 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         child: Column(
           children: [
             Masthead(
-              titulo: isFormView ? 'Nova consulta' : 'Consulta',
-              direita: isFormView ? 'UMA CIDADE · REGIÃO INCLUSA' : null,
+              titulo: isFormView ? 'Nova consulta' : cidade,
               onVoltar: () => Navigator.of(context).pop(),
+              esquerda: isFormView
+                  ? null
+                  : Text(recorte,
+                      style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+              direita: isFormView
+                  ? 'UMA CIDADE · REGIÃO INCLUSA'
+                  : concluida
+                      ? '${_items.where((n) => n.natureza != 'estatistica').length} OCORRÊNCIAS'
+                      : _elapsedText.toUpperCase(),
             ),
             Expanded(
               child: _searchStatus == 'idle'
@@ -456,21 +510,6 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
                       : _buildResults(),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _sectionLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        text,
-        style: GoogleFonts.rajdhani(
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1.8,
-          color: SIMEopsColors.muted.withValues(alpha: 0.7),
         ),
       ),
     );
@@ -792,21 +831,35 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   // acionável. Explicação atrás de "?" é explicação que ninguém lê — e essa em
   // particular é a tese do produto, não um detalhe.
 
-  // Funil de exibição — os 7 estágios do backend colapsados em 5 blocos.
-  // Decisão de UI do briefing: mostrar o funil ao vivo, não 7 passos com check.
-  // Estágios 4 (LEITURA) e 5 (ANÁLISE) são 85% do tempo e têm contador
-  // feitos/total no /status; os demais só mudam de details.
-  static const _funnelGroups = [
-    ('BUSCANDO', [1]),
-    ('TRIAGEM RÁPIDA', [2, 3]),
-    ('LEITURA', [4]),
-    ('ANÁLISE', [5]),
-    ('AGRUPAMENTO', [6, 7]),
+  // ══════════════════════════════════════════════════════════════════════
+  // A ESPERA
+  // ══════════════════════════════════════════════════════════════════════
+
+  /// Os sete estágios do backend, ditos em português de operação.
+  ///
+  /// Eram **cinco blocos** com nome de engenharia — `TRIAGEM RÁPIDA`,
+  /// `LEITURA`, `ANÁLISE` —, e o agrupamento tinha um motivo técnico: só os
+  /// estágios 4 e 5 mandavam contador, então os outros ficariam mudos se
+  /// aparecessem sozinhos. Desde que cada `details` virou um `de → para` (ver
+  /// [_valorDoPasso]), todo passo tem o próprio resultado e não precisa mais se
+  /// esconder atrás do vizinho.
+  ///
+  /// Os nomes dizem o que a máquina **faz**, não como ela se chama por dentro.
+  /// Quem espera sete minutos merece ver que a espera tem plano.
+  static const _passos = <String>[
+    'Consultar a imprensa',
+    'Descartar o que não é ocorrência',
+    'Triagem por relevância',
+    'Baixar as matérias',
+    'Extrair local, data e tipo',
+    'Juntar as repetidas',
+    'Montar o resultado',
   ];
 
-  static const _totalStages = 7;
+  /// Quantos achados a janela ao vivo mostra de uma vez. Ver [_achadosRecentes].
+  static const _achadosNaJanela = 8;
 
-  // Formata Duration como "2.3s", "1m 12s", "0.4s"
+  // Formata Duration como "2.3s", "1m 12s".
   String _fmtDuration(Duration d) {
     if (d.inSeconds < 60) {
       final seconds = d.inMilliseconds / 1000;
@@ -817,552 +870,511 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     return s > 0 ? '${m}m ${s}s' : '${m}m';
   }
 
-  // "[14:47:15]" — formato monospace estilo log
-  String _fmtTimestamp(DateTime t) {
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '[${two(t.hour)}:${two(t.minute)}:${two(t.second)}]';
+  /// Primeiro inteiro do `details` daquele estágio.
+  ///
+  /// O backend escreve prosa (`619 URLs para filtrar`, `Consolidando 47
+  /// resultados`) e o que a linha precisa é o número. O estágio 1 é o único
+  /// cujo `details` conta outra coisa (`Pesquisando 3 cidades`) — e é
+  /// justamente o único que esta tela nunca lê.
+  int? _numero(int estagio) {
+    final d = _stageDetails[estagio];
+    if (d == null) return null;
+    final m = RegExp(r'\d+').firstMatch(d);
+    return m == null ? null : int.tryParse(m.group(0)!);
   }
 
-  // Início de um grupo do funil = início do primeiro estágio dele que rodou.
-  DateTime? _groupStart(List<int> stages) {
-    for (final s in stages) {
-      final t = _stageStartTimes[s];
-      if (t != null) return t;
+  /// O que aparece à direita do passo: **o que ele fez com o número**.
+  ///
+  /// `619 → 412` é o que faz a espera contar uma história. Sem isso são sete
+  /// linhas acendendo em ordem, e no fim ninguém aprendeu nada sobre a própria
+  /// consulta — nem por que ela demorou, nem onde o material se perdeu.
+  ///
+  /// O `de` de um passo é o `para` do anterior: os números já estavam no
+  /// `details` de cada estágio, ninguém precisou consultar nada a mais.
+  String _valorDoPasso(int indice, int atual, int? feitos, int? total) {
+    final passo = indice + 1;
+
+    if (passo > atual) return '—';
+    if (passo == atual) {
+      if (feitos != null && total != null && total > 0) return '$feitos / $total';
+      return '···';
     }
-    return null;
-  }
 
-  // Details mais recente dentro do grupo (o backend escreve por estágio).
-  String? _groupDetail(List<int> stages) {
-    for (final s in stages.reversed) {
-      final d = _stageDetails[s];
-      if (d != null) return d;
+    String par(int? de, int? para) =>
+        (de == null || para == null) ? '—' : '$de → $para';
+
+    switch (passo) {
+      case 1:
+        final n = _numero(2);
+        return n == null ? '—' : '$n LINKS';
+      case 2:
+        return par(_numero(2), _numero(3));
+      case 3:
+        return par(_numero(3), _numero(4));
+      case 4:
+        return par(_numero(4), _numero(5));
+      case 5:
+        return par(_numero(5), _numero(6));
+      case 6:
+        return par(_numero(6), _numero(7));
+      default:
+        final n = _numero(7);
+        return n == null ? '—' : '$n OCORRÊNCIAS';
     }
-    return null;
   }
 
-  // Duração do grupo: concluído = início do próximo - início dele;
-  // corrente = agora - início; pendente = null.
-  Duration? _groupDuration(int groupIndex, int currentStageNum) {
-    final stages = _funnelGroups[groupIndex].$2;
-    final start = _groupStart(stages);
-    if (start == null) return null;
-    if (currentStageNum > stages.last) {
-      // Concluído — procura o início do grupo seguinte que já rodou.
-      for (var i = groupIndex + 1; i < _funnelGroups.length; i++) {
-        final nextStart = _groupStart(_funnelGroups[i].$2);
-        if (nextStart != null) return nextStart.difference(start);
-      }
-      return null;
+  /// Quanto falta no estágio corrente, pela taxa observada.
+  ///
+  /// Só depois de 5 itens **e** 5 segundos: antes disso a taxa é ruído, e uma
+  /// estimativa que oscila de "40s" para "6min" é pior que nenhuma.
+  String? _falta(int estagio, int feitos, int total) {
+    final inicio = _stageStartTimes[estagio];
+    if (inicio == null || feitos < 5 || total <= feitos) return null;
+    final decorrido = DateTime.now().difference(inicio).inSeconds;
+    if (decorrido < 5) return null;
+    final restante = ((total - feitos) * decorrido / feitos).round();
+    return 'FALTAM ~${_fmtDuration(Duration(seconds: restante))}';
+  }
+
+  /// Chave de um achado, pra contar sem contar duas vezes o mesmo item que
+  /// voltou na janela seguinte do polling.
+  String _chaveDoAchado(Map<String, dynamic> a) => [
+        a['titulo'],
+        a['tipo_crime'],
+        a['cidade'],
+        a['bairro'],
+        a['data_ocorrencia'],
+      ].join('|');
+
+  /// Acumula os achados que passam pela janela do worker.
+  ///
+  /// O worker guarda só os 5 mais recentes (`ACHADOS_VISIVEIS`) e descarta o
+  /// resto — mas o polling é de 3s e o estágio 5 leva minutos, então o app vê
+  /// **todos** passarem. Guardar as chaves aqui custa zero e é a única forma de
+  /// dizer quantas a consulta já achou: `feitos/total` conta o que foi
+  /// analisado, não o que virou ocorrência.
+  ///
+  /// A **lista** continua sendo uma janela dos últimos [_achadosNaJanela], e
+  /// isso é decisão, não preguiça: estes achados são **pré-dedup**. A mesma
+  /// ocorrência publicada por três veículos chega três vezes, e o passo "juntar
+  /// as repetidas" existe justamente pra resolver isso depois. Empilhar tudo na
+  /// tela transformaria a duplicação — que é normal e esperada — num defeito
+  /// visível, e o usuário ainda veria a lista encolher no fim.
+  void _ingestAchados(Map<String, dynamic> progress) {
+    final lista = progress['achados'] as List<dynamic>?;
+    if (lista == null || lista.isEmpty) return;
+
+    // Do mais antigo pro mais novo, pra quem entrar por último ficar no topo.
+    for (final raw in lista.reversed) {
+      if (raw is! Map) continue;
+      final a = raw.cast<String, dynamic>();
+      if (!_achadosVistos.add(_chaveDoAchado(a))) continue;
+      _achadosRecentes.insert(0, a);
     }
-    if (stages.contains(currentStageNum)) {
-      return DateTime.now().difference(start);
+    if (_achadosRecentes.length > _achadosNaJanela) {
+      _achadosRecentes.removeRange(_achadosNaJanela, _achadosRecentes.length);
     }
-    return null;
   }
 
-  // Estimativa de término do estágio corrente pela taxa observada.
-  String? _etaText(DateTime start, int feitos, int total) {
-    if (feitos < 5 || total <= feitos) return null;
-    final elapsed = DateTime.now().difference(start).inSeconds;
-    if (elapsed < 5) return null;
-    final restante = ((total - feitos) * elapsed / feitos).round();
-    return '~${_fmtDuration(Duration(seconds: restante))}';
-  }
-
-  // "hoje" / "ontem" / "há N dias" — usado nos achados ao vivo.
-  static String _relativeDate(String? iso) {
-    final d = DateTime.tryParse(iso ?? '');
-    if (d == null) return '';
-    final now = DateTime.now();
-    final diff = DateTime(now.year, now.month, now.day)
-        .difference(DateTime(d.year, d.month, d.day))
-        .inDays;
-    if (diff <= 0) return 'hoje';
-    if (diff == 1) return 'ontem';
-    return 'há $diff dias';
-  }
-
-  Widget _metadataCard(String label, String value) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-        decoration: BoxDecoration(
-          color: SIMEopsColors.navyLight.withValues(alpha: 0.6),
-          border: Border.all(color: SIMEopsColors.teal.withValues(alpha: 0.15)),
-          borderRadius: BorderRadius.circular(6),
+  Future<void> _confirmarCancelamento() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: SIMEopsColors.navyLight,
+        shape: const RoundedRectangleBorder(
+          side: BorderSide(color: SIMEopsColors.ruleStrong),
         ),
-        child: Column(
-          children: [
-            Text(
-              label,
-              style: GoogleFonts.rajdhani(
-                fontSize: 10,
-                color: SIMEopsColors.muted.withValues(alpha: 0.7),
-                letterSpacing: 1.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 14,
-                color: SIMEopsColors.tealLight,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
+        title: Text('Cancelar a consulta?',
+            style: SIMEopsType.body().copyWith(fontSize: 21)),
+        content: Text(
+          'Ela roda no servidor e termina sozinha mesmo com o app fechado. '
+          'Cancelar agora descarta o que já foi coletado.',
+          style: SIMEopsType.lead(),
         ),
-      ),
-    );
-  }
-
-  Widget _stageIndicator({required bool done, required bool current}) {
-    final color = done
-        ? SIMEopsColors.teal
-        : current
-            ? SIMEopsColors.tealLight
-            : SIMEopsColors.muted.withValues(alpha: 0.3);
-    if (done) {
-      return Container(
-        width: 14,
-        height: 14,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      );
-    }
-    if (current) {
-      return SizedBox(
-        width: 14,
-        height: 14,
-        child: CircularProgressIndicator(strokeWidth: 2, color: color),
-      );
-    }
-    return Container(
-      width: 14,
-      height: 14,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: color, width: 1.5),
-      ),
-    );
-  }
-
-  Widget _buildProgressStepper() {
-    final currentStageNum = (_progress?['stage_num'] as int?) ?? 0;
-    final feitos = (_progress?['feitos'] as num?)?.toInt();
-    final total = (_progress?['total'] as num?)?.toInt();
-    final achados = (_progress?['achados'] as List<dynamic>?) ?? const [];
-    final hasCounter = feitos != null && total != null && total > 0;
-
-    // Barra geral: 7 estágios, com fração dentro dos que têm contador (4 e 5).
-    double progressValue = 0;
-    if (currentStageNum > 0) {
-      final fraction = hasCounter
-          ? (feitos / total).clamp(0.0, 1.0).toDouble()
-          : 0.0;
-      progressValue = ((currentStageNum - 1) + fraction) / _totalStages;
-    }
-
-    // Índice do bloco corrente do funil (pro metadata card).
-    var currentGroup = 0;
-    for (var i = 0; i < _funnelGroups.length; i++) {
-      if (_funnelGroups[i].$2.contains(currentStageNum)) {
-        currentGroup = i + 1;
-        break;
-      }
-    }
-    final groupCounter =
-        currentGroup > 0 ? '$currentGroup/${_funnelGroups.length}' : '—';
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Header com metadata
-          Row(
-            children: [
-              _metadataCard('ETAPA', groupCounter),
-              const SizedBox(width: 8),
-              _metadataCard('TEMPO', _elapsedText),
-            ],
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CONTINUAR ESPERANDO'),
           ),
-          const SizedBox(height: 20),
-
-          // Progress bar central
-          ClipRRect(
-            borderRadius: BorderRadius.circular(2),
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: progressValue),
-              duration: const Duration(milliseconds: 500),
-              builder: (_, value, __) => LinearProgressIndicator(
-                value: value,
-                minHeight: 4,
-                backgroundColor: SIMEopsColors.navyLight.withValues(alpha: 0.6),
-                valueColor: AlwaysStoppedAnimation(SIMEopsColors.teal),
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // O funil: 5 blocos, contador vivo dentro do corrente
-          ...List.generate(_funnelGroups.length, (index) {
-            final (label, stages) = _funnelGroups[index];
-            final isCompleted = currentStageNum > stages.last;
-            final isCurrent = stages.contains(currentStageNum);
-            final startTime = _groupStart(stages);
-            final duration = _groupDuration(index, currentStageNum);
-            final detail = _groupDetail(stages);
-            final showCounter = isCurrent && hasCounter;
-
-            // Pendente em `faint` (4.8:1), não em `muted` a 45% — que dava
-            // 2.5:1 e sumia. É a tela em que a pessoa encara 7 minutos, e os
-            // passos que ainda não rodaram são a prova de que a busca tem
-            // plano: apagá-los mata a função da lista.
-            final labelColor = isCompleted
-                ? SIMEopsColors.white
-                : isCurrent
-                    ? SIMEopsColors.tealLight
-                    : SIMEopsColors.faint;
-
-            // Direita: contador vivo no corrente, duração no concluído.
-            Widget trailing;
-            if (showCounter) {
-              final eta =
-                  startTime != null ? _etaText(startTime, feitos, total) : null;
-              trailing = Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '$feitos de $total',
-                    style: GoogleFonts.jetBrainsMono(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: SIMEopsColors.tealLight,
-                    ),
-                  ),
-                  if (eta != null)
-                    Text(
-                      eta,
-                      style: GoogleFonts.jetBrainsMono(
-                        fontSize: 10,
-                        color: SIMEopsColors.muted.withValues(alpha: 0.7),
-                      ),
-                    ),
-                ],
-              );
-            } else if (duration != null) {
-              trailing = Text(
-                _fmtDuration(duration),
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: 10,
-                  color: isCompleted
-                      ? SIMEopsColors.muted.withValues(alpha: 0.7)
-                      : SIMEopsColors.tealLight.withValues(alpha: 0.8),
-                ),
-              );
-            } else {
-              trailing = Text(
-                '—',
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: 10,
-                  color: SIMEopsColors.muted.withValues(alpha: 0.35),
-                ),
-              );
-            }
-
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Timestamp monospace (só quando o bloco já começou)
-                  SizedBox(
-                    width: 72,
-                    child: startTime != null
-                        ? Text(
-                            _fmtTimestamp(startTime),
-                            style: GoogleFonts.jetBrainsMono(
-                              fontSize: 10,
-                              color: SIMEopsColors.muted.withValues(alpha: 0.6),
-                            ),
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                  const SizedBox(width: 10),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: _stageIndicator(done: isCompleted, current: isCurrent),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          label,
-                          style: GoogleFonts.rajdhani(
-                            fontSize: 13,
-                            letterSpacing: 1.5,
-                            color: labelColor,
-                            fontWeight:
-                                isCurrent ? FontWeight.w700 : FontWeight.w600,
-                          ),
-                        ),
-                        if (detail != null && (isCompleted || isCurrent))
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Text(
-                              detail,
-                              style: GoogleFonts.exo2(
-                                fontSize: 11,
-                                color: SIMEopsColors.muted
-                                    .withValues(alpha: isCompleted ? 0.7 : 0.9),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  trailing,
-                ],
-              ),
-            );
-          }),
-
-          // Achados ao vivo — chegam no estágio 5 (análise), os 5 mais recentes
-          if (achados.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            _sectionLabel('ÚLTIMOS ACHADOS'),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: SIMEopsColors.navyLight.withValues(alpha: 0.5),
-                border: Border.all(
-                    color: SIMEopsColors.teal.withValues(alpha: 0.15)),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Column(
-                children: achados.whereType<Map<String, dynamic>>().map((a) {
-                  final tipo = crimeTypeLabel(a['tipo_crime'] as String?);
-                  final bairro = a['bairro'] as String?;
-                  final quando = _relativeDate(a['data_ocorrencia'] as String?);
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 5,
-                          height: 5,
-                          decoration: const BoxDecoration(
-                            color: SIMEopsColors.tealLight,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            bairro != null && bairro.isNotEmpty
-                                ? '$tipo · $bairro'
-                                : tipo,
-                            style: GoogleFonts.exo2(
-                              fontSize: 12.5,
-                              color: SIMEopsColors.white,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          quando,
-                          style: GoogleFonts.jetBrainsMono(
-                            fontSize: 10,
-                            color: SIMEopsColors.muted.withValues(alpha: 0.7),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-          ],
-
-          const SizedBox(height: 24),
-
-          // A busca é job no servidor e sobrevive a fechar o app.
-          Text(
-            'Pode fechar o app — avisamos quando terminar.',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.exo2(
-              fontSize: 12,
-              color: SIMEopsColors.muted.withValues(alpha: 0.6),
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // Botão cancelar — secundária (OutlinedButtonTheme: borda/texto teal)
-          Center(
-            child: OutlinedButton(
-              onPressed: _resetSearch,
-              style: OutlinedButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 36, vertical: 12),
-              ),
-              child: const Text('CANCELAR'),
-            ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('CANCELAR'),
           ),
         ],
       ),
     );
+    if (ok == true && mounted) _resetSearch();
   }
 
-  Widget _buildResults() {
-    if (_searchStatus == 'processing') {
-      return _buildProgressStepper();
-    }
+  void _refazer() {
+    _resetSearch();
+    unawaited(_startSearch());
+  }
 
-    if (_searchStatus == 'failed') {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+  Widget _marca({required bool feito, required bool agora, required bool parou}) {
+    if (parou) {
+      return Container(width: 8, height: 8, color: SIMEopsColors.alert);
+    }
+    if (feito) {
+      return const Icon(Icons.check, size: 12, color: SIMEopsColors.greenLight);
+    }
+    if (agora) {
+      return Container(width: 8, height: 8, color: SIMEopsColors.tealLight);
+    }
+    return Container(width: 3, height: 3, color: SIMEopsColors.faint);
+  }
+
+  /// Uma etapa: marca · nome · resultado. E, na corrente, o filete de avanço.
+  ///
+  /// Três tintas, medidas: corrente em branco (17.8:1), concluída em `muted`
+  /// (8.0:1), pendente em `faint` (4.8:1). Pendente **não** desaparece —
+  /// as etapas que ainda não rodaram são a prova de que a busca tem plano, e
+  /// apagá-las mataria a função da lista.
+  List<Widget> _linhaDoPasso(
+      int i, int atual, int? feitos, int? total, bool falhou) {
+    final passo = i + 1;
+    final feito = passo < atual;
+    final agora = passo == atual;
+    final parou = falhou && agora;
+
+    final tinta = parou
+        ? SIMEopsColors.alert
+        : agora
+            ? SIMEopsColors.white
+            : feito
+                ? SIMEopsColors.muted
+                : SIMEopsColors.faint;
+
+    final temBarra =
+        agora && !falhou && feitos != null && total != null && total > 0;
+
+    return [
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Row(
           children: [
-            const Icon(Icons.error_outline,
-                size: 64, color: SIMEopsColors.alert),
-            const SizedBox(height: 16),
-            const Text('A busca falhou'),
-            const SizedBox(height: 16),
-            FilledButton.tonal(
-              onPressed: _resetSearch,
-              child: const Text('Tentar novamente'),
+            SizedBox(
+              width: 13,
+              child: Center(
+                child: _marca(feito: feito, agora: agora, parou: parou),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _passos[i],
+                style: SIMEopsType.etapa(color: tinta),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              parou ? 'PAROU AQUI' : _valorDoPasso(i, atual, feitos, total),
+              style: SIMEopsType.slug(
+                color: parou
+                    ? SIMEopsColors.alert
+                    : agora
+                        ? SIMEopsColors.tealLight
+                        : feito
+                            ? SIMEopsColors.faint
+                            : SIMEopsColors.hairline,
+              ),
             ),
           ],
         ),
-      );
-    }
+      ),
+      if (temBarra)
+        Padding(
+          // 25 = a marca (13) + o vão (12). O filete começa embaixo do nome.
+          padding: const EdgeInsets.only(left: 25, bottom: 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: (feitos / total).clamp(0.0, 1.0)),
+                  duration: const Duration(milliseconds: 600),
+                  curve: Curves.easeOut,
+                  builder: (_, v, __) => Container(
+                    height: 2,
+                    color: SIMEopsColors.rule,
+                    child: FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: v,
+                      child: Container(color: SIMEopsColors.tealLight),
+                    ),
+                  ),
+                ),
+              ),
+              if (_falta(passo, feitos, total) case final eta?) ...[
+                const SizedBox(width: 10),
+                Text(eta, style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+              ],
+            ],
+          ),
+        ),
+    ];
+  }
 
-    // completed — o dossiê: sumário, recorte, grupos por data e seções extras
+  Widget _buildEspera({bool falhou = false}) {
+    final atual = (_progress?['stage_num'] as int?) ?? 0;
+    final feitos = (_progress?['feitos'] as num?)?.toInt();
+    final total = (_progress?['total'] as num?)?.toInt();
+
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < _passos.length; i++)
+                ..._linhaDoPasso(i, atual, feitos, total, falhou),
+            ],
+          ),
+        ),
+        if (falhou)
+          ..._blocoDaFalha(atual)
+        else ...[
+          if (_achadosVistos.isNotEmpty) ..._blocoDosAchados(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 28, 18, 0),
+            child: Text.rich(
+              TextSpan(children: [
+                const TextSpan(text: 'PODE FECHAR O APP.\n'),
+                TextSpan(
+                  text: 'UM AVISO CHEGA QUANDO TERMINAR.',
+                  style: TextStyle(color: SIMEopsColors.muted),
+                ),
+              ]),
+              style: SIMEopsType.slug(color: SIMEopsColors.faint)
+                  .copyWith(height: 1.7),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 22, 18, 0),
+            child: OutlinedButton(
+              onPressed: _confirmarCancelamento,
+              child: const Text('CANCELAR A CONSULTA'),
+            ),
+          ),
+        ],
+        const EndMark(),
+      ],
+    );
+  }
+
+  List<Widget> _blocoDosAchados() => [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 28, 18, 0),
+          child: Row(
+            children: [
+              Text('JÁ ENCONTRADO · ${_achadosVistos.length}',
+                  style: SIMEopsType.dateline()),
+              const SizedBox(width: 11),
+              const Expanded(
+                child: Divider(color: SIMEopsColors.rule, height: 1),
+              ),
+            ],
+          ),
+        ),
+        for (final a in _achadosRecentes)
+          _AchadoAoVivo(key: ValueKey(_chaveDoAchado(a)), achado: a),
+      ];
+
+  /// A falha **não** troca a tela por um ícone triste.
+  ///
+  /// O que existia aqui era um `error_outline` de 64px centralizado e a frase
+  /// "A busca falhou" — que some com tudo que a pessoa acabou de ver e não diz
+  /// onde parou. Agora a lista de etapas continua na tela, com a etapa que
+  /// falhou marcada em vermelho: dá pra ver que 619 links foram achados e que
+  /// a coleta morreu no download, o que é uma informação útil inclusive pra
+  /// decidir se vale repetir agora ou mais tarde.
+  List<Widget> _blocoDaFalha(int atual) {
+    final onde = (atual >= 1 && atual <= _passos.length) ? _passos[atual - 1] : null;
+
+    return [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(18, 26, 18, 0),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(13, 12, 13, 13),
+          decoration: const BoxDecoration(
+            color: SIMEopsColors.navyMid,
+            border: Border(
+              left: BorderSide(color: SIMEopsColors.alert, width: 2),
+            ),
+          ),
+          child: Text(
+            onde == null
+                ? 'A consulta não chegou a começar. Costuma ser conexão — '
+                    'refazer agora normalmente resolve.'
+                : 'A consulta parou em “$onde”. O que já tinha sido coletado '
+                    'não fica salvo: refazer começa do zero.',
+            style: SIMEopsType.note(),
+          ),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(18, 22, 18, 0),
+        child: FilledButton(
+          onPressed: _refazer,
+          child: const Text('REFAZER A CONSULTA'),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
+        child: OutlinedButton(
+          onPressed: _resetSearch,
+          child: const Text('MUDAR A CONSULTA'),
+        ),
+      ),
+    ];
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // O RESULTADO
+  // ══════════════════════════════════════════════════════════════════════
+
+  /// `ANTES DE 5 JUL` — o balde do que ficou fora da janela pedida, nomeado
+  /// pela data real em vez de "fora do período", que obriga a lembrar qual era
+  /// o período.
+  String get _rotuloForaDoPeriodo {
+    const meses = [
+      'JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN',
+      'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ',
+    ];
+    final d = _desdeQuando ??
+        DateTime.now().subtract(Duration(days: _periodoDias));
+    return 'ANTES DE ${d.day} ${meses[d.month - 1]}';
+  }
+
+  Widget _buildResults() {
+    if (_searchStatus == 'processing') return _buildEspera();
+    if (_searchStatus == 'failed') return _buildEspera(falhou: true);
+
+    // Indicador de criminalidade não é ocorrência e nunca entrou na contagem —
+    // ele é material de segunda ordem, e vai pro próprio balde lá embaixo.
     final ocorrencias =
         _items.where((n) => n.natureza != 'estatistica').toList();
     final indicadores =
         _items.where((n) => n.natureza == 'estatistica').toList();
 
-    // Contagens por categoria (só ocorrências — estatística NÃO conta).
-    final catCounts = <String, int>{};
-    for (final n in ocorrencias) {
-      final cat = n.categoriaGrupo ?? 'institucional';
-      catCounts[cat] = (catCounts[cat] ?? 0) + 1;
-    }
-
-    final visiveis = _filterCats.isEmpty
+    final visiveis = _filtro.categorias.isEmpty
         ? ocorrencias
         : ocorrencias
             .where((n) =>
-                _filterCats.contains(n.categoriaGrupo ?? 'institucional'))
+                _filtro.categorias.contains(n.categoriaGrupo ?? 'institucional'))
             .toList();
 
     final groups = groupNewsByDate(visiveis);
-
     final rows = <Widget>[];
 
-    // Sumário — readouts
+    // Os três números que **nunca somam**, e é esse o ponto: o principal é o
+    // que foi pedido; os outros dois são material que a consulta trouxe junto
+    // e que o contrato mantém separado. Somá-los seria dizer que a cidade teve
+    // 34 ocorrências quando teve 13.
     rows.add(Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _metadataCard('OCORRÊNCIAS', '${ocorrencias.length}'),
-          // A região entra no sumário, não só numa seção lá embaixo: Goiânia
-          // com "11 OCORRÊNCIAS" tinha 8 da região metropolitana logo abaixo,
-          // e a busca parecia ter rendido menos do que rendeu.
-          if (_regiaoItems.isNotEmpty) ...[
-            const SizedBox(width: 8),
-            _metadataCard('REGIÃO', '+${_regiaoItems.length}'),
-          ],
-          const SizedBox(width: 8),
-          _metadataCard('PERÍODO', '${_periodoDias}d'),
-          if (indicadores.isNotEmpty) ...[
-            const SizedBox(width: 8),
-            _metadataCard('INDICADORES', '${indicadores.length}'),
-          ],
-        ],
-      ),
-    ));
-
-    // Ações: relatório (primária) + nova busca (terciária)
-    rows.add(Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: Row(
-        children: [
-          if (_items.isNotEmpty)
-            Expanded(
-              child: _reportId != null
-                  ? FilledButton.icon(
-                      onPressed: () => _openReport(),
-                      icon: const Icon(Icons.description, size: 18),
-                      label: const Text('Ver Relatório de Risco'),
-                    )
-                  : FilledButton.tonalIcon(
-                      onPressed: (_selectedEstado != null) ? () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => ReportScreen(
-                              searchId: _searchId,
-                              cidades: _selectedCidades.isNotEmpty
-                                  ? _selectedCidades.toList()
-                                  : [_selectedEstado!],
-                              estado: _selectedEstado!,
-                              periodoDias: _periodoDias,
-                              results: _searchData.results,
-                              foraDoPeriodo: _searchData.foraDoPeriodo,
-                              regiao: _searchData.regiao,
-                            ),
-                          ),
-                        );
-                        // Após voltar da tela de relatório, checar se foi gerado
-                        _checkForReport();
-                      } : null,
-                      icon: const Icon(Icons.bar_chart, size: 18),
-                      label: const Text('Gerar Relatório de Risco'),
-                    ),
-            ),
-          const SizedBox(width: 4),
-          TextButton.icon(
-            onPressed: _resetSearch,
-            icon: const Icon(Icons.refresh, size: 18),
-            label: const Text('Nova'),
+          _Figura(
+            valor: ocorrencias.length,
+            rotulo: 'NO PERÍODO',
+            destaque: true,
+          ),
+          _Figura(valor: _regiaoItems.length, rotulo: 'REGIÃO\nMETROPOLITANA'),
+          _Figura(
+            valor: _foraItems.length,
+            // `ANTES DE\n5 JUL` — a data real diz mais que "fora do período",
+            // que obriga a lembrar qual era o período.
+            rotulo: _foraItems.isEmpty
+                ? 'FORA DO\nPERÍODO'
+                : _rotuloForaDoPeriodo.replaceFirst(' DE ', ' DE\n'),
           ),
         ],
       ),
     ));
 
-    // Recorte por categoria
-    rows.add(Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: CategoryFilterBar(
-        counts: catCounts,
-        selected: _filterCats,
-        onToggle: (cat) => setState(() {
-          if (!_filterCats.add(cat)) _filterCats.remove(cat);
-        }),
-      ),
-    ));
-
-    if (_items.isEmpty) {
+    // Recorte curto rende pouco, e isso é da natureza da fonte — não é falha
+    // da consulta. Dizer isso na hora evita a conclusão errada ("o app não
+    // funciona") e aponta as duas alavancas reais.
+    if (ocorrencias.length <= 2) {
       rows.add(Padding(
-        padding: const EdgeInsets.only(top: 60),
-        child: Center(
+        padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(13, 12, 13, 13),
+          decoration: const BoxDecoration(
+            color: SIMEopsColors.navyMid,
+            border: Border(
+              left: BorderSide(color: SIMEopsColors.teal, width: 2),
+            ),
+          ),
           child: Text(
-            'Nenhuma notícia encontrada para os filtros selecionados',
-            style: GoogleFonts.exo2(fontSize: 13, color: SIMEopsColors.muted),
-            textAlign: TextAlign.center,
+            'Resultado magro é normal em recorte curto: a imprensa publica o '
+            'que publica. Ampliar o período ou incluir mais assuntos é o que '
+            'aumenta o alcance.',
+            style: SIMEopsType.note(),
           ),
         ),
       ));
     }
 
-    // Grupos por data (últimos 7 dias por dia, resto por semana)
+    rows.add(Padding(
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              _filtro.ativo ? _filtro.descricao : 'ÚLTIMOS $_periodoDias DIAS',
+              style: SIMEopsType.slug(
+                color: _filtro.ativo
+                    ? SIMEopsColors.tealLight
+                    : SIMEopsColors.faint,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          InkWell(
+            onTap: _abrirFiltro,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 4, 0, 4),
+              child: Text('FILTRAR',
+                  style: SIMEopsType.slug(color: SIMEopsColors.tealLight)),
+            ),
+          ),
+        ],
+      ),
+    ));
+
+    final podeRelatorio = _items.isNotEmpty && _selectedEstado != null;
+    rows.add(Padding(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
+      child: _reportId != null
+          ? FilledButton(
+              onPressed: podeRelatorio ? _openReport : null,
+              child: const Text('VER RELATÓRIO DE RISCO'),
+            )
+          : OutlinedButton(
+              onPressed: podeRelatorio ? _openReport : null,
+              child: const Text('GERAR RELATÓRIO DE RISCO'),
+            ),
+    ));
+
+    if (visiveis.isEmpty) {
+      rows.add(Padding(
+        padding: const EdgeInsets.fromLTRB(18, 40, 18, 0),
+        child: Text(
+          ocorrencias.isEmpty
+              ? 'A consulta não trouxe ocorrência nenhuma no período pedido.'
+              : 'Nenhuma ocorrência nas categorias que você deixou marcadas.',
+          style: SIMEopsType.note(),
+        ),
+      ));
+    }
+
     for (final g in groups) {
       final expanded = _sectionExpanded(g.key, g.defaultExpanded);
       rows.add(GroupHeader(
@@ -1371,17 +1383,17 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         expanded: expanded,
         onTap: () => _toggleSection(g.key),
       ));
-      if (expanded) rows.addAll(g.items.map(_buildCard));
+      if (expanded) {
+        for (var i = 0; i < g.items.length; i++) {
+          rows.add(_take(g.items[i]));
+          if (i < g.items.length - 1) rows.add(const TakeRule());
+        }
+      }
     }
 
-    // Seções especiais, com cor destacada.
-    //
-    // `aberta` decide o padrão. A região metropolitana nasce ABERTA desde
-    // 03/08: recolhida, ela escondia resultado pago e entregue — a busca de
-    // Goiânia tinha 8 ocorrências ali e parecia ter achado só 11. As outras
-    // duas continuam recolhidas porque são material de segunda ordem
-    // (indicador não é ocorrência; "mais ocorrências" está fora do período
-    // pedido).
+    // Os baldes. `aberta` decide o padrão: a região metropolitana nasce ABERTA
+    // desde 03/08 porque recolhida ela escondia resultado pago e entregue — a
+    // busca de Goiânia tinha 8 ocorrências ali e parecia ter achado só 11.
     void addSection(String key, String label, List<NewsItem> items,
         {Color? accent, bool aberta = false}) {
       if (items.isEmpty) return;
@@ -1393,20 +1405,50 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         accent: accent,
         onTap: () => _toggleSection(key),
       ));
-      if (expanded) rows.addAll(items.map(_buildCard));
+      if (expanded) {
+        for (var i = 0; i < items.length; i++) {
+          rows.add(_take(items[i]));
+          if (i < items.length - 1) rows.add(const TakeRule());
+        }
+      }
     }
 
-    addSection('sec:indicadores', 'INDICADORES', indicadores,
-        accent: categoryColor('institucional'));
     addSection('sec:regiao', 'REGIÃO METROPOLITANA', _regiaoItems,
         accent: SIMEopsColors.tealLight, aberta: true);
-    addSection('sec:fora', 'MAIS OCORRÊNCIAS', _foraItems,
+    addSection('sec:fora', _rotuloForaDoPeriodo, _foraItems,
         accent: SIMEopsColors.tealLight);
+    addSection('sec:indicadores', 'INDICADORES', indicadores,
+        accent: categoryColor('institucional'));
 
-    rows.add(const SizedBox(height: 48));
+    rows.add(Padding(
+      padding: const EdgeInsets.fromLTRB(18, 30, 18, 0),
+      child: TextButton(
+        onPressed: _resetSearch,
+        child: const Text('FAZER OUTRA CONSULTA'),
+      ),
+    ));
+    rows.add(const EndMark());
 
     return ListView(children: rows);
   }
+
+  Future<void> _abrirFiltro() async {
+    await FolhaFiltro.abrir(context, _filtro, mostrarNaoLidas: false);
+    if (mounted) setState(() {});
+  }
+
+  /// A matéria do resultado é a **mesma peça** do feed.
+  ///
+  /// Era um `NewsCard` — caixa com borda, canto arredondado e barra de cor na
+  /// lateral —, o único lugar do app que ainda desenhava assim depois do
+  /// redesign. E ele ignorava o `titulo` que o Filter2 passou a escrever: os 53
+  /// resultados de Fortaleza chegaram com manchete e a tela imprimia
+  /// `ROUBO/FURTO · Barroso` no lugar dela.
+  ///
+  /// `groupedByDate: false` porque aqui os grupos também são baldes ("região
+  /// metropolitana", "antes de 5 jul") e dentro deles a data volta a fazer
+  /// falta no item.
+  Widget _take(NewsItem item) => TakeCard(news: item, groupedByDate: false);
 
   bool _sectionExpanded(String key, bool defaultExpanded) =>
       _toggledSections.contains(key) ? !defaultExpanded : defaultExpanded;
@@ -1416,10 +1458,135 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       if (!_toggledSections.add(key)) _toggledSections.remove(key);
     });
   }
-
-  Widget _buildCard(NewsItem item) => NewsCard(
-        news: item,
-        onTap: () => NewsDetailSheet.show(context, item),
-      );
 }
 
+/// Um dos três números do resultado.
+///
+/// Número em Archivo 34 e rótulo em mono de duas linhas embaixo — o oposto do
+/// cartão que existia aqui, que punha rótulo em cima, valor embaixo e uma
+/// borda em volta. Os rótulos quebravam no meio da palavra (`OCORRÊNCI/AS`,
+/// `INDICADORE/S`) porque três caixas com borda não cabem em 376px.
+class _Figura extends StatelessWidget {
+  final int valor;
+  final String rotulo;
+  final bool destaque;
+
+  const _Figura({
+    required this.valor,
+    required this.rotulo,
+    this.destaque = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$valor',
+            style: SIMEopsType.hero().copyWith(
+              fontSize: 34,
+              letterSpacing: -1.02,
+              color: destaque ? SIMEopsColors.white : SIMEopsColors.muted,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            rotulo,
+            style: SIMEopsType.slug(color: SIMEopsColors.faint)
+                .copyWith(height: 1.5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Um achado chegando durante a espera.
+///
+/// Tem a anatomia da matéria — quadrado de categoria, slug, manchete — porque é
+/// uma matéria: é o que a consulta acabou de extrair. O que ele **não** tem é
+/// lide, crédito e toque: nada disso existe ainda, e o lugar de ler é o
+/// resultado. Antes era `Roubo/Furto · Kobrasol` numa caixa com borda teal,
+/// que é menos do que a tela sabia.
+class _AchadoAoVivo extends StatelessWidget {
+  final Map<String, dynamic> achado;
+
+  const _AchadoAoVivo({super.key, required this.achado});
+
+  @override
+  Widget build(BuildContext context) {
+    final cat = achado['categoria_grupo'] as String? ?? 'institucional';
+    final tipo = achado['tipo_crime'] as String?;
+    final cidade = achado['cidade'] as String?;
+    final bairro = achado['bairro'] as String?;
+    final titulo = (achado['titulo'] as String?)?.trim();
+
+    final manchete = (titulo != null && titulo.isNotEmpty)
+        ? titulo
+        : bairro != null && bairro.isNotEmpty
+            ? '${crimeTypeLabel(tipo)} no $bairro'
+            : '${crimeTypeLabel(tipo)} em ${cidade ?? ''}'.trim();
+
+    final local = [
+      if (cidade != null && cidade.isNotEmpty) cidade,
+      if (bairro != null && bairro.isNotEmpty) bairro,
+    ].join(' · ');
+
+    final semMovimento = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: semMovimento ? 1 : 0, end: 1),
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeOut,
+      builder: (_, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(offset: Offset(0, (1 - t) * -7), child: child),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 15, 18, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CatChip(categoria: cat),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    [categoryLabel(cat).toUpperCase(), if (local.isNotEmpty) local]
+                        .join(' · '),
+                    style: SIMEopsType.slug(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  _dataCurta(achado['data_ocorrencia'] as String?),
+                  style: SIMEopsType.slug(color: SIMEopsColors.faint),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              manchete,
+              style: SIMEopsType.headline().copyWith(fontSize: 16.5, height: 1.22),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 15),
+            const Divider(color: SIMEopsColors.rule, height: 1),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _dataCurta(String? iso) {
+    final d = DateTime.tryParse(iso ?? '');
+    if (d == null) return '';
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+  }
+}

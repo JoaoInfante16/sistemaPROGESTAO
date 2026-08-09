@@ -436,7 +436,11 @@ async function processManualSearch(job: Job<ManualSearchJobData>): Promise<void>
     }
 
     // STAGE 7: Save
-    await db.updateSearchProgress(searchId, { stage: 'saving', stage_num: 7, total_stages: 7 });
+    //
+    // `details` com o numero final: e o unico estagio que nao escrevia nenhum,
+    // e sem ele a etapa "juntar as repetidas" da tela de espera nao consegue
+    // mostrar quanto o dedup cortou (`47 -> 31`). O numero ja esta na mao.
+    await db.updateSearchProgress(searchId, { stage: 'saving', stage_num: 7, total_stages: 7, details: `${totalPrincipal} ocorrencias` });
 
     if (finalResults.length > 0) {
       await db.insertSearchResults(searchId, finalResults, 0);

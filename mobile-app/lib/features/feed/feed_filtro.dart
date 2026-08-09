@@ -68,14 +68,28 @@ class FeedFiltro extends ChangeNotifier {
 class FolhaFiltro extends StatefulWidget {
   final FeedFiltro filtro;
 
-  const FolhaFiltro({super.key, required this.filtro});
+  /// `SÓ NÃO LIDAS` só faz sentido onde existe lido e não lido. No resultado de
+  /// uma consulta manual não existe: tudo acabou de ser extraído, nada foi
+  /// aberto ainda. A linha ficaria lá oferecendo um filtro que não filtra nada.
+  final bool mostrarNaoLidas;
 
-  static Future<void> abrir(BuildContext context, FeedFiltro filtro) {
+  const FolhaFiltro({
+    super.key,
+    required this.filtro,
+    this.mostrarNaoLidas = true,
+  });
+
+  static Future<void> abrir(
+    BuildContext context,
+    FeedFiltro filtro, {
+    bool mostrarNaoLidas = true,
+  }) {
     return showModalBottomSheet<void>(
       context: context,
       backgroundColor: SIMEopsColors.navy,
       shape: const RoundedRectangleBorder(),
-      builder: (_) => FolhaFiltro(filtro: filtro),
+      builder: (_) =>
+          FolhaFiltro(filtro: filtro, mostrarNaoLidas: mostrarNaoLidas),
     );
   }
 
@@ -147,16 +161,18 @@ class _FolhaFiltroState extends State<FolhaFiltro> {
                     ),
                     direita: '${f.contagens[c]}',
                   ),
-                const SizedBox(height: 10),
-                _Linha(
-                  marcada: f.apenasNaoLidas,
-                  onTap: () {
-                    f.alternarNaoLidas();
-                    setState(() {});
-                  },
-                  esquerda: Text('SÓ NÃO LIDAS',
-                      style: SIMEopsType.placeTab(active: f.apenasNaoLidas)),
-                ),
+                if (widget.mostrarNaoLidas) ...[
+                  const SizedBox(height: 10),
+                  _Linha(
+                    marcada: f.apenasNaoLidas,
+                    onTap: () {
+                      f.alternarNaoLidas();
+                      setState(() {});
+                    },
+                    esquerda: Text('SÓ NÃO LIDAS',
+                        style: SIMEopsType.placeTab(active: f.apenasNaoLidas)),
+                  ),
+                ],
               ],
             ),
           ),

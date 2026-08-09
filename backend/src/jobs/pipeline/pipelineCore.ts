@@ -243,7 +243,14 @@ export function diasAtrasISO(dias: number): string {
 export type OnFilter2Progress = (
   feitos: number,
   total: number,
-  achado?: { tipo_crime: string; bairro?: string | null; data_ocorrencia: string },
+  achado?: {
+    tipo_crime: string;
+    bairro?: string | null;
+    data_ocorrencia: string;
+    titulo?: string | null;
+    cidade?: string | null;
+    categoria_grupo?: string | null;
+  },
 ) => void;
 
 /** Resultado de um item, resolvido em paralelo e agregado depois em ordem. */
@@ -411,6 +418,9 @@ export async function runFilter2WithEmbedding(
                 tipo_crime: r.extraction.tipo_crime,
                 bairro: r.extraction.bairro ?? null,
                 data_ocorrencia: r.extraction.data_ocorrencia,
+                titulo: r.extraction.titulo ?? null,
+                cidade: r.extraction.cidade ?? null,
+                categoria_grupo: r.extraction.categoria_grupo ?? null,
               }
             : undefined,
         );

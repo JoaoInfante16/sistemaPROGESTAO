@@ -589,6 +589,20 @@ export interface CityOverviewItem {
   topCrimePercent: number;
   unreadCount: number;
   /**
+   * So em item de grupo: quantas nao-lidas cada cidade-filha tem.
+   *
+   * O numero por cidade ja era calculado aqui embaixo (`s.unread`) e depois
+   * SOMADO no grupo — a quebra existia e era jogada fora na mesma linha. E as
+   * cidades que pertencem a um grupo sao removidas do payload no fim (pra nao
+   * duplicar), entao o app nao tinha de onde tirar. Sem isso a fila de abas
+   * `TODAS - FLORIANOPOLIS - PALHOCA` fica muda e o usuario toca uma por uma
+   * pra descobrir onde esta a noticia nova.
+   *
+   * Cidade com zero NAO entra (mesma regra do `categorias30d`): quem consome
+   * trata ausencia como zero, e o payload nao carrega zeros.
+   */
+  naoLidasPorCidade?: Record<string, number>;
+  /**
    * `created_at` da ocorrencia mais recente — **NAO e quando a varredura
    * rodou**. Cidade quieta ha 3 dias devolve 3 dias aqui com o auto-scan
    * funcionando normalmente. Rotular isso como "varredura" na UI faz o robo
@@ -765,6 +779,7 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
       let lastAt: string | null = null;
       const crimeAgg = new Map<string, number>();
       const catAgg = new Map<string, number>();
+      const naoLidasPorCidade: Record<string, number> = {};
 
       for (const cn of groupCities) {
         const s = cityStats.get(cn);
@@ -772,6 +787,7 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
         totalAll += s.countTotal;
         total30d += s.count30d;
         unread += s.unread;
+        if (s.unread > 0) naoLidasPorCidade[cn] = s.unread;
         if (s.lastNewsAt && (!lastAt || s.lastNewsAt > lastAt)) lastAt = s.lastNewsAt;
         for (const [type, count] of s.crimeTypes) {
           crimeAgg.set(type, (crimeAgg.get(type) || 0) + count);
@@ -808,6 +824,7 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
         topCrimeType: topCrime,
         topCrimePercent: totalAll > 0 ? parseFloat(((topCount / totalAll) * 100).toFixed(1)) : 0,
         unreadCount: unread,
+        naoLidasPorCidade,
         lastNewsAt: lastAt,
       });
     }

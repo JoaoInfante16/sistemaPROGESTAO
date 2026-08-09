@@ -21,6 +21,15 @@ class CityOverview {
   final String? topCrimeType;
   final double topCrimePercent;
   final int unreadCount;
+
+  /// Só em grupo: quantas não-lidas cada cidade-filha tem. Alimenta o número
+  /// ao lado do nome na fila de abas — sem ele a fila `TODAS · FLORIANÓPOLIS ·
+  /// PALHOÇA` fica muda e obriga a tocar uma por uma pra achar a notícia nova.
+  ///
+  /// Cidade com zero não vem do backend. Vazio também em backend anterior a
+  /// 09/08 — aí as abas voltam a ser só nomes, que é o comportamento antigo.
+  final Map<String, int> naoLidasPorCidade;
+
   final DateTime? lastNewsAt;
 
   CityOverview({
@@ -38,6 +47,7 @@ class CityOverview {
     this.topCrimeType,
     required this.topCrimePercent,
     required this.unreadCount,
+    this.naoLidasPorCidade = const {},
     this.lastNewsAt,
   });
 
@@ -81,6 +91,11 @@ class CityOverview {
       topCrimeType: json['topCrimeType'] as String?,
       topCrimePercent: _toDouble(json['topCrimePercent']),
       unreadCount: _toInt(json['unreadCount']),
+      naoLidasPorCidade: {
+        for (final e
+            in (json['naoLidasPorCidade'] as Map<String, dynamic>? ?? {}).entries)
+          e.key: _toInt(e.value),
+      },
       // Vem de `news.created_at`, que o Postgres serializa sem fuso — sem o
       // parseApiDate, "há 2 horas" virava "há 5 horas".
       lastNewsAt: parseApiDate(json['lastNewsAt']?.toString()),

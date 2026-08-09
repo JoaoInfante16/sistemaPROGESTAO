@@ -1110,11 +1110,26 @@ interface StageHistoryEntry {
   started_at: string; // ISO
 }
 
-/** Achado recente, pra tela de carregamento mostrar a busca trabalhando. */
+/**
+ * Achado recente, pra tela de carregamento mostrar a busca trabalhando.
+ *
+ * Os cinco campos saem TODOS da mesma extracao do Filter2, no instante em que
+ * ela fica pronta — nenhuma consulta a mais, nenhum token a mais. Ate 09/08 so
+ * os tres primeiros vinham, e a tela dizia "Roubo/Furto - Kobrasol": o titulo
+ * ja existia em memoria e era descartado uma linha depois.
+ *
+ * `titulo`, `cidade` e `categoria_grupo` sao opcionais porque a linha de
+ * `NewsExtraction` que os alimenta tambem e: item sem manchete nao e rejeitado
+ * (ver migration 029). Quem consome desenha o que tem.
+ */
 export interface AchadoProgresso {
   tipo_crime: string;
   bairro?: string | null;
   data_ocorrencia: string;
+  titulo?: string | null;
+  cidade?: string | null;
+  /** Uma das 5 categorias — e o que da a cor do quadradinho na tela. */
+  categoria_grupo?: string | null;
 }
 
 export interface SearchProgressPayload {

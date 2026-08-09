@@ -418,6 +418,9 @@ class _CityDetailScreenState extends State<CityDetailScreen>
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.fromLTRB(18, 12, 34, 0),
           children: [
+            // `Todas` não leva número: o total já está no cabeçalho, uma linha
+            // acima. Duas cópias do mesmo 18 na mesma dobra é o defeito que a
+            // faixa de categoria tinha antes de virar folha.
             _PlaceTab(
               label: 'Todas',
               selected: _selectedSubCity == null,
@@ -426,6 +429,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
             ...names.map((c) => _PlaceTab(
                   label: c,
                   selected: _selectedSubCity == c,
+                  naoLidas: widget.city.naoLidasPorCidade[c] ?? 0,
                   onTap: () => _onSubCityChanged(c),
                 )),
           ],
@@ -949,10 +953,16 @@ class _PlaceTab extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
+  /// Não-lidas daquela cidade. Zero (ou backend antigo) não desenha nada — a
+  /// aba volta a ser só o nome. Um `0` ao lado de cada nome seria a mesma
+  /// poluição que o `00:00` do carimbo: espaço gasto pra dizer nada.
+  final int naoLidas;
+
   const _PlaceTab({
     required this.label,
     required this.selected,
     required this.onTap,
+    this.naoLidas = 0,
   });
 
   @override
@@ -972,9 +982,29 @@ class _PlaceTab extends StatelessWidget {
             ),
           ),
           padding: const EdgeInsets.only(bottom: 4),
-          child: Text(
-            label.toUpperCase(),
-            style: SIMEopsType.placeTab(active: selected),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                label.toUpperCase(),
+                style: SIMEopsType.placeTab(active: selected),
+              ),
+              // O número é o motivo da fila existir: ele diz ONDE olhar. Fica
+              // no verde das não-lidas mesmo na aba não selecionada — é a única
+              // coisa da faixa que precisa ser vista sem ser procurada.
+              if (naoLidas > 0) ...[
+                const SizedBox(width: 6),
+                Text(
+                  '$naoLidas',
+                  style: SIMEopsType.placeTab(
+                    active: true,
+                    color: SIMEopsColors.greenLight,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),

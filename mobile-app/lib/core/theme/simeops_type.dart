@@ -149,6 +149,17 @@ class SIMEopsType {
             (active ? SIMEopsColors.white : SIMEopsColors.faint),
       );
 
+  /// Linha de etapa da consulta (`Descartar o que não é ocorrência`).
+  ///
+  /// Mono 11 como o [placeTab], mas com o **tracking de rótulo desligado**:
+  /// aqui é frase, não etiqueta. 1.5px entre letras num texto de 30 caracteres
+  /// afasta as palavras umas das outras e obriga a soletrar.
+  static TextStyle etapa({Color? color}) => GoogleFonts.jetBrainsMono(
+        fontSize: 11,
+        letterSpacing: 0.44,
+        color: color ?? SIMEopsColors.faint,
+      );
+
   /// Rótulo de campo de formulário.
   static TextStyle fieldLabel() => GoogleFonts.jetBrainsMono(
         fontSize: 9.5,

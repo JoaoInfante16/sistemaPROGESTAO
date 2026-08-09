@@ -31,9 +31,9 @@ da `develop` de propósito, porque o release da Play Store está engatilhado.
 | — | **polimento do fio** (tipografia, tinta, header, card) | ✅ feito |
 | — | **tema global** em linguagem de fio (era o "pálido") | ✅ feito |
 | B | formulário de busca (11 blocos → 5) | ✅ feito |
-| C | espera de 7 min + resultados | ⬜ **próxima** |
+| C | espera de 7 min + resultados | ✅ feito |
 | D | remoções (favoritos, arrastar, lembrar senha, senha mín. 8) | ⬜ |
-| E | relatório + export HTML A4 | ⬜ |
+| E | relatório + export HTML A4 | ⬜ **próxima** (pedida pelo João em 09/08) |
 | F | notificações (digest por cidade, tri-estado) — migration **031** | ⬜ |
 | — | **revisão de todas as copys** (pedido do João, DEPOIS das fases) | ⬜ |
 
@@ -52,21 +52,20 @@ do veículo.
 ⚠️ **A 030 do plano original era a de notificações — renumerar pra 031.** A hora
 de publicação entrou na frente porque era correção de bug em produção de dado.
 
-### O que a Fase C tem que resolver (levantado e não feito)
+### O que a Fase E tem que resolver (levantado e não feito)
 
-- **as abas de cidade não dizem onde está a notícia.** O dashboard se apoia em
-  "o número te diz onde olhar" e a fila `TODAS · FLORIANÓPOLIS · PALHOÇA` fica
-  muda. Bastava `SÃO JOSÉ 4`. **Verificar antes se o feed devolve não-lidas por
-  cidade-filha** — pode não existir o dado.
-- **os achados ao vivo mostram menos do que o protótipo desenha.**
-  `AchadoProgresso` (`queries.ts`) tem `tipo_crime`, `bairro` e
-  `data_ocorrencia`; faltam `categoria_grupo`, `cidade` e `titulo` — os três já
-  existem no Filter2 no instante em que o achado é montado.
-- **o worker guarda só os 5 últimos** (`ACHADOS_VISIVEIS`) e descarta o resto.
-  O app faz polling de 3s: **ele pode acumular localmente** e deduplicar, sem
-  custo de rede nem migration. Sete minutos de espera viram sete de leitura.
-- `news_detail_sheet.dart` **não morre mais** (decisão do João em 09/08) — sai
-  da lista de remoções da Fase D.
+- o **relatório é a tela mais atrasada do app**: 904 linhas, `Rajdhani` em 10
+  lugares (a regra é só o logotipo), `exo2` no resto e **quatro raios de canto**
+  (6, 12, 14 e 20 nos chips). Nada ali passou pelo redesign.
+- **o mapa mora dentro dele** (`report_screen.dart:766`) e também na aba
+  Relatório da cidade (`city_detail_screen.dart:546`) — mexer num é mexer nos dois.
+- a referência tem a tela pronta (`#rel-risco` no protótipo): recorte declarado
+  em caixa · toggle da região · número-herói · faixa por categoria com
+  `VER COMO TABELA` · concentração por local · mapa com a precisão declarada
+  (`7 DOS 25 ITENS NÃO TÊM BAIRRO`) · `COMPARTILHAR`.
+- ordem do João em 09/08: **mantém a estrutura, revisa o design.** O donut fica.
+- `news_detail_sheet.dart` **não morre** (decisão do João em 09/08) — saiu da
+  lista de remoções da Fase D.
 
 **Regras de design que valem como contrato** (nasceram de erro medido, não de
 gosto):
@@ -229,6 +228,103 @@ produção **na hora, sem deploy**. Quando o significado de uma config mudar,
 Verificado em **04/08**: 026, 027 e 028 aplicadas (`openai` e `jina` com
 `max_concurrent` 20). **024 e 025 seguem não rodadas.** Custo do mês: **$1,75**
 de $100.
+
+---
+
+## 2026-08-09 (noite) — Fase C: a espera vira log, e a lista que eu ia acumular não devia acumular
+
+**As duas dúvidas que estavam anotadas tinham resposta boa — e as duas eram
+dado que já existia e era jogado fora uma linha depois.**
+
+**1. Não-lidas por cidade-filha.** `analyticsQueries.ts` calcula `s.unread`
+**por cidade** e, ao montar o grupo, faz `unread += s.unread` — a quebra existia
+e morria na mesma linha. Pior: as cidades que pertencem a um grupo são removidas
+do payload logo abaixo (pra não duplicar no dashboard), então o app não tinha de
+onde tirar. Agora o item de grupo leva `naoLidasPorCidade` (cidade → não-lidas,
+zero não entra, mesma regra do `categorias30d`). **Nenhuma query nova.** A fila
+`TODAS · FLORIANÓPOLIS · PALHOÇA 4` finalmente diz onde olhar. `TODAS` não leva
+número de propósito: o total já está no cabeçalho, uma linha acima.
+
+**2. Achado rico.** `AchadoProgresso` levava `tipo_crime`, `bairro` e
+`data_ocorrencia`; `titulo`, `cidade` e `categoria_grupo` estavam no mesmo
+`r.extraction` (`pipelineCore.ts:406`) e eram descartados. Agora vão junto —
+zero token, zero chamada. A espera mostra a manchete de verdade com o quadrado
+da categoria, em vez de `Roubo/Furto · Kobrasol`.
+
+### A decisão que eu tinha anotado errada
+
+O ESTADO DO MUNDO dizia: *"o app pode acumular localmente — sete minutos de
+espera viram sete de leitura"*. **Está errado, e o protótipo já sabia** (ele
+mantém `while(lista.children.length>5)`).
+
+O motivo é que **esses achados são pré-dedup**. Juntar as repetidas é o passo 6;
+até lá, a mesma ocorrência publicada por três veículos chega três vezes.
+Empilhar tudo na tela transformaria a duplicação — que é normal e esperada —
+num **defeito visível**, e ainda faria a lista encolher no fim.
+
+O que sobrevive da ideia é a **contagem**: `feitos/total` conta o que foi
+*analisado*, não o que virou ocorrência, então sem acumular no app não há como
+dizer quantas a consulta já achou. Ficou: `Set` de chaves pro contador
+(`JÁ ENCONTRADO · 14`) e **janela de 8** pra lista.
+
+### A espera
+
+De 5 blocos com nome de engenharia (`TRIAGEM RÁPIDA`, `LEITURA`, `ANÁLISE`) para
+os **7 estágios ditos em português de operação** — "Consultar a imprensa",
+"Descartar o que não é ocorrência", "Baixar as matérias". O agrupamento existia
+por um motivo técnico: só os estágios 4 e 5 mandavam contador, e os outros
+ficariam mudos sozinhos.
+
+**O que desfez isso foi `de → para`.** Cada estágio já gravava um `details` em
+prosa (`619 URLs para filtrar`, `Consolidando 47 resultados`); lendo o primeiro
+inteiro de cada um, o `de` de um passo é o `para` do anterior e **todo passo
+ganha resultado próprio**: `619 → 412`, `412 → 155`, `47 → 31`. O estágio 7 era
+o único sem `details` — passou a gravar o total final, três palavras no worker.
+
+Sem isso a espera é sete linhas acendendo em ordem, e no fim ninguém aprendeu
+nada sobre a própria consulta: nem por que demorou, nem onde o material se
+perdeu.
+
+Também entrou o que a spec §9 pedia e não existia:
+
+- **falha no meio** não troca mais a tela por um `error_outline` de 64px. A
+  lista de etapas **continua na tela** com a etapa que falhou em vermelho e um
+  `PAROU AQUI` — dá pra ver que 619 links foram achados e que a coleta morreu no
+  download, o que é informação útil pra decidir se vale repetir agora.
+- **confirmação ao cancelar** ("ela roda no servidor e termina sozinha mesmo com
+  o app fechado").
+- **quanto falta**, pela taxa observada, só depois de 5 itens *e* 5 segundos —
+  antes disso a taxa é ruído e a estimativa oscila de 40s pra 6min.
+
+### O resultado
+
+- `NewsCard` → **`TakeCard`**. Era o único lugar do app que ainda desenhava
+  caixa com borda, canto arredondado e barra de cor lateral. E ele **ignorava o
+  `titulo`**: os 53 resultados de Fortaleza chegaram com manchete escrita pelo
+  GPT (o worker já mandava, `manualSearchWorker.ts:399`, e o `NewsItem` já lia)
+  e a tela imprimia `ROUBO/FURTO · Barroso` no lugar dela.
+- `CategoryFilterBar` → **a mesma folha do feed** (`FILTRAR`), com a linha de
+  recorte só aparecendo quando há recorte. `SÓ NÃO LIDAS` sai da folha aqui:
+  num resultado recém-extraído não existe lido e não lido.
+- os `_metadataCard` arredondados viraram **três números que nunca somam** —
+  `NO PERÍODO` em branco, `REGIÃO METROPOLITANA` e `ANTES DE 5 JUL` em `muted`.
+  Somá-los diria que a cidade teve 34 ocorrências quando teve 13. De quebra
+  morreram os rótulos quebrando no meio da palavra (`OCORRÊNCI/AS`,
+  `INDICADORE/S`), que era o que três caixas com borda fazem em 376px.
+- o balde do que ficou fora agora se chama pela **data real** (`ANTES DE 5 JUL`)
+  em vez de "fora do período", que obriga a lembrar qual era o período.
+- **resultado magro** ganhou a ressalva do protótipo: recorte curto rende pouco
+  porque a imprensa publica o que publica — e as duas alavancas reais são
+  período e assuntos.
+- o topo passa a dizer **de qual consulta se trata**: nome da cidade no lugar de
+  "Consulta", recorte à esquerda, cronômetro à direita enquanto roda e o número
+  quando acaba.
+
+Um estilo novo no `SIMEopsType`: `etapa()` — mono 11 com o **tracking de rótulo
+desligado** (0.44 em vez de 1.5). Frase em mono com espaçamento de etiqueta
+obriga a soletrar.
+
+`npx tsc --noEmit` limpo, `flutter analyze` de volta aos 2 infos preexistentes.
 
 ---
 
