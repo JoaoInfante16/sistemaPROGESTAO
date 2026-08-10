@@ -263,6 +263,53 @@ de $100.
 
 ---
 
+## 2026-08-10 — duas telas reprovadas na foto, e o que a segunda ensinou
+
+Dia de veredito curto. As duas listas de lugar (a anatomia comum do commit
+anterior) levaram **"n gostei de como ficou"** e **"ficou feio"**, e a tela de
+espera levou **"gostei mais de como estava antes"**.
+
+**Rollback das listas** — `6b03972` devolve `CityCard` e `HistoryCard` ao que
+eram e apaga `entrada_de_lugar.dart`. Não voltou o `EndMark`: matar o "FIM" foi
+pedido separado e não tinha nada a ver com a anatomia.
+
+Fica registrado o **método que falhou**, porque é o que se repete: eu montei um
+raciocínio sobre redundância, apliquei nas **duas** telas de uma vez e só então
+pus no aparelho. Argumento não substitui foto. Da próxima: **uma tela só**,
+conferida antes de propagar.
+
+### A tela de espera: o diagnóstico veio do que o João **não** quis desfazer
+
+*"Eu gostei da copy dela, da contagem, aparecendo as notícias. Ela tava
+perfeita, era só mexer no design e n em tudo."*
+
+Isso separou conteúdo de forma com uma precisão que a minha análise não tinha
+alcançado: o conteúdo da Fase C estava certo, o desenho é que estava errado.
+Medindo o que o desenho tinha feito:
+
+- **sumiu a barra geral.** Sobrava a barrinha do passo corrente, que não
+  responde a única pergunta de quem espera sete minutos — *falta muito?*. Um
+  passo pode estar em 90% com a consulta em 30%;
+- **os sete nomes por extenso custavam ~300px**, com marca, valor e respiro. Em
+  ~700px úteis, os achados ao vivo — a parte que ele mais gosta — nasciam no fim
+  da dobra. A tela era 70% andaime e 30% do que interessa;
+- três marcas diferentes, uma delas um `Icons.check` do Material — o único
+  ícone solto num sistema que não usa ícone.
+
+**O que ficou:** o passo corrente vira manchete (Archivo 25) com o contador em
+figura de 30 e a estimativa ao lado; a barra geral volta no topo com
+`PASSO 4 DE 7`; e os outros seis passos viram **duas linhas** — `JÁ FEITO
+imprensa 619 · descarte 412 · triagem 88` e `FALTA extrair · juntar · montar`.
+Nenhum número saiu da tela. Andaime de ~300px para ~150px, e os achados sobem
+para a dobra.
+
+Os pendentes continuam aparecendo: são a prova de que a espera tem plano, e
+apagá-los mataria a função da lista. O que mudou é que custam uma linha, não
+sete.
+
+`_valorDoPasso` morreu junto — a trilha lê `_numero` direto.
+
+---
 ## 2026-08-09 (noite) — as duas listas de lugar tinham anatomias diferentes sem ninguém ter decidido isso
 
 O app tem duas listas que falam de cidade, e elas foram desenhadas separadas:
