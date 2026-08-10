@@ -41,14 +41,29 @@ backend usa a service key, que faz bypass de RLS.
 
 ### 2. Promover `main` + APK de produção
 
-`main` está em `faa38b7` (**junho**), 75 commits atrás. Tudo que foi feito nas
-Fases 8 e 9 só chega ao cliente aqui. Requer autorização explícita — a CLAUDE.md
-proíbe merge direto em `main`.
+`main` está em `faa38b7` (**junho**), **104 commits atrás** (eram 75 em 04/08).
+Tudo que foi feito nas Fases 8 e 9 só chega ao cliente aqui. Requer autorização
+explícita — a CLAUDE.md proíbe merge direto em `main`.
+
+🚨 **Isto deixou de ser dívida e virou defeito em produção (10/08).** O
+auto-scan roda 24/7 na **produção** — staging é Render free e dorme —, então o
+banco compartilhado está sendo alimentado **pelo código de junho**. Medido com
+`npx tsx scripts/diagnostico-manchetes.ts 14`: **23 linhas de `news` nos últimos
+14 dias, zero com manchete**, incluindo uma de hoje às 13:00. O
+`scanPipeline.ts` da `main` não tem uma única menção a `titulo`.
+
+Degrada em silêncio, que é por isso que passou: a coluna é anulável e o app
+compõe um título de `tipo + bairro` quando vem null. Ninguém vê erro — vê um
+app pior.
+
+Descarta a hipótese de o Filter2 estar falhando: a busca manual do aparelho
+aponta pra **staging**, é o mesmo `filter2GPT`, e cria manchete certinho.
 
 O que falta lá, confirmado lendo o código:
 
 | falta | efeito |
 |---|---|
+| `titulo` no `insertNews` do scan | **toda notícia do auto-scan nasce sem manchete** |
 | `brd_json` | a SERP devolve HTML cru, `JSON.parse` falha **em silêncio** |
 | paginação com `num` (deprecado) | pula as posições 10-19, perde ~1/3 |
 | scraper assíncrono no Top 100 | 660-978s — **a travada que o cliente relatou** |
@@ -60,6 +75,7 @@ O que falta lá, confirmado lendo o código:
 - [ ] conferir `commit` no `/health` de produção
 - [ ] confirmar que a fila de produção manteve o nome **puro** (`manual-search-queue`)
 - [ ] rodar uma busca real e conferir `budget_tracking.details`
+- [ ] **esperar uma varredura do CRON e rodar `npx tsx scripts/diagnostico-manchetes.ts 2`** — tem que sair >0% com manchete. É a prova de que o scan novo está no ar, e não a versão do `/health`
 - [ ] **subir o APK junto** — `cd mobile-app && flutter clean && flutter build apk --dart-define-from-file=env/prod.json`
 - [ ] conferir o APK: `unzip -p app-release.apk lib/arm64-v8a/libapp.so | grep -a onrender` tem que dar `sistemaprogestao-7fzs`
 - [ ] confirmar `AUTO_SCAN_ENABLED` / `NODE_ENV=production` no Render

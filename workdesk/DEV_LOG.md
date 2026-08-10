@@ -263,6 +263,41 @@ de $100.
 
 ---
 
+## 2026-08-10 — o auto-scan não cria manchete, e o motivo é que produção roda código de junho
+
+Pergunta do João depois de ver as manchetes na busca manual: *"quero garantir que
+o auto scan cria manchetes igual a busca criou"*.
+
+**Não cria.** `npx tsx scripts/diagnostico-manchetes.ts 14`: **23 linhas de
+`news` nos últimos 14 dias, zero com `titulo`** — incluindo uma de hoje às
+13:00, ou seja depois da migration 029 e do código que grava o campo.
+
+O código está certo, e é o mesmo nos dois caminhos: `filter2GPT` extrai o
+`titulo` → `runFilter2WithEmbedding` (compartilhado) → o dedup em camadas faz
+`...lead`, então o campo sobrevive à fusão → `insertNews({ titulo })`. Conferido
+linha a linha.
+
+**O que está errado é qual código está rodando.** O commit que ensinou o scan a
+gravar `titulo` (`b389c2d`) está em `feature/design-fio` e `staging` — **não
+está em `main`**. E `main` está **104 commits atrás**, com um
+`scanPipeline.ts` que não menciona `titulo` nenhuma vez.
+
+Quem roda a varredura 24/7 é a **produção**: staging é Render free e dorme. Então
+o banco compartilhado vem sendo alimentado pelo código de junho.
+
+A hipótese alternativa — Filter2 não estar extraindo — cai sozinha: a busca
+manual do aparelho aponta pra staging, é o mesmo `filter2GPT`, e cria manchete
+certinho. Se fosse staging rodando o scan, teria manchete.
+
+**Por que ninguém viu:** degrada em silêncio. A coluna é anulável, o app compõe
+um título de `tipo + bairro` quando vem null, e nenhuma tela reclama. Não se vê
+erro — vê-se um app pior.
+
+Fica em `scripts/diagnostico-manchetes.ts` (só leitura) para reconferir depois do
+deploy sem refazer a investigação. Escrito no ROADMAP, na PRIORIDADE 0 — a
+promoção da `main` **deixou de ser dívida e virou defeito em produção**.
+
+---
 ## 2026-08-10 — duas telas reprovadas na foto, e o que a segunda ensinou
 
 Dia de veredito curto. As duas listas de lugar (a anatomia comum do commit
