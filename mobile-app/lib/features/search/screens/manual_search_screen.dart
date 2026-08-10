@@ -834,13 +834,12 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   /// Eram **cinco blocos** com nome de engenharia — `TRIAGEM RÁPIDA`,
   /// `LEITURA`, `ANÁLISE` —, e o agrupamento tinha um motivo técnico: só os
   /// estágios 4 e 5 mandavam contador, então os outros ficariam mudos se
-  /// aparecessem sozinhos. Desde que cada `details` virou um número lido por
-  /// [_numero], todo passo tem o próprio resultado e não precisa mais se
+  /// aparecessem sozinhos. Desde que cada `details` virou um `de → para` (ver
+  /// [_valorDoPasso]), todo passo tem o próprio resultado e não precisa mais se
   /// esconder atrás do vizinho.
   ///
   /// Os nomes dizem o que a máquina **faz**, não como ela se chama por dentro.
-  /// Quem espera sete minutos merece ver que a espera tem plano — mas só o
-  /// passo corrente aparece por extenso: os outros vivem em [_passosCurtos].
+  /// Quem espera sete minutos merece ver que a espera tem plano.
   static const _passos = <String>[
     'Consultar a imprensa',
     'Descartar o que não é ocorrência',
@@ -876,6 +875,48 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     if (d == null) return null;
     final m = RegExp(r'\d+').firstMatch(d);
     return m == null ? null : int.tryParse(m.group(0)!);
+  }
+
+  /// O que aparece à direita do passo: **o que ele fez com o número**.
+  ///
+  /// `619 → 412` é o que faz a espera contar uma história. Sem isso são sete
+  /// linhas acendendo em ordem, e no fim ninguém aprendeu nada sobre a própria
+  /// consulta — nem por que ela demorou, nem onde o material se perdeu.
+  ///
+  /// O `de` de um passo é o `para` do anterior: os números já estavam no
+  /// `details` de cada estágio, ninguém precisou consultar nada a mais.
+  String _valorDoPasso(int indice, int atual, int? feitos, int? total) {
+    final passo = indice + 1;
+
+    if (passo > atual) return '—';
+    if (passo == atual) {
+      if (feitos != null && total != null && total > 0) {
+        return '$feitos / $total';
+      }
+      return '···';
+    }
+
+    String par(int? de, int? para) =>
+        (de == null || para == null) ? '—' : '$de → $para';
+
+    switch (passo) {
+      case 1:
+        final n = _numero(2);
+        return n == null ? '—' : '$n LINKS';
+      case 2:
+        return par(_numero(2), _numero(3));
+      case 3:
+        return par(_numero(3), _numero(4));
+      case 4:
+        return par(_numero(4), _numero(5));
+      case 5:
+        return par(_numero(5), _numero(6));
+      case 6:
+        return par(_numero(6), _numero(7));
+      default:
+        final n = _numero(7);
+        return n == null ? '—' : '$n OCORRÊNCIAS';
+    }
   }
 
   /// Quanto falta no estágio corrente, pela taxa observada.
@@ -968,182 +1009,118 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     unawaited(_startSearch());
   }
 
-  /// Os mesmos sete passos em uma palavra, para a trilha do que já passou e do
-  /// que ainda falta.
-  ///
-  /// 🚨 Aqui estava o defeito da primeira versão: os sete nomes por extenso
-  /// ocupavam sete linhas, e com a marca, o valor e o respiro davam **~300px
-  /// de andaime antes da primeira notícia**. Numa tela de ~700px úteis, o que
-  /// a pessoa mais quer ver — as ocorrências chegando — nascia no fim da
-  /// dobra. Em uma palavra cada, o mesmo plano cabe em duas linhas.
-  static const _passosCurtos = <String>[
-    'imprensa',
-    'descarte',
-    'triagem',
-    'matérias',
-    'extração',
-    'repetidas',
-    'resultado',
-  ];
-
-  /// O avanço da **consulta**, não o do passo.
-  ///
-  /// A barra geral tinha sumido na primeira versão — sobrava a barrinha do
-  /// passo corrente, e ela não responde a única pergunta de quem espera sete
-  /// minutos: *falta muito?*. Um passo pode estar em 90% com a consulta em 30%.
-  Widget _cabecalhoDaEspera(int atual, int? feitos, int? total, bool falhou) {
-    final fracao = (feitos != null && total != null && total > 0)
-        ? (feitos / total).clamp(0.0, 1.0).toDouble()
-        : 0.0;
-    final avanco = atual <= 0
-        ? 0.0
-        : (((atual - 1) + fracao) / _passos.length).clamp(0.0, 1.0).toDouble();
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            falhou
-                ? 'A CONSULTA PAROU'
-                : 'PASSO ${atual.clamp(1, _passos.length)} DE ${_passos.length}',
-            style: SIMEopsType.slug(
-              color: falhou ? SIMEopsColors.alert : SIMEopsColors.faint,
-            ),
-          ),
-          const SizedBox(height: 9),
-          TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0, end: avanco),
-            duration: const Duration(milliseconds: 600),
-            curve: Curves.easeOut,
-            builder: (_, v, __) => Container(
-              height: 3,
-              color: SIMEopsColors.rule,
-              child: FractionallySizedBox(
-                alignment: Alignment.centerLeft,
-                widthFactor: v,
-                child: Container(
-                  color: falhou ? SIMEopsColors.alert : SIMEopsColors.tealLight,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+  Widget _marca({
+    required bool feito,
+    required bool agora,
+    required bool parou,
+  }) {
+    if (parou) {
+      return Container(width: 8, height: 8, color: SIMEopsColors.alert);
+    }
+    if (feito) {
+      return const Icon(Icons.check, size: 12, color: SIMEopsColors.greenLight);
+    }
+    if (agora) {
+      return Container(width: 8, height: 8, color: SIMEopsColors.tealLight);
+    }
+    return Container(width: 3, height: 3, color: SIMEopsColors.faint);
   }
 
-  /// O passo que está rodando **agora**, em tamanho de manchete.
+  /// Uma etapa: marca · nome · resultado. E, na corrente, o filete de avanço.
   ///
-  /// É a única linha da tela que muda de minuto em minuto, então é a que
-  /// carrega o peso: nome em Archivo 25 e o contador em figura, no lugar das
-  /// sete linhas de mono iguais que existiam antes.
-  Widget _heroiDoPasso(int atual, int? feitos, int? total, bool falhou) {
-    final indice = (atual - 1).clamp(0, _passos.length - 1);
-    final nome = atual <= 0 ? 'Começando a consulta' : _passos[indice];
-    final temContador = feitos != null && total != null && total > 0;
+  /// Três tintas, medidas: corrente em branco (17.8:1), concluída em `muted`
+  /// (8.0:1), pendente em `faint` (4.8:1). Pendente **não** desaparece —
+  /// as etapas que ainda não rodaram são a prova de que a busca tem plano, e
+  /// apagá-las mataria a função da lista.
+  List<Widget> _linhaDoPasso(
+    int i,
+    int atual,
+    int? feitos,
+    int? total,
+    bool falhou,
+  ) {
+    final passo = i + 1;
+    final feito = passo < atual;
+    final agora = passo == atual;
+    final parou = falhou && agora;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 22, 18, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            nome,
-            style: SIMEopsType.title(
-              color: falhou ? SIMEopsColors.alert : SIMEopsColors.white,
-            ).copyWith(fontSize: 25),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                falhou
-                    ? 'PAROU AQUI'
-                    : temContador
-                    ? '$feitos / $total'
-                    : '···',
-                style: SIMEopsType.figure(
-                  size: falhou ? 15 : 30,
-                  color: falhou
-                      ? SIMEopsColors.alert
-                      : temContador
-                      ? SIMEopsColors.white
-                      : SIMEopsColors.muted,
-                ),
+    final tinta = parou
+        ? SIMEopsColors.alert
+        : agora
+        ? SIMEopsColors.white
+        : feito
+        ? SIMEopsColors.muted
+        : SIMEopsColors.faint;
+
+    final temBarra =
+        agora && !falhou && feitos != null && total != null && total > 0;
+
+    return [
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 13,
+              child: Center(
+                child: _marca(feito: feito, agora: agora, parou: parou),
               ),
-              const Spacer(),
-              if (!falhou && temContador)
-                if (_falta(atual, feitos, total) case final eta?)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 3),
-                    child: Text(
-                      eta,
-                      style: SIMEopsType.slug(color: SIMEopsColors.faint),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _passos[i],
+                style: SIMEopsType.etapa(color: tinta),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              parou ? 'PAROU AQUI' : _valorDoPasso(i, atual, feitos, total),
+              style: SIMEopsType.slug(
+                color: parou
+                    ? SIMEopsColors.alert
+                    : agora
+                    ? SIMEopsColors.tealLight
+                    : feito
+                    ? SIMEopsColors.faint
+                    : SIMEopsColors.hairline,
+              ),
+            ),
+          ],
+        ),
+      ),
+      if (temBarra)
+        Padding(
+          // 25 = a marca (13) + o vão (12). O filete começa embaixo do nome.
+          padding: const EdgeInsets.only(left: 25, bottom: 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: (feitos / total).clamp(0.0, 1.0)),
+                  duration: const Duration(milliseconds: 600),
+                  curve: Curves.easeOut,
+                  builder: (_, v, __) => Container(
+                    height: 2,
+                    color: SIMEopsColors.rule,
+                    child: FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: v,
+                      child: Container(color: SIMEopsColors.tealLight),
                     ),
                   ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// O plano inteiro em duas linhas: o que já passou (com o número que cada
-  /// passo entregou) e o que ainda falta.
-  ///
-  /// Os passos pendentes **continuam na tela** — são a prova de que a espera
-  /// tem plano, e apagá-los mataria a função da lista. O que mudou é que agora
-  /// custam uma linha, não sete.
-  Widget _trilhaDosPassos(int atual) {
-    final feitos = <String>[];
-    for (var p = 1; p < atual && p <= _passos.length; p++) {
-      final saida = _numero(p + 1) ?? (p == _passos.length ? _numero(p) : null);
-      feitos.add(
-        saida == null ? _passosCurtos[p - 1] : '${_passosCurtos[p - 1]} $saida',
-      );
-    }
-
-    final faltam = <String>[];
-    for (var p = atual + 1; p <= _passos.length; p++) {
-      faltam.add(_passosCurtos[p - 1]);
-    }
-
-    if (feitos.isEmpty && faltam.isEmpty) return const SizedBox.shrink();
-
-    Widget linha(String rotulo, String texto, Color cor) => Padding(
-          padding: const EdgeInsets.only(top: 7),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 58,
-                child: Text(
-                  rotulo,
-                  style: SIMEopsType.slug(color: SIMEopsColors.faint),
                 ),
               ),
-              Expanded(
-                child: Text(texto, style: SIMEopsType.etapa(color: cor)),
-              ),
+              if (_falta(passo, feitos, total) case final eta?) ...[
+                const SizedBox(width: 10),
+                Text(eta, style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+              ],
             ],
           ),
-        );
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 21, 18, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (feitos.isNotEmpty)
-            linha('JÁ FEITO', feitos.join(' · '), SIMEopsColors.muted),
-          if (faltam.isNotEmpty)
-            linha('FALTA', faltam.join(' · '), SIMEopsColors.faint),
-        ],
-      ),
-    );
+        ),
+    ];
   }
 
   Widget _buildEspera({bool falhou = false}) {
@@ -1154,9 +1131,16 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
-        _cabecalhoDaEspera(atual, feitos, total, falhou),
-        _heroiDoPasso(atual, feitos, total, falhou),
-        if (!falhou) _trilhaDosPassos(atual),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < _passos.length; i++)
+                ..._linhaDoPasso(i, atual, feitos, total, falhou),
+            ],
+          ),
+        ),
         if (falhou)
           ..._blocoDaFalha(atual)
         else ...[
