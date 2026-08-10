@@ -185,16 +185,12 @@ class SIMEopsType {
             (active ? SIMEopsColors.white : SIMEopsColors.faint),
       );
 
-  /// Linha de etapa da consulta (`Descartar o que não é ocorrência`).
-  ///
-  /// Mono 11 como o [placeTab], mas com o **tracking de rótulo desligado**:
-  /// aqui é frase, não etiqueta. 1.5px entre letras num texto de 30 caracteres
-  /// afasta as palavras umas das outras e obriga a soletrar.
-  static TextStyle etapa({Color? color}) => GoogleFonts.jetBrainsMono(
-        fontSize: 11,
-        letterSpacing: 0.44,
-        color: color ?? SIMEopsColors.faint,
-      );
+  // ⚠️ Aqui existiu o `etapa` — mono 11 com o tracking de rótulo desligado,
+  // porque a linha da etapa da consulta era uma frase (`Descartar o que não é
+  // ocorrência`) e 1.5px entre letras num texto de 30 caracteres obriga a
+  // soletrar. As etapas viraram uma palavra em caixa alta (`DEDUPLICAÇÃO`),
+  // ou seja, etiqueta de novo, e voltaram para o [placeTab]. Degrau sem
+  // nenhum usuário não fica na escala.
 
   /// Rótulo de campo de formulário.
   static TextStyle fieldLabel() => GoogleFonts.jetBrainsMono(

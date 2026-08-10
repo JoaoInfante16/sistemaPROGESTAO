@@ -829,25 +829,35 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   // A ESPERA
   // ══════════════════════════════════════════════════════════════════════
 
-  /// Os sete estágios do backend, ditos em português de operação.
+  /// Os sete estágios do backend, em uma palavra cada.
   ///
   /// Eram **cinco blocos** com nome de engenharia — `TRIAGEM RÁPIDA`,
   /// `LEITURA`, `ANÁLISE` —, e o agrupamento tinha um motivo técnico: só os
   /// estágios 4 e 5 mandavam contador, então os outros ficariam mudos se
-  /// aparecessem sozinhos. Desde que cada `details` virou um `de → para` (ver
-  /// [_valorDoPasso]), todo passo tem o próprio resultado e não precisa mais se
-  /// esconder atrás do vizinho.
+  /// aparecessem sozinhos. Hoje cada `details` vira um `de → para` (ver
+  /// [_valorDoPasso]) e todo passo tem o próprio resultado.
   ///
-  /// Os nomes dizem o que a máquina **faz**, não como ela se chama por dentro.
-  /// Quem espera sete minutos merece ver que a espera tem plano.
+  /// Depois disso eles passaram por uma fase didática — `Descartar o que não é
+  /// ocorrência`, `Extrair local, data e tipo` — e o João cortou: *"podia ser
+  /// mais técnico, o cliente não precisa saber o que tá fazendo"*. Ele tem
+  /// razão por dois motivos, e o segundo é o que decide:
+  ///
+  /// 1. explicar o processo não é função desta tela — quem espera quer saber
+  ///    **se anda**, e é o número à direita que responde isso;
+  /// 2. os nomes por extenso iam de **18 a 32 caracteres**, e como a coluna de
+  ///    números é alinhada à direita, a borda do texto ficava serrilhada e o
+  ///    olho não achava onde uma coluna terminava. Em uma palavra (5 a 13
+  ///    caracteres) a linha vira **etiqueta**, que é o que ela sempre foi.
+  ///
+  /// Ficam em caixa alta e mono, como todo metadado do app.
   static const _passos = <String>[
-    'Consultar a imprensa',
-    'Descartar o que não é ocorrência',
-    'Triagem por relevância',
-    'Baixar as matérias',
-    'Extrair local, data e tipo',
-    'Juntar as repetidas',
-    'Montar o resultado',
+    'BUSCA',
+    'TRIAGEM',
+    'RELEVÂNCIA',
+    'COLETA',
+    'EXTRAÇÃO',
+    'DEDUPLICAÇÃO',
+    'CONSOLIDAÇÃO',
   ];
 
   /// Quantos achados a janela ao vivo mostra de uma vez. Ver [_achadosRecentes].
@@ -1070,7 +1080,10 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
             Expanded(
               child: Text(
                 _passos[i],
-                style: SIMEopsType.etapa(color: tinta),
+                // `placeTab`, não `etapa`: o `etapa` existe pra desligar o
+                // tracking quando a linha é frase. Agora é etiqueta de uma
+                // palavra em caixa alta, e etiqueta pede o tracking de volta.
+                style: SIMEopsType.placeTab(active: false, color: tinta),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -1221,8 +1234,10 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
             onde == null
                 ? 'A consulta não chegou a começar. Costuma ser conexão — '
                       'refazer agora normalmente resolve.'
-                : 'A consulta parou em “$onde”. O que já tinha sido coletado '
-                      'não fica salvo: refazer começa do zero.',
+                // Sem aspas em volta do `$onde`: a etapa já vem em caixa alta
+                // e mono, e aspas em cima disso é o mesmo grifo duas vezes.
+                : 'A consulta parou na etapa $onde. O que já tinha sido '
+                      'coletado não fica salvo: refazer começa do zero.',
             style: SIMEopsType.note(),
           ),
         ),
