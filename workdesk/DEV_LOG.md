@@ -263,6 +263,76 @@ de $100.
 
 ---
 
+## 2026-08-10 — o app não conhecia a palavra `cancelled`, e o verde queria dizer duas coisas
+
+Foto da tela de Consultas vazia. João: *"a hierarquia desse botão com o Nenhuma
+consulta ainda…"* e *"esse nova consulta, tanto dessa tela quanto da tela de
+resultado, deveriam ser padrão n acha?"*.
+
+**O que a investigação achou antes de mexer em pixel:**
+
+1. **A mesma porta com três nomes e três pesos.** `NOVA CONSULTA` (verde cheio,
+   topo do histórico), `FAZER OUTRA CONSULTA` (botão de texto teal, fim do
+   resultado) e `MUDAR A CONSULTA` (contornado, bloco da falha) levam ao mesmo
+   lugar — e esse lugar se chama `Nova consulta` no próprio masthead.
+
+2. **O verde do app já queria dizer uma coisa só, e ninguém tinha escrito.**
+   Contados os 12 `FilledButton`: `ENTRAR`, `DESBLOQUEAR`, `SOLICITAR`, `SAIR`,
+   `USAR ESTES`, `VER`, `INICIAR CONSULTA`, `REFAZER A CONSULTA`,
+   `COMPARTILHAR RELATÓRIO`, os confirmar de diálogo — **onze confirmam ou
+   disparam**. O décimo segundo era o `NOVA CONSULTA`, que só navega. Regra
+   agora explícita: **verde cheio confirma ou dispara; contornado navega.**
+
+3. **A tela vazia contrariava o padrão que o próprio arquivo usa.** O vazio do
+   feed (e o estado de erro dessa mesma tela) é título → prosa → ação. O vazio
+   das Consultas mantinha o masthead por cima (dois títulos empilhados, o de
+   baixo maior) e punha o botão **antes** do título.
+
+**E aí, indo atrás do "cancelar em andamento" que o João pediu, o achado que
+valeu a sessão:** o backend grava status **`cancelled`**
+(`manualSearchRoutes.ts:236`) e a palavra **não existia no app inteiro**. Duas
+consequências, ambas já em produção:
+
+- no histórico, `running = status != 'completed' && !failed` — consulta
+  cancelada ficava **`EM ANDAMENTO` para sempre**, em teal;
+- ao abrir pelo histórico, `_resumeSearch` caía no `else` de "ainda
+  processando": tela de espera **consultando de 3 em 3 segundos um job que o
+  backend já tirou da fila**.
+
+Degrada em silêncio — nenhum erro, nenhum log. Só um app que mente sobre o
+próprio estado. Cancelar pela tela de espera já produzia isso desde sempre.
+
+**O que foi feito:** `cancelled` reconhecido no `HistoryCard` (`CANCELADA` em
+`faint`, sem cor — cancelar é decisão de quem usa, não incidente), no
+`_resumeSearch`, no polling e no `_buildResults`. O cancelar entrou na **quarta
+linha que o item já reservava** para dizer o que fazer com aquele estado (hoje
+só a falha usava, com `TOQUE PARA TENTAR DE NOVO`) — nenhuma caixa nova. O
+diálogo virou `core/widgets/dialogo_cancelar_consulta.dart`, usado pelos dois
+lugares que cancelam: copy de aviso duplicada é copy que diverge.
+
+O botão do diálogo era **verde** — o verde de confirmar, para descartar
+trabalho. Virou vermelho, o mesmo par do apagar consulta. Propus `DESCARTAR` no
+lugar de `CANCELAR`; João recusou (*"Descartar não kkk, cancelar mesmo"*), então
+fica `CANCELAR` e quem desempata dele para o `CONTINUAR ESPERANDO` é o peso.
+
+**Fora de escopo por decisão dele:** o `CANCELAR` no pé do formulário. Eu tinha
+proposto, ele disse *"esquece, o cancelar é em outra tela"* — não se mexe em
+tela que não foi pedida.
+
+**Achado anotado e não corrigido:** o item que falhou diz `TOQUE PARA TENTAR DE
+NOVO`, mas tocar mostra só um aviso *"Esta busca falhou. Inicie uma nova."*
+(`search_screen.dart:103`). O item promete uma coisa e a tela faz outra.
+
+**Nota de formatação:** `search_screen.dart` saiu reformatado inteiro. O
+encadeamento de ternários do `build` ganhou um ramo e a indentação à mão ficou
+torta, então rodei `dart format` **naquele arquivo só** — e o Dart 3.7 reescreve
+no estilo novo, daí 228/160 num arquivo cujo conteúdo mudou em ~40 linhas. O
+resto do `lib/` segue no estilo antigo; a migração vai acontecer arquivo a
+arquivo, conforme cada um for tocado. É o mesmo motivo de 09/08: **formatar só o
+que entra no commit** — nunca a pasta.
+
+---
+
 ## 2026-08-10 — o auto-scan não cria manchete, e o motivo é que produção roda código de junho
 
 Pergunta do João depois de ver as manchetes na busca manual: *"quero garantir que

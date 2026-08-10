@@ -18,11 +18,21 @@ import '../../../core/utils/state_utils.dart';
 /// todo card, sempre igual, e era o elemento mais saturado da lista. Status
 /// que quase sempre é o mesmo não pode gritar — quem merece cor é a falha, que
 /// é a exceção. Sucesso agora é silêncio, e quem informa é a contagem.
+///
+/// **3. `cancelled` existe.** O backend grava esse status ao cancelar
+/// (`POST /manual-search/:id/cancel`) e o app não conhecia a palavra: a
+/// consulta cancelada caía no `else` de "não concluída" e ficava
+/// **`EM ANDAMENTO` para sempre**, em teal, como se ainda estivesse rodando.
 class HistoryCard extends StatelessWidget {
   final Map<String, dynamic> search;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
   final bool selected;
+
+  /// Cancelar sem precisar abrir a consulta. Só chega preenchido quando a
+  /// consulta está em andamento e a lista não está em modo de seleção — em
+  /// seleção, todo toque no item é marcar/desmarcar.
+  final VoidCallback? onCancel;
 
   const HistoryCard({
     super.key,
@@ -30,6 +40,7 @@ class HistoryCard extends StatelessWidget {
     required this.onTap,
     this.onLongPress,
     this.selected = false,
+    this.onCancel,
   });
 
   /// Só a hora: `11:22`. A lista é agrupada por dia (`HOJE`, `ONTEM`,
@@ -57,7 +68,8 @@ class HistoryCard extends StatelessWidget {
     final assuntos = (params['assuntos'] as List<dynamic>?)?.length;
 
     final failed = status == 'failed';
-    final running = status != 'completed' && !failed;
+    final cancelada = status == 'cancelled';
+    final running = status != 'completed' && !failed && !cancelada;
 
     // O título é a cidade. Sem cidade (dado antigo), cai no estado.
     final titulo = cidades.isNotEmpty ? cidades.first : estado;
@@ -94,6 +106,11 @@ class HistoryCard extends StatelessWidget {
                 if (failed)
                   Text('FALHOU',
                       style: SIMEopsType.slug(color: SIMEopsColors.alert))
+                // Sem cor: cancelar foi decisão de quem usa, não incidente.
+                // Quem tem direito a tinta de alarme é a falha.
+                else if (cancelada)
+                  Text('CANCELADA',
+                      style: SIMEopsType.slug(color: SIMEopsColors.faint))
                 else if (running)
                   Text('EM ANDAMENTO',
                       style: SIMEopsType.slug(color: SIMEopsColors.tealLight))
@@ -111,7 +128,9 @@ class HistoryCard extends StatelessWidget {
             Text(
               titulo,
               style: SIMEopsType.entryTitle(
-                color: failed ? SIMEopsColors.faint : SIMEopsColors.white,
+                color: failed || cancelada
+                    ? SIMEopsColors.faint
+                    : SIMEopsColors.white,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -129,6 +148,26 @@ class HistoryCard extends StatelessWidget {
               const SizedBox(height: 7),
               Text('TOQUE PARA TENTAR DE NOVO',
                   style: SIMEopsType.slug(color: SIMEopsColors.alert)),
+            ],
+
+            // O cancelar entra na **mesma quarta linha** que a falha já usa
+            // para dizer o que fazer com aquele estado — nenhuma caixa nova,
+            // nenhum ícone. Em `muted`, que é a tinta de todo botão contornado
+            // do app: o vermelho fica para o diálogo, não para um item que
+            // está trabalhando normalmente.
+            if (running && onCancel != null) ...[
+              const SizedBox(height: 3),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: InkWell(
+                  onTap: onCancel,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text('CANCELAR A CONSULTA',
+                        style: SIMEopsType.slug(color: SIMEopsColors.muted)),
+                  ),
+                ),
+              ),
             ],
           ],
         ),

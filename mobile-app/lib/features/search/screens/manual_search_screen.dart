@@ -12,6 +12,7 @@ import '../../../core/utils/datas.dart';
 import '../../../core/utils/date_grouping.dart';
 import '../../../core/utils/state_utils.dart';
 import '../../../core/widgets/cat_chip.dart';
+import '../../../core/widgets/dialogo_cancelar_consulta.dart';
 import '../../../core/widgets/group_header.dart';
 import '../../../core/widgets/grid_background.dart';
 import '../../../core/widgets/masthead.dart';
@@ -62,7 +63,8 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   /// backend continua importando **só** na hora de compartilhar, e isso mora
   /// dentro do próprio relatório.
   int _caderno = 0;
-  String _searchStatus = 'idle'; // idle, processing, completed, failed
+  // idle, loading, processing, completed, failed, cancelled
+  String _searchStatus = 'idle';
   // Resposta crua do /results, com os três baldes SEMPRE separados (regra do
   // contrato). O ReportScreen recebe .results como veio; .foraDoPeriodo cru
   // alimenta o re-fatiamento por período (9.6).
@@ -170,6 +172,11 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         _ingestResults(await api.getManualSearchResults(searchId));
       } else if (s == 'failed') {
         if (mounted) setState(() => _searchStatus = 'failed');
+      } else if (s == 'cancelled') {
+        // Sem esta linha, consulta cancelada caía no `else` de "ainda
+        // processando" e o app abria a tela de espera para ficar consultando,
+        // de três em três segundos, um job que o backend já tirou da fila.
+        if (mounted) setState(() => _searchStatus = 'cancelled');
       } else {
         // Realmente ainda processando — reconstrói cronologia dos stages
         // anteriores a partir do history persistido, depois inicia polling.
@@ -379,14 +386,16 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
           return;
         }
 
-        if (s == 'completed' || s == 'failed') {
+        // `cancelled` fecha o polling junto: a consulta pode ter sido
+        // cancelada pela lista do histórico enquanto esta tela espera.
+        if (s == 'completed' || s == 'failed' || s == 'cancelled') {
           _pollTimer?.cancel();
           _elapsedTimer?.cancel();
 
           if (s == 'completed') {
             _ingestResults(await api.getManualSearchResults(_searchId!));
           } else {
-            if (mounted) setState(() => _searchStatus = 'failed');
+            if (mounted) setState(() => _searchStatus = s);
           }
         }
       } catch (e) {
@@ -983,35 +992,9 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   }
 
   Future<void> _confirmarCancelamento() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: SIMEopsColors.navyLight,
-        shape: const RoundedRectangleBorder(
-          side: BorderSide(color: SIMEopsColors.ruleStrong),
-        ),
-        title: Text(
-          'Cancelar a consulta?',
-          style: SIMEopsType.dialogTitle(),
-        ),
-        content: Text(
-          'Ela roda no servidor e termina sozinha mesmo com o app fechado. '
-          'Cancelar agora descarta o que já foi coletado.',
-          style: SIMEopsType.lead(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('CONTINUAR ESPERANDO'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('CANCELAR'),
-          ),
-        ],
-      ),
-    );
-    if (ok == true && mounted) _resetSearch();
+    if (await confirmarCancelamentoDeConsulta(context) && mounted) {
+      _resetSearch();
+    }
   }
 
   void _refazer() {
@@ -1023,9 +1006,10 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     required bool feito,
     required bool agora,
     required bool parou,
+    Color corDaParada = SIMEopsColors.alert,
   }) {
     if (parou) {
-      return Container(width: 8, height: 8, color: SIMEopsColors.alert);
+      return Container(width: 8, height: 8, color: corDaParada);
     }
     if (feito) {
       return const Icon(Icons.check, size: 12, color: SIMEopsColors.greenLight);
@@ -1047,15 +1031,16 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     int atual,
     int? feitos,
     int? total,
-    bool falhou,
-  ) {
+    bool falhou, {
+    Color corDaParada = SIMEopsColors.alert,
+  }) {
     final passo = i + 1;
     final feito = passo < atual;
     final agora = passo == atual;
     final parou = falhou && agora;
 
     final tinta = parou
-        ? SIMEopsColors.alert
+        ? corDaParada
         : agora
         ? SIMEopsColors.white
         : feito
@@ -1073,7 +1058,12 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
             SizedBox(
               width: 13,
               child: Center(
-                child: _marca(feito: feito, agora: agora, parou: parou),
+                child: _marca(
+                  feito: feito,
+                  agora: agora,
+                  parou: parou,
+                  corDaParada: corDaParada,
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -1093,7 +1083,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
               parou ? 'PAROU AQUI' : _valorDoPasso(i, atual, feitos, total),
               style: SIMEopsType.slug(
                 color: parou
-                    ? SIMEopsColors.alert
+                    ? corDaParada
                     : agora
                     ? SIMEopsColors.tealLight
                     : feito
@@ -1136,7 +1126,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     ];
   }
 
-  Widget _buildEspera({bool falhou = false}) {
+  Widget _buildEspera({bool falhou = false, bool cancelada = false}) {
     final atual = (_progress?['stage_num'] as int?) ?? 0;
     final feitos = (_progress?['feitos'] as num?)?.toInt();
     final total = (_progress?['total'] as num?)?.toInt();
@@ -1150,12 +1140,24 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               for (var i = 0; i < _passos.length; i++)
-                ..._linhaDoPasso(i, atual, feitos, total, falhou),
+                ..._linhaDoPasso(
+                  i,
+                  atual,
+                  feitos,
+                  total,
+                  falhou,
+                  // Cancelamento também para a lista, mas em tinta neutra: o
+                  // vermelho aqui diria "deu erro" sobre uma decisão de quem
+                  // usa o app.
+                  corDaParada: cancelada
+                      ? SIMEopsColors.muted
+                      : SIMEopsColors.alert,
+                ),
             ],
           ),
         ),
         if (falhou)
-          ..._blocoDaFalha(atual)
+          ..._blocoDaFalha(atual, cancelada: cancelada)
         else ...[
           if (_achadosVistos.isNotEmpty) ..._blocoDosAchados(),
           Padding(
@@ -1214,32 +1216,44 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   /// falhou marcada em vermelho: dá pra ver que 619 links foram achados e que
   /// a coleta morreu no download, o que é uma informação útil inclusive pra
   /// decidir se vale repetir agora ou mais tarde.
-  List<Widget> _blocoDaFalha(int atual) {
+  List<Widget> _blocoDaFalha(int atual, {bool cancelada = false}) {
     final onde = (atual >= 1 && atual <= _passos.length)
         ? _passos[atual - 1]
         : null;
+
+    final String texto;
+    if (cancelada) {
+      texto = onde == null
+          ? 'Você cancelou esta consulta. Nada foi coletado.'
+          : 'Você cancelou esta consulta na etapa $onde. O que já tinha '
+                'sido coletado foi descartado.';
+    } else if (onde == null) {
+      texto = 'A consulta não chegou a começar. Costuma ser conexão — '
+          'refazer agora normalmente resolve.';
+    } else {
+      // Sem aspas em volta do `$onde`: a etapa já vem em caixa alta e mono, e
+      // aspas em cima disso é o mesmo grifo duas vezes.
+      texto = 'A consulta parou na etapa $onde. O que já tinha sido '
+          'coletado não fica salvo: refazer começa do zero.';
+    }
 
     return [
       Padding(
         padding: const EdgeInsets.fromLTRB(18, 26, 18, 0),
         child: Container(
           padding: const EdgeInsets.fromLTRB(13, 12, 13, 13),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: SIMEopsColors.navyMid,
             border: Border(
-              left: BorderSide(color: SIMEopsColors.alert, width: 2),
+              left: BorderSide(
+                color: cancelada
+                    ? SIMEopsColors.ruleStrong
+                    : SIMEopsColors.alert,
+                width: 2,
+              ),
             ),
           ),
-          child: Text(
-            onde == null
-                ? 'A consulta não chegou a começar. Costuma ser conexão — '
-                      'refazer agora normalmente resolve.'
-                // Sem aspas em volta do `$onde`: a etapa já vem em caixa alta
-                // e mono, e aspas em cima disso é o mesmo grifo duas vezes.
-                : 'A consulta parou na etapa $onde. O que já tinha sido '
-                      'coletado não fica salvo: refazer começa do zero.',
-            style: SIMEopsType.note(),
-          ),
+          child: Text(texto, style: SIMEopsType.note()),
         ),
       ),
       Padding(
@@ -1253,7 +1267,10 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
         child: OutlinedButton(
           onPressed: _resetSearch,
-          child: const Text('MUDAR A CONSULTA'),
+          // `NOVA CONSULTA` e não `MUDAR A CONSULTA`: botão se chama como a
+          // tela para onde leva, e o masthead do formulário diz `Nova
+          // consulta`. Os três caminhos que voltam para lá tinham três nomes.
+          child: const Text('NOVA CONSULTA'),
         ),
       ),
     ];
@@ -1289,6 +1306,11 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   Widget _buildResults() {
     if (_searchStatus == 'processing') return _buildEspera();
     if (_searchStatus == 'failed') return _buildEspera(falhou: true);
+    // Sem este caso, abrir uma consulta cancelada pelo histórico caía nos
+    // cadernos — abas de notícia e relatório sobre um resultado que não existe.
+    if (_searchStatus == 'cancelled') {
+      return _buildEspera(falhou: true, cancelada: true);
+    }
 
     return Column(
       children: [
@@ -1577,9 +1599,12 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     rows.add(
       Padding(
         padding: const EdgeInsets.fromLTRB(18, 30, 18, 0),
-        child: TextButton(
+        // Era um botão de texto teal em mono 11 no fim de uma lista de 53
+        // matérias — do tamanho de um metadado, na hora em que a pessoa
+        // terminou de ler e a próxima coisa a fazer é outra consulta.
+        child: OutlinedButton(
           onPressed: _resetSearch,
-          child: const Text('FAZER OUTRA CONSULTA'),
+          child: const Text('NOVA CONSULTA'),
         ),
       ),
     );

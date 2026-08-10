@@ -4,6 +4,7 @@ import '../../../core/services/api_service.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 import '../../../core/utils/datas.dart';
+import '../../../core/widgets/dialogo_cancelar_consulta.dart';
 import '../../../core/widgets/masthead.dart';
 import '../widgets/history_card.dart';
 import 'manual_search_screen.dart';
@@ -16,17 +17,15 @@ class _DiaHead extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 22, 18, 6),
-        child: Row(
-          children: [
-            Text(label, style: SIMEopsType.dateline()),
-            const SizedBox(width: 11),
-            const Expanded(
-              child: Divider(color: SIMEopsColors.rule, height: 1),
-            ),
-          ],
-        ),
-      );
+    padding: const EdgeInsets.fromLTRB(18, 22, 18, 6),
+    child: Row(
+      children: [
+        Text(label, style: SIMEopsType.dateline()),
+        const SizedBox(width: 11),
+        const Expanded(child: Divider(color: SIMEopsColors.rule, height: 1)),
+      ],
+    ),
+  );
 }
 
 class SearchScreen extends StatefulWidget {
@@ -77,9 +76,9 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _navigateToNewSearch() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ManualSearchScreen()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ManualSearchScreen()));
     _loadHistory();
   }
 
@@ -112,6 +111,28 @@ class _SearchScreenState extends State<SearchScreen> {
         builder: (_) => ManualSearchScreen(resumeSearchId: searchId),
       ),
     );
+    _loadHistory();
+  }
+
+  /// Cancela sem abrir a consulta.
+  ///
+  /// Dava para cancelar desde sempre, mas só de dentro da tela de espera — ou
+  /// seja, era preciso entrar numa consulta que você já decidiu abandonar. O
+  /// diálogo é o mesmo daquela tela, de propósito.
+  Future<void> _cancelarBusca(String searchId) async {
+    if (!await confirmarCancelamentoDeConsulta(context)) return;
+    if (!mounted) return;
+
+    try {
+      await context.read<ApiService>().cancelSearch(searchId);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Não foi possível cancelar: $e')),
+        );
+      }
+      return;
+    }
     _loadHistory();
   }
 
@@ -180,14 +201,18 @@ class _SearchScreenState extends State<SearchScreen> {
       _loadHistory();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$count busca${count > 1 ? 's' : ''} removida${count > 1 ? 's' : ''}')),
+          SnackBar(
+            content: Text(
+              '$count busca${count > 1 ? 's' : ''} removida${count > 1 ? 's' : ''}',
+            ),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao deletar: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Erro ao deletar: $e')));
       }
     }
   }
@@ -197,8 +222,20 @@ class _SearchScreenState extends State<SearchScreen> {
   static List<(String, List<Map<String, dynamic>>)> _porDia(
     List<Map<String, dynamic>> historico,
   ) {
-    const meses = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN',
-                   'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+    const meses = [
+      'JAN',
+      'FEV',
+      'MAR',
+      'ABR',
+      'MAI',
+      'JUN',
+      'JUL',
+      'AGO',
+      'SET',
+      'OUT',
+      'NOV',
+      'DEZ',
+    ];
     final agora = DateTime.now();
     final hoje = DateTime(agora.year, agora.month, agora.day);
 
@@ -227,6 +264,34 @@ class _SearchScreenState extends State<SearchScreen> {
     return grupos;
   }
 
+  /// Nenhuma consulta ainda.
+  ///
+  /// **Sem masthead, e o botão por último** — é a anatomia que o feed vazio e
+  /// o erro desta mesma tela já usam: título, prosa, ação. Antes o masthead
+  /// ficava por cima (dois títulos empilhados, o de baixo maior que o de cima)
+  /// e o botão vinha **antes** do título, ou seja: o grito chegava antes da
+  /// frase que explica o que ele faz. Quem diz em que aba você está é a barra
+  /// de navegação, não um segundo título.
+  Widget _vazio() => ListView(
+    physics: const AlwaysScrollableScrollPhysics(),
+    padding: const EdgeInsets.fromLTRB(18, 90, 18, 0),
+    children: [
+      Text('Nenhuma consulta\nainda', style: SIMEopsType.title()),
+      const SizedBox(height: 14),
+      Text(
+        'A consulta varre a imprensa da cidade que você escolher, no '
+        'período que você pedir. Leva alguns minutos e você pode fechar o '
+        'app enquanto ela roda.',
+        style: SIMEopsType.lead(),
+      ),
+      const SizedBox(height: 26),
+      OutlinedButton(
+        onPressed: _navigateToNewSearch,
+        child: const Text('NOVA CONSULTA'),
+      ),
+    ],
+  );
+
   @override
   Widget build(BuildContext context) {
     return RefreshIndicator(
@@ -234,168 +299,171 @@ class _SearchScreenState extends State<SearchScreen> {
       child: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? ListView(
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(18, 90, 18, 0),
+              children: [
+                Text(
+                  'Não foi possível\ncarregar o histórico',
+                  style: SIMEopsType.title(),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'As consultas anteriores estão no servidor. '
+                  'Verifique a conexão e tente de novo.',
+                  style: SIMEopsType.lead(),
+                ),
+                const SizedBox(height: 24),
+                OutlinedButton(
+                  onPressed: _loadHistory,
+                  child: const Text('TENTAR DE NOVO'),
+                ),
+              ],
+            )
+          : _history.isEmpty
+          ? _vazio()
+          : Stack(
+              children: [
+                ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(18, 90, 18, 0),
+                  padding: EdgeInsets.only(bottom: _selectMode ? 96 : 20),
                   children: [
-                    Text('Não foi possível\ncarregar o histórico',
-                        style: SIMEopsType.title()),
-                    const SizedBox(height: 12),
-                    Text(
-                      'As consultas anteriores estão no servidor. '
-                      'Verifique a conexão e tente de novo.',
-                      style: SIMEopsType.lead(),
+                    const Masthead(
+                      titulo: 'Consultas',
+                      direita: 'SEGURE PARA SELECIONAR',
                     ),
-                    const SizedBox(height: 24),
-                    OutlinedButton(
-                      onPressed: _loadHistory,
-                      child: const Text('TENTAR DE NOVO'),
-                    ),
-                  ],
-                )
-              : Stack(
-                  children: [
-                    ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: EdgeInsets.only(bottom: _selectMode ? 96 : 20),
-                      children: [
-                        const Masthead(
-                          titulo: 'Consultas',
-                          direita: 'SEGURE PARA SELECIONAR',
-                        ),
-                        if (!_selectMode) ...[
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
-                            child: SizedBox(
-                              width: double.infinity,
-                              child: FilledButton(
-                                onPressed: _navigateToNewSearch,
-                                child: const Text('NOVA CONSULTA'),
-                              ),
-                            ),
+                    if (!_selectMode) ...[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+                        // Contornado, não verde cheio: o verde do app é o
+                        // botão que confirma ou dispara (`ENTRAR`,
+                        // `INICIAR CONSULTA`, `REFAZER`) — dos doze que
+                        // existiam, onze eram isso e só este aqui era
+                        // navegação. Ele gritava com a voz do "iniciar"
+                        // numa tela onde ninguém escolheu cidade ainda.
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton(
+                            onPressed: _navigateToNewSearch,
+                            child: const Text('NOVA CONSULTA'),
                           ),
-                          const SizedBox(height: 8),
-                        ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
 
-                        // Modo de seleção múltipla
-                        if (_selectMode)
-                          Container(
-                            decoration: const BoxDecoration(
-                              border: Border(
-                                bottom: BorderSide(color: SIMEopsColors.rule),
+                    // Modo de seleção múltipla
+                    if (_selectMode)
+                      Container(
+                        decoration: const BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(color: SIMEopsColors.rule),
+                          ),
+                        ),
+                        padding: const EdgeInsets.fromLTRB(6, 8, 18, 8),
+                        child: Row(
+                          children: [
+                            IconButton(
+                              onPressed: _cancelSelection,
+                              icon: const Icon(
+                                Icons.close,
+                                size: 20,
+                                color: SIMEopsColors.muted,
                               ),
                             ),
-                            padding: const EdgeInsets.fromLTRB(6, 8, 18, 8),
-                            child: Row(
-                              children: [
-                                IconButton(
-                                  onPressed: _cancelSelection,
-                                  icon: const Icon(Icons.close,
-                                      size: 20, color: SIMEopsColors.muted),
+                            Text(
+                              '${_selected.length} SELECIONADA'
+                              '${_selected.length > 1 ? 'S' : ''}',
+                              style: SIMEopsType.slug(
+                                color: SIMEopsColors.white,
+                              ),
+                            ),
+                            const Spacer(),
+                            InkWell(
+                              onTap: () => setState(() {
+                                if (_selected.length == _history.length) {
+                                  _selected.clear();
+                                } else {
+                                  for (final s in _history) {
+                                    _selected.add(
+                                      s['search_id'] as String? ?? '',
+                                    );
+                                  }
+                                }
+                              }),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 10,
                                 ),
-                                Text(
-                                  '${_selected.length} SELECIONADA'
-                                  '${_selected.length > 1 ? 'S' : ''}',
+                                child: Text(
+                                  _selected.length == _history.length
+                                      ? 'DESMARCAR TODAS'
+                                      : 'MARCAR TODAS',
                                   style: SIMEopsType.slug(
-                                      color: SIMEopsColors.white),
-                                ),
-                                const Spacer(),
-                                InkWell(
-                                  onTap: () => setState(() {
-                                    if (_selected.length == _history.length) {
-                                      _selected.clear();
-                                    } else {
-                                      for (final s in _history) {
-                                        _selected
-                                            .add(s['search_id'] as String? ?? '');
-                                      }
-                                    }
-                                  }),
-                                  child: Padding(
-                                    padding:
-                                        const EdgeInsets.symmetric(vertical: 10),
-                                    child: Text(
-                                      _selected.length == _history.length
-                                          ? 'DESMARCAR TODAS'
-                                          : 'MARCAR TODAS',
-                                      style: SIMEopsType.slug(
-                                          color: SIMEopsColors.tealLight),
-                                    ),
+                                    color: SIMEopsColors.tealLight,
                                   ),
                                 ),
-                              ],
+                              ),
                             ),
-                          ),
+                          ],
+                        ),
+                      ),
 
-                        if (_history.isNotEmpty) ...[
-                          // Agrupado por dia (HOJE · ONTEM · 04 AGO), como no
-                          // feed. Era um único "CONSULTAS ANTERIORES" com tudo
-                          // embaixo: vinte itens iguais, sem nenhum ponto de
-                          // apoio pro olho. O divisor é o que dá ritmo — e de
-                          // quebra tira a data de dentro de cada item, que
-                          // repetia a mesma informação vinte vezes.
-                          ..._porDia(_history).expand((g) => [
-                                if (!_selectMode) _DiaHead(g.$1),
-                                ...g.$2.map((search) {
-                                  final id =
-                                      search['search_id'] as String? ?? '';
-                                  return HistoryCard(
-                                    search: search,
-                                    selected: _selected.contains(id),
-                                    onTap: () => _onTapSearch(search),
-                                    onLongPress: () =>
-                                        _onLongPressSearch(search),
-                                  );
-                                }),
-                              ]),
-                          const SizedBox(height: 40),
-                        ] else ...[
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(18, 60, 18, 0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Nenhuma consulta\nainda',
-                                    style: SIMEopsType.title()),
-                                const SizedBox(height: 12),
-                                Text(
-                                  'A consulta varre a imprensa da cidade que '
-                                  'você escolher, no período que você pedir. '
-                                  'Leva alguns minutos e você pode fechar o '
-                                  'app enquanto ela roda.',
-                                  style: SIMEopsType.lead(),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                    // Agrupado por dia (HOJE · ONTEM · 04 AGO), como no
+                    // feed. Era um único "CONSULTAS ANTERIORES" com tudo
+                    // embaixo: vinte itens iguais, sem nenhum ponto de
+                    // apoio pro olho. O divisor é o que dá ritmo — e de
+                    // quebra tira a data de dentro de cada item, que
+                    // repetia a mesma informação vinte vezes.
+                    ..._porDia(_history).expand(
+                      (g) => [
+                        if (!_selectMode) _DiaHead(g.$1),
+                        ...g.$2.map((search) {
+                          final id = search['search_id'] as String? ?? '';
+                          return HistoryCard(
+                            search: search,
+                            selected: _selected.contains(id),
+                            onTap: () => _onTapSearch(search),
+                            onLongPress: () => _onLongPressSearch(search),
+                            // Em modo de seleção não: ali todo toque no
+                            // item é marcar, e um link que cancela no
+                            // meio disso é armadilha.
+                            onCancel: _selectMode
+                                ? null
+                                : () => _cancelarBusca(id),
+                          );
+                        }),
                       ],
                     ),
+                    const SizedBox(height: 40),
+                  ],
+                ),
 
-                    if (_selectMode && _selected.isNotEmpty)
-                      Positioned(
-                        left: 18,
-                        right: 18,
-                        bottom: 18,
-                        child: Material(
-                          color: SIMEopsColors.alert,
-                          child: InkWell(
-                            onTap: _deleteSelected,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 18),
-                              child: Center(
-                                child: Text(
-                                  'APAGAR ${_selected.length}',
-                                  style: SIMEopsType.action(
-                                      color: SIMEopsColors.white),
-                                ),
+                if (_selectMode && _selected.isNotEmpty)
+                  Positioned(
+                    left: 18,
+                    right: 18,
+                    bottom: 18,
+                    child: Material(
+                      color: SIMEopsColors.alert,
+                      child: InkWell(
+                        onTap: _deleteSelected,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 18),
+                          child: Center(
+                            child: Text(
+                              'APAGAR ${_selected.length}',
+                              style: SIMEopsType.action(
+                                color: SIMEopsColors.white,
                               ),
                             ),
                           ),
                         ),
                       ),
-                  ],
-                ),
+                    ),
+                  ),
+              ],
+            ),
     );
   }
 }
