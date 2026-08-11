@@ -263,6 +263,57 @@ de $100.
 
 ---
 
+## 2026-08-11 — o `TUDO` do relatório pedia o ano 2000, e o backend recusava
+
+**Defeito que o João pegou no aparelho: o `TUDO` do relatório da cidade não
+funcionava.** Não era o build atrasado — era 400.
+
+A cadeia, medida com os schemas reais (`npx tsx` contra
+`schemas.analyticsQuery` e `schemas.analyticsTrend`):
+
+```
+ANTES  (_inicioDosTempos)        9719d  crime-summary  400 -> Date range cannot exceed 3700 days
+ANTES  (_inicioDosTempos)        9719d  crime-trend    400 -> Date range cannot exceed 3700 days
+DEPOIS (1a ocorrencia GF)         110d  crime-summary  OK 200
+DEPOIS (1a ocorrencia GF)         110d  crime-trend    OK 200
+DEPOIS (fallback _tetoDoTudo)    3650d  crime-summary  OK 200
+```
+
+`TUDO` mandava `dateFrom = 2000-01-01` — **9.719 dias**, contra o teto de
+`JANELA_MAXIMA_DIAS = 3700` (`validation.ts:69`). O `.catchError((_) => {})` do
+`_loadOverview` engolia o 400 sem uma linha de log na tela, e o relatório abria
+zerado. **Com o mapa cheio de pinos em cima**, porque `mapPointsQuery` não tem
+esse refine e o executivo mandava `3650`, que passa raspando.
+
+O sintoma tinha assinatura: um relatório que diz `0 ocorrências` sobre um mapa
+com 96 pontos é erro de rede engolido, não cidade quieta.
+
+**A cicatriz estava no próprio código**, em `validation.ts:224`: *"Ate 3700 pelo
+mesmo motivo da JANELA_MAXIMA_DIAS: o `TUDO` do relatorio manda uma janela de
+anos, e 365 devolvia 400"*. Metade do `TUDO` já tinha sido consertada — a rota
+do executivo — e as outras duas ficaram para trás porque **o mesmo conceito
+viajava em duas linguagens**: `rangeDays` em número (3650) e `dateFrom` em data
+(ano 2000). Duas representações da mesma coisa discordando é o mesmo defeito dos
+dois controles de janela de 10/08, uma camada abaixo.
+
+**O conserto foi do João:** *"tem que ser enviado a partir do dia que o
+monitoramento começou"*. O campo `primeiraOcorrencia` já estava no ar desde
+ontem (foi adicionado para decidir quais janelas entram na fila) — agora ele
+também define o `TUDO`. Uma conta só, `_relatorioRangeDays`, alimenta as quatro
+rotas; `_diasDoTudo` é a idade real da cidade no monitoramento, com piso de 7
+(mínimo do schema do executivo) e teto de 3650 (fallback para backend antigo ou
+data absurda). O `_inicioDosTempos` morreu.
+
+Vale para sempre: **teto de validação no backend precisa de par no cliente.** O
+cliente mandava um número que nenhuma tela mostrava, e o erro só aparecia como
+ausência de dado.
+
+Anotado, não consertado: `_loadOverview`, `_loadTrend` e `_loadMapPoints` tratam
+falha de rede como resposta vazia. Enquanto for assim, qualquer 400 futuro vai
+se disfarçar de "cidade sem ocorrência".
+
+---
+
 ## 2026-08-10 (madrugada) — dois controles de janela na mesma tela, e filtros que não filtravam nada
 
 **O gráfico de volume por semana estourava a caixa.** Dois defeitos somados: o

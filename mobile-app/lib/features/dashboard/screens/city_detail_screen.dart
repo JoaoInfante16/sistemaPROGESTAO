@@ -48,9 +48,30 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   /// bairros, volume e indicadores.
   int? _relatorioDias = 30;
 
-  /// Piso do "desde o início". O banco não tem nada antes de 2026; qualquer
-  /// data anterior devolve tudo, e é isso que a opção promete.
-  static const _inicioDosTempos = '2000-01-01';
+  /// Teto de segurança do "desde o início", em dias.
+  ///
+  /// 🚨 Aqui havia `_inicioDosTempos = '2000-01-01'`, com a lógica de que
+  /// qualquer data anterior ao banco devolve tudo. Só que o backend recusa
+  /// janela acima de `JANELA_MAXIMA_DIAS = 3700` (`validation.ts:69`), e do ano
+  /// 2000 até hoje são **9.719 dias**: `crime-summary` e `crime-trend` voltavam
+  /// **400**, o `.catchError` engolia, e o `TUDO` abria o relatório zerado —
+  /// com o mapa cheio de pinos em cima, porque `map-points` não tem esse teto e
+  /// o executivo mandava `3650` e passava raspando.
+  ///
+  /// Só entra em cena quando a cidade não diz desde quando é monitorada
+  /// (backend anterior a 10/08) ou quando a primeira ocorrência é absurda.
+  static const _tetoDoTudo = 3650;
+
+  /// Quantos dias o `TUDO` pede: **desde a primeira ocorrência da cidade**.
+  ///
+  /// É a data exata em que essa cidade entrou no monitoramento, não um chute
+  /// de dez anos — o mesmo campo que decide quais janelas cabem na fila.
+  /// O piso de 7 é exigência do schema do executivo (`rangeDays` mínimo).
+  int get _diasDoTudo {
+    final desde = widget.city.primeiraOcorrencia;
+    if (desde == null) return _tetoDoTudo;
+    return DateTime.now().difference(desde).inDays.clamp(7, _tetoDoTudo);
+  }
 
   // Radar de ocorrências — pontos vem do backend já geocodados
   List<CrimePoint> _mapPoints = [];
@@ -122,15 +143,16 @@ class _CityDetailScreenState extends State<CityDetailScreen>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   /// Início da janela, no formato que o backend espera.
-  String get _relatorioDe {
-    final d = _relatorioDias;
-    if (d == null) return _inicioDosTempos;
-    return _dateStr(DateTime.now().subtract(Duration(days: d)));
-  }
+  String get _relatorioDe =>
+      _dateStr(DateTime.now().subtract(Duration(days: _relatorioRangeDays)));
 
   /// `rangeDays` do executivo — ele é chave de cache no backend, então "desde
   /// o início" precisa de um número, não de nulo.
-  int get _relatorioRangeDays => _relatorioDias ?? 3650;
+  ///
+  /// As quatro rotas do relatório (`crime-summary`, `crime-trend`,
+  /// `map-points`, `executive`) saem daqui. Eram duas contas separadas — uma em
+  /// data, outra em número — que discordavam justamente no `TUDO`.
+  int get _relatorioRangeDays => _relatorioDias ?? _diasDoTudo;
 
   /// Troca a janela e recarrega **tudo** — era só o gráfico de volume.
   void _mudarJanela(int? dias) {
@@ -797,7 +819,6 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     );
   }
 }
-
 
 /// Cidade do grupo. Era cápsula arredondada teal (`_SubCityChip`) — a peça
 /// mais Material da tela. Vira rótulo em mono com filete embaixo: o mesmo
