@@ -136,6 +136,18 @@ export interface CrimePoint {
   bairro: string | null;
   rua: string | null;
   precisao: 'rua' | 'bairro' | 'cidade';
+
+  /// Os dois sinalizadores da busca manual, agora **no ponto**.
+  ///
+  /// Antes o backend simplesmente nao mandava esses itens: o mapa nascia com o
+  /// recorte cravado e as chaves do relatorio ("+ regiao", "+ antigas") mexiam
+  /// em todo numero da tela menos nele. Quem decide o que aparece e a tela,
+  /// que ja tem as chaves na mao — o endpoint manda tudo, uma vez so.
+  ///
+  /// Ausentes no caminho do auto-scan (`getMapPointsRaw` le de `news`, onde
+  /// nao existe balde): tratar como `false`.
+  fora_do_periodo?: boolean;
+  cidade_vizinha?: boolean;
 }
 
 export interface PipelineResult {

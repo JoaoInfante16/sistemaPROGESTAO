@@ -70,6 +70,8 @@ async function buildMapPoints(
       bairro: p.bairro,
       rua: p.rua,
       precisao: geo.precisao,
+      fora_do_periodo: p.fora_do_periodo === true,
+      cidade_vizinha: p.cidade_vizinha === true,
     });
   }
   return out;

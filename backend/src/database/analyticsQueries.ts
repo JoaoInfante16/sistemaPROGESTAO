@@ -20,6 +20,10 @@ export interface MapPointRaw {
   /// a primeira cidade da lista e um bairro de Palhoca vira pino dentro de
   /// Florianopolis — a mesma armadilha que a busca manual ja documentava.
   cidade: string | null;
+
+  /// Baldes da busca manual. Viajam ate o app, que filtra conforme as chaves.
+  fora_do_periodo?: boolean;
+  cidade_vizinha?: boolean;
 }
 
 // Pega notícias individuais do período pra alimentar mapa (radar de pontos).
@@ -79,20 +83,34 @@ export async function getSearchMapPointsRaw(searchId: string): Promise<MapPointR
     const items = (row.results as Array<Record<string, unknown>> | null) || [];
     for (const r of items) {
       if ((r.natureza as string) === 'estatistica') continue;
-      // Extras da 8.2 ficam fora do radar. Cidade vizinha e o caso grave: o
-      // geocode roda contra a cidade PESQUISADA (buildMapPoints passa `cidade`
-      // da requisicao, nao a do item), entao um bairro de Camacari viraria pino
-      // dentro de Salvador. Fora do periodo sai junto porque o mapa segue o
-      // recorte do relatorio.
-      if (r.fora_do_periodo || r.cidade_vizinha) continue;
+
+      // 🚨 Aqui os extras da 8.2 eram DESCARTADOS, e a justificativa escrita
+      // acima do descarte dizia que o geocode rodava contra a cidade
+      // pesquisada — "um bairro de Camacari viraria pino dentro de Salvador".
+      // Isso deixou de ser verdade: `buildMapPoints` geocodifica com
+      // `p.cidade || cidadePadrao`, ou seja, a cidade DO PONTO. O defeito foi
+      // corrigido e o filtro que existia por causa dele ficou.
+      //
+      // O efeito colateral era visivel no aparelho: ligar "+ regiao" mudava o
+      // numero-heroi, o donut e o ranking, e o mapa continuava identico.
+      // Agora vai tudo, marcado — quem decide o que renderizar e a tela, que e
+      // quem tem as chaves.
       points.push({
-        id: (r.id as string) || (r.url as string) || `${points.length}`,
+        // `source_url` antes do indice posicional: os itens de `search_results`
+        // NAO tem `id` nem `url` (medido: 0 de 101), entao o id do ponto vinha
+        // sendo "0", "1", "2"... Indice posicional nao identifica nada fora
+        // desta lista — quem recebe o ponto nao consegue voltar ao item, e o
+        // numero ainda muda se o filtro acima mudar. A URL e o que o item tem
+        // de unico.
+        id: (r.id as string) || (r.url as string) || (r.source_url as string) || `${points.length}`,
         tipo_crime: r.tipo_crime as TipoCrime,
         categoria: (r.categoria_grupo as CategoriaGrupo) || 'institucional',
         bairro: (r.bairro as string | null) || null,
         rua: (r.rua as string | null) || null,
         data: r.data_ocorrencia as string,
         cidade: (r.cidade as string | null) || null,
+        fora_do_periodo: r.fora_do_periodo === true,
+        cidade_vizinha: r.cidade_vizinha === true,
       });
     }
   }

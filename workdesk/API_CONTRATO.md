@@ -64,14 +64,33 @@ contagem**: uma materia de balanco anual viraria "1 ocorrencia" no card.
 
 ---
 
-## O relatorio e o mapa filtram os extras — de proposito
+## O relatorio filtra os extras; o mapa manda tudo marcado (10/08)
 
-`POST /analytics/report`, `GET /analytics/executive` e `POST /analytics/map-points`
-seguem o recorte que o usuario pediu, sem regiao e sem fora-do-periodo.
+`POST /analytics/report` e `GET /analytics/executive` seguem o recorte que o
+usuario pediu, sem regiao e sem fora-do-periodo.
 
-**No mapa isso e critico:** o geocode roda contra a cidade **da requisicao**,
-entao um bairro de Camacari viraria pino dentro de Salvador. Nao e cosmetico — e
-informacao falsa num mapa de criminalidade.
+**`POST /analytics/map-points` mudou.** Ele manda **todos** os pontos, cada um
+com `fora_do_periodo` e `cidade_vizinha` (ausentes = `false`, que e o caso do
+auto-scan, onde nao existe balde). Quem decide o que desenhar e a tela, porque e
+ela que tem as chaves na mao.
+
+**Por que mudou:** o filtro no servidor cravava o recorte do mapa no momento da
+requisicao. Ligar "+ regiao metropolitana" no relatorio mudava o numero-heroi, o
+donut e o ranking de bairro — **e o mapa ficava identico**. O usuario via a
+pagina inteira se mexer e um mapa parado, sem nenhuma pista do porque.
+
+**A justificativa antiga estava vencida.** Este documento dizia que o geocode
+"roda contra a cidade da requisicao, entao um bairro de Camacari viraria pino
+dentro de Salvador". Isso foi verdade e deixou de ser: `buildMapPoints`
+geocodifica com `p.cidade || cidadePadrao` — a cidade **do ponto**, com o
+fallback so pra linha antiga. O defeito foi corrigido e sobreviveram: o filtro
+que existia por causa dele, o comentario no `analyticsQueries.ts` e este
+paragrafo. Tres copias da mesma afirmacao falsa.
+
+O `id` do ponto tambem mudou: os itens de `search_results` **nao tem `id`**
+(medido: 0 de 101), entao o backend caia no ultimo fallback e mandava indice
+posicional ("0", "1", "2"). Agora usa a `source_url`, que e o que o item tem de
+unico — sem isso o app nao consegue voltar do pino para a materia.
 
 Desde 04/08 o relatorio **declara o proprio recorte** em datas concretas e traz a
 regiao como toggle explicito, justamente pra que o usuario nao leia o total como

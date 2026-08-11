@@ -13,14 +13,29 @@ import 'cat_chip.dart';
 // Overlap natural em hotspots (sem clustering agregado). Chips no topo pra
 // filtrar por categoria. Tocar num ponto abre um mini-card com tipo, local e
 // data. Enquadramento por fit-to-bounds. Usado em city_detail e report.
+/// O que a tela sabe sobre a matéria de um pino: a manchete pra escrever no
+/// card (null = usa o tipo de crime) e como abri-la.
+typedef MateriaDoPonto = ({String? titulo, VoidCallback abrir});
+
 class CrimeRadarMap extends StatefulWidget {
   final List<CrimePoint> points;
   final double height;
+
+  /// A matéria por trás do pino, resolvida pela tela que hospeda o mapa — é
+  /// ela que tem os itens em memória; o `CrimePoint` carrega só geografia e
+  /// classificação.
+  ///
+  /// **Devolver null é o caso importante**: significa "não achei a matéria", e
+  /// aí o card não escreve `ABRIR A MATÉRIA →`. Oferecer um link que não abre
+  /// é pior que não oferecer nada — foi o que aconteceu na primeira versão
+  /// disto, com o backend mandando índice posicional como id do ponto.
+  final MateriaDoPonto? Function(CrimePoint)? materiaDoPonto;
 
   const CrimeRadarMap({
     super.key,
     required this.points,
     this.height = 280,
+    this.materiaDoPonto,
   });
 
   @override
@@ -31,6 +46,18 @@ class _CrimeRadarMapState extends State<CrimeRadarMap> {
   final Set<String> _hidden = {}; // categorias desligadas pelo user
   final _mapController = MapController();
   CrimePoint? _selected;
+
+  /// Mapa claro. Nasce desligado porque o app inteiro é escuro e um retângulo
+  /// branco de 280px no meio do relatório é o objeto mais brilhante da tela —
+  /// mas rua e nome de bairro se leem muito melhor no claro, e essa é a única
+  /// coisa que se faz olhando de perto num mapa de 280px.
+  bool _claro = false;
+
+  /// A borda do ponto: branca sobre o mapa escuro, quase preta sobre o claro.
+  /// Sem isso, no claro, os pontos amarelo e verde encostam no fundo e somem —
+  /// as cinco cores de categoria foram medidas contra o navy, não contra papel.
+  Color get _bordaDoPonto =>
+      _claro ? const Color(0xFF0A1828) : Colors.white;
 
   // Jitter determinístico pequeno (~±30m) pra pontos que caíram no centro do
   // bairro ou cidade — evita empilhar 10 ocorrências em 1 pixel. Baseado no id
@@ -84,79 +111,120 @@ class _CrimeRadarMapState extends State<CrimeRadarMap> {
     return '${two(d.day)}/${two(d.month)}';
   }
 
+  /// O card do pino: **qual é a notícia**, quando, onde — e a porta pra ela.
+  ///
+  /// Antes ele dizia `HOMICÍDIO · Arenoso · 10/08` e acabava ali: o pino sabia
+  /// classificar o fato e não sabia contar qual fato era. Quem tocava num
+  /// ponto do mapa ficava sem saída — a matéria existia a um toque de
+  /// distância, na lista, e o mapa não levava até ela.
+  ///
+  /// Canto zero e filete no lugar do canto 8 com borda teal translúcida, que
+  /// era resto de antes do redesign.
   Widget _buildPointCard(CrimePoint p) {
-    final color = categoryColor(p.categoria);
     final local = [
       if (p.bairro != null && p.bairro!.isNotEmpty) p.bairro!,
       if (p.rua != null && p.rua!.isNotEmpty) p.rua!,
     ].join(' · ');
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: SIMEopsColors.navyMid.withValues(alpha: 0.95),
-        border: Border.all(color: SIMEopsColors.teal.withValues(alpha: 0.25)),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  crimeTypeLabel(p.tipoCrime).toUpperCase(),
-                  style: SIMEopsType.slug(color: SIMEopsColors.white),
-                ),
-                if (local.isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    local,
-                    style: SIMEopsType.lead().copyWith(fontSize: 13),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ],
+    final materia = widget.materiaDoPonto?.call(p);
+    final titulo = materia?.titulo;
+
+    return Material(
+      color: SIMEopsColors.navyMid.withValues(alpha: 0.96),
+      child: InkWell(
+        onTap: materia?.abrir,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 9, 6, 11),
+          decoration: const BoxDecoration(
+            border: Border.fromBorderSide(
+              BorderSide(color: SIMEopsColors.ruleStrong),
             ),
           ),
-          const SizedBox(width: 8),
-          Text(
-            _fmtData(p.data),
-            style: SIMEopsType.slug(color: SIMEopsColors.faint),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CatChip(cor: categoryColor(p.categoria)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${categoryLabel(p.categoria).toUpperCase()} · '
+                      '${_fmtData(p.data)}',
+                      style: SIMEopsType.slug(color: SIMEopsColors.faint),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => setState(() => _selected = null),
+                    child: const Padding(
+                      padding: EdgeInsets.all(6),
+                      child: Icon(Icons.close,
+                          size: 15, color: SIMEopsColors.muted),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 3),
+              Text(
+                titulo ?? crimeTypeLabel(p.tipoCrime),
+                style: SIMEopsType.entryTitle().copyWith(fontSize: 15),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (local.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  local,
+                  style: SIMEopsType.slug(color: SIMEopsColors.muted),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              if (materia != null) ...[
+                const SizedBox(height: 9),
+                Text(
+                  'ABRIR A MATÉRIA →',
+                  style: SIMEopsType.slug(color: SIMEopsColors.greenLight),
+                ),
+              ],
+            ],
           ),
-          const SizedBox(width: 4),
-          InkWell(
-            onTap: () => setState(() => _selected = null),
-            child: Icon(Icons.close,
-                size: 16, color: SIMEopsColors.muted.withValues(alpha: 0.7)),
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _legendDot(double radius, String label) {
+  /// A marca da legenda desenha **a mesma forma** que o mapa desenha. Antes
+  /// eram três círculos cheios de tamanhos diferentes, ou seja: a legenda
+  /// explicava um código que o mapa não usava mais do mesmo jeito.
+  Widget _legendMark(String precisao, String label) {
+    const cor = SIMEopsColors.muted;
+    final vazado = precisao == 'cidade';
+
     return Padding(
-      padding: const EdgeInsets.only(right: 12),
+      padding: const EdgeInsets.only(right: 14),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: radius * 2,
-            height: radius * 2,
+            width: 11,
+            height: 11,
             decoration: BoxDecoration(
-              color: SIMEopsColors.muted.withValues(alpha: 0.7),
+              color: cor.withValues(
+                alpha: switch (precisao) {
+                  'rua' => 0.9,
+                  'bairro' => 0.4,
+                  _ => 0.0,
+                },
+              ),
+              border: Border.all(color: cor, width: vazado ? 1.6 : 1),
               shape: BoxShape.circle,
             ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 5),
           Text(label, style: SIMEopsType.slug(color: SIMEopsColors.faint)),
         ],
       ),
@@ -265,7 +333,10 @@ class _CrimeRadarMapState extends State<CrimeRadarMap> {
                   ),
                   children: [
                     TileLayer(
-                      urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+                      urlTemplate:
+                          'https://{s}.basemaps.cartocdn.com/'
+                          '${_claro ? 'light_all' : 'dark_all'}'
+                          '/{z}/{x}/{y}{r}.png',
                       subdomains: const ['a', 'b', 'c', 'd'],
                       userAgentPackageName: 'com.progestao.simeops',
                     ),
@@ -292,32 +363,45 @@ class _CrimeRadarMapState extends State<CrimeRadarMap> {
                         );
                       }).toList(),
                     ),
-                    // Ponto sólido — rua destaca (raio maior + borda branca forte),
-                    // cidade diminui (raio menor + alpha 0.6) pra diferenciar confiança.
+                    // O ponto. **A precisão vira forma, não tamanho.**
+                    //
+                    // Era raio 5.5 / 4.0 / 3.0 — cinco pixels de diâmetro entre
+                    // o mais preciso e o mais vago, em marcas que também mudam
+                    // de cor e se sobrepõem. Ninguém compara área nessa escala:
+                    // o João olhou o mapa e não conseguiu dizer qual ponto era
+                    // rua e qual era cidade. Agora:
+                    //
+                    //   rua     ●  cheio      — sabemos o endereço
+                    //   bairro  ◐  meio tom   — sabemos a região
+                    //   cidade  ○  vazado     — **não sabemos onde foi**
+                    //
+                    // Vazado lê como furo de longe, que é literalmente o que um
+                    // pino no centro da cidade é.
                     CircleLayer(
                       circles: visible.map((p) {
                         final color = categoryColor(p.categoria);
                         final radius = switch (p.precisao) {
                           'rua' => 5.5,
-                          'bairro' => 4.0,
-                          _ => 3.0,
+                          'bairro' => 5.0,
+                          _ => 4.5,
                         };
                         final coreAlpha = switch (p.precisao) {
                           'rua' => 1.0,
-                          'bairro' => 0.9,
-                          _ => 0.6,
-                        };
-                        final borderAlpha = switch (p.precisao) {
-                          'rua' => 0.9,
-                          'bairro' => 0.6,
-                          _ => 0.3,
+                          'bairro' => 0.45,
+                          _ => 0.0,
                         };
                         return CircleMarker(
                           point: _jitter(p),
                           radius: radius,
                           color: color.withValues(alpha: coreAlpha),
-                          borderColor: Colors.white.withValues(alpha: borderAlpha),
-                          borderStrokeWidth: p.precisao == 'rua' ? 1.2 : 0.8,
+                          // No vazado a borda é a **cor da categoria** — sem
+                          // ela o ponto sumiria por completo.
+                          borderColor: p.precisao == 'cidade'
+                              ? color
+                              : _bordaDoPonto.withValues(
+                                  alpha: p.precisao == 'rua' ? 0.9 : 0.6,
+                                ),
+                          borderStrokeWidth: p.precisao == 'cidade' ? 1.8 : 1.2,
                         );
                       }).toList(),
                     ),
@@ -348,17 +432,34 @@ class _CrimeRadarMapState extends State<CrimeRadarMap> {
               ],
             ),
         ),
-        // Legenda da precisão (o tamanho/brilho do ponto codifica confiança)
+        // Legenda da precisão — e, no lugar do rótulo `PRECISÃO DO PONTO`, a
+        // troca do fundo do mapa.
+        //
+        // Aquele rótulo nomeava os três pontinhos à esquerda dele, só que do
+        // outro lado da linha: lido de esquerda pra direita ele virava um
+        // quarto item da legenda. A frase embaixo do mapa passou a explicar o
+        // caso `CIDADE` em português, então ele ficou sem trabalho.
         Padding(
           padding: const EdgeInsets.only(top: 8, left: 2),
           child: Row(
             children: [
-              _legendDot(5.5, 'RUA'),
-              _legendDot(4, 'BAIRRO'),
-              _legendDot(3, 'CIDADE'),
+              _legendMark('rua', 'RUA'),
+              _legendMark('bairro', 'BAIRRO'),
+              _legendMark('cidade', 'CIDADE'),
               const Spacer(),
-              Text('PRECISÃO DO PONTO',
-                  style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+              InkWell(
+                onTap: () => setState(() => _claro = !_claro),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 6,
+                  ),
+                  child: Text(
+                    _claro ? 'MAPA ESCURO' : 'MAPA CLARO',
+                    style: SIMEopsType.slug(color: SIMEopsColors.greenLight),
+                  ),
+                ),
+              ),
             ],
           ),
         ),

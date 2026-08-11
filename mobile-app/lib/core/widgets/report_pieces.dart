@@ -117,82 +117,18 @@ class RankBarras extends StatelessWidget {
   }
 }
 
-/// `VER COMO TABELA →`, e a tabela.
-///
-/// Todo gráfico do relatório tem um. Rosca e barra mostram proporção e escondem
-/// o número exato — e este documento existe pra ser citado por alguém que não
-/// estava na sala. Ninguém cita "uns 40% mais ou menos". A tabela é também o
-/// único caminho pra quem lê com leitor de tela.
-class TabelaGemea extends StatefulWidget {
-  /// `(nome, valor, terceira coluna)` — a terceira pode vir vazia.
-  final List<(String, String, String)> linhas;
-
-  const TabelaGemea({super.key, required this.linhas});
-
-  @override
-  State<TabelaGemea> createState() => _TabelaGemeaState();
-}
-
-class _TabelaGemeaState extends State<TabelaGemea> {
-  bool _aberta = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        InkWell(
-          onTap: () => setState(() => _aberta = !_aberta),
-          child: Padding(
-            padding: const EdgeInsets.only(top: 11, bottom: 4),
-            child: Text(
-              _aberta ? 'ESCONDER A TABELA' : 'VER COMO TABELA →',
-              style: SIMEopsType.slug(color: SIMEopsColors.tealLight),
-            ),
-          ),
-        ),
-        if (_aberta)
-          for (final (a, b, c) in widget.linhas)
-            Container(
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: SIMEopsColors.rule)),
-              ),
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      a,
-                      style: SIMEopsType.placeTab(
-                        active: false,
-                        color: SIMEopsColors.muted,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  Text(b, style: SIMEopsType.placeTab(active: true)),
-                  if (c.isNotEmpty) ...[
-                    const SizedBox(width: 14),
-                    SizedBox(
-                      width: 44,
-                      child: Text(
-                        c,
-                        textAlign: TextAlign.right,
-                        style: SIMEopsType.placeTab(
-                          active: false,
-                          color: SIMEopsColors.faint,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-      ],
-    );
-  }
-}
+// ⚠️ Aqui existiu a `TabelaGemea` — o `VER COMO TABELA →` embaixo de cada
+// gráfico. O argumento era bom no dia em que foi escrito: rosca e barra mostram
+// proporção e **escondem o número exato**, e um relatório existe pra ser citado
+// por quem não estava na sala.
+//
+// Só que o desenho andou: a legenda da rosca passou a imprimir valor **e**
+// porcentagem (`38%  36`), e o ranking de bairro imprime a contagem ao lado de
+// cada barra. A tabela virou a mesma informação duas vezes, atrás de um toque —
+// e o rótulo ainda prometia navegação com um `→` que só expandia no lugar.
+//
+// Onde ela tinha função de verdade (mostrar os bairros que não cabem no top 8)
+// o nome dizia a coisa errada: quem quer o resto da lista não procura "tabela".
 
 /// A rosca por categoria — **ela fica** (decisão do João em 09/08).
 ///
@@ -292,12 +228,6 @@ class RoscaCategorias extends StatelessWidget {
               ),
             ],
           ),
-        ),
-        TabelaGemea(
-          linhas: [
-            for (final e in ordenado)
-              (categoryLabel(e.key), '${e.value}', pct(e.value)),
-          ],
         ),
       ],
     );

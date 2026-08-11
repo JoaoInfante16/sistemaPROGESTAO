@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../core/models/crime_point.dart';
 import '../../../core/models/executive_data.dart';
+import '../../../core/models/news_item.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/widgets/crime_radar_map.dart';
 import '../../../core/widgets/executive_indicators.dart';
@@ -12,6 +13,7 @@ import '../../../core/widgets/report_pieces.dart';
 import '../../../core/widgets/weekly_trend_bars.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
+import '../../feed/widgets/news_detail_sheet.dart';
 
 /// O relatório de risco.
 ///
@@ -95,8 +97,14 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
   /// a frase de abertura precisa saber quanto é de onde.
   int _totalRegiaoNoRecorte = 0;
 
-  /// Ocorrências sem bairro na matéria — o que **não entra** no mapa nem no
-  /// ranking. Declarar isso é o que separa um mapa de uma alegação.
+  /// Ocorrências sem bairro na matéria — o que fica **fora do ranking**.
+  ///
+  /// ⚠️ Aqui estava escrito "o que não entra no mapa nem no ranking", e a
+  /// metade do mapa era falsa: o geocode do backend aceita só cidade e devolve
+  /// o ponto com `precisao: 'cidade'`. Item sem bairro **entra no mapa**, no
+  /// centro da cidade. Da premissa errada saiu a contradição que o João viu no
+  /// aparelho — "34 de 86 não citam bairro" logo acima de "86 de 86 entraram
+  /// no mapa — o resto não traz bairro".
   int _semBairro = 0;
 
   int _totalEstatisticas = 0;
@@ -433,17 +441,102 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
   /// coisas e não pode gastar dezoito caracteres.
   String _dataMes(DateTime d) =>
       '${d.day} ${_mesesLongos[d.month - 1].substring(0, 3)}';
-  String _horaCurta(DateTime d) =>
-      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-  String _dataCurta(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+  // ⚠️ `_horaCurta` e `_dataCurta` moravam aqui. Serviam ao `GERADO 11/08
+  // 18:21` da linha do recorte e ao `anteriores a 12/07` da chave — os dois
+  // saíram: o carimbo de geração é do documento exportado, e a chave passou a
+  // dizer a distância real em dias em vez de uma data de corte. Voltam junto
+  // com o export da Fase E2, que é onde a hora de geração significa alguma
+  // coisa.
 
   int get _diasDoRecorte => _sliceDias ?? widget.periodoDias;
   DateTime get _inicioDoRecorte =>
       DateTime.now().subtract(Duration(days: _diasDoRecorte));
   int get _veiculos => _sourcesOficial.length + _sourcesMedia.length;
 
+  /// A que distância, **de verdade**, está a matéria mais antiga do balde
+  /// "+ antigas".
+  ///
+  /// A tela dizia `ATÉ 180 DIAS ATRÁS`, e 180 é o horizonte teórico da
+  /// configuração (`manual_search_horizon_days`) — não tem relação nenhuma com
+  /// o que a consulta trouxe. Uma tolerância que soma **uma** notícia de 34
+  /// dias antes anunciava seis meses e parecia defeito. Este número é medido
+  /// no que está na mão.
+  int get _diasAntesReais {
+    var maior = 0;
+    for (final r in widget.foraDoPeriodo) {
+      final d = DateTime.tryParse(r['data_ocorrencia'] as String? ?? '');
+      if (d == null) continue;
+      final dias = _inicioDoRecorte.difference(d).inDays;
+      if (dias > maior) maior = dias;
+    }
+    return maior;
+  }
+
   String _plural(int n, String um, String varios) => n == 1 ? um : varios;
+
+  /// A matéria por trás de um pino do mapa, **sem chamada nova**: os pontos
+  /// nascem do mesmo array que esta tela já tem em memória.
+  ///
+  /// 🚨 Medido em 10/08: os itens de `search_results` **não têm `id`** (0 de
+  /// 101; têm `source_url`). Com isso o `getSearchMapPointsRaw` caía no último
+  /// fallback e mandava **índice posicional** — "0", "1", "2" —, que não
+  /// identifica nada fora daquela lista e ainda muda quando o filtro dela
+  /// muda. O backend passou a usar a `source_url`; enquanto o staging não
+  /// sobe, o casamento por conteúdo é o que funciona.
+  Map<String, dynamic>? _itemDoPonto(CrimePoint p) {
+    final pool = [
+      ...widget.results,
+      ...widget.regiao,
+      ...widget.foraDoPeriodo,
+    ];
+
+    for (final r in pool) {
+      final rid = (r['id'] ?? r['url'] ?? r['source_url'])?.toString();
+      if (rid != null && rid == p.id) return r;
+    }
+
+    // Casamento por conteúdo, e **só quando é único**: dois roubos no mesmo
+    // bairro no mesmo dia é caso real, e abrir "quase a matéria certa" é pior
+    // que não abrir. Ambíguo devolve null, e o card não oferece o link.
+    final iguais = pool
+        .where(
+          (r) =>
+              (r['data_ocorrencia'] as String?) == p.data &&
+              (r['tipo_crime'] as String?) == p.tipoCrime &&
+              (r['bairro'] as String?) == p.bairro &&
+              (r['rua'] as String?) == p.rua,
+        )
+        .toList();
+    return iguais.length == 1 ? iguais.first : null;
+  }
+
+  /// Os pontos que o recorte **atual** deixa ver.
+  ///
+  /// O mapa passou a obedecer as mesmas chaves que os números: uma chamada só
+  /// traz tudo marcado, e o filtro mora aqui. Antes o backend descartava os
+  /// extras antes de geocodificar — ligar "+ região" mudava a página inteira e
+  /// o mapa não se mexia.
+  ///
+  /// A regra é a mesma do `_dateSubset`, de propósito: item de outro balde
+  /// aparece se a chave dele estiver ligada; item do balde principal responde
+  /// à fatia de período (7D/15D/30D).
+  List<CrimePoint> get _pontosNoRecorte => _mapPoints.where((p) {
+    if (p.cidadeVizinha && !_includeRegiao) return false;
+    if (p.foraDoPeriodo) return _includeOld;
+    final d = DateTime.tryParse(p.data);
+    return d == null || !d.isBefore(_inicioDoRecorte);
+  }).toList();
+
+  MateriaDoPonto? _materiaDoPonto(CrimePoint p) {
+    final item = _itemDoPonto(p);
+    if (item == null) return null;
+    final t = (item['titulo'] as String?)?.trim();
+    return (
+      titulo: (t == null || t.isEmpty) ? null : t,
+      abrir: () =>
+          NewsDetailSheet.show(context, NewsItem.fromSearchResult(item)),
+    );
+  }
 
   /// A frase de abertura, montada dos próprios números.
   ///
@@ -502,8 +595,11 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
     final partes = <String>[
       '${_dataMes(_inicioDoRecorte)} – ${_dataMes(hoje)}',
       if (_includeOld && widget.foraDoPeriodo.isNotEmpty)
-        'INCLUI ATÉ ${widget.horizonteDias} DIAS ATRÁS',
-      'GERADO ${_dataCurta(hoje)} ${_horaCurta(hoje)}',
+        'INCLUI ATÉ $_diasAntesReais DIAS ANTES',
+      // Saiu o `GERADO 11/08 18:21`: dentro do app você **acabou** de gerar o
+      // relatório e está olhando pra ele. Carimbo de geração só importa quando
+      // o documento viaja — e aí ele volta, no exportado da Fase E2, onde quem
+      // lê nunca viu esta tela.
     ];
 
     return Padding(
@@ -572,9 +668,20 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
   /// Substitui os dois chips ambíguos (`+ 34 anteriores a 12/07`,
   /// `+ 12 da região`). Chip aceso e chip apagado parecem a mesma coisa a um
   /// metro de distância — e estes dois **mudam todos os números da página**.
+  /// O número que a chave mexe, em destaque.
+  ///
+  /// Verde de destaque — o mesmo do `OPS` e do filete da aba aberta. A frase
+  /// da chave é a única do relatório em que **um número muda de valor** quando
+  /// se toca em alguma coisa; pintar só ele é o que deixa isso visível sem
+  /// escrever "atenção" em lugar nenhum.
+  TextSpan _n(Object v) => TextSpan(
+    text: '$v',
+    style: const TextStyle(color: SIMEopsColors.greenLight),
+  );
+
   Widget _chave({
     required String titulo,
-    required String descricao,
+    required List<InlineSpan> descricao,
     required bool valor,
     required ValueChanged<bool> onChanged,
   }) {
@@ -591,8 +698,8 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
               children: [
                 Text(titulo, style: SIMEopsType.rowTitle()),
                 const SizedBox(height: 3),
-                Text(
-                  descricao,
+                Text.rich(
+                  TextSpan(children: descricao),
                   style: SIMEopsType.note(
                     color: SIMEopsColors.faint,
                   ).copyWith(fontSize: 12.5),
@@ -654,11 +761,22 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
           const SizedBox(height: 20),
         if (widget.foraDoPeriodo.isNotEmpty)
           _chave(
-            titulo: 'Incluir o que é mais antigo',
-            descricao:
-                'Soma ${widget.foraDoPeriodo.length} ocorrências '
-                'anteriores a ${_dataCurta(_inicioDoRecorte)}, '
-                'até ${widget.horizonteDias} dias atrás',
+            // `Incluir o que é mais antigo` não dizia de que tamanho era o
+            // "mais antigo", e a descrição respondia com o horizonte teórico
+            // (180 dias) em vez da distância real do que veio. Quem pediu 30
+            // dias lia que o app ia trazer coisa de seis meses atrás.
+            titulo: 'Aumentar a tolerância de período',
+            descricao: [
+              const TextSpan(text: 'Inclui '),
+              _n(widget.foraDoPeriodo.length),
+              TextSpan(
+                text:
+                    ' ${_plural(widget.foraDoPeriodo.length, 'notícia relevante', 'notícias relevantes')} '
+                    'de até ',
+              ),
+              _n(_diasAntesReais),
+              const TextSpan(text: ' dias antes do período pedido'),
+            ],
             valor: _includeOld,
             onChanged: (v) => setState(() {
               _includeOld = v;
@@ -668,9 +786,15 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
         if (widget.regiao.isNotEmpty)
           _chave(
             titulo: 'Incluir a região metropolitana',
-            descricao:
-                'Soma ${widget.regiao.length} ocorrências '
-                'de ${_cidadesDaRegiao()}',
+            descricao: [
+              const TextSpan(text: 'Soma '),
+              _n(widget.regiao.length),
+              TextSpan(
+                text:
+                    ' ${_plural(widget.regiao.length, 'ocorrência', 'ocorrências')} '
+                    'de ${_cidadesDaRegiao()}',
+              ),
+            ],
             valor: _includeRegiao,
             onChanged: (v) => setState(() {
               _includeRegiao = v;
@@ -694,10 +818,11 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
 
         if (top.isNotEmpty)
           BlocoRelatorio(
+            // Sem ressalva metodológica em cima: **`MAIS CITADOS` já diz** que
+            // o dado é citação, e a linha de baixo — quantas matérias não
+            // citam bairro nenhum — informa a confiabilidade do ranking com um
+            // número, que é mais forte que a frase. Decisão do João.
             titulo: 'Bairros mais citados',
-            nota:
-                'Citação na matéria — não é onde o fato ocorreu em '
-                '100% dos casos.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -706,34 +831,46 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
                   Padding(
                     padding: const EdgeInsets.only(top: 10),
                     child: Text(
-                      '$_semBairro ${_plural(_semBairro, 'ocorrência não tem', 'ocorrências não têm')} '
-                      'bairro identificado na matéria.',
+                      '$_semBairro de $_totalOcorrencias '
+                      '${_plural(_totalOcorrencias, 'ocorrência não cita', 'ocorrências não citam')} '
+                      'bairro na matéria.',
                       style: SIMEopsType.note(color: SIMEopsColors.faint),
                     ),
                   ),
-                TabelaGemea(
-                  linhas: [for (final e in bairros) (e.key, '${e.value}', '')],
-                ),
               ],
             ),
           ),
 
-        if (_mapPoints.isNotEmpty)
+        if (_pontosNoRecorte.isNotEmpty)
           BlocoRelatorio(
             titulo: 'Distribuição no mapa',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 12),
-                CrimeRadarMap(points: _mapPoints),
+                CrimeRadarMap(
+                  points: _pontosNoRecorte,
+                  materiaDoPonto: _materiaDoPonto,
+                ),
                 const SizedBox(height: 9),
-                // A precisão do ponto, declarada. Um mapa que desenha
-                // 18 de 25 itens sem dizer isso deixa quem lê concluir
-                // que a cidade inteira está ali.
+                // A precisão do ponto, declarada — um mapa que desenha 18 de
+                // 25 itens sem dizer isso deixa quem lê concluir que a cidade
+                // inteira está ali.
+                //
+                // O que a frase **não pode** mais dizer é que o resto ficou de
+                // fora por falta de bairro: item sem bairro entra, no centro
+                // da cidade, marcado como `CIDADE` na legenda de precisão. A
+                // contradição estava na tela — "34 de 86 não citam bairro" e
+                // "86 de 86 entraram no mapa" na mesma dobra.
                 Text(
-                  '${_mapPoints.length} de $_totalOcorrencias '
-                  '${_plural(_totalOcorrencias, 'ocorrência entrou', 'ocorrências entraram')} '
-                  'no mapa — o resto não traz bairro na matéria.',
+                  [
+                    '${_pontosNoRecorte.length} de $_totalOcorrencias '
+                        '${_plural(_totalOcorrencias, 'ocorrência entrou', 'ocorrências entraram')} '
+                        'no mapa.',
+                    if (_semBairro > 0)
+                      '$_semBairro sem bairro na matéria ${_plural(_semBairro, 'cai', 'caem')} '
+                          'no centro da cidade — são os pontos de precisão CIDADE.',
+                  ].join(' '),
                   style: SIMEopsType.note(color: SIMEopsColors.faint),
                 ),
               ],

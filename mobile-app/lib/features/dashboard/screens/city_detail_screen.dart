@@ -627,21 +627,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
           if (rankBairros.isNotEmpty)
             BlocoRelatorio(
               titulo: 'Bairros mais citados',
-              nota:
-                  'Citação na matéria — não é onde o fato ocorreu em 100% '
-                  'dos casos.',
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  RankBarras(itens: rankBairros.take(8).toList()),
-                  TabelaGemea(
-                    linhas: [
-                      for (final (nome, valor) in rankBairros)
-                        (nome, '$valor', ''),
-                    ],
-                  ),
-                ],
-              ),
+              child: RankBarras(itens: rankBairros.take(8).toList()),
             ),
 
           if (_mapPoints.isNotEmpty)
@@ -654,12 +640,17 @@ class _CityDetailScreenState extends State<CityDetailScreen>
                   CrimeRadarMap(points: _mapPoints),
                   const SizedBox(height: 9),
                   // A precisão do ponto, declarada. Um mapa que desenha 18 de
-                  // 25 itens sem dizer isso deixa quem lê concluir que a cidade
-                  // inteira está ali.
+                  // 25 itens sem dizer isso deixa quem lê concluir que a
+                  // cidade inteira está ali.
+                  //
+                  // Sem a explicação "o resto não traz bairro": ela era falsa
+                  // nas duas telas — item sem bairro entra no mapa, no centro
+                  // da cidade, com `precisao: 'cidade'`. Quem não entra é quem
+                  // o geocode não conseguiu situar.
                   Text(
                     '${_mapPoints.length} de $totalCrimes '
                     '${totalCrimes == 1 ? 'ocorrência entrou' : 'ocorrências entraram'} '
-                    'no mapa — o resto não traz bairro na matéria.',
+                    'no mapa.',
                     style: SIMEopsType.note(color: SIMEopsColors.faint),
                   ),
                 ],

@@ -196,9 +196,13 @@ class NewsDetailSheet extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 9),
+                          // Verde de destaque: nesta folha o `LER →` é a única
+                          // coisa que **sai do app**, e ele estava na mesma
+                          // tinta teal do nome do veículo ao lado, que é só
+                          // rótulo. Cor separa o que se toca do que se lê.
                           Text('LER →',
                               style: SIMEopsType.credit(
-                                  color: SIMEopsColors.tealLight)),
+                                  color: SIMEopsColors.greenLight)),
                         ],
                       ),
                     ),

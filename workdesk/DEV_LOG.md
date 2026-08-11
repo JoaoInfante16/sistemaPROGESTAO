@@ -263,6 +263,72 @@ de $100.
 
 ---
 
+## 2026-08-10 (noite) — três comentários que descreviam um mundo que não existe mais
+
+Revisão do relatório da consulta, com o João lendo o aparelho. O padrão da noite
+não foi bug de código: foi **afirmação escrita e nunca revisada**.
+
+**1. `VER COMO TABELA` morreu, os três.** O argumento original (rosca e barra
+mostram proporção e escondem o número exato; relatório existe pra ser citado)
+era bom **no dia em que foi escrito**. Depois a legenda passou a imprimir
+`38%  36` e o ranking passou a imprimir a contagem ao lado de cada barra — a
+tabela virou a mesma informação duas vezes atrás de um toque, e o `→` prometia
+navegação numa coisa que expandia no lugar. Onde ela tinha função real (os
+bairros que não cabem no top 8), o nome dizia a coisa errada: quem quer o resto
+da lista não procura "tabela".
+
+**2. A contradição na tela.** "34 de 86 ocorrências não citam bairro" logo acima
+de "86 de 86 entraram no mapa — o resto não traz bairro na matéria". Causa: um
+doc comment do `_semBairro` afirmando que item sem bairro **não entra no mapa**.
+Entra: o geocode aceita só a cidade e devolve `precisao: 'cidade'` — o pino cai
+no centro. **40% dos pinos daquele mapa de Salvador estão no centro da cidade.**
+O mapa sempre disse isso na legenda de precisão; agora diz em português.
+
+**3. O `ABRIR A MATÉRIA` que não abria.** Medido: os itens de `search_results`
+**não têm `id`** (0 de 101; têm `source_url`). O `getSearchMapPointsRaw` caía no
+último fallback e mandava **índice posicional** como identidade do pino. Duas
+correções: o backend passou a usar a `source_url`, e o app casa por conteúdo
+(data+tipo+bairro+rua) **só quando o casamento é único** enquanto o staging não
+sobe — dois roubos no mesmo bairro no mesmo dia é caso real, e abrir quase a
+matéria certa é pior que não abrir. E o card só escreve `ABRIR A MATÉRIA →`
+quando existe matéria do outro lado: link que promete e não cumpre é o defeito,
+não o link faltando.
+
+**4. O mapa não obedecia as chaves.** Ligar "+ região metropolitana" mudava
+número-herói, donut e ranking — e o mapa ficava idêntico, porque o backend
+descartava os extras antes de geocodificar. **A justificativa daquele descarte
+estava vencida em três lugares** (o comentário do `analyticsQueries`, uma seção
+inteira do `API_CONTRATO` e o filtro em si): dizia que o geocode roda contra a
+cidade da requisição, quando `buildMapPoints` usa `p.cidade || cidadePadrao` — a
+cidade do ponto — desde que alguém consertou isso. Agora o endpoint manda tudo
+marcado com `fora_do_periodo`/`cidade_vizinha` e **quem filtra é a tela**, pelas
+mesmas regras dos números, incluindo as fatias 7D/15D/30D (que também não
+mexiam no mapa).
+
+**5. Precisão virou forma.** Era raio 5.5 / 4.0 / 3.0 — cinco pixels de diâmetro
+entre o mais preciso e o mais vago, em marcas que também mudam de cor e se
+sobrepõem. O João olhou o mapa e não conseguiu dizer qual ponto era rua e qual
+era cidade; tamanho é o canal mais fraco nessa escala e ali competia com a cor.
+Agora: cheio (rua) · meio tom (bairro) · **vazado** (cidade). Vazado lê como
+furo, que é o que um pino no centro da cidade é.
+
+**6. Mapa claro**, por pedido — `light_all` do CartoDB no lugar do `dark_all`.
+Nasce escuro. A borda dos pontos vira quase preta no claro: as cinco cores de
+categoria foram medidas contra o navy, não contra papel.
+
+**A tolerância de período** também mentia: dizia `até 180 dias atrás`, que é o
+horizonte teórico da config e não tem relação com o que a consulta trouxe. Agora
+mede o que está na mão (`até 34 dias antes`), com os números em verde de
+destaque porque são os que mudam quando se toca na chave.
+
+**E uma recomendação minha que se provou errada:** eu tinha sugerido baixar o
+`manual_search_horizon_days` de 180, ou torná-lo proporcional ao período. Lendo o
+`pipelineCore`: o horizonte é aplicado **no Filter2**, depois do fetch da Jina e
+da extração do GPT — é um limiar de *guardar*, não de *buscar*. Baixá-lo não
+economiza um centavo; só joga fora informação já paga. Fica em 180.
+
+---
+
 ## 2026-08-10 (noite) — a barra de baixo era o último Material, e o resultado da consulta chegava com cara de notícia velha
 
 Rodada de revisão tela por tela, com o João lendo o aparelho e mandando foto.

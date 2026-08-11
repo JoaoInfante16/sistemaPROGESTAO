@@ -12,6 +12,19 @@ class CrimePoint {
   final String? rua;
   final String precisao; // rua | bairro | cidade
 
+  /// Os dois baldes da busca manual, que agora viajam no ponto.
+  ///
+  /// O backend descartava esses itens antes de geocodificar, então o mapa
+  /// nascia com o recorte cravado: ligar "+ região metropolitana" mudava o
+  /// número-herói, o donut e o ranking de bairro, e o mapa ficava idêntico.
+  /// Vem tudo marcado, e quem decide o que desenhar é a tela — que é quem tem
+  /// as chaves na mão.
+  ///
+  /// Falsos no caminho do auto-scan: lá os pontos saem de `news`, que não tem
+  /// balde nenhum.
+  final bool foraDoPeriodo;
+  final bool cidadeVizinha;
+
   CrimePoint({
     required this.id,
     required this.lat,
@@ -22,6 +35,8 @@ class CrimePoint {
     required this.bairro,
     required this.rua,
     required this.precisao,
+    this.foraDoPeriodo = false,
+    this.cidadeVizinha = false,
   });
 
   LatLng get coords => LatLng(lat, lng);
@@ -44,6 +59,8 @@ class CrimePoint {
       bairro: json['bairro'] as String?,
       rua: json['rua'] as String?,
       precisao: json['precisao'] as String? ?? 'cidade',
+      foraDoPeriodo: json['fora_do_periodo'] as bool? ?? false,
+      cidadeVizinha: json['cidade_vizinha'] as bool? ?? false,
     );
   }
 }
