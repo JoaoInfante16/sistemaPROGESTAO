@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/models/news_item.dart';
@@ -33,7 +32,6 @@ class TakeCard extends StatefulWidget {
 
   /// Chamado ao abrir (não a cada toque): é o gancho de "marcar como lida".
   final VoidCallback? onOpen;
-  final VoidCallback? onToggleFavorite;
 
   /// A lista já está agrupada por data (o `GroupHeader` diz `HOJE · 04 AGO`),
   /// então o item mostra só a hora. Nos resultados da busca os grupos são
@@ -63,7 +61,6 @@ class TakeCard extends StatefulWidget {
     super.key,
     required this.news,
     this.onOpen,
-    this.onToggleFavorite,
     this.groupedByDate = false,
     this.urgent = false,
     this.distingueLidas = true,
@@ -217,85 +214,72 @@ class _TakeCardState extends State<TakeCard> {
         ? SIMEopsType.headlineUrgent()
         : SIMEopsType.headline(color: read ? SIMEopsColors.faint : null);
 
-    return Slidable(
-      startActionPane: ActionPane(
-        motion: const ScrollMotion(),
-        extentRatio: 0.25,
-        children: [
-          SlidableAction(
-            onPressed: (_) => widget.onToggleFavorite?.call(),
-            backgroundColor: news.isFavorite
-                ? SIMEopsColors.navyLight
-                : SIMEopsColors.bookmark,
-            foregroundColor: news.isFavorite
-                ? SIMEopsColors.muted
-                : Colors.white,
-            icon: news.isFavorite ? Icons.bookmark_remove : Icons.bookmark_add,
-            label: news.isFavorite ? 'Remover' : 'Salvar',
-          ),
-        ],
-      ),
-      child: InkWell(
-        onTap: _abrir,
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Filete de urgência, na margem viva da página.
-              SizedBox(
-                width: 2,
-                child: widget.urgent
-                    ? const ColoredBox(color: SIMEopsColors.white)
-                    : const SizedBox.shrink(),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 17, 18, 19),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _Slug(
-                        categoria: cat,
-                        label: catLabel,
-                        place: _place,
-                        stamp: _stamp,
-                      ),
-                      const SizedBox(height: 9),
+    // ⚠️ Aqui o card era embrulhado num `Slidable` (flutter_slidable) cujo
+    // `startActionPane` tinha **uma única** ação: favoritar. Arrastar pra
+    // direita era a única forma de salvar uma notícia em todo o app — o
+    // painel de detalhe nunca teve esse botão. Com os favoritos removidos, o
+    // gesto ficou sem destino, e um gesto que existe sem afordância e sem
+    // efeito é pior que gesto nenhum. A dependência saiu do pubspec junto.
+    return InkWell(
+      onTap: _abrir,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Filete de urgência, na margem viva da página.
+            SizedBox(
+              width: 2,
+              child: widget.urgent
+                  ? const ColoredBox(color: SIMEopsColors.white)
+                  : const SizedBox.shrink(),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 17, 18, 19),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _Slug(
+                      categoria: cat,
+                      label: catLabel,
+                      place: _place,
+                      stamp: _stamp,
+                    ),
+                    const SizedBox(height: 9),
+                    Text(
+                      news.headline,
+                      style: headlineStyle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (news.resumo.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      // INTEIRO, sem "ler mais". `maxLines: 5` é só rede de
+                      // segurança pro texto antigo (escrito antes do teto de
+                      // 195) e pro pior caso tipográfico — não é o normal.
                       Text(
-                        news.headline,
-                        style: headlineStyle,
-                        maxLines: 2,
+                        news.resumo,
+                        style: SIMEopsType.lead(
+                          color: read ? SIMEopsColors.faint : null,
+                        ),
+                        maxLines: 5,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      if (news.resumo.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        // INTEIRO, sem "ler mais". `maxLines: 5` é só rede de
-                        // segurança pro texto antigo (escrito antes do teto de
-                        // 195) e pro pior caso tipográfico — não é o normal.
-                        Text(
-                          news.resumo,
-                          style: SIMEopsType.lead(
-                            color: read ? SIMEopsColors.faint : null,
-                          ),
-                          maxLines: 5,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                      const SizedBox(height: 11),
-                      _Credits(
-                        outlet: _outlet,
-                        sourceCount: news.sources.length,
-                        official: news.hasOfficialSource,
-                        onVerFontes: news.sources.length > 1
-                            ? _listarFontes
-                            : null,
-                      ),
                     ],
-                  ),
+                    const SizedBox(height: 11),
+                    _Credits(
+                      outlet: _outlet,
+                      sourceCount: news.sources.length,
+                      official: news.hasOfficialSource,
+                      onVerFontes: news.sources.length > 1
+                          ? _listarFontes
+                          : null,
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

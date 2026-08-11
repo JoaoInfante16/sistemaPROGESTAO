@@ -231,7 +231,7 @@ INSERT INTO system_config (key, value, description, category, value_type) VALUES
   ('manual_search_horizon_days', '180', 'Ate quantos dias atras aceitar noticia como "fora do periodo" em vez de descartar', 'pipeline', 'number');
 
 -- ============================================
--- 11. UX: Notícias lidas + Favoritos (FASE 8.5)
+-- 11. UX: Notícias lidas (FASE 8.5)
 -- ============================================
 
 -- (Coluna `resumo_agregado` removida em 2026-04-16 — ver migrations/020. Feature nunca foi populada.)
@@ -247,16 +247,9 @@ CREATE TABLE IF NOT EXISTS user_news_read (
 
 CREATE INDEX IF NOT EXISTS idx_user_news_read ON user_news_read(user_id, news_id);
 
--- Favoritos por usuário
-CREATE TABLE IF NOT EXISTS user_favorites (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES user_profiles(id) ON DELETE CASCADE,
-  news_id UUID REFERENCES news(id) ON DELETE CASCADE,
-  favorited_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(user_id, news_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_user_favorites ON user_favorites(user_id);
+-- (Tabela `user_favorites` removida em 2026-08-11 — ver migrations/031.
+--  Feature inteira descontinuada: a tela de favoritos do app era órfã e o
+--  único jeito de salvar era o gesto de arrastar o card.)
 
 -- ============================================
 -- 12. LISTEN/NOTIFY - Event-Driven Push (FASE 2.5)

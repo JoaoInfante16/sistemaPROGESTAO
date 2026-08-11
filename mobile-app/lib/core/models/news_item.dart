@@ -31,7 +31,8 @@ String? hhmm(String? bruto) {
 class NewsItem {
   final String id;
   final String tipoCrime;
-  final String? categoriaGrupo; // 'patrimonial' | 'seguranca' | 'operacional' | 'fraude' | 'institucional'
+  final String?
+  categoriaGrupo; // 'patrimonial' | 'seguranca' | 'operacional' | 'fraude' | 'institucional'
   final String natureza; // 'ocorrencia' ou 'estatistica'
   final String cidade;
   final String? bairro;
@@ -69,7 +70,6 @@ class NewsItem {
   final bool cidadeVizinha;
 
   bool isUnread;
-  bool isFavorite;
 
   NewsItem({
     required this.id,
@@ -91,7 +91,6 @@ class NewsItem {
     this.sourceType,
     this.cidadeVizinha = false,
     this.isUnread = true,
-    this.isFavorite = false,
   });
 
   factory NewsItem.fromJson(Map<String, dynamic> json) {
@@ -111,14 +110,14 @@ class NewsItem {
       // `created_at` do Postgres vem sem sufixo de fuso — ver parseApiDate.
       // `data_ocorrencia` é só data (YYYY-MM-DD) e não tem esse problema.
       createdAt: parseApiDate(json['created_at'] as String?) ?? DateTime.now(),
-      sources: (json['news_sources'] as List<dynamic>?)
+      sources:
+          (json['news_sources'] as List<dynamic>?)
               ?.map((s) => NewsSource.fromJson(s as Map<String, dynamic>))
               .toList() ??
           [],
       hasOfficialSource: json['has_official_source'] as bool? ?? false,
       estadoUf: json['estado_uf'] as String?,
       isUnread: json['is_unread'] as bool? ?? true,
-      isFavorite: json['is_favorite'] as bool? ?? false,
     );
   }
 
@@ -127,8 +126,10 @@ class NewsItem {
   /// `cidadeVizinha` vem de quem chama porque a tela sabe de qual balde o item
   /// saiu (`extras.regiao`) — informação que o JSON do balde principal não
   /// carrega.
-  factory NewsItem.fromSearchResult(Map<String, dynamic> json,
-      {bool cidadeVizinha = false}) {
+  factory NewsItem.fromSearchResult(
+    Map<String, dynamic> json, {
+    bool cidadeVizinha = false,
+  }) {
     final sourceUrl = json['source_url'] as String? ?? '';
     final sources = <NewsSource>[];
     // sources pode ser uma lista de maps OU so source_url
@@ -136,11 +137,13 @@ class NewsItem {
     if (sourcesList != null) {
       for (final s in sourcesList) {
         if (s is Map<String, dynamic>) {
-          sources.add(NewsSource(
-            url: s['url'] as String? ?? '',
-            sourceName: s['source_name'] as String?,
-            type: s['type'] as String?,
-          ));
+          sources.add(
+            NewsSource(
+              url: s['url'] as String? ?? '',
+              sourceName: s['source_name'] as String?,
+              type: s['type'] as String?,
+            ),
+          );
         } else if (s is String) {
           sources.add(NewsSource(url: s));
         }
@@ -160,7 +163,9 @@ class NewsItem {
       cidade: json['cidade'] as String? ?? '',
       bairro: json['bairro'] as String?,
       rua: json['rua'] as String?,
-      dataOcorrencia: DateTime.tryParse(json['data_ocorrencia'] as String? ?? '') ?? DateTime.now(),
+      dataOcorrencia:
+          DateTime.tryParse(json['data_ocorrencia'] as String? ?? '') ??
+          DateTime.now(),
       horaPublicacao: hhmm(json['hora_publicacao'] as String?),
       titulo: json['titulo'] as String?,
       resumo: json['resumo'] as String? ?? '',
@@ -174,7 +179,6 @@ class NewsItem {
       // contrato deixa `results` sem os sinalizadores por retrocompat.
       cidadeVizinha: json['cidade_vizinha'] as bool? ?? cidadeVizinha,
       isUnread: false,
-      isFavorite: false,
     );
   }
 

@@ -13,6 +13,7 @@ import '../widgets/take_card.dart';
 class FeedScreen extends StatefulWidget {
   /// Se fornecido, fixa o filtro de cidade (usado no CityDetailScreen)
   final String? cityFilter;
+
   /// Se fornecido, filtra por lista de cidades (usado em grupos)
   final List<String>? citiesFilter;
 
@@ -98,8 +99,8 @@ class _FeedScreenState extends State<FeedScreen> {
       final filtered = _cidadesFilter != null
           ? cached.where((n) => _cidadesFilter.contains(n.cidade)).toList()
           : _cidadeFilter != null
-              ? cached.where((n) => n.cidade == _cidadeFilter).toList()
-              : cached;
+          ? cached.where((n) => n.cidade == _cidadeFilter).toList()
+          : cached;
       setState(() {
         _news.addAll(filtered);
       });
@@ -136,9 +137,9 @@ class _FeedScreenState extends State<FeedScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _initialLoad = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao carregar: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Erro ao carregar: $e')));
       }
     }
   }
@@ -193,19 +194,9 @@ class _FeedScreenState extends State<FeedScreen> {
     try {
       await api.markAsRead(item.id);
       setState(() => item.isUnread = false);
-    } catch (e) { debugPrint('[Feed] Mark read error: $e'); }
-  }
-
-  Future<void> _toggleFavorite(NewsItem item) async {
-    final api = context.read<ApiService>();
-    try {
-      if (item.isFavorite) {
-        await api.removeFavorite(item.id);
-      } else {
-        await api.addFavorite(item.id);
-      }
-      setState(() => item.isFavorite = !item.isFavorite);
-    } catch (e) { debugPrint('[Feed] Toggle favorite error: $e'); }
+    } catch (e) {
+      debugPrint('[Feed] Mark read error: $e');
+    }
   }
 
   bool _groupExpanded(NewsGroup g) =>
@@ -218,13 +209,13 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 
   List<NewsItem> get _visibleNews => _news.where((n) {
-        if (_filtro.apenasNaoLidas && !n.isUnread) return false;
-        if (_filtro.categorias.isNotEmpty &&
-            !_filtro.categorias.contains(n.categoriaGrupo ?? 'institucional')) {
-          return false;
-        }
-        return true;
-      }).toList();
+    if (_filtro.apenasNaoLidas && !n.isUnread) return false;
+    if (_filtro.categorias.isNotEmpty &&
+        !_filtro.categorias.contains(n.categoriaGrupo ?? 'institucional')) {
+      return false;
+    }
+    return true;
+  }).toList();
 
   @override
   Widget build(BuildContext context) {
@@ -266,24 +257,27 @@ class _FeedScreenState extends State<FeedScreen> {
     final rows = <Widget>[];
     for (final g in groups) {
       final expanded = _groupExpanded(g);
-      rows.add(GroupHeader(
-        label: g.label,
-        count: g.items.length,
-        expanded: expanded,
-        onTap: () => _toggleGroup(g.key),
-      ));
+      rows.add(
+        GroupHeader(
+          label: g.label,
+          count: g.items.length,
+          expanded: expanded,
+          onTap: () => _toggleGroup(g.key),
+        ),
+      );
       if (expanded) {
         for (var i = 0; i < g.items.length; i++) {
           final item = g.items[i];
-          rows.add(TakeCard(
-            news: item,
-            urgent: TakeCard.isUrgent(item),
-            // A lista é agrupada por data logo acima, então o item mostra só
-            // a hora — carimbar "31/07" dentro do grupo "31 JUL" era repetir.
-            groupedByDate: true,
-            onOpen: () => _markAsRead(item),
-            onToggleFavorite: () => _toggleFavorite(item),
-          ));
+          rows.add(
+            TakeCard(
+              news: item,
+              urgent: TakeCard.isUrgent(item),
+              // A lista é agrupada por data logo acima, então o item mostra só
+              // a hora — carimbar "31/07" dentro do grupo "31 JUL" era repetir.
+              groupedByDate: true,
+              onOpen: () => _markAsRead(item),
+            ),
+          );
           // Filete entre matérias, nunca depois da última: no fim do grupo
           // quem separa é o divisor de data seguinte.
           if (i < g.items.length - 1) rows.add(const TakeRule());
@@ -291,10 +285,12 @@ class _FeedScreenState extends State<FeedScreen> {
       }
     }
     if (_hasMore) {
-      rows.add(const Padding(
-        padding: EdgeInsets.all(16),
-        child: Center(child: CircularProgressIndicator()),
-      ));
+      rows.add(
+        const Padding(
+          padding: EdgeInsets.all(16),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
     } else {
       // Sem marca de fim: o que dizia "acabou" era um carimbo, e a lista
       // acabando já diz isso. Sobra o ar do rodapé.
@@ -317,9 +313,7 @@ class _FeedScreenState extends State<FeedScreen> {
               Container(
                 width: double.infinity,
                 decoration: const BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: SIMEopsColors.rule),
-                  ),
+                  border: Border(bottom: BorderSide(color: SIMEopsColors.rule)),
                 ),
                 padding: const EdgeInsets.fromLTRB(18, 9, 18, 9),
                 child: Text(
@@ -376,12 +370,15 @@ class _FeedScreenState extends State<FeedScreen> {
                   decoration: BoxDecoration(
                     border: Border.all(color: SIMEopsColors.ruleStrong),
                   ),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 15,
+                    vertical: 13,
+                  ),
                   child: Text(
                     'MARCAR TODAS LIDAS',
-                    style: SIMEopsType.placeTab(active: false)
-                        .copyWith(color: SIMEopsColors.muted),
+                    style: SIMEopsType.placeTab(
+                      active: false,
+                    ).copyWith(color: SIMEopsColors.muted),
                   ),
                 ),
               ),

@@ -41,6 +41,8 @@
 
 | 029 | 029_news_titulo.sql | ADD COLUMN `titulo` (TEXT, nullable) em `news`. O Filter2 passa a **escrever** uma manchete curta e neutra no mesmo request que ja extrai cidade/data/tipo — custo marginal ~0, nenhuma chamada nova. Motivador: o redesign "fio de agencia" tem a manchete como peca central, e ate aqui nao existia campo de titulo (o app usava o tipo de crime em caixa alta). Nao copia o titulo do veiculo **de proposito**: imprensa policial titula no sensacional e o produto e sobrio por tese. Nullable em duas frentes — linhas antigas ficam sem (o app compoe dos campos estruturados) e item novo sem headline **nao e rejeitado**. Aditiva e reversivel | ✅ **Aplicada em 09/08** — confirmada pelo Joao |
 
+| 031 | 031_drop_user_favorites.sql | **DESTRUTIVA (DROP TABLE).** Remove `user_favorites`. A feature saiu do codigo inteiro na Fase D (11/08): a tela de favoritos do app era **orfa** — nenhuma rota, aba ou push a instanciava —, e o unico jeito de salvar era arrastar o card pra direita, gesto sem afordancia que saiu junto. Nada no banco aponta pra tabela (as duas FKs saem dela), entao o CASCADE so derruba o proprio indice. ⚠️ **ORDEM: 025 ANTES desta** — a 025 faz `ALTER TABLE user_favorites ENABLE ROW LEVEL SECURITY` e quebra se a tabela ja tiver sumido. ⚠️ Depois desta, replay das migrations do zero quebra na 010 (que faz TRUNCATE na tabela); aceito, o baseline util e o banco atual | **ESCRITA, NAO RODADA** — vai no deploy final, depois da promocao da `main` e depois da 025 |
+
 > ⚠️ Este log e preenchido a mao e ja desatualizou (019 e 020 estavam marcadas
 > como pendentes e ja tinham sido rodadas). Antes de confiar nele, rodar
 > **`npx tsx scripts/diagnostico-banco.ts`** — ele olha o estado REAL do banco

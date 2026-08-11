@@ -20,9 +20,9 @@ class ApiService {
   }
 
   Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        if (_token.isNotEmpty) 'Authorization': 'Bearer $_token',
-      };
+    'Content-Type': 'application/json',
+    if (_token.isNotEmpty) 'Authorization': 'Bearer $_token',
+  };
 
   // ── News ──
 
@@ -32,18 +32,16 @@ class ApiService {
     String? cidade,
     List<String>? cidades,
   }) async {
-    final params = <String, String>{
-      'offset': '$offset',
-      'limit': '$limit',
-    };
+    final params = <String, String>{'offset': '$offset', 'limit': '$limit'};
     if (cidades != null && cidades.isNotEmpty) {
       params['cidades'] = cidades.join(',');
     } else if (cidade != null) {
       params['cidade'] = cidade;
     }
 
-    final uri =
-        Uri.parse('$_baseUrl/news/feed').replace(queryParameters: params);
+    final uri = Uri.parse(
+      '$_baseUrl/news/feed',
+    ).replace(queryParameters: params);
     final res = await _client.get(uri, headers: _headers).timeout(_timeout);
     _checkResponse(res);
 
@@ -67,11 +65,13 @@ class ApiService {
     if (dateFrom != null) bodyMap['dateFrom'] = dateFrom;
     if (dateTo != null) bodyMap['dateTo'] = dateTo;
 
-    final res = await _client.post(
-      Uri.parse('$_baseUrl/search'),
-      headers: _headers,
-      body: jsonEncode(bodyMap),
-    ).timeout(_timeout);
+    final res = await _client
+        .post(
+          Uri.parse('$_baseUrl/search'),
+          headers: _headers,
+          body: jsonEncode(bodyMap),
+        )
+        .timeout(_timeout);
     _checkResponse(res);
 
     final body = jsonDecode(res.body) as Map<String, dynamic>;
@@ -84,69 +84,31 @@ class ApiService {
   // ── Locations (para dropdown de cidades - endpoint publico) ──
 
   Future<List<Map<String, dynamic>>> getLocations() async {
-    final res = await _client.get(
-      Uri.parse('$_baseUrl/public/locations'),
-      headers: _headers,
-    ).timeout(_timeout);
+    final res = await _client
+        .get(Uri.parse('$_baseUrl/public/locations'), headers: _headers)
+        .timeout(_timeout);
     _checkResponse(res);
-    return (jsonDecode(res.body) as List<dynamic>)
-        .cast<Map<String, dynamic>>();
-  }
-
-  Future<List<NewsItem>> getFavorites({int offset = 0, int limit = 20}) async {
-    final params = <String, String>{
-      'offset': '$offset',
-      'limit': '$limit',
-    };
-    final uri = Uri.parse('$_baseUrl/news/favorites')
-        .replace(queryParameters: params);
-    final res = await _client.get(uri, headers: _headers).timeout(_timeout);
-    _checkResponse(res);
-
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
-    final list = body['news'] as List<dynamic>;
-    return list
-        .map((e) => NewsItem.fromJson(e as Map<String, dynamic>))
-        .toList();
+    return (jsonDecode(res.body) as List<dynamic>).cast<Map<String, dynamic>>();
   }
 
   Future<void> markAsRead(String newsId) async {
-    final res = await _client.post(
-      Uri.parse('$_baseUrl/news/$newsId/read'),
-      headers: _headers,
-    ).timeout(_timeout);
+    final res = await _client
+        .post(Uri.parse('$_baseUrl/news/$newsId/read'), headers: _headers)
+        .timeout(_timeout);
     _checkResponse(res);
   }
 
   Future<void> markAllAsRead() async {
-    final res = await _client.post(
-      Uri.parse('$_baseUrl/news/mark-all-read'),
-      headers: _headers,
-    ).timeout(const Duration(seconds: 15));
-    _checkResponse(res);
-  }
-
-  Future<void> addFavorite(String newsId) async {
-    final res = await _client.post(
-      Uri.parse('$_baseUrl/news/$newsId/favorite'),
-      headers: _headers,
-    ).timeout(_timeout);
-    _checkResponse(res);
-  }
-
-  Future<void> removeFavorite(String newsId) async {
-    final res = await _client.delete(
-      Uri.parse('$_baseUrl/news/$newsId/favorite'),
-      headers: _headers,
-    ).timeout(_timeout);
+    final res = await _client
+        .post(Uri.parse('$_baseUrl/news/mark-all-read'), headers: _headers)
+        .timeout(const Duration(seconds: 15));
     _checkResponse(res);
   }
 
   Future<int> getUnreadCount() async {
-    final res = await _client.get(
-      Uri.parse('$_baseUrl/news/unread-count'),
-      headers: _headers,
-    ).timeout(_timeout);
+    final res = await _client
+        .get(Uri.parse('$_baseUrl/news/unread-count'), headers: _headers)
+        .timeout(_timeout);
     _checkResponse(res);
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     return safeInt(body['count']);
@@ -155,38 +117,41 @@ class ApiService {
   // ── Auth ──
 
   Future<Map<String, dynamic>> getMyProfile() async {
-    final res = await _client.get(
-      Uri.parse('$_baseUrl/auth/me'),
-      headers: _headers,
-    ).timeout(_timeout);
+    final res = await _client
+        .get(Uri.parse('$_baseUrl/auth/me'), headers: _headers)
+        .timeout(_timeout);
     _checkResponse(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   Future<void> requestPasswordReset(String email) async {
-    final res = await _client.post(
-      Uri.parse('$_baseUrl/auth/request-reset'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email}),
-    ).timeout(_timeout);
+    final res = await _client
+        .post(
+          Uri.parse('$_baseUrl/auth/request-reset'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'email': email}),
+        )
+        .timeout(_timeout);
     _checkResponse(res);
   }
 
   Future<void> changePassword(String newPassword) async {
-    final res = await _client.post(
-      Uri.parse('$_baseUrl/auth/change-password'),
-      headers: _headers,
-      body: jsonEncode({'new_password': newPassword}),
-    ).timeout(_timeout);
+    final res = await _client
+        .post(
+          Uri.parse('$_baseUrl/auth/change-password'),
+          headers: _headers,
+          body: jsonEncode({'new_password': newPassword}),
+        )
+        .timeout(_timeout);
     _checkResponse(res);
   }
 
   // ── Auth Config (público) ──
 
   Future<Map<String, dynamic>> getAuthConfig() async {
-    final res = await _client.get(
-      Uri.parse('$_baseUrl/settings/auth-config'),
-    ).timeout(const Duration(seconds: 3));
+    final res = await _client
+        .get(Uri.parse('$_baseUrl/settings/auth-config'))
+        .timeout(const Duration(seconds: 3));
     _checkResponse(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -222,60 +187,68 @@ class ApiService {
     };
     if (assuntos != null && assuntos.isNotEmpty) bodyMap['assuntos'] = assuntos;
 
-    final res = await _client.post(
-      Uri.parse('$_baseUrl/manual-search'),
-      headers: _headers,
-      body: jsonEncode(bodyMap),
-    ).timeout(_timeout);
+    final res = await _client
+        .post(
+          Uri.parse('$_baseUrl/manual-search'),
+          headers: _headers,
+          body: jsonEncode(bodyMap),
+        )
+        .timeout(_timeout);
     _checkResponse(res);
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     return body['searchId'] as String;
   }
 
   Future<Map<String, dynamic>> getManualSearchStatus(String searchId) async {
-    final res = await _client.get(
-      Uri.parse('$_baseUrl/manual-search/$searchId/status'),
-      headers: _headers,
-    ).timeout(_timeout);
+    final res = await _client
+        .get(
+          Uri.parse('$_baseUrl/manual-search/$searchId/status'),
+          headers: _headers,
+        )
+        .timeout(_timeout);
     _checkResponse(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
-  Future<ManualSearchResults> getManualSearchResults(
-      String searchId) async {
-    final res = await _client.get(
-      Uri.parse('$_baseUrl/manual-search/$searchId/results'),
-      headers: _headers,
-    ).timeout(_timeout);
+  Future<ManualSearchResults> getManualSearchResults(String searchId) async {
+    final res = await _client
+        .get(
+          Uri.parse('$_baseUrl/manual-search/$searchId/results'),
+          headers: _headers,
+        )
+        .timeout(_timeout);
     _checkResponse(res);
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     return ManualSearchResults.fromJson(body);
   }
 
   Future<List<Map<String, dynamic>>> getSearchHistory() async {
-    final res = await _client.get(
-      Uri.parse('$_baseUrl/manual-search/history'),
-      headers: _headers,
-    ).timeout(_timeout);
+    final res = await _client
+        .get(Uri.parse('$_baseUrl/manual-search/history'), headers: _headers)
+        .timeout(_timeout);
     _checkResponse(res);
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     return (body['history'] as List<dynamic>).cast<Map<String, dynamic>>();
   }
 
   Future<void> cancelSearch(String searchId) async {
-    final res = await _client.post(
-      Uri.parse('$_baseUrl/manual-search/$searchId/cancel'),
-      headers: _headers,
-    ).timeout(_timeout);
+    final res = await _client
+        .post(
+          Uri.parse('$_baseUrl/manual-search/$searchId/cancel'),
+          headers: _headers,
+        )
+        .timeout(_timeout);
     _checkResponse(res);
   }
 
   Future<void> deleteSearches(List<String> ids) async {
-    final res = await _client.delete(
-      Uri.parse('$_baseUrl/manual-search'),
-      headers: _headers,
-      body: jsonEncode({'ids': ids}),
-    ).timeout(_timeout);
+    final res = await _client
+        .delete(
+          Uri.parse('$_baseUrl/manual-search'),
+          headers: _headers,
+          body: jsonEncode({'ids': ids}),
+        )
+        .timeout(_timeout);
     _checkResponse(res);
   }
 
@@ -296,11 +269,13 @@ class ApiService {
     };
     if (searchId != null) bodyMap['searchId'] = searchId;
 
-    final res = await _client.post(
-      Uri.parse('$_baseUrl/analytics/report'),
-      headers: _headers,
-      body: jsonEncode(bodyMap),
-    ).timeout(_timeout);
+    final res = await _client
+        .post(
+          Uri.parse('$_baseUrl/analytics/report'),
+          headers: _headers,
+          body: jsonEncode(bodyMap),
+        )
+        .timeout(_timeout);
     _checkResponse(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -312,11 +287,13 @@ class ApiService {
     required String estado,
     int rangeDays = 30,
   }) async {
-    final uri = Uri.parse('$_baseUrl/analytics/executive').replace(queryParameters: {
-      'cidades': cidades.join(','),
-      'estado': estado,
-      'rangeDays': rangeDays.toString(),
-    });
+    final uri = Uri.parse('$_baseUrl/analytics/executive').replace(
+      queryParameters: {
+        'cidades': cidades.join(','),
+        'estado': estado,
+        'rangeDays': rangeDays.toString(),
+      },
+    );
     final res = await _client.get(uri, headers: _headers).timeout(_timeout);
     _checkResponse(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
@@ -340,11 +317,13 @@ class ApiService {
     };
     if (searchId != null) body['searchId'] = searchId;
 
-    final res = await _client.post(
-      Uri.parse('$_baseUrl/analytics/executive/from-stats'),
-      headers: _headers,
-      body: jsonEncode(body),
-    ).timeout(_timeout);
+    final res = await _client
+        .post(
+          Uri.parse('$_baseUrl/analytics/executive/from-stats'),
+          headers: _headers,
+          body: jsonEncode(body),
+        )
+        .timeout(_timeout);
     _checkResponse(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -372,11 +351,13 @@ class ApiService {
     // milissegundos — mas a PRIMEIRA vez numa cidade nova, ou depois do TTL de
     // 90 dias expirar, ainda paga o preço. Com 15s essa chamada estourava
     // sempre e o mapa ficava vazio sem dizer por quê.
-    final res = await _client.post(
-      Uri.parse('$_baseUrl/analytics/map-points'),
-      headers: _headers,
-      body: jsonEncode(bodyMap),
-    ).timeout(const Duration(seconds: 90));
+    final res = await _client
+        .post(
+          Uri.parse('$_baseUrl/analytics/map-points'),
+          headers: _headers,
+          body: jsonEncode(bodyMap),
+        )
+        .timeout(const Duration(seconds: 90));
     _checkResponse(res);
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     return (data['mapPoints'] as List<dynamic>? ?? [])
@@ -385,10 +366,12 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getSearchAnalytics(String searchId) async {
-    final res = await _client.get(
-      Uri.parse('$_baseUrl/analytics/search-report/$searchId'),
-      headers: _headers,
-    ).timeout(_timeout);
+    final res = await _client
+        .get(
+          Uri.parse('$_baseUrl/analytics/search-report/$searchId'),
+          headers: _headers,
+        )
+        .timeout(_timeout);
     _checkResponse(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -396,10 +379,12 @@ class ApiService {
   // ── Cities Overview (Dashboard) ──
 
   Future<List<Map<String, dynamic>>> getCitiesOverview() async {
-    final res = await _client.get(
-      Uri.parse('$_baseUrl/analytics/cities-overview'),
-      headers: _headers,
-    ).timeout(_timeout);
+    final res = await _client
+        .get(
+          Uri.parse('$_baseUrl/analytics/cities-overview'),
+          headers: _headers,
+        )
+        .timeout(_timeout);
     _checkResponse(res);
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     return (body['items'] as List<dynamic>).cast<Map<String, dynamic>>();
@@ -408,31 +393,38 @@ class ApiService {
   /// Aceita UMA cidade ou muitas — o relatorio de um grupo precisa das quatro.
   /// Ate 09/08 mandava so a primeira e o total ficava menor que o do cabecalho.
   Future<Map<String, dynamic>> getCrimeSummary(
-    List<String> cidades, String dateFrom, String dateTo,
+    List<String> cidades,
+    String dateFrom,
+    String dateTo,
   ) async {
     final params = {
       'cidades': cidades.join(','),
       'dateFrom': dateFrom,
       'dateTo': dateTo,
     };
-    final uri = Uri.parse('$_baseUrl/analytics/crime-summary')
-        .replace(queryParameters: params);
+    final uri = Uri.parse(
+      '$_baseUrl/analytics/crime-summary',
+    ).replace(queryParameters: params);
     final res = await _client.get(uri, headers: _headers).timeout(_timeout);
     _checkResponse(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> getCrimeTrend(
-    List<String> cidades, String dateFrom, String dateTo, {String groupBy = 'week'}
-  ) async {
+    List<String> cidades,
+    String dateFrom,
+    String dateTo, {
+    String groupBy = 'week',
+  }) async {
     final params = {
       'cidades': cidades.join(','),
       'dateFrom': dateFrom,
       'dateTo': dateTo,
       'groupBy': groupBy,
     };
-    final uri = Uri.parse('$_baseUrl/analytics/crime-trend')
-        .replace(queryParameters: params);
+    final uri = Uri.parse(
+      '$_baseUrl/analytics/crime-trend',
+    ).replace(queryParameters: params);
     final res = await _client.get(uri, headers: _headers).timeout(_timeout);
     _checkResponse(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
@@ -440,16 +432,21 @@ class ApiService {
 
   Future<Map<String, dynamic>> getCrimeComparison(
     String cidade,
-    String period1Start, String period1End,
-    String period2Start, String period2End,
+    String period1Start,
+    String period1End,
+    String period2Start,
+    String period2End,
   ) async {
     final params = {
       'cidade': cidade,
-      'period1Start': period1Start, 'period1End': period1End,
-      'period2Start': period2Start, 'period2End': period2End,
+      'period1Start': period1Start,
+      'period1End': period1End,
+      'period2Start': period2Start,
+      'period2End': period2End,
     };
-    final uri = Uri.parse('$_baseUrl/analytics/crime-comparison')
-        .replace(queryParameters: params);
+    final uri = Uri.parse(
+      '$_baseUrl/analytics/crime-comparison',
+    ).replace(queryParameters: params);
     final res = await _client.get(uri, headers: _headers).timeout(_timeout);
     _checkResponse(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
@@ -458,22 +455,20 @@ class ApiService {
   // ── Devices (push token) ──
 
   Future<void> registerDevice(String deviceToken, String platform) async {
-    final res = await _client.post(
-      Uri.parse('$_baseUrl/devices'),
-      headers: _headers,
-      body: jsonEncode({
-        'token': deviceToken,
-        'platform': platform,
-      }),
-    ).timeout(_timeout);
+    final res = await _client
+        .post(
+          Uri.parse('$_baseUrl/devices'),
+          headers: _headers,
+          body: jsonEncode({'token': deviceToken, 'platform': platform}),
+        )
+        .timeout(_timeout);
     _checkResponse(res);
   }
 
   Future<void> unregisterDevice() async {
-    final res = await _client.delete(
-      Uri.parse('$_baseUrl/devices'),
-      headers: _headers,
-    ).timeout(_timeout);
+    final res = await _client
+        .delete(Uri.parse('$_baseUrl/devices'), headers: _headers)
+        .timeout(_timeout);
     _checkResponse(res);
   }
 
@@ -483,7 +478,10 @@ class ApiService {
     if (res.statusCode == 401) {
       // Token expirou — forçar logout
       onAuthExpired?.call();
-      throw ApiException(statusCode: 401, message: 'Sessão expirada. Faça login novamente.');
+      throw ApiException(
+        statusCode: 401,
+        message: 'Sessão expirada. Faça login novamente.',
+      );
     }
     if (res.statusCode >= 400) {
       String message = 'Erro desconhecido';

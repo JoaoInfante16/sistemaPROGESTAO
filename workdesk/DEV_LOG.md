@@ -263,6 +263,55 @@ de $100.
 
 ---
 
+## 2026-08-11 (Fase D) — os favoritos e o gesto que era a única porta deles
+
+**Removida a feature de favoritos inteira, das três pontas.** Não foi limpeza de
+código morto por estética: era uma feature que **nenhum usuário conseguia
+alcançar** e que ninguém tinha decidido matar.
+
+O levantamento achou a cadeia:
+
+- `FavoritesScreen` **não é instanciada em lugar nenhum** — nenhuma rota, aba,
+  push ou item de menu. As abas são Consultas / Monitoramento / Config.
+- ela era a **única** a usar `NewsCard`, então `news_card.dart` (256 linhas)
+  estava morto por transitividade — o `TakeCard` já o substituiu no feed e na
+  busca.
+- e o **único** disparador de `addFavorite`/`removeFavorite` no app era arrastar
+  o card pra direita. O `NewsDetailSheet` nunca teve botão de salvar.
+
+Ou seja: para salvar uma notícia era preciso descobrir sozinho um gesto sem
+nenhuma pista na tela, e o resultado ia para uma tela inalcançável. A frase que
+sobrou no vazio da tela órfã resume o absurdo: *"Deslize uma notícia para a
+direita para salvar"* — escrita para uma tela que ninguém abria.
+
+Saiu: dois arquivos Flutter inteiros, `isFavorite` do modelo, três métodos do
+`ApiService`, o alias `bookmark` da paleta, o `flutter_slidable` do pubspec, três
+rotas do backend, três funções de `queries.ts` e a tabela do `schema.sql`.
+
+**A parte perigosa foi uma só**, e está marcada no código: `getUserNewsFeed` é
+compartilhada — ela traz o status de **lida** e o de favorito no mesmo lugar.
+Saiu só o bloco do favorito; `readSet`/`is_unread` fica, porque é o que alimenta
+o badge da aba Monitoramento.
+
+**O banco não foi tocado.** A `031_drop_user_favorites.sql` está escrita e **não
+rodada**, com duas armadilhas registradas no cabeçalho: a **ordem é 025 → 031**
+(a 025 liga RLS nessa tabela e quebra se ela já tiver sumido), e depois dela o
+replay das migrations do zero não passa da 010, que faz TRUNCATE ali. Vai no
+deploy final, depois da promoção da `main` — produção ainda roda o código de
+junho, que lê a tabela.
+
+Medido, e vale registrar: a leitura de produção **ignora o erro** (destrutura só
+`data`), então o feed sobreviveria ao DROP. Não é motivo pra correr o risco, é
+motivo pra saber que o risco é pequeno se algo sair de ordem.
+
+Nota de processo: `dart format` nos cinco arquivos que entraram no commit
+reescreveu bastante além do que mudei — `api_service.dart` acusa 326 linhas
+tocadas para uma remoção de dois métodos. É o tall style do Dart 3.7 alcançando
+arquivos que ainda não tinham passado por ele. Mantido, pela mesma regra de
+10/08: formatar só os arquivos do commit, nunca a pasta.
+
+---
+
 ## 2026-08-11 — o `TUDO` do relatório pedia o ano 2000, e o backend recusava
 
 **Defeito que o João pegou no aparelho: o `TUDO` do relatório da cidade não

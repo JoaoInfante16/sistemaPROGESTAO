@@ -832,7 +832,7 @@ export async function removeUserDevices(userId: string): Promise<void> {
 
 // Namespace export para usar como db.getLocation(), db.insertNews(), etc.
 // ============================================
-// User Feed (with read/favorite status)
+// User Feed (com status de lida)
 // ============================================
 
 export async function getUserNewsFeed(userId: string, params: { offset: number; limit: number; cidade?: string; cidades?: string[]; estado?: string }) {
@@ -867,20 +867,10 @@ export async function getUserNewsFeed(userId: string, params: { offset: number; 
 
   const readSet = new Set((readItems || []).map((r: { news_id: string }) => r.news_id));
 
-  // Get favorite status
-  const { data: favItems } = await supabase
-    .from('user_favorites')
-    .select('news_id')
-    .eq('user_id', userId)
-    .in('news_id', newsIds);
-
-  const favSet = new Set((favItems || []).map((f: { news_id: string }) => f.news_id));
-
   const items = (news || []) as unknown as NewsFeedItem[];
   const enriched = items.map((n) => ({
     ...n,
     is_unread: !readSet.has(n.id),
-    is_favorite: favSet.has(n.id),
   }));
 
   return { news: enriched, hasMore: items.length === params.limit };
@@ -914,20 +904,6 @@ export async function markAllAsRead(userId: string) {
     .upsert(rows, { onConflict: 'user_id,news_id' });
 
   return unread.length;
-}
-
-export async function addFavorite(userId: string, newsId: string) {
-  await supabase
-    .from('user_favorites')
-    .upsert({ user_id: userId, news_id: newsId }, { onConflict: 'user_id,news_id' });
-}
-
-export async function removeFavorite(userId: string, newsId: string) {
-  await supabase
-    .from('user_favorites')
-    .delete()
-    .eq('user_id', userId)
-    .eq('news_id', newsId);
 }
 
 export async function getUnreadCount(userId: string): Promise<number> {
@@ -980,34 +956,6 @@ export async function getBillingHistory(limit = 12): Promise<BillingRecord[]> {
   }
 
   return data || [];
-}
-
-export async function getUserFavorites(userId: string, params: { offset: number; limit: number }) {
-  const { data: favIds, error: favError } = await supabase
-    .from('user_favorites')
-    .select('news_id')
-    .eq('user_id', userId)
-    .order('favorited_at', { ascending: false })
-    .range(params.offset, params.offset + params.limit - 1);
-
-  if (favError || !favIds || favIds.length === 0) return { news: [], hasMore: false };
-
-  const ids = favIds.map((f: { news_id: string }) => f.news_id);
-
-  const { data: news, error } = await supabase
-    .from('news')
-    .select('id, tipo_crime, categoria_grupo, natureza, cidade, estado, bairro, rua, data_ocorrencia, hora_publicacao, titulo, resumo, confianca, created_at, news_sources(url, source_name)')
-    .in('id', ids);
-
-  if (error) throw new Error(`Failed to fetch favorites: ${error.message}`);
-
-  const enriched = (news || []).map((n: { id: string }) => ({
-    ...n,
-    is_unread: false,
-    is_favorite: true,
-  }));
-
-  return { news: enriched, hasMore: favIds.length === params.limit };
 }
 
 // ============================================
@@ -1391,10 +1339,7 @@ export const db = {
   getUserNewsFeed,
   markAsRead,
   markAllAsRead,
-  addFavorite,
-  removeFavorite,
   getUnreadCount,
-  getUserFavorites,
   createSearchCache,
   updateSearchStatus,
   updateSearchProgress,

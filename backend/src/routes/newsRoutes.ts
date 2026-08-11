@@ -82,7 +82,7 @@ router.post(
 
 /**
  * GET /news/feed?offset=0&limit=20&cidade=Curitiba
- * Feed enriquecido com status de leitura e favoritos.
+ * Feed enriquecido com status de leitura.
  */
 router.get(
   '/news/feed',
@@ -99,7 +99,7 @@ router.get(
 
       const cityToUF = await db.getCityToUFMap();
 
-      // Usuario anonimo → feed basico (sem read/favorite status)
+      // Usuario anonimo → feed basico (sem status de lida)
       if (!userId) {
         const result = await db.getNewsFeed({ cidade, cidades, estado, offset, limit });
         res.json({ ...result, news: enrichFeedItems(result.news, cityToUF) });
@@ -153,43 +153,10 @@ router.post(
   }
 );
 
-/**
- * POST /news/:id/favorite
- * Favoritar notícia.
- */
-router.post(
-  '/news/:id/favorite',
-  requireAuth,
-  async (req: Request, res: Response): Promise<void> => {
-    try {
-      const userId = req.user!.id;
-      await db.addFavorite(userId, req.params.id);
-      res.json({ success: true });
-    } catch (error) {
-      logger.error('[News] Favorite error:', error);
-      res.status(500).json({ error: 'Failed to favorite' });
-    }
-  }
-);
-
-/**
- * DELETE /news/:id/favorite
- * Remover favorito.
- */
-router.delete(
-  '/news/:id/favorite',
-  requireAuth,
-  async (req: Request, res: Response): Promise<void> => {
-    try {
-      const userId = req.user!.id;
-      await db.removeFavorite(userId, req.params.id);
-      res.json({ success: true });
-    } catch (error) {
-      logger.error('[News] Unfavorite error:', error);
-      res.status(500).json({ error: 'Failed to unfavorite' });
-    }
-  }
-);
+// ⚠️ Aqui viviam POST e DELETE `/news/:id/favorite`, e mais abaixo o
+// `GET /news/favorites`. Removidos com a feature inteira (11/08): a tela de
+// favoritos do app era órfã havia meses e o único disparador dessas rotas era
+// o gesto de arrastar o card, que saiu junto.
 
 /**
  * GET /news/unread-count
@@ -210,27 +177,5 @@ router.get(
   }
 );
 
-/**
- * GET /news/favorites?offset=0&limit=20
- * Lista de favoritos do usuário.
- */
-router.get(
-  '/news/favorites',
-  requireAuth,
-  validateQuery(schemas.feedQuery),
-  async (req: Request, res: Response): Promise<void> => {
-    try {
-      const userId = req.user!.id;
-      const offset = parseInt(req.query.offset as string) || 0;
-      const limit = parseInt(req.query.limit as string) || 20;
-
-      const result = await db.getUserFavorites(userId, { offset, limit });
-      res.json(result);
-    } catch (error) {
-      logger.error('[News] Favorites error:', error);
-      res.status(500).json({ error: 'Failed to fetch favorites' });
-    }
-  }
-);
 
 export default router;

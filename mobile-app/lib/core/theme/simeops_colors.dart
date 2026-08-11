@@ -46,7 +46,4 @@ class SIMEopsColors {
 
   /// Fonte oficial (gov). Positivo/queda de tendência usa o mesmo verde.
   static const official = green;
-
-  /// Favorito/salvo — teal, não o indigo antigo.
-  static const bookmark = teal;
 }

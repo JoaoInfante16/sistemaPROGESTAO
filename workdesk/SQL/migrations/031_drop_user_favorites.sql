@@ -1,0 +1,43 @@
+-- ============================================
+-- 031 — Remove a tabela de favoritos
+-- ============================================
+-- Data: 2026-08-11
+-- Status: ESCRITA, NAO RODADA. Roda no deploy final, junto da 025.
+--
+-- POR QUE
+-- A feature inteira saiu do codigo na Fase D. A tela de favoritos do app era
+-- orfa havia meses (nenhuma rota, nenhuma aba, nenhum push a instanciava), e o
+-- unico jeito de salvar uma noticia era arrastar o card pra direita — gesto sem
+-- afordancia nenhuma, que saiu junto. Rotas, queries e modelo ja foram removidos.
+--
+-- ⚠️ ORDEM: rodar a 025 ANTES desta.
+-- A 025 (fechar a chave anon) faz `ALTER TABLE user_favorites ENABLE ROW LEVEL
+-- SECURITY`. Se a tabela ja tiver sumido, aquela linha derruba a 025 inteira.
+-- Ordem correta no deploy final:  025  →  031.
+--
+-- ⚠️ REPLAY DO ZERO: a 010_reset_data.sql (historica, nao editar) faz TRUNCATE
+-- nesta tabela. Depois desta migration, replay das migrations do zero em banco
+-- limpo quebra na 010. Aceito: o baseline util do projeto e o banco atual, nao
+-- a sequencia completa.
+--
+-- SEGURANCA DO DROP
+-- Duas FKs saem de user_favorites (user_profiles, news), nenhuma entra — nada
+-- no banco aponta pra ela. O CASCADE aqui derruba so o indice
+-- `idx_user_favorites` e as proprias constraints.
+--
+-- PRODUCAO NA HORA DE RODAR
+-- Se a `main` ainda nao tiver sido promovida, o codigo de junho continua lendo
+-- `user_favorites` em getUserNewsFeed. Ele ignora o erro (destrutura so `data`),
+-- entao o feed sobrevive — mas nao ha motivo pra correr esse risco: promova a
+-- main primeiro.
+
+DROP TABLE IF EXISTS user_favorites CASCADE;
+
+-- ============================================
+-- VERIFICACAO (rodar depois)
+-- ============================================
+-- Esperado: zero linhas.
+--
+-- SELECT table_name
+-- FROM information_schema.tables
+-- WHERE table_schema = 'public' AND table_name = 'user_favorites';
