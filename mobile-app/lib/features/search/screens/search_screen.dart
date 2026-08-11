@@ -264,6 +264,39 @@ class _SearchScreenState extends State<SearchScreen> {
     return grupos;
   }
 
+  /// `▪ NOVA CONSULTA`, logo abaixo do filete.
+  ///
+  /// O quadradinho de 7px não é enfeite: sem ele a linha é mono 9.5, do mesmo
+  /// tamanho e da mesma família dos metadados que ela tem em volta (`HOJE`,
+  /// `91 RESULTADOS`, `BA · 30 DIAS`) — e nada distingue o que se toca do que
+  /// só se lê. O quadrado é o que declara "isto é um comando".
+  ///
+  /// Não é um `CatChip`: aquele quadrado carrega **cor de categoria** e a
+  /// palavra ao lado é o nome dela. Aqui é marca de ação. Mesmo tamanho, outro
+  /// assunto — juntar os dois no mesmo widget seria ensinar que o quadradinho
+  /// quer dizer duas coisas.
+  ///
+  /// `greenLight` e não o teal de ação: é o verde do `OPS` na marca e do
+  /// filete da aba aberta — o destaque da casa. Escolha do João, olhando o
+  /// aparelho. Fica registrado que esse verde já carrega "ativo", "não lida" e
+  /// "fonte oficial"; esta é a quarta coisa que ele diz.
+  Widget _acaoNovaConsulta() => InkWell(
+    onTap: _navigateToNewSearch,
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+      child: Row(
+        children: [
+          Container(width: 7, height: 7, color: SIMEopsColors.greenLight),
+          const SizedBox(width: 9),
+          Text(
+            'NOVA CONSULTA',
+            style: SIMEopsType.slug(color: SIMEopsColors.greenLight),
+          ),
+        ],
+      ),
+    ),
+  );
+
   /// Nenhuma consulta ainda.
   ///
   /// **Sem masthead, e o botão por último** — é a anatomia que o feed vazio e
@@ -328,29 +361,13 @@ class _SearchScreenState extends State<SearchScreen> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.only(bottom: _selectMode ? 96 : 20),
                   children: [
-                    const Masthead(
-                      titulo: 'Consultas',
-                      direita: 'SEGURE PARA SELECIONAR',
-                    ),
-                    if (!_selectMode) ...[
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
-                        // Contornado, não verde cheio: o verde do app é o
-                        // botão que confirma ou dispara (`ENTRAR`,
-                        // `INICIAR CONSULTA`, `REFAZER`) — dos doze que
-                        // existiam, onze eram isso e só este aqui era
-                        // navegação. Ele gritava com a voz do "iniciar"
-                        // numa tela onde ninguém escolheu cidade ainda.
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton(
-                            onPressed: _navigateToNewSearch,
-                            child: const Text('NOVA CONSULTA'),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
+                    // Cabeçalho limpo, igual ao de Configurações: título e o
+                    // filete branco, nada mais. Saíram de cima da linha o
+                    // `SEGURE PARA SELECIONAR` e, depois, o próprio
+                    // `NOVA CONSULTA` — o cabeçalho nomeia a tela, quem age é
+                    // o corpo dela.
+                    const Masthead(titulo: 'Consultas'),
+                    if (!_selectMode) _acaoNovaConsulta(),
 
                     // Modo de seleção múltipla
                     if (_selectMode)

@@ -50,6 +50,15 @@ class TakeCard extends StatefulWidget {
   /// sinal, é ruído — foi o que aconteceu com o "NOVA" no card antigo.
   final bool urgent;
 
+  /// Se `false`, a manchete nunca recua para a tinta de "já lida".
+  ///
+  /// O resultado de uma consulta **não tem lido e não lido**: nada ali foi
+  /// aberto, e o `NewsItem.fromSearchResult` grava `isUnread: false` porque não
+  /// existe o que gravar. A tela lia isso como "já li" e pintava as 101
+  /// manchetes em `faint` (4.8:1) — a consulta inteira chegava apagada, com o
+  /// visual de conteúdo velho, minutos depois de ser extraída.
+  final bool distingueLidas;
+
   const TakeCard({
     super.key,
     required this.news,
@@ -57,6 +66,7 @@ class TakeCard extends StatefulWidget {
     this.onToggleFavorite,
     this.groupedByDate = false,
     this.urgent = false,
+    this.distingueLidas = true,
   });
 
   /// Regra da urgência: categoria Segurança **e** publicada nas últimas 6h.
@@ -202,7 +212,7 @@ class _TakeCardState extends State<TakeCard> {
 
     // Lida recua sem ícone e sem caixa: manchete perde peso e vai pra tinta
     // fraca. Não precisa de "já li" escrito — o contraste já diz.
-    final read = !news.isUnread;
+    final read = widget.distingueLidas && !news.isUnread;
     final headlineStyle = widget.urgent
         ? SIMEopsType.headlineUrgent()
         : SIMEopsType.headline(color: read ? SIMEopsColors.faint : null);

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/theme/simeops_colors.dart';
+import '../../../core/theme/simeops_type.dart';
 import '../../../core/utils/category_colors.dart';
 import '../../dashboard/screens/dashboard_screen.dart';
 import '../../search/screens/search_screen.dart';
@@ -14,14 +16,30 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _currentIndex = 0;
+  /// **A casa fica no meio.** `Monitoramento` é a palavra mais longa das três e
+  /// a aba mais usada: na ponta esquerda ela desequilibrava a barra (13 letras
+  /// contra 9 e 6) e ainda ficava no canto mais difícil de alcançar com uma
+  /// mão. No centro, os flancos se equivalem e o polegar chega sem esticar.
+  ///
+  /// É uma convenção quebrada de propósito — quase todo app põe a casa à
+  /// esquerda. Com três abas e o filete marcando onde você está, resolve no
+  /// primeiro toque.
+  static const _monitoramento = 1;
+
+  int _currentIndex = _monitoramento;
   int _unreadCount = 0;
 
   late final List<Widget> _tabs = [
-    const DashboardScreen(),
     const SearchScreen(),
+    const DashboardScreen(),
     const SettingsScreen(),
   ];
+
+  /// `CONSULTAS`, não `Busca`: a tela se chama Consultas, o botão diz NOVA
+  /// CONSULTA e o histórico fala em consulta cancelada. A aba era a única
+  /// sobrevivente da palavra antiga. `Monitoramento` também substituiu
+  /// `Dashboard`, que era a única das três em inglês.
+  static const _rotulos = ['CONSULTAS', 'MONITORAMENTO', 'CONFIG'];
 
   @override
   void initState() {
@@ -67,37 +85,77 @@ class _MainScreenState extends State<MainScreen> {
           children: _tabs,
         ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (index) {
-          setState(() => _currentIndex = index);
-          if (index == 0) _loadUnreadCount();
-        },
-        destinations: [
-          NavigationDestination(
-            icon: Badge(
-              isLabelVisible: _unreadCount > 0,
-              label: Text('$_unreadCount'),
-              child: const Icon(Icons.dashboard_outlined),
+      bottomNavigationBar: _barraDeSecoes(),
+    );
+  }
+
+  /// A barra de baixo era o último pedaço de Material do app: ícone de
+  /// biblioteca, rótulo em caixa de sentença e uma cápsula atrás do ativo que
+  /// o tema já tinha precisado apagar. Agora é a **mesma peça dos cadernos e
+  /// das abas de cidade** — palavra, filete verde de 2px no ativo, sem caixa e
+  /// sem ícone. De quebra devolve 16px de altura para toda tela do app.
+  ///
+  /// Sem ícone, o badge de não lidas não tem onde grudar: vira número em verde
+  /// ao lado da palavra, que é como o card da cidade já escreve `6 NOVAS`.
+  Widget _barraDeSecoes() => Container(
+    decoration: const BoxDecoration(
+      color: SIMEopsColors.navy,
+      border: Border(top: BorderSide(color: SIMEopsColors.rule)),
+    ),
+    child: SafeArea(
+      top: false,
+      child: SizedBox(
+        height: 50,
+        child: Row(
+          children: [
+            for (var i = 0; i < _rotulos.length; i++)
+              Expanded(child: _aba(i)),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget _aba(int i) {
+    final ativo = _currentIndex == i;
+    final naoLidas = i == _monitoramento && _unreadCount > 0;
+
+    return InkWell(
+      onTap: () {
+        setState(() => _currentIndex = i);
+        if (i == _monitoramento) _loadUnreadCount();
+      },
+      child: Center(
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(
+                color: ativo ? SIMEopsColors.greenLight : Colors.transparent,
+                width: 2,
+              ),
             ),
-            selectedIcon: Badge(
-              isLabelVisible: _unreadCount > 0,
-              label: Text('$_unreadCount'),
-              child: const Icon(Icons.dashboard),
+          ),
+          padding: const EdgeInsets.only(top: 9),
+          // `Monitoramento` + contador chega perto dos 120px que sobram por
+          // coluna numa tela de 360dp. O `scaleDown` só entra em ação nessas —
+          // nas demais o texto fica no tamanho da escala.
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text.rich(
+              TextSpan(
+                text: _rotulos[i],
+                children: [
+                  if (naoLidas)
+                    TextSpan(
+                      text: '  $_unreadCount',
+                      style: const TextStyle(color: SIMEopsColors.greenLight),
+                    ),
+                ],
+              ),
+              style: SIMEopsType.navLabel(active: ativo),
             ),
-            label: 'Dashboard',
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.search_outlined),
-            selectedIcon: Icon(Icons.search),
-            label: 'Busca',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Config',
-          ),
-        ],
+        ),
       ),
     );
   }

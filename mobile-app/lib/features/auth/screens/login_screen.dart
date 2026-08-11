@@ -125,9 +125,13 @@ class _LoginScreenState extends State<LoginScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // A frase diz o que vai acontecer **quando você tocar em
+            // SOLICITAR** — antes ela descrevia o trabalho do administrador
+            // ("um administrador libera uma senha") sem dizer que o toque
+            // manda um pedido. É a mesma promessa do aviso que aparece depois.
             Text(
-              'Confirme o e-mail cadastrado. Um administrador libera uma '
-              'senha nova e ela chega por e-mail.',
+              'Confirme o e-mail cadastrado. A solicitação vai para um '
+              'administrador e a senha nova chega nesse mesmo e-mail.',
               style: SIMEopsType.lead(),
             ),
             const SizedBox(height: 18),
@@ -269,7 +273,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     keyboardType: TextInputType.emailAddress,
                     autocorrect: false,
                     style: SIMEopsType.fieldValue(),
-                    decoration: _lineField('voce@orgao.gov.br'),
+                    decoration: _lineField('voce@empresa.com.br'),
                     validator: (v) => (v == null || v.trim().isEmpty)
                         ? 'Informe o e-mail'
                         : null,
@@ -390,7 +394,7 @@ class _LoginScreenState extends State<LoginScreen> {
   InputDecoration _lineField(String hint) => InputDecoration(
     hintText: hint,
     // `faint`, não `hairline`: o placeholder é instrução de formato
-    // ("voce@orgao.gov.br"), e a 1.8:1 ele simplesmente não existia.
+    // ("voce@empresa.com.br"), e a 1.8:1 ele simplesmente não existia.
     hintStyle: SIMEopsType.fieldValue(color: SIMEopsColors.faint),
     filled: false,
     contentPadding: const EdgeInsets.only(top: 12, bottom: 9),

@@ -100,34 +100,16 @@ class SIMEopsApp extends StatelessWidget {
         elevation: 0,
         shape: const RoundedRectangleBorder(),
       ),
-      // Sem a cápsula teal atrás do ícone: é a peça mais Material que restava
-      // na tela, e desenhava um retângulo arredondado num sistema que declara
-      // canto zero. O ativo se marca pela tinta e pelo filete de topo, igual
-      // às abas de cidade e aos cadernos.
-      navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: isDark ? SIMEopsColors.navy : null,
-        indicatorColor: Colors.transparent,
-        elevation: 0,
-        height: 66,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        labelTextStyle: WidgetStateProperty.resolveWith(
-          (states) => GoogleFonts.jetBrainsMono(
-            fontSize: 10,
-            letterSpacing: 1.6,
-            color: states.contains(WidgetState.selected)
-                ? SIMEopsColors.greenLight
-                : SIMEopsColors.faint,
-          ),
-        ),
-        iconTheme: WidgetStateProperty.resolveWith(
-          (states) => IconThemeData(
-            size: 21,
-            color: states.contains(WidgetState.selected)
-                ? SIMEopsColors.greenLight
-                : SIMEopsColors.faint,
-          ),
-        ),
-      ),
+      // ⚠️ Aqui existiu o `navigationBarTheme` — 24 linhas para domar o
+      // `NavigationBar` do Material: apagar a cápsula do ativo, forçar o
+      // rótulo a aparecer sempre, repintar ícone e texto. O comentário dizia
+      // que o ativo se marcava "pela tinta e pelo filete de topo, igual às
+      // abas de cidade" — só que o filete nunca existiu: o tema tinha
+      // conseguido apagar a peça errada, não desenhar a certa.
+      //
+      // A barra virou peça do app (`main_screen.dart`), com a mesma anatomia
+      // dos cadernos. Tema que configura widget que não se usa mais é
+      // configuração que ninguém vai saber que pode apagar.
       // Archivo no lugar de Exo 2: grotesca sólida, aguenta manchete de 23-30px
       // com entrelinha apertada. Exo é geométrica techy — o lugar-comum de que
       // o redesign foge. Ver core/theme/simeops_type.dart.

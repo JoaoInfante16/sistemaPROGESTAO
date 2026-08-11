@@ -492,10 +492,15 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
                       recorte,
                       style: SIMEopsType.slug(color: SIMEopsColors.faint),
                     ),
+              // Concluída, o canto direito fica **vazio**: a contagem já é o
+              // número-herói logo abaixo, em Archivo 52. `86 OCORRÊNCIAS` em
+              // mono 9.5 três linhas acima de um `86` gigante é o mesmo fato
+              // dito duas vezes, e a versão pequena é a que ninguém lê.
+              // Enquanto roda o cronômetro fica: aí não há número embaixo.
               direita: isFormView
                   ? 'UMA CIDADE · REGIÃO INCLUSA'
                   : concluida
-                  ? '${_items.where((n) => n.natureza != 'estatistica').length} OCORRÊNCIAS'
+                  ? null
                   : _elapsedText.toUpperCase(),
             ),
             Expanded(
@@ -1481,39 +1486,30 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       );
     }
 
-    rows.add(
-      Padding(
-        padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                _filtro.ativo
-                    ? _filtro.descricao
-                    : 'ÚLTIMOS $_periodoDias DIAS',
-                style: SIMEopsType.slug(
-                  color: _filtro.ativo
-                      ? SIMEopsColors.tealLight
-                      : SIMEopsColors.faint,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            InkWell(
-              onTap: _abrirFiltro,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 4, 0, 4),
-                child: Text(
-                  'FILTRAR',
-                  style: SIMEopsType.slug(color: SIMEopsColors.tealLight),
-                ),
-              ),
-            ),
-          ],
+    // A linha do recorte só existe **quando há recorte**.
+    //
+    // Aqui ficava `ÚLTIMOS 30 DIAS` + um segundo `FILTRAR`. Os dois eram
+    // repetição: o período já está no cabeçalho (`BA · 30 DIAS`) e o `FILTRAR`
+    // já está na linha de cadernos, a 40px daqui — dois links idênticos na
+    // mesma tela abrindo a mesma folha. O comentário do `_buildCadernos` até
+    // afirmava que esta linha tinha morrido junto com a mudança; ela não
+    // morreu.
+    //
+    // Com filtro ativo a frase volta, porque aí ela diz uma coisa que nenhum
+    // outro lugar diz: **o que está escondido**.
+    if (_filtro.ativo) {
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
+          child: Text(
+            _filtro.descricao,
+            style: SIMEopsType.slug(color: SIMEopsColors.tealLight),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
-      ),
-    );
+      );
+    }
 
     if (visiveis.isEmpty) {
       rows.add(
@@ -1629,7 +1625,8 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   /// `groupedByDate: false` porque aqui os grupos também são baldes ("região
   /// metropolitana", "antes de 5 jul") e dentro deles a data volta a fazer
   /// falta no item.
-  Widget _take(NewsItem item) => TakeCard(news: item, groupedByDate: false);
+  Widget _take(NewsItem item) =>
+      TakeCard(news: item, groupedByDate: false, distingueLidas: false);
 
   bool _sectionExpanded(String key, bool defaultExpanded) =>
       _toggledSections.contains(key) ? !defaultExpanded : defaultExpanded;

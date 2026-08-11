@@ -6,6 +6,32 @@ import '../models/news_item.dart';
 // uma busca de 60–180 dias precisa de geografia temporal, não de parede
 // de cards.
 
+/// Mais recente primeiro — **de verdade, inclusive dentro do dia**.
+///
+/// 🚨 Era só `b.dataOcorrencia.compareTo(a.dataOcorrencia)`, e essa coluna é
+/// `DATE` no Postgres: todo item do mesmo dia volta à meia-noite e **empata**.
+/// Empate somado a `List.sort`, que no Dart não é estável, dava ordem
+/// arbitrária dentro do grupo — os 21 itens de "HOJE" de uma consulta de
+/// Salvador saíam sorteados, e a lista parecia não ter ordem nenhuma.
+///
+/// A `hora_publicacao` (migration 030) é o desempate. Comparada como texto de
+/// propósito: `HH:MM` com zero à esquerda ordena igual como string e como
+/// número, sem custo de parse por comparação.
+///
+/// Sem hora vai para o **fim do dia**: 13 dos 101 itens daquela consulta não
+/// têm, e chutar que são as mais recentes é inventar informação.
+int _maisRecentePrimeiro(NewsItem a, NewsItem b) {
+  final porDia = b.dataOcorrencia.compareTo(a.dataOcorrencia);
+  if (porDia != 0) return porDia;
+
+  final ha = a.horaPublicacao;
+  final hb = b.horaPublicacao;
+  if (ha == null && hb == null) return 0;
+  if (ha == null) return 1;
+  if (hb == null) return -1;
+  return hb.compareTo(ha);
+}
+
 class NewsGroup {
   final String key;
   final String label;
@@ -31,8 +57,7 @@ const _months = [
 ];
 
 List<NewsGroup> groupNewsByDate(List<NewsItem> items) {
-  final sorted = [...items]
-    ..sort((a, b) => b.dataOcorrencia.compareTo(a.dataOcorrencia));
+  final sorted = [...items]..sort(_maisRecentePrimeiro);
 
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);

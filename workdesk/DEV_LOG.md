@@ -263,6 +263,88 @@ de $100.
 
 ---
 
+## 2026-08-10 (noite) — a barra de baixo era o último Material, e o resultado da consulta chegava com cara de notícia velha
+
+Rodada de revisão tela por tela, com o João lendo o aparelho e mandando foto.
+
+**A barra de navegação virou peça do app.** Era o último `NavigationBar` do
+Material: ícone de biblioteca, rótulo em caixa de sentença, 66px e um
+`navigationBarTheme` de 24 linhas cuja única função era **apagar** coisa
+(a cápsula do ativo, a elevação). O comentário desse tema afirmava que o ativo
+se marcava "pelo filete de topo, igual às abas de cidade" — e o filete **nunca
+existiu**: o tema tinha conseguido apagar a peça errada, não desenhar a certa.
+Agora é a mesma anatomia dos cadernos: palavra, tinta branca no ativo, filete
+`greenLight` de 2px. 50px em vez de 66.
+
+Três decisões junto:
+- **`Dashboard` → `Monitoramento`** (era a única aba em inglês, e é o que a
+  linha sob a marca já promete) e **`Busca` → `Consultas`** (a tela se chama
+  Consultas e o botão diz NOVA CONSULTA — a aba era a sobrevivente da palavra
+  antiga).
+- **A casa foi para o meio.** Palavra de 13 letras entre uma de 9 e uma de 6
+  equilibra a barra, e a aba mais usada sai do canto mais difícil de alcançar
+  com uma mão. Convenção quebrada de propósito; `_currentIndex` nasce em 1.
+- O badge de não lidas não tem onde grudar sem ícone: virou **número verde ao
+  lado da palavra**, que é como o card da cidade já escreve `6 NOVAS`.
+
+**O resultado da consulta chegava apagado, e a causa é semântica.** As 101
+manchetes de Salvador saíam em `faint` (4.8:1) — a tinta de "já lida". Motivo:
+`NewsItem.fromSearchResult` grava `isUnread: false`, porque num resultado
+recém-extraído **não existe lido e não lido**, e o `TakeCard` lia isso como
+"já li". Minutos depois de coletada, a consulta inteira tinha o visual de
+conteúdo velho. `TakeCard` ganhou `distingueLidas`, falso na busca.
+
+**Ordem dentro do dia era sorteio.** `groupNewsByDate` ordenava só por
+`dataOcorrencia`, e essa coluna é `DATE`: os 21 itens de hoje empatam à
+meia-noite. Empate + `List.sort` do Dart (que **não é estável**) = ordem
+arbitrária. Desempate agora é `hora_publicacao` (migration 030); os 13 de 101
+sem hora vão para o fim do dia, porque chutar que são as mais recentes seria
+inventar. Medido antes de mexer com um script de leitura: *101 itens, 0 sem
+data_ocorrencia, 13 sem hora_publicacao, 21 no dia de hoje* — ou seja o "HOJE
+19" não era bug de data, era ausência de critério de desempate.
+
+**Duplicações do cabeçalho do resultado**, todas apontadas na foto: `86
+OCORRÊNCIAS` no masthead com o `86` em Archivo 52 três linhas abaixo; `30 DIAS`
+no masthead e `ÚLTIMOS 30 DIAS` embaixo; e **dois `FILTRAR`** a 40px um do
+outro. Morreram os três. A linha do recorte volta **só com filtro ativo**, aí
+ela diz o que nenhum outro lugar diz: o que está escondido.
+
+**A folha da taxonomia** (`core/widgets/folha_taxonomia.dart`) responde a
+pergunta que o app fazia o tempo todo sem responder: *o que é "Patrimonial"?*.
+Abre pelo `?` no cabeçalho do monitoramento — eu tinha posto na tela da cidade
+e o João corrigiu: a pergunta é sobre o sistema inteiro, não sobre a cidade
+aberta. Conteúdo do backend, nunca de lista em Dart.
+
+Sobre a copy dela: minha frase dizia "busca dentro dessas categorias" e isso é
+falso — a varredura pergunta pelos **termos**, e a categoria é onde o Filter2
+guarda o que voltou. Também tinha invertido "sites oficiais e mídias": não
+existe lista de portais oficiais sendo varrida, o oficial aparece quando o
+Google indexa. Ficou: *"São feitas varreduras na imprensa e em canais oficiais
+em busca de notícias sobre esses assuntos. Para incluir ou tirar um assunto da
+lista, fale com o administrador."*
+
+**Tela de Consultas**, em duas rodadas: o `NOVA CONSULTA` subiu para a linha de
+estado do cabeçalho e desceu de novo para o corpo — cabeçalho **nomeia**, corpo
+**age**, e o de Consultas ficou igual ao de Configurações. Saiu o `SEGURE PARA
+SELECIONAR`; **fica registrado que o toque longo perdeu a única porta de
+entrada visível** e apagar consulta virou função que só descobre quem já sabe.
+A ação ganhou um quadrado de 7px porque, sem ele, mono 9.5 é indistinguível dos
+metadados em volta.
+
+O quadrado saiu **verde** (`greenLight`), não no teal de ação: pedido do João
+olhando o aparelho, depois de eu mostrar que amarelo não existe na paleta —
+o único é `#B39026`, que é a categoria Patrimonial, justo a legenda que a folha
+nova ensina. Esse verde agora diz quatro coisas (aba aberta, não lidas, fonte
+oficial, esta ação); nenhuma divide tela com outra, mas o teto está mais perto.
+
+**Faxina do que morreu no caminho:** `navigationBarTheme` (24 linhas para um
+widget que não existe mais), `SIMEopsType.navLabel` promovido de degrau órfão a
+usado de verdade (a barra antiga tinha o estilo inline no tema), e o
+`Masthead.onDireita` que eu criei e apaguei no mesmo dia quando a ação desceu
+para o corpo. Parâmetro sem usuário não fica na peça compartilhada.
+
+---
+
 ## 2026-08-10 — o app não conhecia a palavra `cancelled`, e o verde queria dizer duas coisas
 
 Foto da tela de Consultas vazia. João: *"a hierarquia desse botão com o Nenhuma

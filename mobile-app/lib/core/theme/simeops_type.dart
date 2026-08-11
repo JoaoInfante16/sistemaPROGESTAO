@@ -232,11 +232,22 @@ class SIMEopsType {
       );
 
   /// Item da navegação inferior.
+  ///
+  /// Ativo em **branco**, não em verde: o verde mudou de lugar. Quem marca a
+  /// seção aberta é o filete de 2px em cima da palavra — o mesmo vocabulário
+  /// dos cadernos (`Notícias | Relatório`) e das abas de cidade, onde o texto
+  /// ativo é branco e o filete é `greenLight`. Palavra verde **e** filete
+  /// verde seria o mesmo sinal dado duas vezes, e ainda tiraria do contador de
+  /// não lidas — que é verde ao lado do rótulo — o único verde da barra.
+  ///
+  /// Este degrau existia sem nenhum usuário: a barra antiga era `NavigationBar`
+  /// e o estilo dela morava inline no tema, em 10px. Agora a barra é peça do
+  /// app e usa a escala.
   static TextStyle navLabel({required bool active}) =>
       GoogleFonts.jetBrainsMono(
-        fontSize: 11,
+        fontSize: 10,
         letterSpacing: 1.6,
-        color: active ? SIMEopsColors.greenLight : SIMEopsColors.faint,
+        color: active ? SIMEopsColors.white : SIMEopsColors.faint,
       );
 
   /// Linha sob o logotipo ("MONITORAMENTO DE OCORRÊNCIAS · 24 HORAS").

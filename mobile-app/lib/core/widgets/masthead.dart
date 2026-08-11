@@ -27,9 +27,20 @@ class Masthead extends StatelessWidget {
   /// Canto direito da linha de estado.
   final String? direita;
 
+  // ⚠️ Aqui existiu um `onDireita`, que fazia o [direita] virar botão de
+  // texto. Viveu uma tarde: a ação subiu para a linha de estado do cabeçalho e
+  // desceu de novo para o corpo da tela, porque cabeçalho **nomeia**, corpo
+  // **age** — e o de Consultas ficou igual ao de Configurações, que é o que se
+  // queria. Parâmetro sem nenhum usuário não fica na peça compartilhada.
+
   /// Quando a tela foi empilhada: desenha seta + marca acima do título, igual
   /// ao cabeçalho da cidade.
   final VoidCallback? onVoltar;
+
+  /// Canto direito da linha do **título**, na altura da marca — não da linha
+  /// de estado logo abaixo. É onde cabe uma ação de tela inteira que não é
+  /// sobre o conteúdo listado (hoje: o `?` da taxonomia, no monitoramento).
+  final Widget? acao;
 
   const Masthead({
     super.key,
@@ -37,6 +48,7 @@ class Masthead extends StatelessWidget {
     this.esquerda,
     this.direita,
     this.onVoltar,
+    this.acao,
   });
 
   @override
@@ -79,19 +91,32 @@ class Masthead extends StatelessWidget {
             ),
             const SizedBox(height: 9),
           ],
-          if (titulo == null)
-            Text.rich(
-              TextSpan(children: [
-                const TextSpan(text: 'SIME'),
-                TextSpan(
-                  text: 'OPS',
-                  style: TextStyle(color: SIMEopsColors.greenLight),
-                ),
-              ]),
-              style: SIMEopsType.wordmark(size: 25),
-            )
-          else
-            Text(titulo!, style: SIMEopsType.sheetTitle()),
+          // A linha do título vira `Row` **só** quando há ação — sem ela, o
+          // texto continua sendo filho direto da coluna, como sempre foi.
+          Builder(
+            builder: (_) {
+              final tituloWidget = titulo == null
+                  ? Text.rich(
+                      TextSpan(children: [
+                        const TextSpan(text: 'SIME'),
+                        TextSpan(
+                          text: 'OPS',
+                          style: TextStyle(color: SIMEopsColors.greenLight),
+                        ),
+                      ]),
+                      style: SIMEopsType.wordmark(size: 25),
+                    )
+                  : Text(titulo!, style: SIMEopsType.sheetTitle());
+
+              if (acao == null) return tituloWidget;
+              return Row(
+                children: [
+                  Expanded(child: tituloWidget),
+                  acao!,
+                ],
+              );
+            },
+          ),
           if (temLinha) ...[
             const SizedBox(height: 9),
             Row(

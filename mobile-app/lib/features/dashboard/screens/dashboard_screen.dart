@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/models/city_overview.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/widgets/folha_taxonomia.dart';
 import '../../../core/widgets/grid_background.dart';
 import '../../../core/widgets/live_dot.dart';
 import '../../../core/widgets/masthead.dart';
@@ -174,6 +175,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
       direita:
           '$_municipios '
           '${_municipios == 1 ? 'CIDADE' : 'CIDADES'}',
+      // O `?` mora na casa, na altura da marca: é pergunta sobre o **sistema
+      // inteiro** (o que essas cinco cores querem dizer, o que o robô procura),
+      // não sobre a cidade que está aberta. Ver [FolhaTaxonomia].
+      acao: InkWell(
+        onTap: () => FolhaTaxonomia.abrir(context),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 0, 8),
+          child: Text(
+            '?',
+            style: SIMEopsType.figure(
+              size: 17,
+              color: SIMEopsColors.tealLight,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
