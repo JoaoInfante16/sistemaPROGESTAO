@@ -34,49 +34,108 @@ class WeeklyTrendBars extends StatelessWidget {
     }
 
     final maxVal = data.fold<int>(1, (m, e) => safeInt(e['total']) > m ? safeInt(e['total']) : m);
-    final maxBarHeight = height - 30; // reserva espaço pro label superior + inferior
 
-    return SizedBox(
-      height: height,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: data.map((t) {
-          final total = safeInt(t['total']);
-          final label = (t['label'] as String?) ?? '';
-          final barHeight = maxVal > 0 ? (total / maxVal) * maxBarHeight : 0.0;
-          return Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    '$total',
-                    style: SIMEopsType.slug(
-                      color: total > 0
-                          ? SIMEopsColors.white
-                          : SIMEopsColors.hairline,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  // Semana sem ocorrência fica com um filete de 2px em vez de
-                  // sumir: o vazio é informação — foi uma semana medida, não
-                  // uma semana faltando.
-                  Container(
-                    height: total > 0 ? barHeight.clamp(4.0, maxBarHeight) : 2.0,
-                    color: total > 0 ? SIMEopsColors.teal : SIMEopsColors.rule,
-                  ),
-                  const SizedBox(height: 5),
-                  Text(label,
-                      style: SIMEopsType.slug(color: SIMEopsColors.faint),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
-      ),
+    // 🚨 Era `height - 30`, e a conta não fechava: a coluna empilha número
+    // (~14) + 3 + barra + 5 + rótulo (~14) = 36 de texto e vão. Com 30 de
+    // reserva, a barra mais alta empurrava o rótulo **pra fora da caixa** —
+    // era o `0…` desalinhado embaixo da barra de 35 que o João viu na foto.
+    const alturaDaLinha = 14.0;
+    const vaoDeCima = 3.0;
+    const vaoDeBaixo = 5.0;
+    final maxBarHeight =
+        height - (alturaDaLinha * 2) - vaoDeCima - vaoDeBaixo;
+
+    return LayoutBuilder(
+      builder: (context, restricao) {
+        // Quantos rótulos cabem sem se atropelar.
+        //
+        // `05/07` em mono 9.5 com tracking pede ~35px; treze semanas numa
+        // faixa de 408px dão 27px de coluna. O widget respondia truncando
+        // **todos** os rótulos pra `0…`, o que é pior que não ter rótulo
+        // nenhum: ocupa a linha inteira e não informa uma data sequer.
+        //
+        // Agora ele rotula de N em N, **ancorado na última semana** — que é a
+        // que interessa — e as intermediárias ficam mudas. Eixo de jornal é
+        // assim: marca alguns pontos e deixa o resto respirar.
+        const larguraDoRotulo = 36.0;
+        final larguraDaColuna = restricao.maxWidth / data.length;
+        final passo = (larguraDoRotulo / larguraDaColuna).ceil().clamp(
+          1,
+          data.length,
+        );
+
+        return SizedBox(
+          height: height,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              for (var i = 0; i < data.length; i++)
+                Builder(
+                  builder: (_) {
+                    final total = safeInt(data[i]['total']);
+                    final barHeight = maxVal > 0
+                        ? (total / maxVal) * maxBarHeight
+                        : 0.0;
+                    final rotula = (data.length - 1 - i) % passo == 0;
+
+                    return Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            // Semana zerada não escreve `0`: numa série de
+                            // treze semanas com oito vazias, eram oito zeros
+                            // ocupando a linha de cima pra dizer o que o
+                            // filete embaixo já diz.
+                            SizedBox(
+                              height: alturaDaLinha,
+                              child: total > 0
+                                  ? Text(
+                                      '$total',
+                                      style: SIMEopsType.slug(
+                                        color: SIMEopsColors.white,
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(height: vaoDeCima),
+                            // Semana sem ocorrência fica com um filete de 2px
+                            // em vez de sumir: o vazio é informação — foi uma
+                            // semana medida, não uma semana faltando.
+                            Container(
+                              height: total > 0
+                                  ? barHeight.clamp(4.0, maxBarHeight)
+                                  : 2.0,
+                              color: total > 0
+                                  ? SIMEopsColors.teal
+                                  : SIMEopsColors.rule,
+                            ),
+                            const SizedBox(height: vaoDeBaixo),
+                            SizedBox(
+                              height: alturaDaLinha,
+                              child: rotula
+                                  ? Text(
+                                      (data[i]['label'] as String?) ?? '',
+                                      style: SIMEopsType.slug(
+                                        color: SIMEopsColors.faint,
+                                      ),
+                                      maxLines: 1,
+                                      softWrap: false,
+                                      overflow: TextOverflow.visible,
+                                    )
+                                  : null,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

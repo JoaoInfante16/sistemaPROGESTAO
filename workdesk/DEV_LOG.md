@@ -263,6 +263,51 @@ de $100.
 
 ---
 
+## 2026-08-10 (madrugada) — dois controles de janela na mesma tela, e filtros que não filtravam nada
+
+**O gráfico de volume por semana estourava a caixa.** Dois defeitos somados: o
+rótulo `05/07` pede ~35px em mono 9.5 com tracking e a coluna tinha 27px (treze
+semanas em 408px), então **todos** viravam `0…`; e o orçamento vertical era
+`height - 30` para um empilhamento que consome 36 de texto e vão, o que
+empurrava o rótulo da barra mais alta pra fora. Agora o eixo mede a coluna e
+rotula de N em N, **ancorado na última semana**, e a reserva sai das constantes.
+Os `0` das semanas vazias saíram da linha de cima — oito deles em tinta
+`hairline` (1.8:1, que a paleta proíbe para texto) dizendo o que o filete de 2px
+embaixo já diz.
+
+**O mapa ganhou filtro de precisão, e o filtro é a legenda.** Categoria já
+filtrava pelos chips do topo desde sempre; a legenda `RUA · BAIRRO · CIDADE`
+ficava embaixo explicando as formas sem fazer nada. Virou controle, com o mesmo
+gesto e a mesma resposta visual dos chips (35% quando desligado), e cada marca
+carrega a contagem: lê-se `CIDADE 34` e já se sabe que um terço do mapa é ponto
+de centro de cidade — desligar mostra a distribuição de quem tem endereço.
+Precisão inexistente naqueles dados não vira botão apagado, some.
+
+**Dois controles de janela na tela da cidade, e eles não se falavam.** O
+cabeçalho tinha `21 EM 30D ▾` (menu `_PeriodCount` + enum `StatPeriod`,
+alternando 30 dias / acumulado) e o relatório logo abaixo tem `7D 30D 90D 1A
+TUDO`. Dava pra ficar com o cabeçalho dizendo 21 e o relatório dizendo 60, na
+mesma tela, sobre a mesma cidade, sem nada dizendo qual media o quê. O cabeçalho
+passou a dizer **o acumulado** — fato fixo, não controle — e a janela ficou só
+com o relatório.
+
+**As fatias do relatório ofereciam janelas impossíveis.** A fila era fixa e o
+monitoramento tem ~3 meses: `1A` devolvia exatamente o mesmo que `TUDO`, e `90D`
+quase. E o problema não some com o tempo — passado um ano, `1A` e `TUDO` voltam
+a coincidir por meses. Regra nova: **uma janela só entra se sobrar pelo menos
+uma semana de dados fora dela**; se esconde menos que isso, não é recorte. Se
+sobrar só o `TUDO`, a fila inteira some — um controle de um item finge oferecer
+alternativa.
+
+Para isso o backend passou a mandar `primeiraOcorrencia` no
+`/analytics/cities-overview`: o **mínimo** de `data_ocorrencia`, calculado no
+mesmo laço onde o `lastNewsAt` já calcula o máximo — zero consulta a mais. No
+grupo é a mais antiga entre as cidades-filhas (se uma tem um ano de histórico, o
+relatório do grupo tem o que mostrar num recorte de um ano). Backend antigo
+manda null e a fila volta a mostrar todas as opções.
+
+---
+
 ## 2026-08-10 (noite) — três comentários que descreviam um mundo que não existe mais
 
 Revisão do relatório da consulta, com o João lendo o aparelho. O padrão da noite

@@ -653,6 +653,19 @@ export interface CityOverviewItem {
    * parecer parado; o rotulo honesto e "ultima ocorrencia".
    */
   lastNewsAt: string | null;
+  /**
+   * `data_ocorrencia` da ocorrencia MAIS ANTIGA — ou seja, **ate onde este
+   * monitoramento consegue olhar pra tras**.
+   *
+   * Existe pro app decidir quais janelas do relatorio fazem sentido oferecer.
+   * As fatias eram fixas (`7D 30D 90D 1A TUDO`) e o monitoramento tem tres
+   * meses: `1A` devolvia exatamente o mesmo que `TUDO`, e `90D` quase. Filtro
+   * que nao esconde nada nao e recorte, e botao que nao faz nada.
+   *
+   * Sai do MESMO laco que ja calcula o `lastNewsAt` — e o minimo onde ali se
+   * calcula o maximo. Zero consulta a mais.
+   */
+  primeiraOcorrencia: string | null;
 }
 
 export async function getCitiesOverview(userId?: string): Promise<CityOverviewItem[]> {
@@ -717,6 +730,7 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
     categorias30d: Map<string, number>;
     unread: number;
     lastNewsAt: string | null;
+    primeiraOcorrencia: string | null;
   }>();
 
   // Initialize
@@ -728,6 +742,7 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
       categorias30d: new Map(),
       unread: 0,
       lastNewsAt: null,
+      primeiraOcorrencia: null,
     });
   }
 
@@ -742,6 +757,11 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
       s.lastNewsAt = n.created_at;
     }
     const d = n.data_ocorrencia as string | null;
+    // O minimo, no mesmo laco onde o `lastNewsAt` guarda o maximo. `YYYY-MM-DD`
+    // compara como texto igual compara como data — sem parse por linha.
+    if (d != null && (s.primeiraOcorrencia === null || d < s.primeiraOcorrencia)) {
+      s.primeiraOcorrencia = d;
+    }
     if (d != null && d >= d30ago) {
       s.count30d++;
       const cat = (n.categoria_grupo as string | null) || 'institucional';
@@ -782,6 +802,7 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
       topCrimePercent: s.countTotal > 0 ? parseFloat(((topCrimeCount / s.countTotal) * 100).toFixed(1)) : 0,
       unreadCount: s.unread,
       lastNewsAt: s.lastNewsAt,
+      primeiraOcorrencia: s.primeiraOcorrencia,
     };
   });
 
@@ -821,6 +842,10 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
 
       let totalAll = 0, total30d = 0, unread = 0;
       let lastAt: string | null = null;
+      // No grupo, a janela util e a da cidade monitorada ha MAIS TEMPO: se uma
+      // das quatro tem um ano de historico, o relatorio do grupo tem o que
+      // mostrar num recorte de um ano.
+      let primeiraDoGrupo: string | null = null;
       const crimeAgg = new Map<string, number>();
       const catAgg = new Map<string, number>();
       const naoLidasPorCidade: Record<string, number> = {};
@@ -833,6 +858,10 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
         unread += s.unread;
         if (s.unread > 0) naoLidasPorCidade[cn] = s.unread;
         if (s.lastNewsAt && (!lastAt || s.lastNewsAt > lastAt)) lastAt = s.lastNewsAt;
+        if (s.primeiraOcorrencia &&
+            (!primeiraDoGrupo || s.primeiraOcorrencia < primeiraDoGrupo)) {
+          primeiraDoGrupo = s.primeiraOcorrencia;
+        }
         for (const [type, count] of s.crimeTypes) {
           crimeAgg.set(type, (crimeAgg.get(type) || 0) + count);
         }
@@ -870,6 +899,7 @@ export async function getCitiesOverview(userId?: string): Promise<CityOverviewIt
         unreadCount: unread,
         naoLidasPorCidade,
         lastNewsAt: lastAt,
+        primeiraOcorrencia: primeiraDoGrupo,
       });
     }
   }

@@ -32,6 +32,13 @@ class CityOverview {
 
   final DateTime? lastNewsAt;
 
+  /// Ocorrência mais antiga desta cidade — até onde este monitoramento
+  /// consegue olhar pra trás. Null em backend anterior a 10/08.
+  ///
+  /// Serve pra decidir quais janelas do relatório vale oferecer: com três
+  /// meses de varredura, `1A` devolve exatamente o mesmo que `TUDO`.
+  final DateTime? primeiraOcorrencia;
+
   CityOverview({
     required this.id,
     required this.name,
@@ -49,6 +56,7 @@ class CityOverview {
     required this.unreadCount,
     this.naoLidasPorCidade = const {},
     this.lastNewsAt,
+    this.primeiraOcorrencia,
   });
 
   bool get isGroup => type == 'group';
@@ -99,6 +107,8 @@ class CityOverview {
       // Vem de `news.created_at`, que o Postgres serializa sem fuso — sem o
       // parseApiDate, "há 2 horas" virava "há 5 horas".
       lastNewsAt: parseApiDate(json['lastNewsAt']?.toString()),
+      primeiraOcorrencia:
+          parseApiDate(json['primeiraOcorrencia']?.toString()),
     );
   }
 }

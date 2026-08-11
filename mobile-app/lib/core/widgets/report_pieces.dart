@@ -316,10 +316,16 @@ class JanelaDoRelatorio extends StatelessWidget {
   final int? dias;
   final ValueChanged<int?> onMudar;
 
+  /// Até onde os dados vão. Com ela, a fila esconde as janelas que não têm o
+  /// que recortar; sem ela (backend antigo), mostra todas — comportamento de
+  /// antes.
+  final DateTime? primeiraOcorrencia;
+
   const JanelaDoRelatorio({
     super.key,
     required this.dias,
     required this.onMudar,
+    this.primeiraOcorrencia,
   });
 
   static const _opcoes = <(String, int?)>[
@@ -330,13 +336,39 @@ class JanelaDoRelatorio extends StatelessWidget {
     ('TUDO', null),
   ];
 
+  /// **Uma janela só entra na fila se sobrar dado do lado de fora dela.**
+  ///
+  /// A fila era fixa, e o monitoramento tem três meses: `1A` devolvia
+  /// exatamente o mesmo que `TUDO`, e `90D` quase. Botão que não muda nada
+  /// ensina que os botões dali não mudam nada — e o problema não some com o
+  /// tempo: passado um ano, `1A` e `TUDO` voltam a coincidir por meses.
+  ///
+  /// A margem de 7 dias é o que separa "recorte" de "recorte de mentira": se a
+  /// janela esconde menos de uma semana, ela não está recortando.
+  ///
+  /// `TUDO` fica sempre — é o único que nunca mente sobre o que mostra.
+  List<(String, int?)> get _cabemAqui {
+    final desde = primeiraOcorrencia;
+    if (desde == null) return _opcoes;
+
+    final idade = DateTime.now().difference(desde).inDays;
+    return _opcoes
+        .where((o) => o.$2 == null || idade >= o.$2! + 7)
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final opcoes = _cabemAqui;
+    // Sobrou só o `TUDO`: não existe escolha, e uma fila de um item é um
+    // controle que finge oferecer alternativa.
+    if (opcoes.length < 2) return const SizedBox.shrink();
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 22, 18, 0),
       child: Row(
         children: [
-          for (final (rotulo, valor) in _opcoes)
+          for (final (rotulo, valor) in opcoes)
             Padding(
               padding: const EdgeInsets.only(right: 17),
               child: InkWell(

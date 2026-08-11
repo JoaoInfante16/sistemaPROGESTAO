@@ -63,9 +63,12 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   // For groups: selected sub-city filter
   String? _selectedSubCity;
 
-  /// Janela da contagem no cabeçalho. Só muda o número exibido ali — o feed
-  /// abaixo continua trazendo tudo, e o relatório tem o período dele.
-  StatPeriod _statPeriod = StatPeriod.d30;
+  // ⚠️ Aqui existiu o `_statPeriod`, janela só do número do cabeçalho, com o
+  // menu `_PeriodCount` (`21 EM 30D ▾`) e o enum `StatPeriod`. Eram **dois
+  // controles de janela na mesma tela** que não se falavam — cabeçalho em 30
+  // dias e relatório em 90 mostravam dois números certos sobre a mesma cidade,
+  // sem nada dizendo qual media o quê. O cabeçalho passou a dizer o acumulado,
+  // que é fato fixo, e a janela ficou só com o relatório.
 
   /// Cabeçalho recolhido pela rolagem. Ver [_onScroll].
   bool _collapsed = false;
@@ -396,10 +399,21 @@ class _CityDetailScreenState extends State<CityDetailScreen>
                 '$uf · ',
                 style: SIMEopsType.slug(color: SIMEopsColors.faint),
               ),
-            _PeriodCount(
-              city: c,
-              period: _statPeriod,
-              onPick: (p) => setState(() => _statPeriod = p),
+            // 🚨 Aqui morava o `_PeriodCount` — `21 EM 30D ▾`, um menu que
+            // alternava entre 30 dias e o acumulado.
+            //
+            // Ele era **um segundo controle de janela**, e o relatório logo
+            // abaixo já tem o dele (`7D 30D 90D 1A TUDO`). Os dois não
+            // conversavam: dava pra ficar com o cabeçalho dizendo 21 e o
+            // relatório dizendo 60, na mesma tela, sobre a mesma cidade.
+            //
+            // Agora o cabeçalho diz um **fato fixo** — quanto esta cidade
+            // acumulou desde o início — e quem manda na janela é o relatório,
+            // que é onde a pergunta "em que período?" faz sentido.
+            Text(
+              '${c.totalCrimes} '
+              '${c.totalCrimes == 1 ? 'OCORRÊNCIA' : 'OCORRÊNCIAS'}',
+              style: SIMEopsType.slug(color: SIMEopsColors.faint),
             ),
             if (c.unreadCount > 0)
               Text(
@@ -613,7 +627,11 @@ class _CityDetailScreenState extends State<CityDetailScreen>
               ],
             ),
           ),
-          JanelaDoRelatorio(dias: _relatorioDias, onMudar: _mudarJanela),
+          JanelaDoRelatorio(
+            dias: _relatorioDias,
+            onMudar: _mudarJanela,
+            primeiraOcorrencia: widget.city.primeiraOcorrencia,
+          ),
 
           if (porCategoria.isNotEmpty)
             BlocoRelatorio(
@@ -780,92 +798,6 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   }
 }
 
-/// Janela da contagem do cabeçalho.
-///
-/// Só duas: o mês corrente e o acumulado. 60 e 90 dias existiram por uma
-/// tarde e saíram — com quatro opções o menu virava uma decisão a tomar toda
-/// vez, e ninguém precisa de granulação nesse número. Ele é orientação, não
-/// análise; quem quer recorte fino vai no relatório.
-enum StatPeriod {
-  d30('30 dias', '30D'),
-  all('Desde o início', 'TOTAL');
-
-  const StatPeriod(this.label, this.short);
-  final String label;
-  final String short;
-
-  int countOf(CityOverview c) => switch (this) {
-    StatPeriod.d30 => c.totalCrimes30d,
-    StatPeriod.all => c.totalCrimes,
-  };
-}
-
-/// `107 EM 30D ▾` — toca e alterna entre o mês e o acumulado.
-class _PeriodCount extends StatelessWidget {
-  final CityOverview city;
-  final StatPeriod period;
-  final ValueChanged<StatPeriod> onPick;
-
-  const _PeriodCount({
-    required this.city,
-    required this.period,
-    required this.onPick,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return PopupMenuButton<StatPeriod>(
-      initialValue: period,
-      onSelected: onPick,
-      color: SIMEopsColors.navyLight,
-      elevation: 0,
-      shape: const RoundedRectangleBorder(
-        side: BorderSide(color: SIMEopsColors.ruleStrong),
-      ),
-      position: PopupMenuPosition.under,
-      tooltip: 'Janela da contagem',
-      itemBuilder: (_) => [
-        for (final p in StatPeriod.values)
-          PopupMenuItem(
-            value: p,
-            height: 42,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    p.label,
-                    style: SIMEopsType.placeTab(active: p == period),
-                  ),
-                ),
-                const SizedBox(width: 18),
-                Text(
-                  '${p.countOf(city)}',
-                  style: SIMEopsType.placeTab(
-                    active: false,
-                  ).copyWith(color: SIMEopsColors.faint),
-                ),
-              ],
-            ),
-          ),
-      ],
-      child: Padding(
-        // Padding vertical dá alvo de toque de 44px numa linha de 12px de alto.
-        padding: const EdgeInsets.symmetric(vertical: 15),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '${period.countOf(city)} EM ${period.short}',
-              style: SIMEopsType.slug(color: SIMEopsColors.faint),
-            ),
-            const SizedBox(width: 2),
-            const Icon(Icons.expand_more, size: 13, color: SIMEopsColors.faint),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 /// Cidade do grupo. Era cápsula arredondada teal (`_SubCityChip`) — a peça
 /// mais Material da tela. Vira rótulo em mono com filete embaixo: o mesmo

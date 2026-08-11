@@ -44,8 +44,28 @@ class CrimeRadarMap extends StatefulWidget {
 
 class _CrimeRadarMapState extends State<CrimeRadarMap> {
   final Set<String> _hidden = {}; // categorias desligadas pelo user
+
+  /// Precisões desligadas (`rua` · `bairro` · `cidade`).
+  ///
+  /// **A legenda é o filtro.** Ela já estava ali embaixo explicando as três
+  /// formas do ponto; ligar e desligar por ela é o mesmo gesto dos chips de
+  /// categoria no topo, e não custa um controle novo na tela.
+  ///
+  /// O caso que motivou: num mapa de Salvador, 34 dos 86 pontos são de
+  /// precisão `cidade` — todos empilhados no centro. Desligar `CIDADE` é o que
+  /// deixa ver a distribuição real de quem tem endereço.
+  final Set<String> _precisaoOculta = {};
+
   final _mapController = MapController();
   CrimePoint? _selected;
+
+  List<CrimePoint> get _visiveis => widget.points
+      .where(
+        (p) =>
+            !_hidden.contains(p.categoria) &&
+            !_precisaoOculta.contains(p.precisao),
+      )
+      .toList();
 
   /// Mapa claro. Nasce desligado porque o app inteiro é escuro e um retângulo
   /// branco de 280px no meio do relatório é o objeto mais brilhante da tela —
@@ -75,8 +95,7 @@ class _CrimeRadarMapState extends State<CrimeRadarMap> {
   // O CircleLayer não tem onTap — resolve-se pelo ponto visível mais próximo
   // do toque, com raio de acerto de ~24px convertido pra metros no zoom atual.
   void _handleTap(TapPosition tapPos, LatLng latlng) {
-    final visible =
-        widget.points.where((p) => !_hidden.contains(p.categoria)).toList();
+    final visible = _visiveis;
     if (visible.isEmpty) return;
 
     double zoom;
@@ -103,6 +122,12 @@ class _CrimeRadarMapState extends State<CrimeRadarMap> {
       _selected = (best != null && bestD <= threshold) ? best : null;
     });
   }
+
+  /// Quantos pontos de uma precisão — contados **depois** do filtro de
+  /// categoria, porque é isso que o botão vai esconder ou mostrar de fato.
+  int _quantos(String precisao) => widget.points
+      .where((p) => p.precisao == precisao && !_hidden.contains(p.categoria))
+      .length;
 
   String _fmtData(String iso) {
     final d = DateTime.tryParse(iso);
@@ -197,43 +222,68 @@ class _CrimeRadarMapState extends State<CrimeRadarMap> {
     );
   }
 
-  /// A marca da legenda desenha **a mesma forma** que o mapa desenha. Antes
-  /// eram três círculos cheios de tamanhos diferentes, ou seja: a legenda
+  /// A marca da legenda desenha **a mesma forma** que o mapa desenha — e, como
+  /// os chips de categoria lá em cima, ela **também liga e desliga**.
+  ///
+  /// Antes eram três círculos cheios de tamanhos diferentes: a legenda
   /// explicava um código que o mapa não usava mais do mesmo jeito.
-  Widget _legendMark(String precisao, String label) {
+  Widget _legendMark(String precisao, String label, int quantos) {
     const cor = SIMEopsColors.muted;
     final vazado = precisao == 'cidade';
+    final ligado = !_precisaoOculta.contains(precisao);
+
+    // Precisão que não existe nestes dados não vira botão: apagada e muda.
+    if (quantos == 0) return const SizedBox.shrink();
 
     return Padding(
       padding: const EdgeInsets.only(right: 14),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 11,
-            height: 11,
-            decoration: BoxDecoration(
-              color: cor.withValues(
-                alpha: switch (precisao) {
-                  'rua' => 0.9,
-                  'bairro' => 0.4,
-                  _ => 0.0,
-                },
-              ),
-              border: Border.all(color: cor, width: vazado ? 1.6 : 1),
-              shape: BoxShape.circle,
+      child: InkWell(
+        onTap: () => setState(() {
+          if (ligado) {
+            _precisaoOculta.add(precisao);
+            if (_selected?.precisao == precisao) _selected = null;
+          } else {
+            _precisaoOculta.remove(precisao);
+          }
+        }),
+        child: Opacity(
+          opacity: ligado ? 1 : 0.35,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 11,
+                  height: 11,
+                  decoration: BoxDecoration(
+                    color: cor.withValues(
+                      alpha: switch (precisao) {
+                        'rua' => 0.9,
+                        'bairro' => 0.4,
+                        _ => 0.0,
+                      },
+                    ),
+                    border: Border.all(color: cor, width: vazado ? 1.6 : 1),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  '$label $quantos',
+                  style: SIMEopsType.slug(color: SIMEopsColors.faint),
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 5),
-          Text(label, style: SIMEopsType.slug(color: SIMEopsColors.faint)),
-        ],
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final visible = widget.points.where((p) => !_hidden.contains(p.categoria)).toList();
+    final visible = _visiveis;
 
     if (widget.points.isEmpty) {
       return SizedBox(
@@ -256,7 +306,9 @@ class _CrimeRadarMapState extends State<CrimeRadarMap> {
     final orderedCats = categoryOrder.where(availableCats.contains).toList();
 
     final selectedVisible =
-        _selected != null && !_hidden.contains(_selected!.categoria);
+        _selected != null &&
+        !_hidden.contains(_selected!.categoria) &&
+        !_precisaoOculta.contains(_selected!.precisao);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -443,9 +495,9 @@ class _CrimeRadarMapState extends State<CrimeRadarMap> {
           padding: const EdgeInsets.only(top: 8, left: 2),
           child: Row(
             children: [
-              _legendMark('rua', 'RUA'),
-              _legendMark('bairro', 'BAIRRO'),
-              _legendMark('cidade', 'CIDADE'),
+              _legendMark('rua', 'RUA', _quantos('rua')),
+              _legendMark('bairro', 'BAIRRO', _quantos('bairro')),
+              _legendMark('cidade', 'CIDADE', _quantos('cidade')),
               const Spacer(),
               InkWell(
                 onTap: () => setState(() => _claro = !_claro),
