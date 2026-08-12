@@ -23,9 +23,21 @@ problema já resolvido.
 
 ---
 
-## 🚨 PRIORIDADE 0 — Duas decisões do João, travando tudo
+## 📦 O QUE ESPERA O DEPLOY FINAL — decidido em 11/08
 
-Nenhuma das duas é trabalho de código. As duas são risco parado.
+> **Isto era "PRIORIDADE 0 — risco parado", e deixou de ser.** O João decidiu:
+> *"vamos terminar tudo daí faço o main de uma vez só. Estamos em beta, os
+> clientes já sabem que tá em desenvolvimento."*
+>
+> Ou seja: os fatos abaixo continuam **todos verdadeiros** — o banco segue aberto
+> para a chave anon, e a produção segue gravando notícia sem manchete. O que
+> mudou foi o **peso**: com o beta assumido, o custo de esperar é menor que o de
+> abrir várias janelas de deploy arriscadas. Vira checklist, não alarme.
+>
+> Não reabrir esta discussão a cada entrega. A ordem de execução no dia está no
+> fim da seção do redesign.
+
+Nenhuma das duas é trabalho de código.
 
 ### 1. Migration 025 — o banco está aberto para a chave anon
 
@@ -86,6 +98,106 @@ escolher 10 cidades e o backend novo aceita 1 → **400** na janela entre promov
 a `main` e ele instalar o app novo.
 
 ---
+
+## 🎨 Redesign "fio de agência" — o que falta (11/08)
+
+> Contexto que muda a leitura deste roadmap: **o produto está em beta e os
+> clientes sabem disso** (João, 11/08). A `main` desatualizada é dívida
+> registrada, não incêndio — o plano é acumular tudo e promover **de uma vez
+> só**, no fim desta lista.
+
+### ✅ Fase D — as remoções (FEITA em 11/08)
+
+Favoritos (código nas três pontas + migration 031 escrita), o gesto de arrastar
+e o `flutter_slidable`, o checkbox "manter conectado", senha mínima 6→8, e a
+pista `SEGURE PARA SELECIONAR` de volta ao cabeçalho. Ver DEV_LOG.
+
+Na mesma leva, fora do plano: o `TUDO` do relatório (voltava 400), o balde
+adaptativo do gráfico, as silhuetas de carregamento, as pastas de mês e a ordem
+cronológica dos três baldes da consulta.
+
+### ⬜ Anatomia comum de `CityCard` e `HistoryCard` — PLANEJADA, NÃO FEITA
+
+🚨 **Este plano foi escrito, discutido com o João e nunca executado** — o arquivo
+de plano foi sobrescrito pela Fase D. Registrado aqui para não se perder de novo.
+
+Pedido do João, com as duas listas na mão: *"um eu acho muito simples (busca) e o
+outro eu acho muito grande e não sei se essas contagens são úteis de fato"*, e a
+direção: *"se fizesse um merge dos dois mas pudesse colocar em cada estrutura
+informações úteis para cada propósito"*.
+
+O diagnóstico: a divergência é **estrutural, não de densidade**. O `CityCard`
+(~235px) tem quatro elementos, o `HistoryCard` (~90px) tem três, e nenhum
+compartilha espaçamento ou degrau de tipo com o outro. E o card diz a mesma coisa
+duas vezes — a frase afirma *"Patrimonial responde por 52%, a maior fatia"* e a
+linha de baixo mostra `11 PATRIM. · 6 SEGUR.`: o número maior e a maior fatia são
+o mesmo fato em duas linguagens. É a redundância, não os números, que faz 235px.
+
+Anatomia de quatro posições, cada tela preenchendo com o que serve ao seu
+propósito:
+
+```
+① etiqueta esquerda                    ② etiqueta direita     mono 9.5
+   NOME DO LUGAR                                              Archivo bold
+③ linha de qualificação                                       prosa ou mono
+④ FIGURA(S)                                                   número + rótulo
+```
+
+| | DASHBOARD | CONSULTAS |
+|---|---|---|
+| ① | UF + `N NOVAS` em verde | UF |
+| ② | `21 EM 30D` | a hora (`08:47`) |
+| ③ | prosa — **só se tiver o que dizer** | `30 DIAS · 17 ASSUNTOS` |
+| ④ | quebra por categoria | `56 RESULTADOS` |
+
+Regra de ③: só entra o que **nenhuma figura do card mostra**. Grupo → nomeia as
+cidades (`Grande Florianópolis` não informa nada a quem não é de lá, e o app é
+vendido pra fora da cidade monitorada). Cidade sozinha → fica muda. Cidade
+zerada → a frase de vazio ocupa ③ e ④.
+
+No `HistoryCard`, **falha e andamento ocupam ④**, onde ia o número: hoje esses
+estados brigam com a hora na linha de cima.
+
+Peça compartilhada nova: `core/widgets/entrada_de_lugar.dart` — o que estava
+divergindo eram os espaçamentos e os degraus de tipo, então é isso que a peça
+guarda. `Figura` é o `_Figure` privado de `city_card.dart` promovido.
+
+**Junto:** matar o `EndMark` (*"não precisa escrever fim também né kkk"*) e suas
+**9 chamadas** — `take_card.dart` (a classe), `dashboard_screen`, `feed_screen`,
+`city_detail_screen`, `relatorio_de_risco`, `search_screen`, `settings_screen` e
+duas em `manual_search_screen`.
+
+### ⬜ Fase E2 — export do relatório em HTML A4 autocontido
+
+É onde o `GERADO 11/08 18:21` e a caixa do recorte voltam a fazer sentido:
+arquivo que sai do app precisa dizer quando foi feito e o que estava filtrado.
+
+### ⬜ Fase F — notificações
+
+Migration **032** (a 031 é o DROP dos favoritos), digest por cidade, dois canais
+Android e tri-estado por categoria. É a maior das que restam.
+
+### ⬜ Revisão de copy, tela por tela — POR ÚLTIMO
+
+Deixar para quando nada mais mudar texto. Já decidido e não feito: a frase de
+lista vazia do monitoramento tem que virar **três**, porque hoje uma só cobre
+três situações diferentes —
+
+| situação | o que a tela diz |
+|---|---|
+| monitorada, 30D, nada | `Nada publicado nos últimos 30 dias. A última notícia desta cidade é de 28/07.` |
+| nunca teve notícia | `Nenhuma notícia desde que esta cidade entrou no monitoramento, em 23/04.` |
+| não carregou | `Não foi possível carregar o relatório.` + `TENTAR DE NOVO` |
+
+A terceira depende de separar "respondeu vazio" de "não respondeu" (ver dívida
+técnica).
+
+### ⬜ Fim da linha: promover a `main`
+
+Numa janela só, com tudo acima pronto: merge, conferir `/health`, esperar uma
+varredura e rodar `diagnostico-manchetes.ts` (tem que sair >0% com manchete),
+**migration 025 → depois 031** (essa ordem), e o APK de produção com
+`env/prod.json`.
 
 ## 📱 Fase 9 — O app
 
