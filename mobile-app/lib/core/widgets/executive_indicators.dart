@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/executive_data.dart';
 import '../theme/simeops_colors.dart';
+import 'esqueleto.dart';
 import '../theme/simeops_type.dart';
 
 /// "Indicadores da região" — os números que a imprensa publicou como
@@ -49,15 +50,8 @@ class ExecutiveIndicators extends StatelessWidget {
 
         if (loading && data.isEmpty)
           const Padding(
-            padding: EdgeInsets.symmetric(vertical: 30),
-            child: Center(
-              child: SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2, color: SIMEopsColors.teal),
-              ),
-            ),
+            padding: EdgeInsets.symmetric(vertical: 22),
+            child: EsqueletoDeBloco(linhas: 3),
           )
         else ...[
           for (final ind in data.indicadores) _LinhaIndicador(indicador: ind),
@@ -75,17 +69,20 @@ class ExecutiveIndicators extends StatelessWidget {
               spacing: 14,
               runSpacing: 6,
               children: [
-                Text('FONTES',
-                    style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+                Text(
+                  'FONTES',
+                  style: SIMEopsType.slug(color: SIMEopsColors.faint),
+                ),
                 ...data.fontes.map(
                   (f) => InkWell(
                     onTap: () => launchUrl(
                       Uri.parse('https://$f'),
                       mode: LaunchMode.externalApplication,
                     ),
-                    child: Text(f,
-                        style: SIMEopsType.credit(
-                            color: SIMEopsColors.tealLight)),
+                    child: Text(
+                      f,
+                      style: SIMEopsType.credit(color: SIMEopsColors.tealLight),
+                    ),
                   ),
                 ),
               ],
@@ -130,8 +127,8 @@ class _LinhaIndicador extends StatelessWidget {
         final sinal = indicador.valor > 0
             ? '+'
             : indicador.valor < 0
-                ? '-'
-                : '';
+            ? '-'
+            : '';
         final str = abs == abs.roundToDouble()
             ? abs.toStringAsFixed(0)
             : abs.toStringAsFixed(1).replaceAll('.', ',');
@@ -147,7 +144,9 @@ class _LinhaIndicador extends StatelessWidget {
       default:
         final v = indicador.valor;
         if (v >= 1000) {
-          return v.toStringAsFixed(0).replaceAllMapped(
+          return v
+              .toStringAsFixed(0)
+              .replaceAllMapped(
                 RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
                 (m) => '${m[1]}.',
               );
@@ -170,12 +169,13 @@ class _LinhaIndicador extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(_valorFormatado(),
-                  style: SIMEopsType.figure(size: 21, color: _cor)),
+              Text(
+                _valorFormatado(),
+                style: SIMEopsType.figure(size: 21, color: _cor),
+              ),
               if (_seta != null) ...[
                 const SizedBox(width: 3),
-                Text(_seta!,
-                    style: SIMEopsType.figure(size: 13, color: _cor)),
+                Text(_seta!, style: SIMEopsType.figure(size: 13, color: _cor)),
               ],
               const SizedBox(width: 12),
               Expanded(
@@ -190,8 +190,10 @@ class _LinhaIndicador extends StatelessWidget {
           ),
           if (indicador.contexto.isNotEmpty) ...[
             const SizedBox(height: 5),
-            Text(indicador.contexto,
-                style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+            Text(
+              indicador.contexto,
+              style: SIMEopsType.slug(color: SIMEopsColors.faint),
+            ),
           ],
         ],
       ),

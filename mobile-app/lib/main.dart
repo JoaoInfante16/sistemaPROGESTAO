@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'firebase_options.dart';
 import 'core/config/env.dart';
 import 'core/theme/simeops_colors.dart';
+import 'core/theme/simeops_type.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/api_service.dart';
 import 'core/services/local_db_service.dart';
@@ -26,9 +27,7 @@ final navigatorKey = GlobalKey<NavigatorState>();
 /// Handler de push em background (top-level, fora de qualquer classe)
 @pragma('vm:entry-point')
 Future<void> _firebaseBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   // Notificação já é exibida automaticamente pelo FCM no Android
   // quando app está em background/fechado e o payload tem "notification"
 }
@@ -46,22 +45,16 @@ void main() async {
 
   FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
 
-  await Supabase.initialize(
-    url: Env.supabaseUrl,
-    anonKey: Env.supabaseAnonKey,
-  );
+  await Supabase.initialize(url: Env.supabaseUrl, anonKey: Env.supabaseAnonKey);
 
   // Sentry só inicializa se DSN foi injetada via --dart-define (prod).
   // Staging/dev: DSN vazia → runApp direto, zero overhead, zero quota consumida.
   if (Env.sentryDsn.isNotEmpty) {
-    await SentryFlutter.init(
-      (options) {
-        options.dsn = Env.sentryDsn;
-        options.environment = Env.environment;
-        options.tracesSampleRate = 0.2;
-      },
-      appRunner: () => runApp(const SIMEopsApp()),
-    );
+    await SentryFlutter.init((options) {
+      options.dsn = Env.sentryDsn;
+      options.environment = Env.environment;
+      options.tracesSampleRate = 0.2;
+    }, appRunner: () => runApp(const SIMEopsApp()));
   } else {
     runApp(const SIMEopsApp());
   }
@@ -335,9 +328,27 @@ class _AuthGateState extends State<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
+    // A abertura do app é o único lugar onde **silhueta mentiria**: aqui o app
+    // ainda não sabe se vai abrir o login, o feed ou a troca de senha, então
+    // desenhar a forma de uma delas é chutar. Quem espera é a marca, sozinha —
+    // e ela é a mesma peça do cabeçalho do monitoramento, não uma splash nova.
     if (!_configLoaded) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        backgroundColor: SIMEopsColors.navy,
+        body: Center(
+          child: Text.rich(
+            TextSpan(
+              children: [
+                const TextSpan(text: 'SIME'),
+                TextSpan(
+                  text: 'OPS',
+                  style: TextStyle(color: SIMEopsColors.greenLight),
+                ),
+              ],
+            ),
+            style: SIMEopsType.wordmark(size: 25),
+          ),
+        ),
       );
     }
 
@@ -360,9 +371,7 @@ class _AuthGateState extends State<AuthGate> {
       _checkMustChangePassword();
 
       if (_mustChangePassword) {
-        return ChangePasswordScreen(
-          onComplete: _onPasswordChanged,
-        );
+        return ChangePasswordScreen(onComplete: _onPasswordChanged);
       }
 
       return const MainScreen();

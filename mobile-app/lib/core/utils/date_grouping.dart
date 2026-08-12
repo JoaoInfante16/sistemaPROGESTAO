@@ -2,9 +2,23 @@ import '../models/news_item.dart';
 
 // Agrupa notícias por tempo para as listas do feed e da busca:
 // últimos 7 dias viram grupos por DIA (HOJE, ONTEM, SEXTA...), o resto vira
-// grupos por SEMANA ("21–27 JUL"). Grupos semanais nascem recolhidos —
-// uma busca de 60–180 dias precisa de geografia temporal, não de parede
-// de cards.
+// grupos por SEMANA ("21–27 JUL").
+//
+// **Só HOJE nasce aberto.** Todo o resto — dias e semanas — nasce recolhido.
+//
+// Antes os sete dias vinham abertos, e numa consulta de Salvador isso são
+// dezenas de cards antes de a pessoa ver que existem outras coisas na página:
+// os INDICADORES no fim e o balde REGIÃO METROPOLITANA. Uma tela que abre com
+// parede de cards esconde a própria estrutura — o leitor rola achando que a
+// lista é tudo, e desiste antes do fim.
+//
+// Recolhido, cada dia vira uma linha com o número ao lado, e a página inteira
+// cabe numa tela: dá pra ver a forma da coisa (onde teve volume, o que existe
+// além da lista) e só então abrir o que interessa. É a mesma lógica da
+// `QuietCityRow` no monitoramento — dia quieto colapsa, dia cheio expande.
+//
+// Aberto por quem lê **fica aberto**: o estado de toggle mora na tela e
+// sobrevive à recarga (ver `_toggledGroups` / `_toggledSections`).
 
 /// Mais recente primeiro — **de verdade, inclusive dentro do dia**.
 ///
@@ -52,8 +66,18 @@ const _weekdays = [
 ];
 
 const _months = [
-  'JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN',
-  'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ',
+  'JAN',
+  'FEV',
+  'MAR',
+  'ABR',
+  'MAI',
+  'JUN',
+  'JUL',
+  'AGO',
+  'SET',
+  'OUT',
+  'NOV',
+  'DEZ',
 ];
 
 List<NewsGroup> groupNewsByDate(List<NewsItem> items) {
@@ -83,9 +107,9 @@ List<NewsGroup> groupNewsByDate(List<NewsItem> items) {
       label = diff == 0
           ? 'HOJE'
           : diff == 1
-              ? 'ONTEM'
-              : _weekdays[d.weekday - 1];
-      expanded = true;
+          ? 'ONTEM'
+          : _weekdays[d.weekday - 1];
+      expanded = diff == 0;
     } else {
       final monday = d.subtract(Duration(days: d.weekday - 1));
       final sunday = monday.add(const Duration(days: 6));

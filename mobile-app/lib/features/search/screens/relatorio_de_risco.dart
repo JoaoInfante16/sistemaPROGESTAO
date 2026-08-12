@@ -6,11 +6,12 @@ import '../../../core/models/executive_data.dart';
 import '../../../core/models/news_item.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/widgets/crime_radar_map.dart';
+import '../../../core/widgets/esqueleto.dart';
 import '../../../core/widgets/executive_indicators.dart';
 import '../../../core/widgets/fontes_analisadas.dart';
 import '../../../core/widgets/interruptor.dart';
 import '../../../core/widgets/report_pieces.dart';
-import '../../../core/widgets/weekly_trend_bars.dart';
+import '../../../core/widgets/volume_no_tempo.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 import '../../feed/widgets/news_detail_sheet.dart';
@@ -484,11 +485,7 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
   /// muda. O backend passou a usar a `source_url`; enquanto o staging não
   /// sobe, o casamento por conteúdo é o que funciona.
   Map<String, dynamic>? _itemDoPonto(CrimePoint p) {
-    final pool = [
-      ...widget.results,
-      ...widget.regiao,
-      ...widget.foraDoPeriodo,
-    ];
+    final pool = [...widget.results, ...widget.regiao, ...widget.foraDoPeriodo];
 
     for (final r in pool) {
       final rid = (r['id'] ?? r['url'] ?? r['source_url'])?.toString();
@@ -880,26 +877,19 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
           BlocoRelatorio(
             titulo: 'Distribuição no mapa',
             child: const Padding(
-              padding: EdgeInsets.symmetric(vertical: 40),
-              child: Center(
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: SIMEopsColors.teal,
-                  ),
-                ),
-              ),
+              padding: EdgeInsets.symmetric(vertical: 26),
+              child: EsqueletoDeBloco(linhas: 4),
             ),
           ),
 
         if (_byDate.length > 1)
           BlocoRelatorio(
-            titulo: 'Volume por semana',
+            titulo: 'Volume no tempo',
             child: Padding(
               padding: const EdgeInsets.only(top: 14),
-              child: WeeklyTrendBars(data: aggregateByWeek(_byDate)),
+              child: VolumeNoTempo(
+                data: agruparNoTempo(_byDate, _diasDoRecorte),
+              ),
             ),
           ),
 

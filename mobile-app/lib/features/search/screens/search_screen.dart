@@ -5,6 +5,7 @@ import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 import '../../../core/utils/datas.dart';
 import '../../../core/widgets/dialogo_cancelar_consulta.dart';
+import '../../../core/widgets/esqueleto.dart';
 import '../../../core/widgets/masthead.dart';
 import '../widgets/history_card.dart';
 import 'manual_search_screen.dart';
@@ -283,7 +284,7 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget _acaoNovaConsulta() => InkWell(
     onTap: _navigateToNewSearch,
     child: Padding(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
       child: Row(
         children: [
           Container(width: 7, height: 7, color: SIMEopsColors.greenLight),
@@ -294,28 +295,6 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
         ],
       ),
-    ),
-  );
-
-  /// A **única** pista de que dá pra apagar consulta.
-  ///
-  /// O `SEGURE PARA SELECIONAR` morava no canto direito do masthead e saiu
-  /// quando o cabeçalho foi limpo — e nada ocupou o lugar. O item do histórico
-  /// não tem checkbox, alça nem reticências: apagar virou função secreta, que
-  /// só encontra quem já sabe que existe.
-  ///
-  /// Volta no corpo, não no cabeçalho: o header continua igual ao de Config, e
-  /// a dica fica ao lado da outra ação da tela, que é onde o olho já está.
-  /// Tinta `faint` de propósito — é instrução, não convite, e não pode competir
-  /// com o verde do `NOVA CONSULTA`.
-  ///
-  /// Some no modo de seleção: dica que continua na tela depois de obedecida
-  /// vira ruído.
-  Widget _dicaDeSelecao() => Padding(
-    padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
-    child: Text(
-      'SEGURE UM ITEM PARA SELECIONAR',
-      style: SIMEopsType.slug(color: SIMEopsColors.faint),
     ),
   );
 
@@ -352,7 +331,7 @@ class _SearchScreenState extends State<SearchScreen> {
     return RefreshIndicator(
       onRefresh: _loadHistory,
       child: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const EsqueletoDeConsultas()
           : _error != null
           ? ListView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -383,16 +362,24 @@ class _SearchScreenState extends State<SearchScreen> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.only(bottom: _selectMode ? 96 : 20),
                   children: [
-                    // Cabeçalho limpo, igual ao de Configurações: título e o
-                    // filete branco, nada mais. Saíram de cima da linha o
-                    // `SEGURE PARA SELECIONAR` e, depois, o próprio
-                    // `NOVA CONSULTA` — o cabeçalho nomeia a tela, quem age é
-                    // o corpo dela.
-                    const Masthead(titulo: 'Consultas'),
-                    if (!_selectMode) ...[
-                      _acaoNovaConsulta(),
-                      _dicaDeSelecao(),
-                    ],
+                    // O `NOVA CONSULTA` desceu pro corpo — cabeçalho nomeia a
+                    // tela, quem age é o corpo dela.
+                    //
+                    // Já o `SEGURE PARA SELECIONAR` **voltou** pro canto
+                    // direito do cabeçalho, de onde nunca deveria ter saído.
+                    // Tentei pôr essa dica no corpo, colada no NOVA CONSULTA,
+                    // e o João matou olhando o aparelho: duas linhas de mono
+                    // empilhadas logo abaixo do filete brigam entre si, e a de
+                    // baixo — que é só instrução — rouba a vez da ação. No
+                    // canto direito ela fica onde legenda fica, longe do verde.
+                    //
+                    // Some no modo de seleção: dica que continua na tela
+                    // depois de obedecida vira ruído.
+                    Masthead(
+                      titulo: 'Consultas',
+                      direita: _selectMode ? null : 'SEGURE PARA SELECIONAR',
+                    ),
+                    if (!_selectMode) _acaoNovaConsulta(),
 
                     // Modo de seleção múltipla
                     if (_selectMode)

@@ -263,6 +263,89 @@ de $100.
 
 ---
 
+## 2026-08-11 (Fase D, tarde) — o gráfico não tinha teto, e o giro não dizia nada
+
+Quatro achados do João olhando o aparelho. Os dois primeiros foram conserto; os
+dois últimos eram desenho.
+
+**A dica de selecionar voltou pro cabeçalho.** Eu a tinha posto no corpo, colada
+no `NOVA CONSULTA`, e ele matou olhando a tela: duas linhas de mono empilhadas
+logo abaixo do filete brigam, e a de baixo — que é só instrução — rouba a vez da
+ação verde. No canto direito ela fica onde legenda fica. O slot `direita` do
+`Masthead` nunca tinha saído da peça; era só usar.
+
+**O `0S` fantasma** era um cronômetro parado no zero: entre disparar a busca e o
+backend devolver o `searchId`, `_searchStartTime` ainda é nulo e o campo exibia o
+valor inicial `'0s'`. Cronômetro em zero enquanto a tela carrega parece app
+travado. Sem hora de início, não se carimba nada.
+
+**Só HOJE nasce aberto**, no feed e na consulta (`date_grouping.dart`). Antes os
+sete dias vinham abertos: numa consulta de Salvador isso é uma parede de cards
+antes de a pessoa descobrir que existem INDICADORES no fim e um balde REGIÃO
+METROPOLITANA. Recolhido, a página inteira cabe numa tela e dá pra ver a forma da
+coisa. O que o leitor abre continua aberto.
+
+---
+
+### O gráfico de volume: o defeito não era o rótulo
+
+**O número de barras não tinha teto.** 7 dias davam 2 barras, o `TUDO` deu 16
+(foto), um ano daria 52. Ajuste de rótulo só adia o ponto onde quebra.
+
+Dois achados no caminho:
+
+1. **O backend já agrupava por dia, semana e mês** desde sempre — `getCrimeTrend`
+   aceita os três — e o app mandava `'week'` **fixo**. A alavanca existia e nunca
+   tinha sido puxada.
+2. **O rótulo era `Sem 18`**, o número da semana ISO. Ninguém sabe que dia é a
+   semana 18. E era só no monitoramento: a busca manual desenha o **mesmo
+   widget** com `05/07`, porque agrupa no cliente. Dois vocabulários para o mesmo
+   gráfico, dependendo de que tela abriu.
+
+Agora o balde segue a janela (`baldeDaJanela`): ≤14 dias por dia, ≤90 por semana,
+acima disso por mês. Barras entre 4 e ~13 **em qualquer período**:
+
+| janela | balde | barras |
+|---|---|---|
+| 7D | dia | 7 |
+| 30D | semana | 5 |
+| 90D | semana | 13 |
+| TUDO (110d) | mês | 4 |
+| 1 ano | mês | 12 |
+
+No cliente o balde sai do **maior** entre a janela pedida e o span real dos
+dados. Não é preciosismo: com a tolerância de período ligada, uma consulta de 30
+dias mostra itens de até 180 dias atrás, e olhar só a janela pedida daria 26
+barras semanais numa tela que pediu 5 — o mesmo defeito entrando por outra porta.
+
+`WeeklyTrendBars` virou `VolumeNoTempo`. O nome era o defeito: semana como balde
+fixo é exatamente o que quebrava.
+
+---
+
+### Os carregamentos: 14 giros, três respostas diferentes
+
+O `CircularProgressIndicator` era o widget mais Material que sobrou, e não informa
+nada — nem o que vem, nem quanto, nem se vale esperar. Mas os 14 não eram a mesma
+coisa, e tratar todos igual seria o erro:
+
+- **8 viraram silhueta** (feed, consultas, monitoramento, relatório da cidade,
+  resultado e formulário da consulta, indicadores, taxonomia). A silhueta tem a
+  forma da lista que vem depois, então informa e elimina o salto de layout.
+- **1 virou a marca** — a abertura do app (`main.dart`). Aqui silhueta
+  **mentiria**: o app ainda não sabe se vai abrir o login, o feed ou a troca de
+  senha. Quem espera é o `SIMEOPS`, sozinho, na mesma peça do cabeçalho.
+- **5 continuam giro**: dentro do botão de entrar, do de salvar senha, e no
+  rodapé de "carregando mais". Botão trabalhando não tem silhueta.
+
+**Sem gradiente varrendo**, decisão do João depois de eu levantar a ressalva: o
+shimmer de loja seria a única animação decorativa do app. O pulso é só o opacity
+entre 0.35 e 0.75 em 1,1s, tudo em `hairline` (1.8:1) — a tinta que a paleta
+proíbe para texto, e que por isso mesmo é a certa para uma forma que não deve ser
+lida.
+
+---
+
 ## 2026-08-11 (Fase D) — a caixa que prometia o que já acontecia, e a função secreta
 
 **Saiu o `MANTER CONECTADO NESTE APARELHO`.** O pedido do João nasceu de uma

@@ -13,6 +13,7 @@ import '../../../core/utils/date_grouping.dart';
 import '../../../core/utils/state_utils.dart';
 import '../../../core/widgets/cat_chip.dart';
 import '../../../core/widgets/dialogo_cancelar_consulta.dart';
+import '../../../core/widgets/esqueleto.dart';
 import '../../../core/widgets/group_header.dart';
 import '../../../core/widgets/grid_background.dart';
 import '../../../core/widgets/masthead.dart';
@@ -497,9 +498,17 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
               // mono 9.5 três linhas acima de um `86` gigante é o mesmo fato
               // dito duas vezes, e a versão pequena é a que ninguém lê.
               // Enquanto roda o cronômetro fica: aí não há número embaixo.
+              //
+              // 🚨 `_searchStartTime == null` é o que mata o **`0S` fantasma**
+              // que o João viu na foto: entre disparar a busca e o backend
+              // devolver o `searchId` (o estado `loading`), o cronômetro ainda
+              // não começou, e o campo exibia o valor inicial `0s` — um
+              // cronômetro parado no zero enquanto a tela carrega parece app
+              // travado. Sem hora de início não há tempo decorrido; então não
+              // se carimba nada.
               direita: isFormView
                   ? 'UMA CIDADE · REGIÃO INCLUSA'
-                  : concluida
+                  : concluida || _searchStartTime == null
                   ? null
                   : _elapsedText.toUpperCase(),
             ),
@@ -507,7 +516,10 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
               child: _searchStatus == 'idle'
                   ? GridBackground(child: _buildForm())
                   : _searchStatus == 'loading'
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const Padding(
+                      padding: EdgeInsets.fromLTRB(18, 26, 18, 0),
+                      child: EsqueletoDeBloco(linhas: 5, altura: 14),
+                    )
                   : _buildResults(),
             ),
           ],
@@ -539,7 +551,10 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   /// escolher, que é justamente o que a tela existe pra mostrar.
   Widget _buildForm() {
     if (_loadingLocations) {
-      return const Center(child: CircularProgressIndicator());
+      return const Padding(
+        padding: EdgeInsets.fromLTRB(18, 26, 18, 0),
+        child: EsqueletoDeBloco(linhas: 6, altura: 14),
+      );
     }
 
     final canSearch = _selectedEstado != null && _selectedCidades.isNotEmpty;
@@ -1233,12 +1248,14 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
           : 'Você cancelou esta consulta na etapa $onde. O que já tinha '
                 'sido coletado foi descartado.';
     } else if (onde == null) {
-      texto = 'A consulta não chegou a começar. Costuma ser conexão — '
+      texto =
+          'A consulta não chegou a começar. Costuma ser conexão — '
           'refazer agora normalmente resolve.';
     } else {
       // Sem aspas em volta do `$onde`: a etapa já vem em caixa alta e mono, e
       // aspas em cima disso é o mesmo grifo duas vezes.
-      texto = 'A consulta parou na etapa $onde. O que já tinha sido '
+      texto =
+          'A consulta parou na etapa $onde. O que já tinha sido '
           'coletado não fica salvo: refazer começa do zero.';
     }
 

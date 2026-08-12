@@ -8,6 +8,7 @@ import '../../../core/widgets/live_dot.dart';
 import '../../../core/widgets/masthead.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
+import '../../../core/widgets/esqueleto.dart';
 import '../widgets/city_card.dart';
 import 'city_detail_screen.dart';
 
@@ -65,7 +66,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onRefresh: _loadCities,
         color: SIMEopsColors.teal,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const EsqueletoDeCidades()
             : _error != null
             ? _buildError()
             : _cities.isEmpty
@@ -184,10 +185,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           padding: const EdgeInsets.fromLTRB(12, 4, 0, 8),
           child: Text(
             '?',
-            style: SIMEopsType.figure(
-              size: 17,
-              color: SIMEopsColors.tealLight,
-            ),
+            style: SIMEopsType.figure(size: 17, color: SIMEopsColors.tealLight),
           ),
         ),
       ),

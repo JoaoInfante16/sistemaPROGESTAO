@@ -7,11 +7,12 @@ import '../../../core/services/api_service.dart';
 import '../../../core/utils/state_utils.dart';
 import '../../../core/utils/type_helpers.dart';
 import '../../../core/widgets/crime_radar_map.dart';
+import '../../../core/widgets/esqueleto.dart';
 import '../../../core/widgets/executive_indicators.dart';
 import '../../../core/widgets/fontes_analisadas.dart';
 import '../../../core/widgets/live_dot.dart';
 import '../../../core/widgets/report_pieces.dart';
-import '../../../core/widgets/weekly_trend_bars.dart';
+import '../../../core/widgets/volume_no_tempo.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 import '../../feed/feed_filtro.dart';
@@ -213,8 +214,17 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     try {
       final api = context.read<ApiService>();
       final now = DateTime.now();
+      // O balde segue a janela do relatório: `7D` desenha dias, `30D` e `90D`
+      // desenham semanas, `TUDO` desenha meses. Sem isto o gráfico recebia
+      // sempre `week` e crescia sem teto — 16 barras no TUDO, 52 num ano.
+      // O backend aceita os três desde sempre; ninguém tinha pedido.
       final trendData = await api
-          .getCrimeTrend(_cidadesDoRelatorio, _relatorioDe, _dateStr(now))
+          .getCrimeTrend(
+            _cidadesDoRelatorio,
+            _relatorioDe,
+            _dateStr(now),
+            groupBy: baldeDaJanela(_relatorioRangeDays),
+          )
           .catchError((_) => <String, dynamic>{});
       if (mounted) {
         setState(() {
@@ -599,7 +609,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   /// calculados no aparelho a partir do resultado da consulta.
   Widget _buildOverviewTab() {
     if (_loadingOverview) {
-      return const Center(child: CircularProgressIndicator());
+      return const EsqueletoDeRelatorio();
     }
 
     final types = (_summary?['byCrimeType'] as List<dynamic>?) ?? [];
@@ -700,17 +710,8 @@ class _CityDetailScreenState extends State<CityDetailScreen>
             const BlocoRelatorio(
               titulo: 'Distribuição no mapa',
               child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 40),
-                child: Center(
-                  child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: SIMEopsColors.teal,
-                    ),
-                  ),
-                ),
+                padding: EdgeInsets.symmetric(vertical: 26),
+                child: EsqueletoDeBloco(linhas: 4),
               ),
             ),
 
@@ -811,7 +812,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   Widget _buildTendencia() {
     return Padding(
       padding: const EdgeInsets.only(top: 16),
-      child: WeeklyTrendBars(
+      child: VolumeNoTempo(
         data: (_trend ?? const [])
             .map((e) => e as Map<String, dynamic>)
             .toList(),

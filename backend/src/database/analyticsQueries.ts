@@ -276,6 +276,11 @@ export async function getCrimeTrend(
   return { dataPoints };
 }
 
+const MESES_CURTOS = [
+  'JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN',
+  'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ',
+];
+
 function getPeriodKey(date: Date, groupBy: 'day' | 'week' | 'month'): { key: string; label: string } {
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -285,19 +290,33 @@ function getPeriodKey(date: Date, groupBy: 'day' | 'week' | 'month'): { key: str
     case 'day':
       return { key: `${yyyy}-${mm}-${dd}`, label: `${dd}/${mm}` };
     case 'week': {
-      // ISO week calculation
+      // ISO week calculation — continua sendo a CHAVE de agrupamento, porque
+      // ela e estavel na virada de ano. O que mudou foi o ROTULO.
       const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
       const dayNum = d.getUTCDay() || 7;
       d.setUTCDate(d.getUTCDate() + 4 - dayNum);
       const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
       const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+
+      // 🚨 O rotulo era `Sem ${weekNo}` — o numero da semana ISO. **Ninguem
+      // sabe que dia e a semana 18.** Pior: era so no monitoramento; a busca
+      // manual desenha o MESMO widget com `05/07`, porque agrupa no cliente.
+      // Dois vocabularios pro mesmo grafico, dependendo de que tela abriu.
+      // Agora os dois dizem a data da segunda-feira da semana.
+      const segunda = new Date(date);
+      segunda.setDate(segunda.getDate() - ((segunda.getDay() || 7) - 1));
+      const sdd = String(segunda.getDate()).padStart(2, '0');
+      const smm = String(segunda.getMonth() + 1).padStart(2, '0');
       return {
         key: `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`,
-        label: `Sem ${weekNo}`,
+        label: `${sdd}/${smm}`,
       };
     }
     case 'month':
-      return { key: `${yyyy}-${mm}`, label: `${mm}/${yyyy}` };
+      // `08/2026` pede 7 caracteres numa coluna de ~33px; `AGO` cabe e le
+      // melhor. O ano fica de fora de proposito: o maior periodo que o app
+      // pede hoje sao ~4 meses (o `TUDO` da cidade mais antiga).
+      return { key: `${yyyy}-${mm}`, label: MESES_CURTOS[date.getMonth()] };
   }
 }
 

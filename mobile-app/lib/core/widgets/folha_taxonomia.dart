@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/assunto.dart';
 import '../services/api_service.dart';
 import '../theme/simeops_colors.dart';
+import 'esqueleto.dart';
 import '../theme/simeops_type.dart';
 import 'cat_chip.dart';
 
@@ -85,8 +86,10 @@ class _FolhaTaxonomiaState extends State<FolhaTaxonomia> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('O que cada categoria reúne',
-                      style: SIMEopsType.sheetTitle()),
+                  Text(
+                    'O que cada categoria reúne',
+                    style: SIMEopsType.sheetTitle(),
+                  ),
                   if (tax != null) ...[
                     const SizedBox(height: 9),
                     Text(
@@ -109,7 +112,10 @@ class _FolhaTaxonomiaState extends State<FolhaTaxonomia> {
                               'agora. Verifique a conexão e abra de novo.',
                               style: SIMEopsType.note(),
                             )
-                          : const Center(child: CircularProgressIndicator()),
+                          : const Padding(
+                              padding: EdgeInsets.only(top: 8),
+                              child: EsqueletoDeBloco(linhas: 6, altura: 14),
+                            ),
                     ),
             ),
           ],

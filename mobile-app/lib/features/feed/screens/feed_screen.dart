@@ -6,6 +6,7 @@ import '../../../core/services/local_db_service.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 import '../../../core/utils/date_grouping.dart';
+import '../../../core/widgets/esqueleto.dart';
 import '../../../core/widgets/group_header.dart';
 import '../feed_filtro.dart';
 import '../widgets/take_card.dart';
@@ -220,7 +221,7 @@ class _FeedScreenState extends State<FeedScreen> {
   @override
   Widget build(BuildContext context) {
     if (_initialLoad) {
-      return const Center(child: CircularProgressIndicator());
+      return const EsqueletoDoFio();
     }
 
     // Vazio NÃO é erro: cidade pequena passa dias sem ocorrência publicada, e
