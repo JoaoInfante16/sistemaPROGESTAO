@@ -830,6 +830,41 @@ export async function removeUserDevices(userId: string): Promise<void> {
   }
 }
 
+export interface NotificationPrefs {
+  cidades: string[] | null;
+  categorias: string[] | null;
+  estatisticas: boolean;
+}
+
+/**
+ * Devolve `null` quando o usuario nunca escolheu — e quem chama traduz isso
+ * para "recebe tudo". Ver `querReceber` em `pushService.ts` e a migration 032.
+ */
+export async function getNotificationPrefs(userId: string): Promise<NotificationPrefs | null> {
+  const { data, error } = await supabase
+    .from('user_notification_prefs')
+    .select('cidades, categorias, estatisticas')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) throw new Error(`Failed to fetch notification prefs: ${error.message}`);
+  return (data as NotificationPrefs | null) ?? null;
+}
+
+export async function upsertNotificationPrefs(
+  userId: string,
+  prefs: NotificationPrefs,
+): Promise<void> {
+  const { error } = await supabase
+    .from('user_notification_prefs')
+    .upsert(
+      { user_id: userId, ...prefs, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' },
+    );
+
+  if (error) throw new Error(`Failed to save notification prefs: ${error.message}`);
+}
+
 // Namespace export para usar como db.getLocation(), db.insertNews(), etc.
 // ============================================
 // User Feed (com status de lida)
@@ -1364,6 +1399,8 @@ export const db = {
   deleteGroup,
   getGroupMembers,
   removeUserDevices,
+  getNotificationPrefs,
+  upsertNotificationPrefs,
 };
 
 // ============================================

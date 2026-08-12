@@ -358,6 +358,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
         const pushResult = await sendPushNotification({
           id: newsId, tipo_crime: news.tipo_crime,
           cidade: news.cidade, bairro: news.bairro || null, resumo: news.resumo,
+          categoria_grupo: news.categoria_grupo, natureza: news.natureza,
         });
         if (pushResult.sent) {
           logger.info(`${LOG_PREFIX} Push sent for ${newsId}: ${pushResult.successCount}/${pushResult.deviceCount} devices`);

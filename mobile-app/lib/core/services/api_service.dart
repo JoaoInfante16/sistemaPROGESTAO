@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import '../config/env.dart';
 import '../models/assunto.dart';
 import '../models/manual_search_results.dart';
+import '../models/preferencias_de_alerta.dart';
 import '../models/news_item.dart';
 import '../utils/type_helpers.dart';
 
@@ -468,6 +469,27 @@ class ApiService {
   Future<void> unregisterDevice() async {
     final res = await _client
         .delete(Uri.parse('$_baseUrl/devices'), headers: _headers)
+        .timeout(_timeout);
+    _checkResponse(res);
+  }
+
+  Future<PreferenciasDeAlerta> getPreferenciasDeAlerta() async {
+    final res = await _client
+        .get(Uri.parse('$_baseUrl/notifications/prefs'), headers: _headers)
+        .timeout(_timeout);
+    _checkResponse(res);
+    return PreferenciasDeAlerta.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<void> salvarPreferenciasDeAlerta(PreferenciasDeAlerta prefs) async {
+    final res = await _client
+        .put(
+          Uri.parse('$_baseUrl/notifications/prefs'),
+          headers: _headers,
+          body: jsonEncode(prefs.toJson()),
+        )
         .timeout(_timeout);
     _checkResponse(res);
   }

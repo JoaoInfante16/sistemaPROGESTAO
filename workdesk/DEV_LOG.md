@@ -263,6 +263,67 @@ de $100.
 
 ---
 
+## 2026-08-11 (madrugada) — Fase F: o push ia para todo mundo, sempre
+
+**Medi antes de construir, e o número contrariou o plano.** A Fase F prometia
+digest por cidade desde o começo. Últimos 21 dias:
+
+```
+30 noticias em 15 dias com movimento
+  media 2,0/dia · mediana 1 · pico 5
+  0 inseridas entre 00h e 07h
+  seguranca 53% · operacional 23% · patrimonial 20% · fraude 3%
+  aparelhos registrados: 4
+```
+
+**Não existe problema de volume.** Digest resolve enxurrada; juntar 2 pushes num
+resumo os deixa **mais tarde** sem deixá-los **menos**. Nesse volume é perda
+pura. O digest saiu do escopo com o gatilho registrado: **acima de ~10/dia ele
+volta à mesa com número.**
+
+O problema real é **relevância**, e o levantamento achou três buracos:
+
+1. **Todo aparelho recebe tudo.** `pushService.ts` selecionava `user_devices`
+   por `last_seen` e mandava. Sem filtro de cidade, de assunto nem de usuário —
+   o cliente de Florianópolis recebia Porto Alegre.
+2. **Estatística chega como alerta.** `natureza = 'estatistica'` disparava push
+   igual a ocorrência: *"homicídios caíram 12%"* com a urgência de um homicídio.
+3. **Não havia como calar o que não interessa** sem desligar tudo — a única
+   chave era o `push_enabled` global do painel, que vale para todo mundo.
+
+**A regra que atravessa banco, backend e app: `null` quer dizer TODAS.** Quem
+nunca abriu a tela não tem linha em `user_notification_prefs` e continua
+recebendo tudo, exatamente como antes. Lista vazia é outra coisa — é quem
+desmarcou de propósito. **Migration não pode calar ninguém em silêncio**, e
+ninguém reclama de alerta que não chega: acha que o produto parou.
+
+A armadilha desse modelo mora numa função de sete linhas (`_alternar`, na tela):
+desmarcar o **primeiro** item precisa materializar a lista inteira antes de tirar
+um, senão `null` menos um item continua `null` e o toque não faz nada.
+
+**Dois canais Android**, decisão do João: *"o user que vai configurar as
+notificações no próprio android, se tiver volume alto toca, se tiver vibração
+vibra"*. Isso **reforça** os canais em vez de dispensá-los — com um canal só, o
+Android oferece um interruptor para tudo, e silenciar o balanço estatístico
+silenciava o homicídio junto. O app decide **o que** é urgente; o Android decide
+**como** avisa.
+
+O que é urgente reusa `categoria_grupo === 'seguranca'` — o mesmo critério que
+engorda a manchete no fio (`TakeCard.isUrgent`). Inventar um segundo conceito de
+urgência criaria duas verdades sobre a mesma notícia.
+
+E **tri-estado morreu antes de nascer**: era ligado/silencioso/desligado, e virou
+ligado/desligado. Escolher som dentro do app duplicaria a tela de notificações do
+Android — dois lugares para a mesma configuração é como os dois passam a
+discordar.
+
+Anotado, não consertado: **ninguém escuta o `NOTIFY 'new_news'`.** O trigger
+dispara a cada insert e o payload não vai a lugar nenhum — o push é chamado
+direto do `scanPipeline`. O `schema.sql` descreve isso como *"LISTEN/NOTIFY —
+Event-Driven Push (FASE 2.5)"*, uma arquitetura que não existe.
+
+---
+
 ## 2026-08-11 (noite) — as duas listas de lugar passam a ter a mesma anatomia
 
 Plano escrito há semanas, aprovado, sobrescrito pela Fase D e recuperado do

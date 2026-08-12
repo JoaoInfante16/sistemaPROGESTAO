@@ -80,6 +80,69 @@ interface PushNewsData {
   cidade: string;
   bairro: string | null;
   resumo: string;
+  /** Assunto (`seguranca`, `patrimonial`...). Sem ele nao ha como filtrar. */
+  categoria_grupo?: string | null;
+  /** `estatistica` e numero/balanco, nao ocorrencia. Muda canal e permissao. */
+  natureza?: string | null;
+}
+
+/**
+ * Os dois canais Android.
+ *
+ * Existem para dar a alavanca ao proprio Android: com UM canal, o usuario tem
+ * um interruptor para tudo; com dois, ele deixa URGENTE com som e ROTINA mudo
+ * nas configuracoes do sistema. Decisao do Joao (11/08): o app decide **o que
+ * e urgente**, o Android decide **como avisa**.
+ *
+ * ⚠️ Estes ids tem que bater com os canais criados no Flutter
+ * (`push_service.dart`). Canal que o app nao criou faz o Android cair no
+ * default e ignorar a separacao inteira, **sem erro nenhum**.
+ */
+const CANAL_URGENTE = 'simeops_urgente';
+const CANAL_ROTINA = 'simeops_rotina';
+
+/**
+ * O que sobe pelo canal urgente: **ocorrencia de Seguranca**.
+ *
+ * Mesmo criterio que o app ja usa para engrossar a manchete no fio
+ * (`TakeCard.isUrgent`), menos a janela de 6h — aqui a noticia acabou de ser
+ * inserida, entao ela e sempre recente. Reusar o criterio e o ponto: um segundo
+ * conceito de urgencia criaria duas verdades sobre a mesma noticia.
+ */
+function canalDaNoticia(news: PushNewsData): string {
+  if (news.natureza === 'estatistica') return CANAL_ROTINA;
+  return news.categoria_grupo === 'seguranca' ? CANAL_URGENTE : CANAL_ROTINA;
+}
+
+interface PrefsDoUsuario {
+  user_id: string;
+  cidades: string[] | null;
+  categorias: string[] | null;
+  estatisticas: boolean;
+}
+
+/**
+ * Este usuario quer esta noticia?
+ *
+ * 🚨 **`null` quer dizer "todas", e nao "nenhuma".** Usuario sem linha em
+ * `user_notification_prefs` — que sao todos, ate abrirem a tela — recebe tudo,
+ * exatamente como antes desta feature existir. Inverter isso calaria todo mundo
+ * na hora do deploy, e ninguem reclama de push que nao chega: acha que o
+ * produto parou.
+ */
+function querReceber(prefs: PrefsDoUsuario | undefined, news: PushNewsData): boolean {
+  if (!prefs) return true;
+
+  if (news.natureza === 'estatistica' && !prefs.estatisticas) return false;
+
+  if (prefs.cidades !== null && !prefs.cidades.includes(news.cidade)) return false;
+
+  if (prefs.categorias !== null) {
+    const cat = news.categoria_grupo || 'institucional';
+    if (!prefs.categorias.includes(cat)) return false;
+  }
+
+  return true;
 }
 
 export interface PushResult {
@@ -113,7 +176,7 @@ export async function sendPushNotification(
   // Buscar device tokens ativos (últimos 30 dias)
   const { data: devices, error } = await supabase
     .from('user_devices')
-    .select('device_token')
+    .select('device_token, user_id')
     .gte('last_seen', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
 
   if (error) {
@@ -127,6 +190,41 @@ export async function sendPushNotification(
     return { sent: false, reason: 'Nenhum dispositivo registrado. Abra o app no celular e faca login para registrar.', deviceCount: 0, successCount: 0 };
   }
 
+  // 🚨 Aqui o push ia direto pra TODOS os aparelhos. Sem filtro de cidade,
+  // de assunto nem de usuario — o cliente de Florianopolis recebia Porto
+  // Alegre, e um balanco estatistico chegava com a urgencia de um homicidio.
+  //
+  // Falha no lado seguro: se a consulta de preferencias der erro, `prefs` fica
+  // vazio e `querReceber` devolve `true` para todo mundo. Erro de banco nao
+  // pode virar silencio — e melhor um push a mais que um alerta que sumiu.
+  const userIds = [...new Set(devices.map((d) => d.user_id as string).filter(Boolean))];
+  const prefsPorUsuario = new Map<string, PrefsDoUsuario>();
+  if (userIds.length > 0) {
+    const { data: prefs, error: prefsErr } = await supabase
+      .from('user_notification_prefs')
+      .select('user_id, cidades, categorias, estatisticas')
+      .in('user_id', userIds);
+    if (prefsErr) {
+      logger.error(`[Push] Failed to fetch prefs, sending to everyone: ${prefsErr.message}`);
+    } else {
+      for (const p of prefs || []) prefsPorUsuario.set(p.user_id as string, p as PrefsDoUsuario);
+    }
+  }
+
+  const alvos = devices.filter((d) =>
+    querReceber(prefsPorUsuario.get(d.user_id as string), newsData),
+  );
+
+  if (alvos.length === 0) {
+    return {
+      sent: false,
+      reason: 'Nenhum aparelho pediu para receber esta cidade/assunto.',
+      deviceCount: 0,
+      successCount: 0,
+    };
+  }
+  logger.debug(`[Push] ${alvos.length}/${devices.length} aparelhos querem esta noticia`);
+
   const tipoLabel = formatTipoCrime(newsData.tipo_crime);
   const localLabel = newsData.bairro
     ? `${newsData.bairro}, ${newsData.cidade}`
@@ -136,12 +234,18 @@ export async function sendPushNotification(
     ? newsData.resumo.substring(0, 117) + '...'
     : newsData.resumo;
 
-  const tokens = devices.map((d) => d.device_token as string);
-  return sendToTokens(tokens, title, body, {
-    news_id: newsData.id,
-    cidade: newsData.cidade,
-    tipo_crime: newsData.tipo_crime,
-  });
+  const tokens = alvos.map((d) => d.device_token as string);
+  return sendToTokens(
+    tokens,
+    title,
+    body,
+    {
+      news_id: newsData.id,
+      cidade: newsData.cidade,
+      tipo_crime: newsData.tipo_crime,
+    },
+    canalDaNoticia(newsData),
+  );
 }
 
 /**
@@ -185,7 +289,9 @@ async function sendToTokens(
   tokens: string[],
   title: string,
   body: string,
-  data?: Record<string, string>
+  data?: Record<string, string>,
+  /** Canal Android. Sem ele o sistema usa o default e os dois canais viram um. */
+  canal: string = CANAL_ROTINA,
 ): Promise<PushResult> {
   const batches = chunkArray(tokens, 500); // Firebase: max 500 por batch
 
@@ -196,6 +302,7 @@ async function sendToTokens(
         tokens: batch,
         notification: { title, body },
         data: data || {},
+        android: { notification: { channelId: canal } },
       });
 
       totalSuccess += response.successCount;

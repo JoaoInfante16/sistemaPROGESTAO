@@ -57,4 +57,54 @@ router.delete(
   }
 );
 
+/**
+ * As preferencias de notificacao.
+ *
+ * `cidades` e `categorias` **nulos querem dizer TODAS**, nao nenhuma. Um
+ * usuario que nunca abriu a tela nao tem linha na tabela, e a rota devolve os
+ * tres nulos — o app le isso como "tudo marcado", que e o que ele recebe hoje.
+ * Array vazio e outra coisa: e o usuario que desmarcou tudo de proposito.
+ */
+const prefsSchema = z.object({
+  cidades: z.array(z.string().min(1).max(100)).max(500).nullable(),
+  categorias: z
+    .array(z.enum(['seguranca', 'patrimonial', 'operacional', 'fraude', 'institucional']))
+    .nullable(),
+  estatisticas: z.boolean(),
+});
+
+router.get(
+  '/notifications/prefs',
+  requireAuth,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const prefs = await db.getNotificationPrefs(req.user?.id ?? '');
+      res.json(prefs ?? { cidades: null, categorias: null, estatisticas: true });
+    } catch (error) {
+      logger.error('[Devices] Get prefs error:', error);
+      res.status(500).json({ error: 'Failed to fetch notification prefs' });
+    }
+  }
+);
+
+router.put(
+  '/notifications/prefs',
+  requireAuth,
+  validateBody(prefsSchema),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { cidades, categorias, estatisticas } = req.body as {
+        cidades: string[] | null;
+        categorias: string[] | null;
+        estatisticas: boolean;
+      };
+      await db.upsertNotificationPrefs(req.user?.id ?? '', { cidades, categorias, estatisticas });
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('[Devices] Save prefs error:', error);
+      res.status(500).json({ error: 'Failed to save notification prefs' });
+    }
+  }
+);
+
 export default router;
