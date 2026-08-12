@@ -104,7 +104,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       if (mounted) widget.onComplete?.call();
     } catch (_) {
       if (mounted) {
-        setState(() => _error = 'Não foi possível alterar a senha. Tente de novo.');
+        setState(
+          () => _error = 'Não foi possível alterar a senha. Tente de novo.',
+        );
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -132,8 +134,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       if (mounted) widget.onComplete?.call();
     } catch (_) {
       if (mounted) {
-        setState(() =>
-            _error = 'Não foi possível concluir. Tente criar uma senha.');
+        setState(
+          () => _error = 'Não foi possível concluir. Tente criar uma senha.',
+        );
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -152,11 +155,15 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('PRIMEIRO ACESSO',
-                    style: SIMEopsType.slug(color: SIMEopsColors.tealLight)),
+                Text(
+                  'PRIMEIRO ACESSO',
+                  style: SIMEopsType.slug(color: SIMEopsColors.tealLight),
+                ),
                 const SizedBox(height: 12),
-                Text('Sua senha\nprovisória expira\nagora',
-                    style: SIMEopsType.title()),
+                Text(
+                  'Sua senha\nprovisória expira\nagora',
+                  style: SIMEopsType.title(),
+                ),
                 const SizedBox(height: 12),
                 Text(
                   'A senha que o administrador criou é conhecida por ele. '
@@ -173,8 +180,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                       ),
                     ),
                     padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                    child: Text(_error!,
-                        style: SIMEopsType.note(color: SIMEopsColors.alert)),
+                    child: Text(
+                      _error!,
+                      style: SIMEopsType.note(color: SIMEopsColors.alert),
+                    ),
                   ),
                 ],
 
@@ -183,8 +192,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   const SizedBox(height: 30),
                   _SectionRule(label: 'RECOMENDADO'),
                   const SizedBox(height: 16),
-                  Text('Desbloquear como o celular',
-                      style: SIMEopsType.body().copyWith(fontSize: 19)),
+                  Text(
+                    'Desbloquear como o celular',
+                    style: SIMEopsType.body().copyWith(fontSize: 19),
+                  ),
                   const SizedBox(height: 8),
                   Text(
                     'Digital, rosto ou PIN — o mesmo que abre o aparelho. '
@@ -220,13 +231,13 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 Text('NOVA SENHA', style: SIMEopsType.fieldLabel()),
                 _PasswordField(
                   controller: _passwordCtrl,
-                  hint: 'Mínimo 6 caracteres',
+                  hint: 'Mínimo 8 caracteres',
                   obscure: _obscurePassword,
                   onToggle: () =>
                       setState(() => _obscurePassword = !_obscurePassword),
                   validator: (v) {
                     if (v == null || v.isEmpty) return 'Informe a nova senha';
-                    if (v.length < 6) return 'Mínimo 6 caracteres';
+                    if (v.length < 8) return 'Mínimo 8 caracteres';
                     return null;
                   },
                 ),
@@ -258,14 +269,18 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: SIMEopsColors.tealLight),
+                        strokeWidth: 2,
+                        color: SIMEopsColors.tealLight,
+                      ),
                     ),
                   ),
                 ],
 
                 const SizedBox(height: 30),
-                Text('Esta tela aparece uma única vez.',
-                    style: SIMEopsType.note()),
+                Text(
+                  'Esta tela aparece uma única vez.',
+                  style: SIMEopsType.note(),
+                ),
               ],
             ),
           ),
@@ -281,12 +296,12 @@ class _SectionRule extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
-        children: [
-          Text(label, style: SIMEopsType.dateline(color: SIMEopsColors.faint)),
-          const SizedBox(width: 11),
-          const Expanded(child: Divider(color: SIMEopsColors.rule, height: 1)),
-        ],
-      );
+    children: [
+      Text(label, style: SIMEopsType.dateline(color: SIMEopsColors.faint)),
+      const SizedBox(width: 11),
+      const Expanded(child: Divider(color: SIMEopsColors.rule, height: 1)),
+    ],
+  );
 }
 
 /// Campo de senha sem caixa: filete embaixo, como o resto do fio.
@@ -333,8 +348,10 @@ class _PasswordField extends StatelessWidget {
           onTap: onToggle,
           child: Padding(
             padding: const EdgeInsets.only(top: 14),
-            child: Text(obscure ? 'VER' : 'OCULTAR',
-                style: SIMEopsType.slug(color: SIMEopsColors.tealLight)),
+            child: Text(
+              obscure ? 'VER' : 'OCULTAR',
+              style: SIMEopsType.slug(color: SIMEopsColors.tealLight),
+            ),
           ),
         ),
         suffixIconConstraints: const BoxConstraints(minWidth: 64),

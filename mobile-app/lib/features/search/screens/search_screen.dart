@@ -283,7 +283,7 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget _acaoNovaConsulta() => InkWell(
     onTap: _navigateToNewSearch,
     child: Padding(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
       child: Row(
         children: [
           Container(width: 7, height: 7, color: SIMEopsColors.greenLight),
@@ -294,6 +294,28 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
         ],
       ),
+    ),
+  );
+
+  /// A **única** pista de que dá pra apagar consulta.
+  ///
+  /// O `SEGURE PARA SELECIONAR` morava no canto direito do masthead e saiu
+  /// quando o cabeçalho foi limpo — e nada ocupou o lugar. O item do histórico
+  /// não tem checkbox, alça nem reticências: apagar virou função secreta, que
+  /// só encontra quem já sabe que existe.
+  ///
+  /// Volta no corpo, não no cabeçalho: o header continua igual ao de Config, e
+  /// a dica fica ao lado da outra ação da tela, que é onde o olho já está.
+  /// Tinta `faint` de propósito — é instrução, não convite, e não pode competir
+  /// com o verde do `NOVA CONSULTA`.
+  ///
+  /// Some no modo de seleção: dica que continua na tela depois de obedecida
+  /// vira ruído.
+  Widget _dicaDeSelecao() => Padding(
+    padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
+    child: Text(
+      'SEGURE UM ITEM PARA SELECIONAR',
+      style: SIMEopsType.slug(color: SIMEopsColors.faint),
     ),
   );
 
@@ -367,7 +389,10 @@ class _SearchScreenState extends State<SearchScreen> {
                     // `NOVA CONSULTA` — o cabeçalho nomeia a tela, quem age é
                     // o corpo dela.
                     const Masthead(titulo: 'Consultas'),
-                    if (!_selectMode) _acaoNovaConsulta(),
+                    if (!_selectMode) ...[
+                      _acaoNovaConsulta(),
+                      _dicaDeSelecao(),
+                    ],
 
                     // Modo de seleção múltipla
                     if (_selectMode)

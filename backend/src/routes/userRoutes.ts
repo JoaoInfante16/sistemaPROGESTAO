@@ -19,7 +19,7 @@ const router = Router();
 const createUserSchema = z.object({
   email: z.string().email(),
   is_admin: z.boolean().optional(),
-  password: z.string().min(6).max(100).optional(),
+  password: z.string().min(8).max(100).optional(),
 });
 
 const updateUserSchema = z.object({
@@ -225,7 +225,7 @@ router.post(
 // ============================================
 
 const changePasswordSchema = z.object({
-  new_password: z.string().min(6).max(100),
+  new_password: z.string().min(8).max(100),
 });
 
 /**
@@ -289,6 +289,16 @@ router.post(
   }
 );
 
+/**
+ * ⚠️ Estes 8 sao os MESMOS 8 do `min(8)` la em cima, e do gerador gemeo no
+ * painel (`dashboard/users/page.tsx`). Se um dia o minimo subir, os tres sobem
+ * juntos — senao a senha que o proprio sistema gera passa a ser recusada pelo
+ * proprio sistema, e quem quebra e o admin criando usuario, nao o usuario.
+ *
+ * Anotado e nao consertado (11/08): `Math.random()` nao e criptografico. Sao 8
+ * chars de um alfabeto de 55 (~46 bits) de fonte previsivel. O mobile ja faz
+ * certo, com `Random.secure()`.
+ */
 function generateTempPassword(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
   let pw = '';

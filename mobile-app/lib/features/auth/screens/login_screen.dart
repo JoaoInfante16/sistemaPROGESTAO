@@ -20,7 +20,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordCtrl = TextEditingController();
   bool _loading = false;
   bool _obscurePassword = true;
-  bool _rememberMe = false;
   String? _error;
 
   /// Já configurou desbloqueio pelo celular? Se sim, a tela abre pelo botão
@@ -92,11 +91,25 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final auth = context.read<AuthService>();
       await auth.signIn(_emailCtrl.text.trim(), _passwordCtrl.text);
-      if (_rememberMe) {
-        await auth.saveCredentials(_emailCtrl.text.trim(), _passwordCtrl.text);
-      } else {
-        await auth.clearSavedCredentials();
-      }
+      // ⚠️ Aqui existiu o `MANTER CONECTADO NESTE APARELHO` — uma caixa que,
+      // marcada, gravava a **senha em texto claro** no cofre do aparelho.
+      //
+      // Ela prometia o que já acontecia sem ela: quem mantém a sessão é o
+      // Supabase, que persiste e renova o token sozinho, marcada ou não. A
+      // senha guardada só servia pra re-logar **depois de um logout** — e um
+      // único 401 já apagava o cofre. Cobrava o preço todo e entregava quase
+      // nada.
+      //
+      // O `clearSavedCredentials` fica, e é o motivo de este bloco não ter
+      // sumido inteiro: é ele que apaga a senha de quem marcou a caixa antes.
+      // Sem ele, esse texto claro ficaria no Keystore para sempre, sem
+      // nenhum caminho de limpeza.
+      //
+      // Não confundir com o **desbloqueio pelo celular**: aquele usa as mesmas
+      // chaves de propósito, e quem escolheu esse caminho no primeiro acesso
+      // tem uma senha de 32 caracteres que nunca viu. Mexer nele tranca gente
+      // do lado de fora.
+      await auth.clearSavedCredentials();
     } catch (_) {
       setState(() => _error = 'E-mail ou senha incorretos.');
     } finally {
@@ -306,49 +319,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     onFieldSubmitted: (_) => _handleLogin(),
                   ),
 
-                  const SizedBox(height: 20),
-                  InkWell(
-                    onTap: () => setState(() => _rememberMe = !_rememberMe),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 15,
-                            height: 15,
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: _rememberMe
-                                    ? SIMEopsColors.greenLight
-                                    : SIMEopsColors.ruleStrong,
-                              ),
-                              color: _rememberMe
-                                  ? SIMEopsColors.greenLight
-                                  : Colors.transparent,
-                            ),
-                            child: _rememberMe
-                                ? const Icon(
-                                    Icons.check,
-                                    size: 12,
-                                    color: SIMEopsColors.navy,
-                                  )
-                                : null,
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            'MANTER CONECTADO NESTE APARELHO',
-                            style: SIMEopsType.slug(
-                              color: _rememberMe
-                                  ? SIMEopsColors.muted
-                                  : SIMEopsColors.faint,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 26),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton(

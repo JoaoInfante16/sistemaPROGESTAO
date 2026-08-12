@@ -263,6 +263,69 @@ de $100.
 
 ---
 
+## 2026-08-11 (Fase D) — a caixa que prometia o que já acontecia, e a função secreta
+
+**Saiu o `MANTER CONECTADO NESTE APARELHO`.** O pedido do João nasceu de uma
+premissa que o levantamento desfez, e a premissa errada vale mais registrar que
+a mudança: *"temos um jwt mudando semanalmente, lembrar a senha só facilita
+isso"*.
+
+**Não existe JWT nosso.** `jwt.sign`, `expiresIn`, `JWT_SECRET`, `jsonwebtoken`:
+zero ocorrências no backend e no admin. Auth é 100% Supabase, e o backend só
+**valida** (`middleware/auth.ts:46`). Tempo de token é config de dashboard.
+
+E — o que decide tudo — **diminuir o tempo do access token não desloga ninguém**:
+quem segura a sessão é o refresh token, renovado em silêncio pelo SDK. A alavanca
+para "logar de novo de tempos em tempos" tem outro nome (session timeout), e o
+João decidiu **não usá-la**: *"não precisa ficar fazendo login sempre, é um app
+seguro, não é aberto ao público"*. Fica registrado para não voltar como ideia.
+
+Então por que a caixa saiu? Porque ela **cobrava o preço todo e entregava quase
+nada**: gravava a senha em texto claro no cofre do aparelho para conseguir
+re-logar depois de um logout, enquanto a sessão do Supabase já mantinha o usuário
+dentro sem ela. E um único 401 já apagava esse cofre. Tirar a caixa **não faz
+ninguém logar mais vezes**.
+
+**O que NÃO saiu, e o motivo:** `saveCredentials`, `signInWithDeviceAuth` e o
+`_tryAutoLogin` ficam. O desbloqueio pelo celular usa as mesmas três chaves, e
+quem escolheu esse caminho no primeiro acesso tem uma senha de **32 caracteres
+gerada que nunca viu** (`change_password_screen.dart:69-75`). Remover junto
+trancaria essas pessoas do lado de fora até um reset do administrador. O
+`clearSavedCredentials()` também fica no login — é o único caminho de limpeza da
+senha de quem marcou a caixa antes.
+
+Anotado, não consertado: o `_tryAutoLogin` roda no `initState` e re-loga
+**sem pedir biometria**, o que torna o botão DESBLOQUEAR decorativo.
+
+**Senha mínima 6 → 8**, nas duas pontas que validam
+(`userRoutes.ts:22` e `:228`, `change_password_screen.dart:229`). Não quebra
+ninguém, e a razão é boa: **o painel nunca digita senha, ele gera uma de 8**
+(campo `readOnly`), o caminho biométrico gera 32, e **nenhuma das três pontas
+valida tamanho no login** — então subir o mínimo não tranca quem já tem senha
+curta. O único jeito de existir senha de 6-7 era alguém ter digitado uma curta de
+propósito na troca.
+
+Ficou um comentário amarrando os três oitos (o `min(8)`, o gerador do backend e o
+gêmeo no painel): se um dia o mínimo subir, os três sobem juntos, senão o sistema
+passa a recusar a senha que ele mesmo gera — e quem quebra é o admin criando
+usuário, não o usuário.
+
+Anotado, não consertado: os dois `generateTempPassword` usam `Math.random()`, que
+não é criptográfico (~46 bits de fonte previsível). O mobile já faz certo com
+`Random.secure()`.
+
+**Voltou a pista do `SEGURE UM ITEM PARA SELECIONAR`.** Apagar consulta estava
+**inalcançável**: o rótulo saiu do masthead quando o cabeçalho foi limpo e nada
+ocupou o lugar — o `HistoryCard` não tem checkbox, alça nem reticências. Volta no
+corpo, em `faint`, colada no `NOVA CONSULTA`, e some no modo de seleção. O
+cabeçalho continua igual ao de Config, que era o pedido original.
+
+Lição do dia, e é a terceira vez que ela aparece nesta fase: **limpar um
+cabeçalho apaga afordância junto**. O que estava escrito ali não era enfeite —
+era a documentação de um gesto invisível.
+
+---
+
 ## 2026-08-11 (Fase D) — os favoritos e o gesto que era a única porta deles
 
 **Removida a feature de favoritos inteira, das três pontas.** Não foi limpeza de
