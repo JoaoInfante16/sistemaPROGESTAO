@@ -17,6 +17,13 @@ class GroupHeader extends StatelessWidget {
   final VoidCallback onTap;
   final Color? accent;
 
+  /// Deslocamento à esquerda de uma semana **dentro** de uma pasta de mês.
+  ///
+  /// É o único sinal de hierarquia — sem linha de árvore, sem ícone de pasta,
+  /// sem fundo. Doze pixels bastam porque o rótulo do mês (`JULHO`) e o da
+  /// semana (`20–26 JUL`) já não se parecem.
+  final double recuo;
+
   const GroupHeader({
     super.key,
     required this.label,
@@ -24,6 +31,7 @@ class GroupHeader extends StatelessWidget {
     required this.expanded,
     required this.onTap,
     this.accent,
+    this.recuo = 0,
   });
 
   @override
@@ -33,7 +41,7 @@ class GroupHeader extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 24, 18, 6),
+        padding: EdgeInsets.fromLTRB(18 + recuo, recuo > 0 ? 16 : 24, 18, 6),
         child: Row(
           children: [
             Text(label.toUpperCase(), style: SIMEopsType.dateline(color: ink)),

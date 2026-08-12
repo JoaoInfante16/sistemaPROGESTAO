@@ -7,7 +7,7 @@ import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 import '../../../core/utils/date_grouping.dart';
 import '../../../core/widgets/esqueleto.dart';
-import '../../../core/widgets/group_header.dart';
+import '../../../core/widgets/fio_agrupado.dart';
 import '../feed_filtro.dart';
 import '../widgets/take_card.dart';
 
@@ -126,7 +126,7 @@ class _FeedScreenState extends State<FeedScreen> {
       );
       await db.upsertNews(items);
 
-      items.sort((a, b) => b.dataOcorrencia.compareTo(a.dataOcorrencia));
+      items.sort(maisRecentePrimeiro);
       setState(() {
         _news.clear();
         _news.addAll(items);
@@ -162,7 +162,7 @@ class _FeedScreenState extends State<FeedScreen> {
 
       setState(() {
         _news.addAll(items);
-        _news.sort((a, b) => b.dataOcorrencia.compareTo(a.dataOcorrencia));
+        _news.sort(maisRecentePrimeiro);
         _offset += items.length;
         _hasMore = items.length >= _limit;
         _loading = false;
@@ -255,36 +255,23 @@ class _FeedScreenState extends State<FeedScreen> {
     final hasUnread = _news.any((n) => n.isUnread);
     final groups = groupNewsByDate(_visibleNews);
 
-    final rows = <Widget>[];
-    for (final g in groups) {
-      final expanded = _groupExpanded(g);
-      rows.add(
-        GroupHeader(
-          label: g.label,
-          count: g.items.length,
-          expanded: expanded,
-          onTap: () => _toggleGroup(g.key),
-        ),
-      );
-      if (expanded) {
-        for (var i = 0; i < g.items.length; i++) {
-          final item = g.items[i];
-          rows.add(
-            TakeCard(
-              news: item,
-              urgent: TakeCard.isUrgent(item),
-              // A lista é agrupada por data logo acima, então o item mostra só
-              // a hora — carimbar "31/07" dentro do grupo "31 JUL" era repetir.
-              groupedByDate: true,
-              onOpen: () => _markAsRead(item),
-            ),
-          );
-          // Filete entre matérias, nunca depois da última: no fim do grupo
-          // quem separa é o divisor de data seguinte.
-          if (i < g.items.length - 1) rows.add(const TakeRule());
-        }
-      }
-    }
+    // O laço de desenhar grupo/semana/divisória mora em `fio_agrupado.dart`,
+    // compartilhado com o resultado da consulta. Aqui fica só o que é desta
+    // tela: como é o card e onde mora o estado de aberto.
+    final rows = linhasDoFioAgrupado(
+      grupos: groups,
+      aberto: _groupExpanded,
+      alternar: _toggleGroup,
+      separador: const TakeRule(),
+      card: (item) => TakeCard(
+        news: item,
+        urgent: TakeCard.isUrgent(item),
+        // A lista é agrupada por data logo acima, então o item mostra só a
+        // hora — carimbar "31/07" dentro do grupo "31 JUL" era repetir.
+        groupedByDate: true,
+        onOpen: () => _markAsRead(item),
+      ),
+    );
     if (_hasMore) {
       rows.add(
         const Padding(

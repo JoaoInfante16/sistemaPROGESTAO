@@ -14,6 +14,7 @@ import '../../../core/utils/state_utils.dart';
 import '../../../core/widgets/cat_chip.dart';
 import '../../../core/widgets/dialogo_cancelar_consulta.dart';
 import '../../../core/widgets/esqueleto.dart';
+import '../../../core/widgets/fio_agrupado.dart';
 import '../../../core/widgets/group_header.dart';
 import '../../../core/widgets/grid_background.dart';
 import '../../../core/widgets/masthead.dart';
@@ -1542,23 +1543,15 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       );
     }
 
-    for (final g in groups) {
-      final expanded = _sectionExpanded(g.key, g.defaultExpanded);
-      rows.add(
-        GroupHeader(
-          label: g.label,
-          count: g.items.length,
-          expanded: expanded,
-          onTap: () => _toggleSection(g.key),
-        ),
-      );
-      if (expanded) {
-        for (var i = 0; i < g.items.length; i++) {
-          rows.add(_take(g.items[i]));
-          if (i < g.items.length - 1) rows.add(const TakeRule());
-        }
-      }
-    }
+    rows.addAll(
+      linhasDoFioAgrupado(
+        grupos: groups,
+        aberto: (g) => _sectionExpanded(g.key, g.defaultExpanded),
+        alternar: _toggleSection,
+        separador: const TakeRule(),
+        card: _take,
+      ),
+    );
 
     // Os baldes. `aberta` decide o padrão: a região metropolitana nasce ABERTA
     // desde 03/08 porque recolhida ela escondia resultado pago e entregue — a
@@ -1582,9 +1575,15 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         ),
       );
       if (expanded) {
-        for (var i = 0; i < items.length; i++) {
-          rows.add(_take(items[i]));
-          if (i < items.length - 1) rows.add(const TakeRule());
+        // 🚨 Estes três baldes renderizavam **na ordem crua do backend** —
+        // nenhuma ordenação. Só a lista principal passava pelo agrupador, que é
+        // quem ordena. Numa consulta, a região metropolitana chegava sorteada
+        // enquanto o resto da tela estava em ordem cronológica. Pego pelo João
+        // em 11/08.
+        final ordenados = [...items]..sort(maisRecentePrimeiro);
+        for (var i = 0; i < ordenados.length; i++) {
+          rows.add(_take(ordenados[i]));
+          if (i < ordenados.length - 1) rows.add(const TakeRule());
         }
       }
     }

@@ -263,6 +263,66 @@ de $100.
 
 ---
 
+## 2026-08-11 (noite) — as pastas de mês, e três listas que ninguém ordenava
+
+**Ideia do João olhando a lista da Grande Florianópolis:** agrupar em pastas —
+mês, semana, dia. O diagnóstico dele estava certo e é o mesmo do gráfico: **a
+lista de semanas cresce sem teto.**
+
+Medi antes de concordar, e a primeira medição estava na **unidade errada** — fiz
+cidade por cidade, e a tela abre o GRUPO com `TODAS`. Refeito no nível do grupo:
+
+```
+Grande Florianópolis (Florianópolis, Palhoça, São José)
+  93 itens · 4 meses · 16 semanas
+  mediana 6 itens/semana · maior 17
+  3.1 dias distintos por semana (de 7)
+  51% dos dias com 1 item so
+  linhas na tela hoje: 7 dias + 16 semanas = 23
+```
+
+**Mês: sim. Dia como pasta: não** — e o número é o argumento. Uma semana ocupa
+3,1 dias de 7, e metade desses dias tem **um item só**. Pasta com uma coisa
+dentro custa dois toques e não entrega nada; em Palhoça seriam 92% delas.
+
+Mas a maior semana tem **17 itens**, e essa precisa de corte. Daí a saída: **o
+dia vira divisória impressa entre os cards**, não pasta. Semana gorda ganha a
+estrutura, semana magra não paga o toque, e a matéria continua a **dois toques**
+(mês, semana) em vez de quatro.
+
+Resultado: 23 linhas viram 11 (7 dias soltos + 4 meses).
+
+O mês só existe **acima de 8 semanas** — abaixo disso a lista plana já cabe, e um
+mês envolvendo quatro semanas seria a mesma pasta-com-tudo-dentro. Consulta de 30
+dias tem 5 semanas e segue plana. O mês mais recente nasce **aberto mostrando as
+semanas dele, fechadas**: a estrutura se apresenta, nada despeja card.
+
+O laço de desenhar grupo/semana/divisória saiu das duas telas e virou
+`fio_agrupado.dart`. Estava duplicado; com a árvore, seria a mesma lógica escrita
+duas vezes em dois arquivos — que é exatamente como as duas telas divergem sem
+ninguém decidir.
+
+---
+
+**E um defeito achado no caminho, esse não era de desenho:** o João pediu ordem
+cronológica dentro dos dias, e fui conferir se valia para todas as listas.
+**Os três baldes da consulta — REGIÃO METROPOLITANA, fora do período e
+INDICADORES — renderizavam na ordem crua do backend.** Sem ordenação nenhuma.
+
+Só a lista principal passava pelo agrupador, e é o agrupador que ordena. Ou seja:
+a tela tinha uma parte em ordem cronológica e três blocos sorteados, e nada
+dizendo qual era qual.
+
+`maisRecentePrimeiro` virou público e agora é a **única** regra de ordem de
+matéria do app. O `feed_screen` tinha mais duas cópias da regra antiga (só data,
+sem hora) — sobreviviam porque o agrupador reordenava depois, mas eram uma
+segunda verdade esperando alguém confiar nelas.
+
+Padrão que se repete nesta fase: **o defeito não estava no que a tela mostrava,
+estava no que só uma parte da tela obedecia.**
+
+---
+
 ## 2026-08-11 (Fase D, tarde) — o gráfico não tinha teto, e o giro não dizia nada
 
 Quatro achados do João olhando o aparelho. Os dois primeiros foram conserto; os
