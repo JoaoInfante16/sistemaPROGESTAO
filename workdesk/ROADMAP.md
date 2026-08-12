@@ -162,10 +162,11 @@ Peça compartilhada nova: `core/widgets/entrada_de_lugar.dart` — o que estava
 divergindo eram os espaçamentos e os degraus de tipo, então é isso que a peça
 guarda. `Figura` é o `_Figure` privado de `city_card.dart` promovido.
 
-**Junto:** matar o `EndMark` (*"não precisa escrever fim também né kkk"*) e suas
-**9 chamadas** — `take_card.dart` (a classe), `dashboard_screen`, `feed_screen`,
-`city_detail_screen`, `relatorio_de_risco`, `search_screen`, `settings_screen` e
-duas em `manual_search_screen`.
+~~**Junto:** matar o `EndMark` e suas 9 chamadas.~~ **Já estava morto** — só
+sobrou a lápide em `take_card.dart:485`, zero chamadas. Eu copiei essa pendência
+do plano velho para cá sem conferir, e a corrigi cinco minutos depois: é
+exatamente o apodrecimento silencioso que a regra zero da workdesk descreve, e
+consegui cometê-lo **dentro do documento que registra a regra**.
 
 ### ⬜ Fase E2 — export do relatório em HTML A4 autocontido
 

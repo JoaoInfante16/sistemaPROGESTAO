@@ -263,6 +263,65 @@ de $100.
 
 ---
 
+## 2026-08-11 (noite) — as duas listas de lugar passam a ter a mesma anatomia
+
+Plano escrito há semanas, aprovado, sobrescrito pela Fase D e recuperado do
+ROADMAP. Reconferido contra o código atual **antes** de executar — e a
+reconferência achou duas coisas.
+
+**O `EndMark` já estava morto.** O plano listava 9 chamadas a remover; o grep
+devolveu zero, só a lápide em `take_card.dart:485`. E eu tinha acabado de copiar
+essa pendência para o ROADMAP sem conferir, cinco minutos antes. Vale registrar
+sem suavizar: **cometi o apodrecimento silencioso dentro do documento que
+registra a regra contra ele.** Corrigido no mesmo turno, com a marca do erro.
+
+**O diagnóstico do plano, esse, continuava certo** — e o código deixou apontar
+com precisão. O `CityCard` dizia o mesmo fato **três vezes**:
+
+1. a frase abria com *"21 ocorrências em trinta dias"*, e a faixa de figuras
+   logo abaixo **soma exatamente 21**;
+2. a frase fechava com *"Patrimonial responde por 52%, a maior fatia"*, e a maior
+   figura da faixa é justamente `11 PATRIM.`;
+3. a etiqueta de cima dizia `4 CIDADES`, que é a contagem dos nomes que a própria
+   frase listava no fim.
+
+Três repetições, ~40px, zero dado novo. **A redundância é que fazia 218px, não
+os números** — que era a dúvida do João (*"não sei se essas contagens são úteis
+de fato"*). São úteis; a prosa em volta é que não era.
+
+Agora as duas listas têm quatro posições, e cada tela preenche com o que serve:
+
+|    | MONITORAMENTO           | CONSULTAS                |
+|----|-------------------------|--------------------------|
+| ①  | UF + `N NOVAS` em verde | UF                       |
+| ②  | `21 EM 30D`             | a hora (`19:16`)         |
+| ③  | os nomes do grupo       | `30 DIAS · 17 ASSUNTOS`  |
+| ④  | quebra por categoria    | `91 RESULTADOS`          |
+
+③ e ④ **somem sem deixar vão**: cidade sozinha com ocorrência fica muda em ③,
+porque não há o que dizer ali que a figura não diga. Cidade zerada fala, porque
+aí não existe figura para falar por ela.
+
+O ② virou `21 EM 30D` — **a mesma frase que a `QuietCityRow` já escrevia**. Foi o
+melhor sinal de que o desenho estava certo: cidade quieta e cidade agitada
+passaram a dizer a mesma coisa, no mesmo lugar, sem ninguém ter combinado.
+
+Na consulta, o `91 RESULTADOS` era mono 9.5 — do tamanho de tudo no card, sendo a
+única coisa que responde *"essa consulta valeu a pena?"*. Virou figura de 21px,
+**deitada e não empilhada**: escolha do João entre as duas, porque empilhada
+custaria ~46px por item numa lista que se varre, e deitada custa ~16.
+
+E **falha e andamento passaram a ocupar ④**, o lugar do número. Antes brigavam
+com a hora na linha de cima, longe da pergunta que respondem. Agora a exceção
+mora onde o olho já vai procurar o desfecho.
+
+A peça é `core/widgets/entrada_de_lugar.dart`. Ela guarda o que estava
+divergindo — **os espaçamentos e os degraus de tipo** —, não o conteúdo. As duas
+listas eram de semanas diferentes, e ninguém tinha decidido que seriam
+diferentes.
+
+---
+
 ## 2026-08-11 (noite) — as pastas de mês, e três listas que ninguém ordenava
 
 **Ideia do João olhando a lista da Grande Florianópolis:** agrupar em pastas —
