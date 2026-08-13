@@ -815,17 +815,6 @@ class _CityDetailScreenState extends State<CityDetailScreen>
                 ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
-              child: Text(
-                // O documento segue o seletor lá de cima — dizer isso aqui
-                // evita a dúvida de sempre: "compartilhou o quê, os 30 dias ou
-                // tudo?".
-                'Sai em PDF com o período selecionado acima, pronto para '
-                'enviar ou salvar.',
-                style: SIMEopsType.note(color: SIMEopsColors.faint),
-              ),
-            ),
           ],
           const SizedBox(height: 40),
         ],

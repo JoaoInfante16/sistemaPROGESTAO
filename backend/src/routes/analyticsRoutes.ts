@@ -61,10 +61,28 @@ function urlPublica(req: Request): string {
  * O relatorio de um GRUPO precisa das quatro cidades; o de uma cidade so manda
  * uma. Os dois parametros convivem porque o APK que o cliente tem na mao ainda
  * manda `cidade`, e ele nao pode quebrar quando este backend subir.
+ *
+ * 🚨 **`cidades` chega em DOIS formatos, e por isso o `Array.isArray`.** Nas
+ * rotas GET e query string (`?cidades=A,B,C`); nos dois POST e um **array JSON**
+ * (`{"cidades": ["A","B"]}`), porque o schema declara `z.array(z.string())`.
+ *
+ * Esta funcao so sabia do primeiro. O `.split()` num array levantava
+ * `q.cidades.split is not a function`, o `try` da rota engolia, e o app recebia
+ * **500 "Failed to generate report"** — nas duas telas, sempre. Passou
+ * despercebido porque:
+ *
+ *   1. o tipo do parametro dizia `cidades?: string`, e o call site passa
+ *      `req.body`, que e `any` — o TypeScript nao tinha o que conferir;
+ *   2. a validacao foi testada contra o schema (passa) e o documento foi testado
+ *      pela rota GET, com a linha gravada direto no banco. **O POST inteiro
+ *      nunca rodou de ponta a ponta.**
  */
-function resolverCidades(q: { cidade?: string; cidades?: string }): string[] {
-  if (q.cidades) {
-    const lista = q.cidades.split(',').map((c) => c.trim()).filter(Boolean);
+function resolverCidades(q: { cidade?: string; cidades?: string | string[] }): string[] {
+  const bruto = q.cidades;
+  if (bruto) {
+    const lista = (Array.isArray(bruto) ? bruto : bruto.split(','))
+      .map((c) => c.trim())
+      .filter(Boolean);
     if (lista.length > 0) return lista;
   }
   return q.cidade ? [q.cidade] : [];

@@ -991,17 +991,11 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
             ),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
-          child: Text(
-            // Este texto já mentiu: descrevia o link e o botão "Baixar PDF" de
-            // dentro da página, depois de o botão ter passado a entregar o
-            // arquivo pronto.
-            'Sai em PDF com o recorte que está na tela, pronto para enviar ou '
-            'salvar.',
-            style: SIMEopsType.note(color: SIMEopsColors.faint),
-          ),
-        ),
+        // Aqui havia uma linha explicando o que o botão faz. Ela já tinha
+        // mentido uma vez (descrevia o link depois de o botão passar a entregar
+        // arquivo), e legenda que precisa acompanhar cada mudança de
+        // comportamento é dívida: o botão diz COMPARTILHAR RELATÓRIO, e a folha
+        // do sistema mostra o resto melhor que qualquer frase.
         const SizedBox(height: 40),
       ],
     );
