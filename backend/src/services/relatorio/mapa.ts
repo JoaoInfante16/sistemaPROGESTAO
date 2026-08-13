@@ -123,3 +123,50 @@ export function enquadrar(
 
   return { z, ox, oy, largura, altura, escala, tiles };
 }
+
+// ============================================
+// Tiles embutidos — para o PDF
+// ============================================
+// A WebView que converte o HTML em PDF pode tirar a foto **antes** das imagens
+// da rede chegarem: o mapa sairia branco, calado. É a mesma armadilha do
+// html2canvas que a Fase E2 removeu, entrando por outra porta.
+//
+// A resposta é não ter imagem de rede nenhuma. O cache é por `z/x/y` e vale
+// muito: relatórios da mesma cidade pedem exatamente os mesmos tiles.
+
+const cacheDeTiles = new Map<string, string>();
+
+/** Teto do cache: 400 tiles ≈ 20-30 MB. Passou disso, esvazia — é cache de
+ *  imagem estática, reconstruir custa uma requisição. */
+const TETO_DO_CACHE = 400;
+
+/**
+ * Troca as URLs dos tiles por `data:` URIs.
+ *
+ * Falha de um tile **não derruba o mapa**: aquele quadrado fica vazio e o
+ * resto aparece. Mapa com um buraco é melhor que mapa nenhum, e muito melhor
+ * que um erro que impede o relatório de sair.
+ */
+export async function embutirTiles(q: Enquadramento): Promise<Enquadramento> {
+  const tiles = await Promise.all(
+    q.tiles.map(async (t) => {
+      const emCache = cacheDeTiles.get(t.url);
+      if (emCache) return { ...t, url: emCache };
+      try {
+        const resp = await fetch(t.url, {
+          headers: { 'User-Agent': 'SIMEops/1.0' },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!resp.ok) return { ...t, url: '' };
+        const b64 = Buffer.from(await resp.arrayBuffer()).toString('base64');
+        const dataUri = `data:image/png;base64,${b64}`;
+        if (cacheDeTiles.size >= TETO_DO_CACHE) cacheDeTiles.clear();
+        cacheDeTiles.set(t.url, dataUri);
+        return { ...t, url: dataUri };
+      } catch {
+        return { ...t, url: '' };
+      }
+    }),
+  );
+  return { ...q, tiles: tiles.filter((t) => t.url !== '') };
+}

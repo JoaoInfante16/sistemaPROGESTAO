@@ -453,7 +453,10 @@ router.get(
       // com a pagina de dois deploys atras nao tem como saber disso.
       res.set('Cache-Control', 'no-cache');
       res.type('html').send(
-        renderizarRelatorio(report.report_data as unknown as RelatorioRenderizavel),
+        await renderizarRelatorio(
+          report.report_data as unknown as RelatorioRenderizavel,
+          { paraPdf: req.query.formato === 'pdf' },
+        ),
       );
     } catch (error) {
       logger.error('[Analytics] Public report error:', error);

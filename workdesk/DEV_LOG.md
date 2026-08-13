@@ -268,6 +268,139 @@ de $100.
 
 ---
 
+## 2026-08-13 — o relatório vira PDF no aparelho (spike em curso) + a tela de alerta enxuga
+
+### 🚧 ESTADO: o spike do PDF está NO APARELHO, esperando o teste do João
+
+Se esta entrada ainda estiver assim, **o teste não foi feito**. O que ele
+responde, em ordem:
+
+1. a folha do Android abre com **arquivo** (aparece Drive / "Salvar em Arquivos")?
+2. o PDF tem **mapa**?
+3. a tipografia é Archivo/JetBrains ou virou fonte de sistema?
+
+APK de **dev** instalado no A57 (`--dart-define-from-file=env/dev.json`),
+apontando pro backend local por LAN. O backend precisa estar rodando.
+
+### Por que o link deixou de ser a entrega
+
+Dois argumentos do João, ambos certos:
+
+- **"o link tá foda de resolver"** — e é verdade: o link arrasta junto o
+  domínio (o de hoje é subdomínio do Render), a expiração e a dependência de o
+  servidor estar acordado. **Se o que viaja é arquivo, nada disso existe.**
+- **"clica em compartilhar, abre o próprio sistema do Android ou iPhone para
+  enviar para alguém ou só baixar"** — e *"só baixar"* **não aparecia**: a
+  folha estava compartilhando texto, e `Salvar em Arquivos` / Drive só surge
+  quando o que se compartilha é arquivo.
+
+### O que foi descartado, com o motivo
+
+| | por que não |
+|---|---|
+| redesenhar o relatório em Dart (pacote `pdf`) | dois desenhos do mesmo documento, pra sempre — e o João aprovou **aquele** documento |
+| Chromium (Puppeteer) no backend atual | mora na mesma caixa do CRON 24/7, pico ~250MB em 512MB: OOM não derruba o relatório, derruba o monitoramento |
+| serviço separado de PDF no Render | resolve, mas +$7/mês, e o caminho de graça ainda não foi descartado |
+| anexo `.html` | Drive mostra o **código-fonte**; e-mail corporativo trata como phishing |
+
+### O que foi construído
+
+**Backend — `GET /public/report/:id?formato=pdf`.** O *mesmo* renderizador com
+um parâmetro; duas funções seria o começo de dois documentos.
+
+- `embutirTiles()` em `mapa.ts` — os tiles viram `data:` URI, com cache por
+  `z/x/y` (relatórios da mesma cidade pedem os mesmos). Falha de um tile deixa
+  **um quadrado vazio**, não derruba o mapa.
+- a barra de ações **não é emitida**, em vez de ficar escondida por
+  `@media print` — depender disso seria apostar que a WebView aplica print
+  styles.
+- 🚨 O motivo de tudo isso: a WebView tira a foto **antes** de as imagens da
+  rede chegarem, e o mapa sairia branco, calado. É a armadilha do html2canvas
+  que a Fase E2 removeu, entrando por outra porta.
+
+**Medido em 13/08:** 31 KB (web) → **271 KB** (PDF). Muito abaixo dos 1-3 MB
+que eu tinha estimado no plano.
+
+**App — `core/services/documento_de_risco.dart`**, peça compartilhada pelas duas
+telas de relatório. `printing` **travado em 5.14.3, sem `^`**.
+
+⚠️ **Não é a 5.15.0**: ela puxa `pdf` 3.13 → `xml ^7`, e o
+`flutter_local_notifications` 20 puxa `xml ^6`. O conflito vem por
+`flutter_local_notifications_WINDOWS` — pacote de Windows, num app que só roda
+Android. A outra saída que o pub sugere é subir o local_notifications de 20 pra
+22: **dois majors no pacote de push recém-reescrito na Fase F**. Não vale.
+
+O caminho: `generateReport` → `GET ?formato=pdf` → `convertHtml` → `sharePdf`.
+**Toda falha cai no link** — plataforma sem suporte (`Printing.info()`),
+exceção, PDF vazio. O botão nunca morre, e a tela **diz** quando caiu, em vez
+de entregar um link calado no lugar de um arquivo.
+
+🚨 `convertHtml` está **depreciado** (5.12.0), e ainda presente na 5.14.3.
+Verificado no changelog antes de virar recomendação.
+
+### A tela de alerta, enxugada até o osso
+
+Pedido do João olhando o aparelho: *"É toggle on off - tudo, cidade 1 on off,
+cidade 2, cidade 3. Só isso."*
+
+Saíram os **5 assuntos**, a chave de **balanços** e o parágrafo sobre os canais
+URGENTE/ROTINA. O backend continua sabendo filtrar por categoria
+(`querReceber`); o app só não manda mais essa preferência, e `null` = todas.
+Nada quebra, e o dia em que a escolha voltar, o outro lado está pronto.
+
+**E os grupos deixaram de se separar.** *"Os grupos nunca se separam"* — a lista
+vinha de `getLocations()` e quebrava a Grande Florianópolis em três linhas. A
+fonte virou `getCitiesOverview()`, **a mesma do dashboard**: a unidade que a
+pessoa enxerga é a unidade que ela configura. Um interruptor por lugar; por
+baixo, grava os municípios membros, porque o filtro do backend compara com
+`news.cidade`, que é sempre município.
+
+`_lugarLigado` usa **`any`, não `every`**: grupo com estado pela metade (APK
+antigo, preferência gravada antes) aparece ligado. Mostrar desligado enquanto
+chega notificação é a pior mentira que uma tela de alerta pode contar.
+
+### 🚨 Defeito real achado pela foto do aparelho
+
+A tela dizia *"Não foi possível carregar as cidades e os assuntos"*. **Não era
+o deploy faltando.** As três cargas estavam num `try` só, em sequência, com
+`getPreferenciasDeAlerta` no meio — e como a tabela `user_notification_prefs`
+ainda não existe (032 escrita, não rodada), ela falhava e **derrubava a lista de
+cidades junto**, que não tem nada a ver com ela.
+
+Agora cada falha custa só o que ela é: preferência que falha cai no padrão
+(tudo ligado, que é o comportamento de quem nunca abriu a tela), e só cidade
+que falha é falha de verdade.
+
+### Miudezas do mesmo dia
+
+- **O `?` do monitoramento virou círculo.** Solto, era lido como sujeira de
+  renderização — nada dizia que era botão. Mesma exceção dos pinos do mapa:
+  raio zero é regra de **caixa**, e aquilo é uma marca.
+- **Um botão só no relatório.** Eu tinha partido em ABRIR / ENVIAR sem ninguém
+  pedir; o João pediu duas vezes a mesma coisa. Divisão que o usuário não
+  precisa fazer é decisão que a tela empurra pra ele.
+- **`env/dev.json` estava com IP velho** (`192.168.11.5`; a máquina está em
+  `192.168.15.175`). É a armadilha que a própria CLAUDE.md avisa, e ela faz o
+  app parecer quebrado sem estar.
+
+### Pendente
+
+- ⬜ **o teste do spike no A57** — é o que decide tudo
+- ⬜ fontes embutidas em base64 (Archivo e JetBrains são OFL) — **só se o teste
+  mostrar que a WebView não carregou o `<link>` do Google**
+- ⬜ **botão COMPARTILHAR RELATÓRIO no auto-scan**, seguindo o filtro de
+  período. A tela já tem tudo: `_cidadesDoRelatorio` (resolve grupo e
+  sub-cidade) e `_relatorioRangeDays`. **Não manda `analytics`** — o backend
+  consulta o banco sozinho, que é o caminho que a Fase E2 deixou pronto
+- ⬜ `RecorteDeclarado` com `antigas`/`regiao`/`categorias` **opcionais** e um
+  campo de origem: o auto-scan não tem esses conceitos, e imprimir
+  "Municípios vizinhos: fora da contagem" num relatório de monitoramento é
+  ruído que parece informação
+- ⬜ **merge em `staging`** — segue pendente, e sem ele o relatório volta 400
+  (`cidade: Required`)
+- ⬜ a tela de **Nova consulta** precisa de reforma (pedido do João, 13/08); no
+  print, o `3 min` do rodapé está sendo cortado pela barra de navegação
+
 ## 2026-08-12 — Fase E2: o relatório vira documento, e sai de dentro do painel
 
 Pedido do João: *"o relatório ao clicar em compartilhar vai abrir em HTML, com

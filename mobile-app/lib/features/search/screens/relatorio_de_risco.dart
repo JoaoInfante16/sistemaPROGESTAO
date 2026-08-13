@@ -5,6 +5,7 @@ import '../../../core/models/crime_point.dart';
 import '../../../core/models/executive_data.dart';
 import '../../../core/models/news_item.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/services/documento_de_risco.dart';
 import '../../../core/widgets/crime_radar_map.dart';
 import '../../../core/widgets/esqueleto.dart';
 import '../../../core/widgets/executive_indicators.dart';
@@ -429,12 +430,12 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
     setState(() => _ocupado = true);
     // Os dois saem do context antes do await — depois dele o widget pode já ter
     // sido descartado.
-    final api = context.read<ApiService>();
+    final documento = DocumentoDeRisco(context.read<ApiService>());
     final messenger = ScaffoldMessenger.of(context);
     try {
       final agora = DateTime.now();
 
-      final response = await api.generateReport(
+      final resultado = await documento.compartilhar(
         cidades: widget.cidades,
         estado: widget.estado,
         dateFrom: _dateStr(_inicioDoRecorte),
@@ -451,16 +452,19 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
         analytics: _paraODocumento(),
       );
 
-      final url = response['reportUrl'] as String?;
-      if (url == null || url.isEmpty) {
-        throw Exception('O servidor não devolveu o endereço do relatório.');
+      // Caiu no link: o app segue útil, mas **diz** o que aconteceu. Entregar
+      // um link calado quando a pessoa esperava um arquivo é a diferença entre
+      // um plano B e uma surpresa.
+      if (mounted && resultado == ResultadoDoCompartilhar.link) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Não deu para montar o PDF neste aparelho — foi o link do '
+              'relatório, que abre em qualquer navegador.',
+            ),
+          ),
+        );
       }
-
-      if (!mounted) return;
-      await Share.share(
-        'SIMEops — Análise de Risco\n'
-        '${widget.cidades.join(", ")}/${widget.estado}\n\n$url',
-      );
     } catch (e) {
       debugPrint('[Relatório] $e');
       messenger.showSnackBar(

@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
+import '../../../core/models/city_overview.dart';
 import '../../../core/models/preferencias_de_alerta.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/push_service.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
-import '../../../core/utils/category_colors.dart';
 import '../../../core/utils/state_utils.dart';
-import '../../../core/widgets/cat_chip.dart';
 import '../../../core/widgets/esqueleto.dart';
 import '../../../core/widgets/interruptor.dart';
 import '../../../core/widgets/masthead.dart';
@@ -22,10 +21,9 @@ import '../../../core/widgets/masthead.dart';
 /// interruptor global repetido lá dentro — **duas chaves pro mesmo estado**, que
 /// é como as duas começam a discordar.
 ///
-/// Agora a linha traz o interruptor, e o que ela controla vem logo abaixo. São
-/// 3 cidades e 5 assuntos: cabe. Decisão do João (13/08): *"notificações tem que
-/// ter ligado ou desligado... aparece as cidades do monitoramento e daí ele pode
-/// desligar cada uma. Ou até 5 nem coloca em pushdown."*
+/// Agora a linha traz o interruptor, e as cidades vêm logo abaixo, recuadas.
+/// Nada além disso — João, 13/08: *"É toggle on off - tudo, cidade 1 on off,
+/// cidade 2, cidade 3. Só isso."*
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -38,7 +36,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _ligado = true;
 
   PreferenciasDeAlerta _prefs = const PreferenciasDeAlerta();
-  List<({String estado, String cidade})> _cidades = const [];
+
+  /// 🚨 **A linha é o LUGAR, e lugar pode ser um grupo.**
+  ///
+  /// Isto listava cidade por cidade, vindo de `getLocations()`, e quebrava a
+  /// Grande Florianópolis em três linhas. João, 13/08: *"os grupos nunca se
+  /// separam"* — no monitoramento ele é um card só, no relatório é um recorte
+  /// só, e aqui tinha que ser um interruptor só.
+  ///
+  /// Por isso a fonte passou a ser `getCitiesOverview()`, a **mesma** do
+  /// dashboard: a unidade que a pessoa enxerga no app é a unidade que ela
+  /// configura aqui. Duas listas de lugar com recortes diferentes é como as
+  /// duas passam a discordar.
+  ///
+  /// [membros] são as cidades de verdade que aquela linha representa — é o que
+  /// vai gravado, porque o filtro do backend compara com `news.cidade`, que é
+  /// sempre município, nunca grupo.
+  List<({String rotulo, String etiqueta, List<String> membros})> _lugares =
+      const [];
+
   bool _carregando = true;
   bool _falhou = false;
 
@@ -62,43 +78,98 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// 🚨 As três cargas são **independentes**, e isso é o conserto de um defeito
+  /// real, visto no aparelho em 13/08: era um `try` só, em sequência, e o
+  /// `getPreferenciasDeAlerta` no meio. Como a tabela `user_notification_prefs`
+  /// ainda não existe (migration 032 escrita e não rodada), essa chamada falha
+  /// — e derrubava junto a **lista de cidades**, que não tem nada a ver com
+  /// ela. A tela dizia "não foi possível carregar" quando na verdade só a
+  /// preferência tinha faltado.
+  ///
+  /// Cada falha agora custa só o que ela é:
+  /// - chave global: mora no aparelho, nunca falha por rede;
+  /// - preferência: falhando, cai no padrão (`null` = todas ligadas), que é
+  ///   exatamente o comportamento de quem nunca abriu esta tela;
+  /// - cidades: **a única** cuja falha é falha de verdade, porque sem elas não
+  ///   há o que configurar.
   Future<void> _carregar() async {
     final api = context.read<ApiService>();
+
+    final ligado = await PushService.areNotificationsEnabled();
+
+    final prefs = await api.getPreferenciasDeAlerta().catchError((e) {
+      debugPrint('[Configurações] preferências indisponíveis: $e');
+      return const PreferenciasDeAlerta();
+    });
+
+    List<({String rotulo, String etiqueta, List<String> membros})>? lugares;
     try {
-      final ligado = await PushService.areNotificationsEnabled();
-      final prefs = await api.getPreferenciasDeAlerta();
-      final hierarquia = await api.getLocations();
-
-      final cidades = <({String estado, String cidade})>[];
-      for (final estado in hierarquia) {
-        final nomeEstado = estado['name'] as String? ?? '';
-        for (final c in (estado['cities'] as List<dynamic>? ?? [])) {
-          final nome = (c as Map<String, dynamic>)['name'] as String? ?? '';
-          if (nome.isNotEmpty) {
-            cidades.add((estado: nomeEstado, cidade: nome));
-          }
-        }
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _ligado = ligado;
-        _prefs = prefs;
-        _cidades = cidades;
-        _carregando = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      // A chave global vive no aparelho e não depende de rede — ela continua
-      // valendo mesmo quando o resto não carrega.
-      final ligado = await PushService.areNotificationsEnabled();
-      if (!mounted) return;
-      setState(() {
-        _ligado = ligado;
-        _carregando = false;
-        _falhou = true;
-      });
+      final overview = await api.getCitiesOverview();
+      lugares = [
+        for (final raw in overview)
+          () {
+            final c = CityOverview.fromJson(raw);
+            final membros = c.isGroup
+                ? (c.cityNames ?? const <String>[])
+                : <String>[c.name];
+            return (
+              rotulo: c.name,
+              // Grupo diz de quantos municípios é feito; cidade avulsa diz a
+              // UF. As duas respondem a mesma pergunta — "o que é isto?" — e
+              // por isso ocupam a mesma posição na linha.
+              etiqueta: c.isGroup
+                  ? '${membros.length} '
+                        '${membros.length == 1 ? 'CIDADE' : 'CIDADES'}'
+                  : abbrState(c.parentState ?? ''),
+              membros: membros,
+            );
+          }(),
+      ]..removeWhere((l) => l.membros.isEmpty);
+    } catch (e) {
+      debugPrint('[Configurações] lugares: $e');
     }
+
+    if (!mounted) return;
+    setState(() {
+      _ligado = ligado;
+      _prefs = prefs;
+      _lugares = lugares ?? const [];
+      _carregando = false;
+      _falhou = lugares == null;
+    });
+  }
+
+  /// Todos os municípios de todas as linhas.
+  ///
+  /// 🚨 É a materialização de "todas", e ela é obrigatória antes de tirar o
+  /// primeiro item: em [PreferenciasDeAlerta], `null` quer dizer **todas**, e
+  /// `null` menos um item continuaria `null` — o toque não faria nada. É a
+  /// armadilha central deste modelo.
+  List<String> get _todosOsMunicipios => [
+    for (final l in _lugares) ...l.membros,
+  ];
+
+  /// Um lugar está ligado quando **qualquer** município dele está.
+  ///
+  /// Não é "todos": um grupo cujo estado ficou pela metade (por um APK antigo,
+  /// ou por preferência gravada antes desta tela existir) precisa aparecer
+  /// ligado, senão a pessoa vê desligado e continua recebendo — que é a pior
+  /// mentira que uma tela de alerta pode contar.
+  bool _lugarLigado(List<String> membros) =>
+      membros.any((m) => _prefs.aceitaCidade(m));
+
+  /// Liga/desliga o lugar **inteiro**, porque grupo não se separa.
+  Future<void> _alternarLugar(List<String> membros) async {
+    final desligando = _lugarLigado(membros);
+    var lista = [...(_prefs.cidades ?? _todosOsMunicipios)];
+    if (desligando) {
+      lista.removeWhere(membros.contains);
+    } else {
+      for (final m in membros) {
+        if (!lista.contains(m)) lista.add(m);
+      }
+    }
+    await _gravar(_prefs.copyWith(cidades: lista));
   }
 
   /// Grava a cada toque, sem botão de salvar.
@@ -120,21 +191,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
     }
-  }
-
-  /// Marcar/desmarcar item de uma lista onde **`null` quer dizer "todos"**.
-  ///
-  /// Desmarcar o primeiro item precisa materializar a lista inteira antes de
-  /// tirar um: sem isso, `null` menos um item continuaria `null`, e o toque não
-  /// faria nada. É a armadilha central deste modelo, e ela mora aqui.
-  List<String> _alternar(List<String>? atual, List<String> todos, String item) {
-    final lista = [...(atual ?? todos)];
-    if (lista.contains(item)) {
-      lista.remove(item);
-    } else {
-      lista.add(item);
-    }
-    return lista;
   }
 
   Future<void> _alternarGlobal(bool valor) async {
@@ -159,7 +215,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthService>();
-    final nomesDeCidade = _cidades.map((c) => c.cidade).toList();
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 20),
@@ -222,16 +277,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
             child: Text(
-              'Não foi possível carregar as cidades e os assuntos. Verifique a '
-              'conexão e volte a esta tela.',
+              'Não foi possível carregar as cidades. Verifique a conexão e '
+              'volte a esta tela.',
               style: SIMEopsType.note(),
             ),
           )
         else
-          // Com tudo desligado, escolher cidade e assunto não muda nada — e um
-          // controle que não muda nada ensina que os controles dali não mudam
-          // nada. Fica visível e apagado, não some: sumir esconderia o que a
-          // pessoa já configurou.
+          // ⚠️ Aqui havia também ASSUNTOS (as 5 categorias) e uma chave de
+          // "balanços e números". Saíram em 13/08: *"É toggle on off - tudo,
+          // cidade 1 on off, cidade 2, cidade 3. Só isso."* Escolher assunto é
+          // afinação que quase ninguém faz e que todo mundo tem que ler pra
+          // decidir não fazer — e a tela de alerta é justamente onde o usuário
+          // quer resolver em dois toques.
+          //
+          // O backend continua sabendo filtrar por categoria (`querReceber` em
+          // `pushService.ts`); o app só não manda mais essa preferência, e
+          // `categorias: null` quer dizer todas. Nada quebra, e o dia em que a
+          // escolha voltar, o outro lado já está pronto.
+          //
+          // Com tudo desligado, escolher cidade não muda nada — e um controle
+          // que não muda nada ensina que os controles dali não mudam nada.
+          // Fica visível e apagado, não some: sumir esconderia o que a pessoa
+          // já configurou.
           Opacity(
             opacity: _ligado ? 1 : 0.35,
             child: IgnorePointer(
@@ -239,66 +306,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  for (final c in _cidades)
+                  for (final l in _lugares)
                     _LinhaDeChave(
-                      titulo: c.cidade,
-                      etiqueta: abbrState(c.estado),
-                      valor: _prefs.aceitaCidade(c.cidade),
-                      onChanged: (_) => _gravar(
-                        _prefs.copyWith(
-                          cidades: _alternar(
-                            _prefs.cidades,
-                            nomesDeCidade,
-                            c.cidade,
-                          ),
-                        ),
-                      ),
+                      titulo: l.rotulo,
+                      etiqueta: l.etiqueta,
+                      valor: _lugarLigado(l.membros),
+                      onChanged: (_) => _alternarLugar(l.membros),
                       recuada: true,
                     ),
-
-                  _Secao(
-                    'ASSUNTOS',
-                    direita: _contagem(_prefs.categorias, categoryOrder.length),
-                  ),
-                  for (final cat in categoryOrder)
-                    _LinhaDeChave(
-                      titulo: categoryLabel(cat),
-                      chip: cat,
-                      valor: _prefs.aceitaCategoria(cat),
-                      onChanged: (_) => _gravar(
-                        _prefs.copyWith(
-                          categorias: _alternar(
-                            _prefs.categorias,
-                            categoryOrder,
-                            cat,
-                          ),
-                        ),
-                      ),
-                      recuada: true,
-                    ),
-                  _LinhaDeChave(
-                    titulo: 'Balanços e números',
-                    descricao:
-                        '"Homicídios caíram 12%" — são estatísticas, '
-                        'não ocorrências',
-                    valor: _prefs.estatisticas,
-                    onChanged: (v) => _gravar(_prefs.copyWith(estatisticas: v)),
-                    recuada: true,
-                  ),
                 ],
               ),
             ),
           ),
-
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 22, 18, 0),
-          child: Text(
-            'Ocorrência de Segurança chega pelo canal URGENTE; o resto pelo '
-            'ROTINA. O som de cada canal quem define é o Android, em '
-            'Configurações → Notificações → SIMEops.',
-            style: SIMEopsType.note(color: SIMEopsColors.faint),
-          ),
-        ),
 
         if (auth.isAuthenticated) ...[
           const SizedBox(height: 34),
@@ -335,12 +354,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(height: 30),
       ],
     );
-  }
-
-  /// `2 DE 5` — e nada quando está tudo marcado, que é o estado normal.
-  String? _contagem(List<String>? escolhidas, int total) {
-    if (escolhidas == null) return null;
-    return '${escolhidas.length} DE $total';
   }
 
   void _confirmLogout() {
@@ -409,7 +422,6 @@ class _LinhaDeChave extends StatelessWidget {
   final String titulo;
   final String? descricao;
   final String? etiqueta;
-  final String? chip;
   final bool valor;
   final ValueChanged<bool> onChanged;
   final bool recuada;
@@ -421,7 +433,6 @@ class _LinhaDeChave extends StatelessWidget {
     required this.onChanged,
     this.descricao,
     this.etiqueta,
-    this.chip,
     this.recuada = false,
     this.destaque = false,
   });
@@ -433,10 +444,6 @@ class _LinhaDeChave extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(recuada ? 30 : 18, 13, 18, 13),
       child: Row(
         children: [
-          if (chip != null) ...[
-            CatChip(categoria: chip!),
-            const SizedBox(width: 10),
-          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

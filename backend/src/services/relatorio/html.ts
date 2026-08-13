@@ -21,7 +21,7 @@ import { CATEGORIA_CORES, CATEGORIA_LABELS, CATEGORIA_ORDEM } from '../../utils/
 import { CategoriaGrupo } from '../../utils/types';
 import { RelatorioRenderizavel } from './tipos';
 import { ESTILO } from './estilo';
-import { enquadrar, paraPixel } from './mapa';
+import { enquadrar, paraPixel, embutirTiles } from './mapa';
 
 // ──────────────────────────────────────────────────────────
 // Utilidades de texto
@@ -230,14 +230,23 @@ function barrasNoTempo(baldes: Balde[]): string {
   return `<div class="barras">${colunas}</div><div class="eixo">${eixo}</div>`;
 }
 
-function mapaImpresso(r: RelatorioRenderizavel): string {
+async function mapaImpresso(
+  r: RelatorioRenderizavel,
+  paraPdf: boolean,
+): Promise<string> {
   const pontos = r.mapPoints.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
   if (pontos.length === 0) return '';
 
   // 168mm × 105mm na folha, em px de CSS (96dpi).
   const L = 635, A = 397;
-  const q = enquadrar(pontos, L, A);
+  let q = enquadrar(pontos, L, A);
   if (!q) return '';
+
+  // 🚨 No caminho do PDF os tiles viram `data:` URI. Quem converte é a WebView
+  // do aparelho, e ela pode fotografar a página **antes** de as imagens da rede
+  // chegarem — o mapa sairia branco, sem erro nenhum. É a armadilha do
+  // html2canvas de novo, por outra porta. Aqui não há o que esperar.
+  if (paraPdf) q = await embutirTiles(q);
 
   const tiles = q.tiles.map((t) =>
     `<img src="${t.url}" alt="" loading="eager"
@@ -526,9 +535,26 @@ export function paginaDeErro(titulo: string, explicacao: string): string {
 </html>`;
 }
 
-export function renderizarRelatorio(r: RelatorioRenderizavel): string {
+/**
+ * O documento.
+ *
+ * Com [paraPdf], é o **mesmo** documento com uma diferença de fundo: nada nele
+ * depende da rede. Quem converte no aparelho é a WebView, e ela não espera —
+ * imagem que não chegou a tempo simplesmente não aparece, calada. Por isso os
+ * tiles do mapa viram `data:` URI e a barra de ações nem é emitida (em vez de
+ * ficar escondida por `@media print`, que é apostar que a WebView aplica print
+ * styles).
+ *
+ * Um renderizador, um parâmetro. Duas funções seria o começo de dois documentos.
+ */
+export async function renderizarRelatorio(
+  r: RelatorioRenderizavel,
+  opcoes: { paraPdf?: boolean } = {},
+): Promise<string> {
+  const paraPdf = opcoes.paraPdf ?? false;
   const cidades = listar(r.cidades);
   const titulo = `SIMEops — Análise de Risco · ${cidades}/${r.estado}`;
+  const mapa = await mapaImpresso(r, paraPdf);
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -544,10 +570,10 @@ export function renderizarRelatorio(r: RelatorioRenderizavel): string {
 </head>
 <body>
 
-<div class="acoes">
+${paraPdf ? '' : `<div class="acoes">
   <span class="quem">SIMEops · Relatório de risco</span>
   <button type="button" onclick="window.print()">Baixar PDF</button>
-</div>
+</div>`}
 
 <main class="folha">
 
@@ -570,7 +596,7 @@ export function renderizarRelatorio(r: RelatorioRenderizavel): string {
   ${abertura(r)}
   ${secaoCategorias(r)}
   ${secaoTempo(r)}
-  ${mapaImpresso(r)}
+  ${mapa}
   ${secaoBairros(r)}
   ${secaoIndicadores(r)}
   ${secaoFontes(r)}

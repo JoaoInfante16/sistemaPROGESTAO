@@ -182,13 +182,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // O `?` mora na casa, na altura da marca: é pergunta sobre o **sistema
       // inteiro** (o que essas cinco cores querem dizer, o que o robô procura),
       // não sobre a cidade que está aberta. Ver [FolhaTaxonomia].
+      //
+      // ⚠️ Era um `?` solto, do tamanho de um número, e lido como sujeira de
+      // renderização — nada dizia que era um botão. O círculo é o que faz ele
+      // virar alvo: fecha a forma, cria a área de toque e se separa do texto
+      // ao lado. É a mesma exceção dos pinos do mapa — **raio zero é regra de
+      // caixa**, e isto é uma marca, não uma caixa.
       acao: InkWell(
         onTap: () => FolhaTaxonomia.abrir(context),
+        customBorder: const CircleBorder(),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 0, 8),
-          child: Text(
-            '?',
-            style: SIMEopsType.figure(size: 17, color: SIMEopsColors.tealLight),
+          padding: const EdgeInsets.fromLTRB(12, 2, 0, 6),
+          child: Container(
+            width: 23,
+            height: 23,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: SIMEopsColors.teal, width: 1.2),
+            ),
+            child: Text(
+              '?',
+              // Meia unidade acima da linha de base ótica: o `?` tem a haste
+              // alta e o ponto baixo, e centralizar pela caixa deixa ele
+              // visualmente caído dentro do círculo.
+              style: SIMEopsType.slug(
+                color: SIMEopsColors.tealLight,
+              ).copyWith(fontSize: 12, letterSpacing: 0, height: 1.15),
+            ),
           ),
         ),
       ),
