@@ -268,6 +268,80 @@ de $100.
 
 ---
 
+## 2026-08-13 (noite, terceiro round) — "montando o documento" para sempre
+
+O João apertou o botão e a tela ficou em **MONTANDO O DOCUMENTO… indefinidamente**.
+
+### O defeito meu: um `await` sem timeout
+
+**Não existe timeout em lugar nenhum deste caminho.** Do lado Android,
+`PrintingJob.convertHtml` só reage a `onPageFinished`; `PdfConvert.print` só
+trata `onLayoutFinished` — **nem `onLayoutFailed`, nem `onLayoutCancelled`**. Se
+a WebView engasga, ninguém chama de volta e o `await` fica pendurado.
+
+O logcat mostrou a WebView **criada às 19:44:23 e destruída às 19:45:08**, sem
+nenhum retorno no meio. Ou seja: o guard corrigido funcionou (a conversão foi
+tentada de verdade, pela primeira vez), e o que falta é ela terminar.
+
+Agora tem `.timeout(90s)`, e estourar cai no link como qualquer outra falha.
+**Botão que trava para sempre é pior que botão que falha** — o usuário não tem
+nem o que tentar de novo. 90s porque o A57 é o piso do parque e o documento
+carrega os tiles do mapa embutidos.
+
+### As fontes: de "decisão do João" para caminho crítico
+
+Medido no documento real (`?formato=pdf`, relatório de Porto Alegre):
+**840 KB e três URLs de `fonts.googleapis.com`/`gstatic` ainda no `<head>`.**
+
+Como o Android converte em `onPageFinished`, que não espera a rede, essas três
+URLs eram duas coisas ao mesmo tempo: a tipografia virando **cara ou coroa** e um
+candidato plausível a causa do próprio travamento.
+
+Embutidas. E o custo real ficou **muito** abaixo do que eu tinha estimado:
+
+| | estimado | real |
+|---|---|---|
+| fontes em base64 | ~300 KB | **88 KB** |
+
+O que explica a diferença: as duas são **fontes variáveis** (um arquivo cobre
+todos os pesos) e só o subconjunto **latin** importa — todo acento do português
+vive em U+0000-00FF. O CSS do Google entrega até 6 subconjuntos por família
+(vietnamese, cyrillic, greek, latin-ext), e copiar tudo era o caro.
+
+`font-display: block` no bloco embutido, o oposto do `swap` do Google: aqui não
+há espera de rede pra disfarçar, e o que importa é o texto **nunca** ser pintado
+com a fonte errada.
+
+⚠️ **Só a variante de impressão muda.** No navegador o `<link>` continua — ali a
+página repinta quando a fonte chega, e o cache do Google é melhor que 88 KB em
+toda visita.
+
+Licença conferida: as duas são **OFL 1.1**, redistribuir embutido é permitido.
+
+### Medição final das duas variantes
+
+| variante | tamanho | URLs externas |
+|---|---|---|
+| navegador | 23 KB | fontes + tiles do CartoDB |
+| `formato=pdf` | **928 KB** | **nenhuma** |
+
+⚠️ 928 KB é muito HTML pra uma WebView engolir, e segue sendo o suspeito nº 1 se
+o timeout de 90s estourar. Os tiles do mapa são quase tudo. Se estourar, as
+alavancas na ordem: tile sem `@2x` (4x menor, mais borrado no papel) e depois
+reencodar em JPEG (dependência nova — deixar por último).
+
+### Uma ferramenta que faltava o tempo todo
+
+O `npm run dev` rodava no terminal do João, e em dev o winston **só escreve no
+console** (`logger.ts:25` — os transports de arquivo são condicionados a
+`nodeEnv === 'production'`). Resultado: durante toda a caçada ao 500 eu não tinha
+como ler o erro do servidor, e reconstruí o caminho na mão com script.
+
+O dev server agora roda sob a sessão, com o log legível. O que achou os dois
+defeitos anteriores em minutos foi o `adb logcat` — a mesma ideia, do outro lado.
+
+---
+
 ## 2026-08-13 (noite, depois) — o botão nunca tinha funcionado, por dois motivos empilhados
 
 O João apertou COMPARTILHAR RELATÓRIO e recebeu *"Não foi possível montar o

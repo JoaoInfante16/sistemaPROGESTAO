@@ -110,13 +110,29 @@ class DocumentoDeRisco {
         return null;
       }
 
+      // 🚨 **O `.timeout` não é zelo, é obrigação — e faltava.**
+      //
+      // Não existe timeout em lugar nenhum deste caminho. Do lado Android,
+      // `PrintingJob.convertHtml` só reage a `onPageFinished`, e `PdfConvert`
+      // só trata `onLayoutFinished` — **nem `onLayoutFailed` nem
+      // `onLayoutCancelled`**. Se a WebView engasgar, ninguém chama de volta,
+      // e o `await` fica pendurado: em 13/08 o botão do A57 ficou em "MONTANDO
+      // O DOCUMENTO…" indefinidamente, sem erro nenhum pra mostrar.
+      //
+      // Botão que trava para sempre é pior que botão que falha: o usuário não
+      // tem nem o que tentar de novo. Estourando, cai no link como qualquer
+      // outra falha.
+      //
+      // 90s porque a conversão é lenta de verdade num aparelho modesto (o A57
+      // é o piso do parque) e o documento tem os tiles do mapa embutidos.
+      //
       // Depreciada de propósito, e é o ponto do desenho: a alternativa é
-      // Chromium no servidor. A queda está coberta pelo `catch` desta função.
+      // Chromium no servidor.
       // ignore: deprecated_member_use
       final bytes = await Printing.convertHtml(
         html: utf8Decode(resp.bodyBytes),
         format: PdfPageFormat.a4,
-      );
+      ).timeout(const Duration(seconds: 90));
       if (bytes.isEmpty) {
         debugPrint('[Documento] convertHtml devolveu vazio');
         return null;

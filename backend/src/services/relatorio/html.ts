@@ -21,6 +21,7 @@ import { CATEGORIA_CORES, CATEGORIA_LABELS, CATEGORIA_ORDEM } from '../../utils/
 import { CategoriaGrupo } from '../../utils/types';
 import { RelatorioRenderizavel } from './tipos';
 import { ESTILO } from './estilo';
+import { FONTES_EMBUTIDAS } from './fontes';
 import { enquadrar, paraPixel, embutirTiles } from './mapa';
 
 // ──────────────────────────────────────────────────────────
@@ -593,9 +594,16 @@ export async function renderizarRelatorio(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(titulo)}</title>
 <meta name="description" content="Análise de risco criminal — ${esc(cidades)}/${esc(r.estado)}, ${esc(periodoPorExtenso(r.dateFrom, r.dateTo))}.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
+${paraPdf
+  // Impressao: a fonte vem DENTRO do arquivo. A WebView do Android converte em
+  // `onPageFinished`, que nao espera a rede — buscar fonte no Google aqui e
+  // sortear a tipografia do documento que vai pro cliente.
+  ? `<style>${FONTES_EMBUTIDAS}</style>`
+  // Navegador: o <link> continua, porque ali a pagina repinta quando a fonte
+  // chega e o cache do Google e melhor que 88 KB em toda visita.
+  : `<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">`}
 <style>${ESTILO}</style>
 </head>
 <body>
