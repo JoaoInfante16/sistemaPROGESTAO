@@ -8,8 +8,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'firebase_options.dart';
 import 'core/config/env.dart';
+import 'core/widgets/abertura.dart';
 import 'core/theme/simeops_colors.dart';
-import 'core/theme/simeops_type.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/api_service.dart';
 import 'core/services/local_db_service.dart';
@@ -330,27 +330,12 @@ class _AuthGateState extends State<AuthGate> {
   Widget build(BuildContext context) {
     // A abertura do app é o único lugar onde **silhueta mentiria**: aqui o app
     // ainda não sabe se vai abrir o login, o feed ou a troca de senha, então
-    // desenhar a forma de uma delas é chutar. Quem espera é a marca, sozinha —
-    // e ela é a mesma peça do cabeçalho do monitoramento, não uma splash nova.
-    if (!_configLoaded) {
-      return Scaffold(
-        backgroundColor: SIMEopsColors.navy,
-        body: Center(
-          child: Text.rich(
-            TextSpan(
-              children: [
-                const TextSpan(text: 'SIME'),
-                TextSpan(
-                  text: 'OPS',
-                  style: TextStyle(color: SIMEopsColors.greenLight),
-                ),
-              ],
-            ),
-            style: SIMEopsType.wordmark(size: 25),
-          ),
-        ),
-      );
-    }
+    // desenhar a forma de uma delas é chutar.
+    //
+    // E é, por isso mesmo, o único lugar do app com animação — ver [Abertura].
+    // A espera aqui é real, e o que se mostra nela é o que o produto faz:
+    // manchetes passando e quase todas se dissolvendo.
+    if (!_configLoaded) return const Abertura();
 
     final auth = context.watch<AuthService>();
 

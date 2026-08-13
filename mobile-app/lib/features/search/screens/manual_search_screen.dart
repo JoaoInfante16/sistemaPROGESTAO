@@ -16,7 +16,6 @@ import '../../../core/widgets/dialogo_cancelar_consulta.dart';
 import '../../../core/widgets/esqueleto.dart';
 import '../../../core/widgets/fio_agrupado.dart';
 import '../../../core/widgets/group_header.dart';
-import '../../../core/widgets/grid_background.dart';
 import '../../../core/widgets/masthead.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
@@ -515,7 +514,7 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
             ),
             Expanded(
               child: _searchStatus == 'idle'
-                  ? GridBackground(child: _buildForm())
+                  ? _buildForm()
                   : _searchStatus == 'loading'
                   ? const Padding(
                       padding: EdgeInsets.fromLTRB(18, 26, 18, 0),

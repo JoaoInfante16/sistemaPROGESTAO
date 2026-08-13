@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../../../core/models/city_overview.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/widgets/folha_taxonomia.dart';
-import '../../../core/widgets/grid_background.dart';
 import '../../../core/widgets/live_dot.dart';
 import '../../../core/widgets/masthead.dart';
 import '../../../core/theme/simeops_colors.dart';
@@ -61,18 +60,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return GridBackground(
-      child: RefreshIndicator(
-        onRefresh: _loadCities,
-        color: SIMEopsColors.teal,
-        child: _loading
-            ? const EsqueletoDeCidades()
-            : _error != null
-            ? _buildError()
-            : _cities.isEmpty
-            ? _buildEmpty()
-            : _buildGrid(),
-      ),
+    // ⚠️ Aqui havia um `GridBackground` — grade animada a 60fps, com `Ticker`
+    // repintando a tela inteira pra desenhar linhas a **2-5% de opacidade**.
+    // Saiu em 13/08 a pedido do João: *"não tem personalidade, não é bonito,
+    // não é tecnológico"*. Animação de fundo permanente é a pior troca possível
+    // — cobra bateria o tempo todo por um efeito que ninguém repara, e some com
+    // o silêncio que é a linguagem desta interface.
+    return RefreshIndicator(
+      onRefresh: _loadCities,
+      color: SIMEopsColors.teal,
+      child: _loading
+          ? const EsqueletoDeCidades()
+          : _error != null
+          ? _buildError()
+          : _cities.isEmpty
+          ? _buildEmpty()
+          : _buildGrid(),
     );
   }
 
