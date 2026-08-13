@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 import '../../../core/models/crime_point.dart';
 import '../../../core/models/executive_data.dart';
 import '../../../core/models/news_item.dart';
@@ -416,16 +415,10 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
     ],
   };
 
-  /// Monta o documento no servidor e joga na folha de compartilhamento.
+  /// Monta o documento e joga na folha de compartilhamento do sistema.
   ///
-  /// **Por que link e não arquivo.** Anexo `.html` é o pior dos dois mundos: o
-  /// Google Drive mostra o código-fonte em vez da página, filtro de e-mail
-  /// corporativo trata como phishing, e no Android depende de ter app
-  /// registrado pra `text/html`. O link abre em tudo; e o PDF, gerado pelo
-  /// botão de imprimir de dentro da página, viaja em tudo.
-  ///
-  /// Quem quer conferir antes de mandar compartilha consigo mesmo — ou abre o
-  /// link direto, que é o mesmo endereço.
+  /// Sai como **PDF** — o porquê e o plano B moram em [DocumentoDeRisco], que é
+  /// a mesma peça usada pelo relatório do monitoramento.
   Future<void> _publicar() async {
     setState(() => _ocupado = true);
     // Os dois saem do context antes do await — depois dele o widget pode já ter
@@ -443,6 +436,7 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
         searchId: widget.searchId,
         recorte: {
           'dias': _diasDoRecorte,
+          'origem': 'consulta',
           'antigas': _includeOld,
           'regiao': _includeRegiao,
           'categorias': _cats.toList(),
@@ -1000,8 +994,11 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
         Padding(
           padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
           child: Text(
-            'Abre em qualquer navegador, no computador ou no celular, e vira '
-            'PDF pelo botão Baixar PDF de dentro da página.',
+            // Este texto já mentiu: descrevia o link e o botão "Baixar PDF" de
+            // dentro da página, depois de o botão ter passado a entregar o
+            // arquivo pronto.
+            'Sai em PDF com o recorte que está na tela, pronto para enviar ou '
+            'salvar.',
             style: SIMEopsType.note(color: SIMEopsColors.faint),
           ),
         ),

@@ -4,6 +4,7 @@ import '../../../core/models/city_overview.dart';
 import '../../../core/models/crime_point.dart';
 import '../../../core/models/executive_data.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/services/documento_de_risco.dart';
 import '../../../core/utils/state_utils.dart';
 import '../../../core/utils/type_helpers.dart';
 import '../../../core/widgets/crime_radar_map.dart';
@@ -35,6 +36,9 @@ class _CityDetailScreenState extends State<CityDetailScreen>
   Map<String, dynamic>? _summary;
   List<dynamic>? _trend;
   bool _loadingOverview = true;
+
+  /// O botão de compartilhar está montando o documento.
+  bool _compartilhando = false;
 
   /// Janela do relatório da cidade, em dias. `null` = **desde o início**.
   ///
@@ -262,6 +266,66 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     } catch (e) {
       debugPrint('[CityDetail] Map points error: $e');
       if (mounted) setState(() => _mapLoading = false);
+    }
+  }
+
+  /// O relatório do monitoramento sai como documento, igual ao da consulta.
+  ///
+  /// **Duas diferenças em relação à consulta manual, e as duas são de propósito:**
+  ///
+  /// 1. **Não manda `analytics`.** A consulta manual tem os itens todos em
+  ///    memória e conta na tela; aqui a tela recebeu números já agregados pelo
+  ///    backend (`crime-summary`, `crime-trend`, `map-points`, `executive`) e
+  ///    reempacotá-los pra devolver seria transportar cópia de um dado que o
+  ///    servidor tem de primeira mão. Sem `analytics`, o backend consulta o
+  ///    banco — o caminho que a Fase E2 já deixou pronto pro painel admin.
+  /// 2. **O recorte é só `dias` + origem.** Esta tela não tem `+antigas`,
+  ///    `+região` nem seletor de categoria; declarar esses campos seria a capa
+  ///    afirmar exclusões que ninguém fez.
+  ///
+  /// 🚨 O par `_cidadesDoRelatorio` + `_relatorioRangeDays` é **o mesmo** que
+  /// alimenta as quatro rotas da tela. Qualquer outra conta aqui recriaria a
+  /// divergência que o `TUDO` já causou uma vez — cabeçalho dizendo 21, corpo
+  /// dizendo 12.
+  Future<void> _compartilhar() async {
+    final estado = widget.city.parentState ?? '';
+    if (estado.isEmpty) return;
+
+    setState(() => _compartilhando = true);
+    // Saem do context ANTES do await: depois dele o widget pode já ter ido.
+    final documento = DocumentoDeRisco(context.read<ApiService>());
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final resultado = await documento.compartilhar(
+        cidades: _cidadesDoRelatorio,
+        estado: estado,
+        dateFrom: _relatorioDe,
+        dateTo: _dateStr(DateTime.now()),
+        recorte: {
+          'dias': _relatorioRangeDays,
+          'origem': 'monitoramento',
+        },
+      );
+
+      if (mounted && resultado == ResultadoDoCompartilhar.link) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Não deu para montar o PDF neste aparelho — foi o link do '
+              'relatório, que abre em qualquer navegador.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[CityDetail] Compartilhar error: $e');
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Não foi possível montar o relatório. Tente de novo.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _compartilhando = false);
     }
   }
 
@@ -731,6 +795,38 @@ class _CityDetailScreenState extends State<CityDetailScreen>
             ),
 
           _buildFontesAnalisadas(),
+
+          // Mesmo botão, mesmo nome, mesmo lugar da consulta manual. O
+          // relatório do monitoramento é o que o cliente olha todo dia — era
+          // justamente ele que não tinha como sair da tela.
+          //
+          // Some quando a cidade não diz o estado: sem estado o documento sai
+          // sem mapa e sem indicadores, e o backend recusa a rota. Botão que
+          // não pode funcionar é pior que botão ausente.
+          if ((widget.city.parentState ?? '').isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 30, 18, 0),
+              child: FilledButton(
+                onPressed: _compartilhando ? null : _compartilhar,
+                child: Text(
+                  _compartilhando
+                      ? 'MONTANDO O DOCUMENTO…'
+                      : 'COMPARTILHAR RELATÓRIO',
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+              child: Text(
+                // O documento segue o seletor lá de cima — dizer isso aqui
+                // evita a dúvida de sempre: "compartilhou o quê, os 30 dias ou
+                // tudo?".
+                'Sai em PDF com o período selecionado acima, pronto para '
+                'enviar ou salvar.',
+                style: SIMEopsType.note(color: SIMEopsColors.faint),
+              ),
+            ),
+          ],
           const SizedBox(height: 40),
         ],
       ),

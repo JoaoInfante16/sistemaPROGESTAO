@@ -90,3 +90,6 @@ mobile-app/android/.kotlin/sessions/kotlin-compiler-7601232268257553280.salive
 *.jks
 *.keystore
 mobile-app/android/key.properties
+# Certificado de upload baixado do Play Console. Ficava so "untracked de
+# proposito", o que quer dizer que todo `git add -A` tentava leva-lo junto.
+*.pem

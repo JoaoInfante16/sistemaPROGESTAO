@@ -298,33 +298,63 @@ async function mapaImpresso(
 // A capa — quem, onde, quando, e com que recorte
 // ──────────────────────────────────────────────────────────
 
+/**
+ * A capa declara o filtro — e **só o filtro que existia na tela de origem**.
+ *
+ * Cada linha é condicional de propósito. O relatório do monitoramento não tem
+ * `+antigas`, `+região` nem seletor de categoria: imprimir *"Fora da contagem"*
+ * ali seria afirmar uma exclusão que ninguém fez, num documento cujo trabalho é
+ * ser citado sem quem cita precisar do contexto de volta.
+ */
 function linhasDoRecorte(r: RelatorioRenderizavel): string {
   const linhas: Array<[string, string]> = [];
-  linhas.push(['Período', periodoPorExtenso(r.dateFrom, r.dateTo)]);
 
   const rec = r.recorte;
-  if (rec) {
-    const cats = rec.categorias.length === 0
-      ? 'Todas as categorias'
-      : listar(rec.categorias.map(rotuloCat));
-    linhas.push(['Categorias', cats]);
 
+  // A origem vem antes do período porque ela muda o significado do período:
+  // "30 dias de varredura contínua" e "30 dias de uma consulta pontual" são
+  // coberturas diferentes do mesmo intervalo.
+  if (rec?.origem) {
     linhas.push([
-      'Municípios vizinhos',
-      rec.regiao
-        ? `Incluídos${rec.municipiosVizinhos?.length ? ` — ${listar(rec.municipiosVizinhos)}` : ''}`
-        : 'Fora da contagem',
+      'Origem',
+      rec.origem === 'monitoramento'
+        ? 'Monitoramento contínuo'
+        : 'Consulta sob demanda',
     ]);
+  }
+
+  linhas.push(['Período', periodoPorExtenso(r.dateFrom, r.dateTo)]);
+
+  if (rec) {
+    if (rec.categorias) {
+      linhas.push([
+        'Categorias',
+        rec.categorias.length === 0
+          ? 'Todas as categorias'
+          : listar(rec.categorias.map(rotuloCat)),
+      ]);
+    }
+
+    if (rec.regiao !== undefined) {
+      linhas.push([
+        'Municípios vizinhos',
+        rec.regiao
+          ? `Incluídos${rec.municipiosVizinhos?.length ? ` — ${listar(rec.municipiosVizinhos)}` : ''}`
+          : 'Fora da contagem',
+      ]);
+    }
 
     // O "+ antigas" precisa dizer até ONDE alcança: um relatório de 30 dias com
     // a chave ligada pode conter matéria de cinco meses atrás, e isso não pode
     // ficar implícito num documento que vai ser citado.
-    linhas.push([
-      'Matérias anteriores',
-      rec.antigas
-        ? `Incluídas${rec.horizonteDias ? ` — até ${rec.horizonteDias} dias antes do período` : ''}`
-        : 'Fora da contagem',
-    ]);
+    if (rec.antigas !== undefined) {
+      linhas.push([
+        'Matérias anteriores',
+        rec.antigas
+          ? `Incluídas${rec.horizonteDias ? ` — até ${rec.horizonteDias} dias antes do período` : ''}`
+          : 'Fora da contagem',
+      ]);
+    }
   }
 
   linhas.push(['Gerado em', geradoEm(r.geradoEm)]);

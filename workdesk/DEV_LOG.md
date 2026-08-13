@@ -268,6 +268,81 @@ de $100.
 
 ---
 
+## 2026-08-13 (noite) — o relatório do monitoramento também sai da tela
+
+O pedido do João, textual: *"tem que ter compartilhar relatório nos relatórios do
+auto scan tbm, tem que seguir o filtro de periodo"*. A consulta manual ganhou o
+botão na Fase E2; o relatório do **monitoramento** — que é o que o cliente abre
+todo dia — não tinha como sair do aparelho.
+
+### O que travava: o recorte era obrigatório demais
+
+`RecorteDeclarado` exigia `antigas`, `regiao` e `categorias`. **Essas três coisas
+não existem na tela do monitoramento**, que só tem seletor de período. Pra o
+botão funcionar, o app teria que inventar valores — e a capa imprimiria
+*"Municípios vizinhos: fora da contagem"* num documento onde ninguém excluiu
+vizinho nenhum, porque o conceito não está lá.
+
+Ruído que parece informação é pior que campo ausente: quem lê conclui que alguém
+tomou uma decisão que nunca foi tomada.
+
+Os três viraram opcionais, e `linhasDoRecorte` passou a **imprimir só o que
+veio**. Entrou também `origem: 'monitoramento' | 'consulta'`, e ela vai **antes**
+do período na capa, de propósito: "30 dias de varredura contínua" e "30 dias de
+uma consulta pontual" são coberturas diferentes do mesmo intervalo, e o leitor
+não tem como inferir isso dos números.
+
+### O que a prova mostrou (schema real + render real, não leitura de código)
+
+| caso | capa |
+|---|---|
+| monitoramento | Origem · Período · Gerado em |
+| consulta | Origem · Período · Categorias · Vizinhos · Anteriores · Gerado em |
+| **legado** (salvo antes desta mudança) | Período · Categorias · Vizinhos · Anteriores · Gerado em |
+| `origem: 'chute'` | recusado — `Invalid enum value` |
+
+A terceira linha é a que quase passou batido, e virou obrigatória por causa da
+**033**: relatório não expira mais, então linha de `reports` gravada semanas
+atrás continua sendo aberta por link. Se o render assumisse `origem`, todos eles
+quebrariam de uma vez, em silêncio.
+
+### O botão, e as duas diferenças de propósito
+
+Mesmo texto, mesmo lugar, mesma peça (`DocumentoDeRisco`). Mas:
+
+1. **não manda `analytics`.** A consulta manual tem os itens em memória e conta
+   na tela; aqui a tela recebeu números **já agregados pelo backend** e
+   reempacotá-los seria transportar cópia de um dado que o servidor tem de
+   primeira mão. Sem `analytics`, o backend consulta o banco — o caminho que a
+   Fase E2 já tinha deixado pronto pro painel admin, agora com segundo usuário.
+2. **o recorte é só `dias` + origem.**
+
+O par que alimenta o documento é `_cidadesDoRelatorio` + `_relatorioRangeDays`,
+que é **exatamente** o que alimenta as quatro rotas da tela. Qualquer outra conta
+aqui recriaria a divergência que o `TUDO` já causou uma vez — cabeçalho dizendo
+21, corpo dizendo 12.
+
+O botão **some** quando a cidade não tem `parentState`: sem estado o documento
+sai sem mapa e sem indicadores. Botão que não pode funcionar é pior que botão
+ausente.
+
+### Dois textos que tinham envelhecido
+
+Na consulta manual, o comentário de `_publicar()` ainda explicava *"por que link
+e não arquivo"* — e a linha embaixo do botão prometia *"vira PDF pelo botão
+Baixar PDF de dentro da página"*. As duas descreviam o desenho de **anteontem**,
+e sobreviveram à mudança que as tornou falsas porque ninguém releu o texto ao
+lado do código que mexeu. É a REGRA ZERO da workdesk acontecendo dentro do
+código-fonte.
+
+### Sobrou também
+
+`share_plus` estava importado sem uso em `relatorio_de_risco.dart` — resto do
+caminho do link, que mudou de casa pro `DocumentoDeRisco`. `flutter analyze`
+voltou ao baseline (1 info em `type_helpers.dart`).
+
+---
+
 ## 2026-08-13 — o relatório vira PDF no aparelho (spike em curso) + a tela de alerta enxuga
 
 ### 🚧 ESTADO: o spike do PDF está NO APARELHO, esperando o teste do João

@@ -221,11 +221,17 @@ export const schemas = {
     // O recorte que estava na tela quando a pessoa mandou gerar. Vai escrito na
     // capa do documento: relatorio que nao declara o proprio filtro e citavel
     // fora de contexto, e este aqui existe pra ser citado.
+    //
+    // So `dias` e obrigatorio. As duas telas que geram relatorio nao tem os
+    // mesmos controles — o monitoramento so tem periodo —, e obrigar `antigas`,
+    // `regiao` e `categorias` faria o auto-scan inventar valores que a capa
+    // imprimiria como decisao de quem gerou. O render nao imprime o que nao veio.
     recorte: z.object({
       dias: z.number().int().min(1).max(JANELA_MAXIMA_DIAS),
-      antigas: z.boolean(),
-      regiao: z.boolean(),
-      categorias: z.array(z.string().max(40)).max(20),
+      origem: z.enum(['monitoramento', 'consulta']).optional(),
+      antigas: z.boolean().optional(),
+      regiao: z.boolean().optional(),
+      categorias: z.array(z.string().max(40)).max(20).optional(),
       horizonteDias: z.number().int().min(1).max(JANELA_MAXIMA_DIAS).optional(),
       municipiosVizinhos: z.array(z.string().max(100)).max(60).optional(),
     }).optional(),

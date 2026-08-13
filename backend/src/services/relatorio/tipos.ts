@@ -17,16 +17,34 @@
 
 import { CrimePoint } from '../../utils/types';
 
-/** O que o usuário tinha filtrado quando mandou gerar. Vai escrito na capa. */
+/**
+ * O que o usuário tinha filtrado quando mandou gerar. Vai escrito na capa.
+ *
+ * 🚨 **Quase tudo aqui é opcional, e não por preguiça.** Duas telas geram
+ * relatório e elas não têm os mesmos controles: a consulta manual tem
+ * `+antigas`, `+região` e categorias; o **monitoramento só tem período**.
+ * Enquanto os três campos eram obrigatórios, o auto-scan precisaria inventar
+ * valores — e a capa imprimiria *"Municípios vizinhos: fora da contagem"* num
+ * documento onde esse conceito nem existe. Ruído que parece informação é pior
+ * que campo ausente: quem lê conclui que alguém decidiu excluir a região.
+ *
+ * A regra do render é literal: **o que não veio, não é impresso.**
+ */
 export interface RecorteDeclarado {
   /** Janela efetiva em dias — o re-fatiamento da tela, não o pedido da busca. */
   dias: number;
-  /** Incluiu matérias anteriores ao período pedido. */
-  antigas: boolean;
-  /** Incluiu ocorrências de município vizinho. */
-  regiao: boolean;
+  /**
+   * De onde saiu o documento. A distinção importa pra quem lê e não dá pra
+   * inferir dos números: varredura 24/7 desde que a cidade entrou no
+   * monitoramento não é a mesma coisa que uma consulta pontual disparada agora.
+   */
+  origem?: 'monitoramento' | 'consulta';
+  /** Incluiu matérias anteriores ao período pedido. Só a consulta manual tem. */
+  antigas?: boolean;
+  /** Incluiu ocorrências de município vizinho. Só a consulta manual tem. */
+  regiao?: boolean;
   /** Categorias marcadas. **Vazio quer dizer todas** — a mesma regra do app. */
-  categorias: string[];
+  categorias?: string[];
   /** Até onde o "+ antigas" podia alcançar (config `manual_search_horizon_days`). */
   horizonteDias?: number;
   /** Municípios vizinhos presentes, pra dizer QUAIS são e não só quantos. */
