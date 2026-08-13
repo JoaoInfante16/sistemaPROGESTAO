@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/crime_point.dart';
 import '../../../core/models/executive_data.dart';
 import '../../../core/models/news_item.dart';
@@ -75,7 +74,7 @@ class RelatorioDeRisco extends StatefulWidget {
 }
 
 class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
-  /// Enquanto o servidor monta o documento — vale pras duas ações.
+  /// Enquanto o servidor monta o documento.
   bool _ocupado = false;
 
   // Recorte client-side — re-fatiar é de graça, o dado já veio na busca.
@@ -416,17 +415,17 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
     ],
   };
 
-  /// Monta o documento no servidor e devolve o link.
-  ///
-  /// Com [abrir], o navegador abre direto — é onde se confere antes de mandar,
-  /// e de onde sai o PDF. Sem ele, cai na folha de compartilhamento do Android.
+  /// Monta o documento no servidor e joga na folha de compartilhamento.
   ///
   /// **Por que link e não arquivo.** Anexo `.html` é o pior dos dois mundos: o
   /// Google Drive mostra o código-fonte em vez da página, filtro de e-mail
   /// corporativo trata como phishing, e no Android depende de ter app
-  /// registrado pra `text/html`. O link abre em tudo; o PDF, gerado dentro da
-  /// página, viaja em tudo.
-  Future<void> _publicar({required bool abrir}) async {
+  /// registrado pra `text/html`. O link abre em tudo; e o PDF, gerado pelo
+  /// botão de imprimir de dentro da página, viaja em tudo.
+  ///
+  /// Quem quer conferir antes de mandar compartilha consigo mesmo — ou abre o
+  /// link direto, que é o mesmo endereço.
+  Future<void> _publicar() async {
     setState(() => _ocupado = true);
     // Os dois saem do context antes do await — depois dele o widget pode já ter
     // sido descartado.
@@ -458,14 +457,10 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
       }
 
       if (!mounted) return;
-      if (abrir) {
-        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-      } else {
-        await Share.share(
-          'SIMEops — Análise de Risco\n'
-          '${widget.cidades.join(", ")}/${widget.estado}\n\n$url',
-        );
-      }
+      await Share.share(
+        'SIMEops — Análise de Risco\n'
+        '${widget.cidades.join(", ")}/${widget.estado}\n\n$url',
+      );
     } catch (e) {
       debugPrint('[Relatório] $e');
       messenger.showSnackBar(
@@ -986,28 +981,23 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
 
         FontesAnalisadas(oficiais: _sourcesOficial, midias: _sourcesMedia),
 
-        // Duas ações, e a diferença entre elas importa: ABRIR é pra conferir o
-        // documento antes de mandar (e é de lá que sai o PDF, pelo botão de
-        // imprimir); ENVIAR é o gesto de entregar.
+        // ⚠️ Um botão, e o nome que o João pediu desde o começo. Eu tinha
+        // partido em dois (ABRIR / ENVIAR) sem ninguém ter pedido: divisão que
+        // o usuário não precisa fazer é decisão que a tela empurra pra ele.
         Padding(
           padding: const EdgeInsets.fromLTRB(18, 30, 18, 0),
           child: FilledButton(
-            onPressed: _ocupado ? null : () => _publicar(abrir: true),
-            child: Text(_ocupado ? 'MONTANDO O DOCUMENTO…' : 'ABRIR RELATÓRIO'),
+            onPressed: _ocupado ? null : _publicar,
+            child: Text(
+              _ocupado ? 'MONTANDO O DOCUMENTO…' : 'COMPARTILHAR RELATÓRIO',
+            ),
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 4, 18, 0),
-          child: TextButton(
-            onPressed: _ocupado ? null : () => _publicar(abrir: false),
-            child: const Text('ENVIAR PARA ALGUÉM'),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
           child: Text(
-            'O relatório abre em qualquer navegador e vira PDF pelo botão '
-            'Baixar PDF, dentro da própria página.',
+            'Abre em qualquer navegador, no computador ou no celular, e vira '
+            'PDF pelo botão Baixar PDF de dentro da página.',
             style: SIMEopsType.note(color: SIMEopsColors.faint),
           ),
         ),
