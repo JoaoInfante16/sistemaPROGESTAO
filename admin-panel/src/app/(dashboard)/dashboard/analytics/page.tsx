@@ -106,14 +106,18 @@ export default function AnalyticsPage() {
       const token = await getToken();
       const { dateFrom, dateTo } = getDateRange();
 
-      const { reportId } = await api.generateReport(token, {
+      // ⚠️ Aqui o link era montado na mao: `window.location.origin/report/ID`.
+      // Ou seja, o painel apontava pra uma pagina dentro dele mesmo — e um link
+      // que vai pro cliente passava a depender de um servico administrativo
+      // estar acordado (no staging, free tier, ele dorme). O documento agora
+      // sai do backend, e quem sabe o endereco dele e o backend.
+      const { reportUrl: url } = await api.generateReport(token, {
         cidade,
         estado,
         dateFrom,
         dateTo,
       });
 
-      const url = `${window.location.origin}/report/${reportId}`;
       setReportUrl(url);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao gerar link');

@@ -255,20 +255,33 @@ class ApiService {
 
   // ── Analytics / Reports ──
 
+  /// Gera o documento compartilhável e devolve `{reportId, reportUrl}`.
+  ///
+  /// 🚨 Mandava `cidade` no singular — e o app passava `cidades.first`. O texto
+  /// do compartilhamento dizia *"Florianópolis, São José e Palhoça"* e o
+  /// documento entregava Florianópolis sozinha, calado. Agora vai a lista.
+  ///
+  /// [recorte] e [analytics] são o que faz papel e tela baterem: o primeiro
+  /// escreve o filtro na capa, o segundo manda **as contagens que a tela já
+  /// fez** — em vez do backend reconsultar e chegar noutro número.
   Future<Map<String, dynamic>> generateReport({
-    required String cidade,
+    required List<String> cidades,
     required String estado,
     required String dateFrom,
     required String dateTo,
     String? searchId,
+    Map<String, dynamic>? recorte,
+    Map<String, dynamic>? analytics,
   }) async {
     final bodyMap = <String, dynamic>{
-      'cidade': cidade,
+      'cidades': cidades,
       'estado': estado,
       'dateFrom': dateFrom,
       'dateTo': dateTo,
     };
     if (searchId != null) bodyMap['searchId'] = searchId;
+    if (recorte != null) bodyMap['recorte'] = recorte;
+    if (analytics != null) bodyMap['analytics'] = analytics;
 
     final res = await _client
         .post(

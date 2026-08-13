@@ -609,8 +609,12 @@ export async function getReport(reportId: string): Promise<{
 
   if (error || !data) return null;
 
-  // Check expiration
-  if (new Date(data.expires_at) < new Date()) return null;
+  // `expires_at` nulo = relatorio sem prazo (migration 033). Ate 12/08 a coluna
+  // nascia com 30 dias e esta linha recusava a partir do dia 31 — em silencio,
+  // sem nada ter sido apagado, porque **nada apaga linha de `reports`**: elas
+  // continuavam todas la, so inalcancaveis. Um documento de apresentacao que
+  // expira sozinho e um vexame agendado com quem arquivou o link.
+  if (data.expires_at && new Date(data.expires_at) < new Date()) return null;
 
   return data as {
     id: string;

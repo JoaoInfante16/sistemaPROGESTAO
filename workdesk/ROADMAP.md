@@ -168,15 +168,25 @@ do plano velho para cá sem conferir, e a corrigi cinco minutos depois: é
 exatamente o apodrecimento silencioso que a regra zero da workdesk descreve, e
 consegui cometê-lo **dentro do documento que registra a regra**.
 
-### ⬜ Fase E2 — export do relatório em HTML A4 autocontido
+### ✅ Fase E2 — o relatório vira documento (12/08)
 
-É onde o `GERADO 11/08 18:21` e a caixa do recorte voltam a fazer sentido:
-arquivo que sai do app precisa dizer quando foi feito e o que estava filtrado.
+Feita, e maior que o previsto. O plano dizia "export em HTML A4 autocontido"; o
+que saiu foi **um renderizador só, no backend**, servindo o documento em
+`GET /public/report/:id` — e a página Next.js do painel morreu junto com quatro
+componentes que ficaram órfãos nela. Ver DEV_LOG de 12/08.
 
-### ⬜ Fase F — notificações
+**A ideia do arquivo `.html` foi descartada, e não deve voltar:** Google Drive
+mostra o código-fonte em vez da página, e filtro de e-mail corporativo trata
+anexo `.html` como phishing. HTML é o projeto e o link é a entrega; o **PDF** é o
+artefato que viaja, e sai do botão de imprimir dentro da própria página.
 
-Migration **032** (a 031 é o DROP dos favoritos), digest por cidade, dois canais
-Android e tri-estado por categoria. É a maior das que restam.
+### ✅ Fase F — notificações (11/08)
+
+Migration **032** (a 031 é o DROP dos favoritos), dois canais Android e
+preferência por cidade/assunto/estatística. **O digest foi descartado com
+medição:** 30 notícias em 21 dias, média 2,0/dia, pico 5, 4 aparelhos — não há
+problema de volume, há problema de relevância. ⬜ Falta o teste real de push no
+A57, que depende da 032 estar rodada.
 
 ### ⬜ Revisão de copy, tela por tela — POR ÚLTIMO
 
@@ -197,7 +207,8 @@ técnica).
 
 Numa janela só, com tudo acima pronto: merge, conferir `/health`, esperar uma
 varredura e rodar `diagnostico-manchetes.ts` (tem que sair >0% com manchete),
-**migration 025 → depois 031** (essa ordem), e o APK de produção com
+**migrations 025 → 031 → 032 → 033** (essa ordem — a 025 liga RLS em
+`user_favorites` e quebra se a 031 já tiver derrubado a tabela), e o APK de produção com
 `env/prod.json`.
 
 ## 📱 Fase 9 — O app
@@ -432,3 +443,36 @@ passo 1 feito, um 429 custa só um segundo a mais.
 - **Sem `parent_id` não há pós-filtro nenhum** (`locationPostFilter = undefined`)
   — a cidade aceitaria notícia de qualquer lugar. Hoje as 4 cidades têm pai; é
   latente.
+
+---
+
+## 🌐 Domínio próprio do relatório — feature futura (12/08)
+
+O link que vai pro cliente é
+`sistemaprogestao-7fzs.onrender.com/public/report/<uuid>`. Funciona, e **não
+piorou nada** (o `ADMIN_PANEL_URL` de antes também era subdomínio do Render), mas
+não é endereço de peça de apresentação.
+
+**Do nosso lado já está pronto:** `urlPublica()` lê `PUBLIC_BASE_URL` antes de
+qualquer coisa. É variável de ambiente no Render, **zero linha de código**.
+
+Levantado em 12/08, e é por isso que fica pra depois:
+
+- `progestao.com.br` existe (NS na Locaweb, MX da Locaweb) mas é de **outra
+  empresa de mesmo nome** — não dá pra usar.
+- `simeop.com.br`, que o João chegou a cadastrar no Render, **não está
+  registrado** (NXDOMAIN no `.com.br`) — não existe zona onde criar o CNAME, e
+  por isso a verificação do Render nunca ia passar, por mais que se apertasse
+  "Retry".
+- Caminho: registrar `simeops.com.br` no registro.br (~R$ 40/ano), CNAME
+  `relatorios` → o serviço do backend, e setar `PUBLIC_BASE_URL`.
+
+**Junto, quando for a hora:** encurtar a rota pra `/r/<id>` — é uma linha, e a
+hora certa é antes de existir link antigo por aí.
+
+### 🔎 Achado solto, do mesmo levantamento
+
+`services/geocoding/nominatim.ts` manda `contact@progestao.com.br` no User-Agent,
+em 3 lugares — o domínio de outra empresa. A política de uso do OSM pede contato
+válido pra poder avisar sobre abuso antes de bloquear. Trocar quando houver
+e-mail próprio.

@@ -472,15 +472,14 @@ export const api = {
     return apiFetch<CrimeComparison>(`/analytics/crime-comparison?${qs}`, { token });
   },
 
+  // O `reportUrl` vem pronto do backend, que e quem renderiza o documento.
+  // Montar o link aqui foi o que fez o painel apontar pra si mesmo por meses.
   generateReport: (token: string, data: { cidade: string; estado: string; dateFrom: string; dateTo: string; searchId?: string }) =>
-    apiFetch<{ reportId: string }>('/analytics/report', {
+    apiFetch<{ reportId: string; reportUrl: string }>('/analytics/report', {
       method: 'POST',
       body: JSON.stringify(data),
       token,
     }),
-
-  getPublicReport: (reportId: string) =>
-    apiFetch<ReportData>(`/public/report/${reportId}`),
 
   // Billing
   getBillingHistory: (token: string) =>

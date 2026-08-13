@@ -25,10 +25,35 @@ import {
 } from '../database/analyticsQueries';
 import { CrimePoint } from '../utils/types';
 import { getOrGenerateExecutive, generateExecutiveFromStatistics } from '../services/executive';
+import { renderizarRelatorio, paginaDeErro } from '../services/relatorio/html';
+import {
+  RelatorioRenderizavel,
+  RecorteDeclarado,
+  ContagensDaTela,
+} from '../services/relatorio/tipos';
 import { db } from '../database/queries';
 import { logger } from '../middleware/logger';
 
 const router = Router();
+
+/**
+ * A base do link que vai pro cliente.
+ *
+ * Ate 12/08 isto era `ADMIN_PANEL_URL` — o relatorio morava no painel admin, e
+ * um link de cliente dependia de um servico administrativo estar de pe. Agora
+ * o documento sai do proprio backend, entao a base e a dele.
+ *
+ * `RENDER_EXTERNAL_URL` o Render define sozinho em todo web service, o que faz
+ * isto funcionar em staging e producao **sem variavel nova**; o fallback pelos
+ * headers cobre o dev local. `x-forwarded-proto` e lido na mao porque atras do
+ * proxy do Render o `req.protocol` responde `http` e o link sairia feio.
+ */
+function urlPublica(req: Request): string {
+  const configurada = process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL;
+  if (configurada) return configurada.replace(/\/+$/, '');
+  const proto = (req.headers['x-forwarded-proto'] as string)?.split(',')[0] || req.protocol;
+  return `${proto}://${req.get('host')}`;
+}
 
 /**
  * `cidade=X` ou `cidades=X,Y,Z` — devolve sempre uma lista.
@@ -263,140 +288,133 @@ router.post(
   validateBody(schemas.generateReport),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { cidade, estado, dateFrom, dateTo, searchId } = req.body;
-
-      // Build report data from available sources
-      let summary;
-      let trend;
-      let sources: Array<{ name: string; count: number; urls: string[]; type: 'oficial' | 'midia' }> = [];
-      let searchReport;
-
-      // Try to get data from news table (monitored cities)
-      try {
-        summary = await getCrimeSummary(cidade, dateFrom, dateTo);
-      } catch {
-        summary = null;
+      const { estado, dateFrom, dateTo, searchId, recorte, analytics } = req.body as {
+        estado: string;
+        dateFrom: string;
+        dateTo: string;
+        searchId?: string;
+        recorte?: RecorteDeclarado;
+        analytics?: ContagensDaTela;
+      };
+      const cidades = resolverCidades(req.body);
+      if (cidades.length === 0) {
+        res.status(400).json({ error: 'cidade ou cidades e obrigatorio' });
+        return;
       }
 
-      try {
-        trend = await getCrimeTrend(cidade, dateFrom, dateTo, 'week');
-      } catch {
-        trend = null;
+      // ── as contagens ──────────────────────────────────────────────────
+      // Quando o app manda `analytics`, ele ja contou tudo com o recorte que a
+      // pessoa mexeu na tela. Reconsultar aqui seria escrever uma segunda
+      // implementacao do mesmo recorte e torcer pra elas nao divergirem — que e
+      // exatamente como o `cidades.first` passou meses dizendo uma coisa no
+      // texto do compartilhamento e outra no documento.
+      let contagens: ContagensDaTela;
+
+      if (analytics) {
+        contagens = analytics;
+      } else {
+        // Caminho do painel admin: ninguem contou nada, o backend conta.
+        const summary = await getCrimeSummary(cidades, dateFrom, dateTo).catch(() => null);
+        const trend = await getCrimeTrend(cidades, dateFrom, dateTo, 'day').catch(() => null);
+        const sources = await getNewsSources(cidades, dateFrom, dateTo).catch(() => []);
+        const searchReport = searchId
+          ? await getSearchResultsAnalytics(searchId).catch(() => null)
+          : null;
+
+        const base = searchReport
+          ? {
+              totalCrimes: searchReport.totalResults,
+              byCrimeType: searchReport.byCrimeType,
+              byCategory: searchReport.byCategory,
+              topBairros: searchReport.topBairros,
+            }
+          : summary && summary.totalCrimes > 0
+            ? summary
+            : { totalCrimes: 0, byCrimeType: [], byCategory: [], topBairros: [] };
+
+        const fontes = searchReport
+          ? searchReport.sources.map((s) => ({ name: s.name, count: 1, type: s.type }))
+          : sources.map((s) => ({ name: s.name, count: s.count, type: s.type }));
+
+        contagens = {
+          total: base.totalCrimes,
+          totalRegiao: 0,
+          semBairro: 0,
+          totalEstatisticas: (searchReport ? searchReport.estatisticas : summary?.estatisticas || []).length,
+          // `category` aqui, `categoria` no documento — a chave diverge desde a
+          // Fase 2 e nao vale mexer nas duas queries por causa disso; o de-para
+          // fica nesta linha, que e o unico lugar onde as duas se encontram.
+          byCategory: base.byCategory.map((c) => ({ categoria: c.category, count: c.count })),
+          byCrimeType: base.byCrimeType.map((t) => ({ tipo_crime: t.tipo_crime, count: t.count })),
+          topBairros: base.topBairros,
+          serie: searchReport
+            ? searchReport.byDate.map((d) => ({ date: d.date, count: d.count }))
+            : (trend?.dataPoints || []).map((p) => ({ date: p.period, count: p.total })),
+          sourcesOficial: fontes.filter((s) => s.type === 'oficial').map(({ name, count }) => ({ name, count })),
+          sourcesMedia: fontes.filter((s) => s.type !== 'oficial').map(({ name, count }) => ({ name, count })),
+        };
       }
 
-      try {
-        sources = await getNewsSources(cidade, dateFrom, dateTo);
-      } catch {
-        sources = [];
-      }
-
-      // If searchId provided, also include manual search results
-      if (searchId) {
-        try {
-          searchReport = await getSearchResultsAnalytics(searchId);
-        } catch {
-          searchReport = null;
-        }
-      }
-
-      // Merge data: se veio de busca manual (searchId), priorizar searchReport
-      const mergedSummary = searchReport
-        ? {
-            totalCrimes: searchReport.totalResults,
-            byCrimeType: searchReport.byCrimeType,
-            byCategory: searchReport.byCategory,
-            topBairros: searchReport.topBairros,
-          }
-        : summary && summary.totalCrimes > 0
-          ? summary
-          : { totalCrimes: 0, byCrimeType: [], byCategory: [], topBairros: [] };
-
-      const mergedSources = searchReport
-        ? searchReport.sources.map(s => ({ name: s.name, count: 1, urls: [s.url], type: s.type }))
-        : sources && sources.length > 0
-          ? sources
-          : [];
-
-      // Separar fontes oficiais vs midia
-      const sourcesOficial = mergedSources.filter(s => s.type === 'oficial');
-      const sourcesMedia = mergedSources.filter(s => s.type === 'midia');
-
+      // ── o que NAO depende do recorte ──────────────────────────────────
+      // Mapa e executivo seguem o recorte fixo da busca, na tela e aqui: o
+      // geocode roda contra a cidade da requisicao, entao re-fatiar o mapa
+      // pintaria bairro de municipio vizinho dentro da cidade pedida.
       const rawPoints: MapPointRaw[] = searchId
         ? await getSearchMapPointsRaw(searchId).catch(() => [])
-        : await getMapPointsRaw(cidade, dateFrom, dateTo).catch(() => []);
-      const mapPoints = await buildMapPoints(rawPoints, cidade, estado);
+        : await getMapPointsRaw(cidades, dateFrom, dateTo).catch(() => []);
+      const mapPoints = await buildMapPoints(rawPoints, cidades[0], estado);
 
-      // Executive section — gerada aqui e embutida no report (snapshot imutável).
-      // Busca manual: estatísticas do searchReport (search_results table). Dashboard:
-      // de summary (news table). Custo rastreado como source=manual_search ou auto_scan.
-      const statsForExecutive = (searchReport
-        ? searchReport.estatisticas
-        : (summary?.estatisticas || [])
-      ).map((s) => ({
-        resumo: s.resumo,
-        data_ocorrencia: s.data_ocorrencia,
-        source_url: s.source_url,
-      }));
-      const rangeDays = Math.max(
+      const estatisticasParaExecutive = searchId
+        ? (await getSearchResultsAnalytics(searchId).catch(() => null))?.estatisticas || []
+        : (await getCrimeSummary(cidades, dateFrom, dateTo).catch(() => null))?.estatisticas || [];
+
+      const rangeDays = recorte?.dias ?? Math.max(
         1,
-        Math.round((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / (1000 * 60 * 60 * 24)),
+        Math.round((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000),
       );
       const executive = await generateExecutiveFromStatistics(
-        statsForExecutive,
+        estatisticasParaExecutive.map((s) => ({
+          resumo: s.resumo,
+          data_ocorrencia: s.data_ocorrencia,
+          source_url: s.source_url,
+        })),
         searchId ? 'manual_search' : 'auto_scan',
-        { cidade, estado, rangeDays },
+        { cidade: cidades[0], estado, rangeDays },
       );
 
-      const reportData = {
-        cidade,
+      // ── o documento ───────────────────────────────────────────────────
+      const relatorio: RelatorioRenderizavel = {
+        cidades,
         estado,
         dateFrom,
         dateTo,
-        generatedAt: new Date().toISOString(),
-        summary: {
-          totalCrimes: mergedSummary.totalCrimes,
-          topCrimeType: mergedSummary.byCrimeType[0]?.tipo_crime || 'N/A',
-        },
-        byCrimeType: mergedSummary.byCrimeType,
-        byCategory: mergedSummary.byCategory,
-        trend: trend?.dataPoints || (searchReport?.byDate.map(d => ({
-          period: d.date,
-          label: formatDateLabel(d.date),
-          total: d.count,
-          breakdown: {},
-        })) || []),
-        topBairros: mergedSummary.topBairros,
-        sources: mergedSources,
-        sourcesOficial,
-        sourcesMedia,
+        geradoEm: new Date().toISOString(),
+        recorte: recorte ?? null,
+        total: contagens.total,
+        totalRegiao: contagens.totalRegiao,
+        semBairro: contagens.semBairro,
+        totalEstatisticas: contagens.totalEstatisticas,
+        byCategory: contagens.byCategory,
+        byCrimeType: contagens.byCrimeType,
+        topBairros: contagens.topBairros,
+        serie: contagens.serie,
         mapPoints,
         executive,
-        // Estatísticas brutas (texto completo + fonte) — pra renderizar no público
-        // similar ao in-app. Executive resume/curador; isso mostra o dado cru.
-        estatisticas: statsForExecutive,
+        sourcesOficial: contagens.sourcesOficial,
+        sourcesMedia: contagens.sourcesMedia,
       };
 
       const reportId = await createReport({
         search_id: searchId,
-        cidade,
+        cidade: cidades.join(', '),
         estado,
         date_from: dateFrom,
         date_to: dateTo,
-        report_data: reportData,
-        sources: mergedSources as Array<Record<string, unknown>>,
+        report_data: relatorio as unknown as Record<string, unknown>,
+        sources: [...contagens.sourcesOficial, ...contagens.sourcesMedia] as unknown as Array<Record<string, unknown>>,
       });
 
-      // ADMIN_PANEL_URL é obrigatória — sem ela, não faz sentido compartilhar
-      // (o link apontaria pra lugar nenhum). Antes tinha fallback hardcoded
-      // pro staging, que causava prod misdirecting silencioso quando a var
-      // não estava setada.
-      const adminUrl = process.env.ADMIN_PANEL_URL;
-      if (!adminUrl) {
-        logger.error('[Analytics] ADMIN_PANEL_URL not configured — cannot share report');
-        res.status(500).json({ error: 'Report sharing not configured (ADMIN_PANEL_URL missing)' });
-        return;
-      }
-      res.json({ reportId, reportUrl: `${adminUrl}/report/${reportId}` });
+      res.json({ reportId, reportUrl: `${urlPublica(req)}/public/report/${reportId}` });
     } catch (error) {
       logger.error('[Analytics] Generate report error:', error);
       res.status(500).json({ error: 'Failed to generate report' });
@@ -404,14 +422,14 @@ router.post(
   }
 );
 
-function formatDateLabel(dateStr: string): string {
-  const parts = dateStr.split('-');
-  return parts[2] && parts[1] ? `${parts[2]}/${parts[1]}` : dateStr;
-}
-
 // ============================================
-// Public Report (no auth - shareable link)
+// O relatorio publico — HTML, sem auth
 // ============================================
+// 🚨 Ate 12/08 esta rota devolvia JSON e quem desenhava era uma pagina Next.js
+// dentro do painel admin. Duas consequencias que so aparecem no cliente: o link
+// so abria se o painel estivesse acordado (no staging ele dorme, e o cliente
+// encarava 50s de tela branca), e o documento tinha a cara generica do shadcn,
+// nao a do SIMEops. Agora o HTML sai daqui, de um lugar so.
 
 router.get(
   '/public/report/:id',
@@ -419,13 +437,30 @@ router.get(
     try {
       const report = await getReport(req.params.id);
       if (!report) {
-        res.status(404).json({ error: 'Relatório não encontrado ou expirado' });
+        res.status(404).type('html').send(paginaDeErro(
+          'Relatório indisponível',
+          'Este relatório não foi encontrado. Confira se o link veio completo.',
+        ));
         return;
       }
-      res.json(report);
+      // 🚨 `no-cache` nao e "nao guarde", e "revalide antes de usar" — com o
+      // ETag do Express, a revalidacao volta 304 e custa quase nada.
+      //
+      // Sem esta linha o Express manda ETag e nenhum Cache-Control, e o
+      // navegador cai no **cache heuristico**: ele inventa um prazo de validade
+      // e serve o HTML velho sem nem perguntar. Os dados do relatorio sao
+      // imutaveis, mas o RENDER nao e — melhora a cada deploy —, e um cliente
+      // com a pagina de dois deploys atras nao tem como saber disso.
+      res.set('Cache-Control', 'no-cache');
+      res.type('html').send(
+        renderizarRelatorio(report.report_data as unknown as RelatorioRenderizavel),
+      );
     } catch (error) {
       logger.error('[Analytics] Public report error:', error);
-      res.status(500).json({ error: 'Failed to fetch report' });
+      res.status(500).type('html').send(paginaDeErro(
+        'Não foi possível carregar',
+        'Tente de novo em alguns instantes.',
+      ));
     }
   }
 );

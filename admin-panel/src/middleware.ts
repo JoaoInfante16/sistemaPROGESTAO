@@ -30,7 +30,12 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   // Not authenticated → redirect to login
-  if (!user && !request.nextUrl.pathname.startsWith('/login') && !request.nextUrl.pathname.startsWith('/report')) {
+  //
+  // A excecao pro `/report` saiu junto com a pagina: o relatorio publico agora
+  // e servido pelo backend, e nao existe mais rota publica dentro do painel.
+  // Excecao de auth que sobrevive a rota que ela protegia e um buraco esperando
+  // alguem criar `/report/qualquer-coisa` sem perceber que nasce aberto.
+  if (!user && !request.nextUrl.pathname.startsWith('/login')) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/crime_point.dart';
 import '../../../core/models/executive_data.dart';
 import '../../../core/models/news_item.dart';
@@ -74,7 +75,8 @@ class RelatorioDeRisco extends StatefulWidget {
 }
 
 class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
-  bool _generatingLink = false;
+  /// Enquanto o servidor monta o documento — vale pras duas ações.
+  bool _ocupado = false;
 
   // Recorte client-side — re-fatiar é de graça, o dado já veio na busca.
   // null = período completo pedido; _includeOld inclui o balde fora_do_periodo.
@@ -359,57 +361,120 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
   /// Municípios distintos presentes no balde de região, pra dizer QUAIS são.
   /// "8 da região metropolitana" não informa; "8 de Aparecida de Goiânia,
   /// Senador Canedo e mais 1" informa.
-  String _cidadesDaRegiao() {
+  /// Os nomes crus, ordenados. A capa do documento escreve **todos** — lá o
+  /// espaço não é o da tela, e "e mais 1" numa apresentação é uma lacuna.
+  List<String> _nomesDaRegiao() {
     final nomes = <String>{};
     for (final r in widget.regiao) {
       final c = (r['cidade'] as String? ?? '').trim();
       if (c.isNotEmpty) nomes.add(c);
     }
-    if (nomes.isEmpty) return 'municípios vizinhos';
-    final lista = nomes.toList()..sort();
+    return nomes.toList()..sort();
+  }
+
+  String _cidadesDaRegiao() {
+    final lista = _nomesDaRegiao();
+    if (lista.isEmpty) return 'municípios vizinhos';
     if (lista.length <= 2) return lista.join(' e ');
     return '${lista.take(2).join(', ')} e mais ${lista.length - 2}';
   }
 
-  Future<void> _generateAndShareLink() async {
-    setState(() => _generatingLink = true);
+  /// O recorte e as contagens **desta tela**, no formato que o backend espera.
+  ///
+  /// 🚨 Por que as contagens viajam. O backend sabe reconsultar tudo — e era o
+  /// que ele fazia. Só que a tela é um re-fatiamento client-side (período,
+  /// categoria, "+ antigas", "+ região") e o backend reconsultava **do zero**,
+  /// ignorando os quatro. Papel e tela discordavam, e nenhum dos dois avisava.
+  /// Mandando as contagens prontas, os dois passam a bater por construção.
+  Map<String, dynamic> _paraODocumento() => {
+    'total': _totalOcorrencias,
+    'totalRegiao': _totalRegiaoNoRecorte,
+    'semBairro': _semBairro,
+    'totalEstatisticas': _totalEstatisticas,
+    'byCategory': [
+      for (final e in _categoryCounts.entries)
+        {'categoria': e.key, 'count': e.value},
+    ],
+    'byCrimeType': [
+      for (final e in (_crimeTypeCounts.entries.toList()
+            ..sort((a, b) => b.value.compareTo(a.value))))
+        {'tipo_crime': e.key, 'count': e.value},
+    ],
+    'topBairros': [
+      for (final e in (_bairroCounts.entries.toList()
+            ..sort((a, b) => b.value.compareTo(a.value))))
+        {'bairro': e.key, 'count': e.value},
+    ],
+    'serie': _byDate,
+    'sourcesOficial': [
+      for (final s in _sourcesOficial)
+        {'name': s['name'], 'count': int.tryParse(s['count'] ?? '0') ?? 0},
+    ],
+    'sourcesMedia': [
+      for (final s in _sourcesMedia)
+        {'name': s['name'], 'count': int.tryParse(s['count'] ?? '0') ?? 0},
+    ],
+  };
+
+  /// Monta o documento no servidor e devolve o link.
+  ///
+  /// Com [abrir], o navegador abre direto — é onde se confere antes de mandar,
+  /// e de onde sai o PDF. Sem ele, cai na folha de compartilhamento do Android.
+  ///
+  /// **Por que link e não arquivo.** Anexo `.html` é o pior dos dois mundos: o
+  /// Google Drive mostra o código-fonte em vez da página, filtro de e-mail
+  /// corporativo trata como phishing, e no Android depende de ter app
+  /// registrado pra `text/html`. O link abre em tudo; o PDF, gerado dentro da
+  /// página, viaja em tudo.
+  Future<void> _publicar({required bool abrir}) async {
+    setState(() => _ocupado = true);
+    // Os dois saem do context antes do await — depois dele o widget pode já ter
+    // sido descartado.
+    final api = context.read<ApiService>();
+    final messenger = ScaffoldMessenger.of(context);
     try {
-      final api = context.read<ApiService>();
-      final now = DateTime.now();
-      final dateFrom = now.subtract(Duration(days: widget.periodoDias));
+      final agora = DateTime.now();
 
       final response = await api.generateReport(
-        cidade: widget.cidades.first,
+        cidades: widget.cidades,
         estado: widget.estado,
-        dateFrom: _dateStr(dateFrom),
-        dateTo: _dateStr(now),
+        dateFrom: _dateStr(_inicioDoRecorte),
+        dateTo: _dateStr(agora),
         searchId: widget.searchId,
+        recorte: {
+          'dias': _diasDoRecorte,
+          'antigas': _includeOld,
+          'regiao': _includeRegiao,
+          'categorias': _cats.toList(),
+          if (widget.horizonteDias > 0) 'horizonteDias': widget.horizonteDias,
+          if (_includeRegiao) 'municipiosVizinhos': _nomesDaRegiao(),
+        },
+        analytics: _paraODocumento(),
       );
 
-      // reportUrl vem 100% do backend (baseado em ADMIN_PANEL_URL por ambiente).
-      // Antes tinha fallback hardcoded pra staging admin, que causava misdirect
-      // silencioso quando env var faltava no backend.
       final url = response['reportUrl'] as String?;
       if (url == null || url.isEmpty) {
-        throw Exception(
-          'Backend não retornou reportUrl. Verifique ADMIN_PANEL_URL no servidor.',
-        );
+        throw Exception('O servidor não devolveu o endereço do relatório.');
       }
 
-      if (mounted) {
+      if (!mounted) return;
+      if (abrir) {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      } else {
         await Share.share(
-          'SIMEops — Relatório de Risco\n'
+          'SIMEops — Análise de Risco\n'
           '${widget.cidades.join(", ")}/${widget.estado}\n\n$url',
         );
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Erro ao gerar relatório: $e')));
-      }
+      debugPrint('[Relatório] $e');
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Não foi possível montar o relatório. Tente de novo.'),
+        ),
+      );
     } finally {
-      if (mounted) setState(() => _generatingLink = false);
+      if (mounted) setState(() => _ocupado = false);
     }
   }
 
@@ -921,13 +986,29 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
 
         FontesAnalisadas(oficiais: _sourcesOficial, midias: _sourcesMedia),
 
+        // Duas ações, e a diferença entre elas importa: ABRIR é pra conferir o
+        // documento antes de mandar (e é de lá que sai o PDF, pelo botão de
+        // imprimir); ENVIAR é o gesto de entregar.
         Padding(
           padding: const EdgeInsets.fromLTRB(18, 30, 18, 0),
           child: FilledButton(
-            onPressed: _generatingLink ? null : _generateAndShareLink,
-            child: Text(
-              _generatingLink ? 'GERANDO O LINK…' : 'COMPARTILHAR RELATÓRIO',
-            ),
+            onPressed: _ocupado ? null : () => _publicar(abrir: true),
+            child: Text(_ocupado ? 'MONTANDO O DOCUMENTO…' : 'ABRIR RELATÓRIO'),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 4, 18, 0),
+          child: TextButton(
+            onPressed: _ocupado ? null : () => _publicar(abrir: false),
+            child: const Text('ENVIAR PARA ALGUÉM'),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
+          child: Text(
+            'O relatório abre em qualquer navegador e vira PDF pelo botão '
+            'Baixar PDF, dentro da própria página.',
+            style: SIMEopsType.note(color: SIMEopsColors.faint),
           ),
         ),
         const SizedBox(height: 40),

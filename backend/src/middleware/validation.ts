@@ -207,12 +207,60 @@ export const schemas = {
   ),
 
   generateReport: z.object({
-    cidade: z.string().min(2).max(100),
+    // `cidade` singular sobrevive por causa do painel admin, que gera relatorio
+    // de uma cidade so. O app manda `cidades` — e ate 12/08 ele mandava
+    // `cidades.first`, entao o texto do compartilhamento dizia "Florianopolis,
+    // Sao Jose e Palhoca" e o documento entregava Florianopolis sozinha.
+    cidade: z.string().min(2).max(100).optional(),
+    cidades: z.array(z.string().min(2).max(100)).min(1).max(40).optional(),
     estado: z.string().min(2).max(100),
     dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     searchId: z.string().uuid().optional(),
+
+    // O recorte que estava na tela quando a pessoa mandou gerar. Vai escrito na
+    // capa do documento: relatorio que nao declara o proprio filtro e citavel
+    // fora de contexto, e este aqui existe pra ser citado.
+    recorte: z.object({
+      dias: z.number().int().min(1).max(JANELA_MAXIMA_DIAS),
+      antigas: z.boolean(),
+      regiao: z.boolean(),
+      categorias: z.array(z.string().max(40)).max(20),
+      horizonteDias: z.number().int().min(1).max(JANELA_MAXIMA_DIAS).optional(),
+      municipiosVizinhos: z.array(z.string().max(100)).max(60).optional(),
+    }).optional(),
+
+    // As contagens que a TELA fez. Quando vem, o backend nao reconsulta: papel e
+    // tela passam a mostrar o mesmo numero por construcao, em vez de por duas
+    // implementacoes do mesmo recorte que torcem pra nao divergir.
+    analytics: z.object({
+      total: z.number().int().min(0),
+      totalRegiao: z.number().int().min(0).default(0),
+      semBairro: z.number().int().min(0).default(0),
+      totalEstatisticas: z.number().int().min(0).default(0),
+      byCategory: z.array(z.object({
+        categoria: z.string().max(40), count: z.number().int().min(0),
+      })).max(20).default([]),
+      byCrimeType: z.array(z.object({
+        tipo_crime: z.string().max(80), count: z.number().int().min(0),
+      })).max(60).default([]),
+      topBairros: z.array(z.object({
+        bairro: z.string().max(120), count: z.number().int().min(0),
+      })).max(120).default([]),
+      serie: z.array(z.object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), count: z.number().int().min(0),
+      })).max(4000).default([]),
+      sourcesOficial: z.array(z.object({
+        name: z.string().max(160), count: z.number().int().min(0),
+      })).max(300).default([]),
+      sourcesMedia: z.array(z.object({
+        name: z.string().max(160), count: z.number().int().min(0),
+      })).max(300).default([]),
+    }).optional(),
   }).refine(
+    (d) => Boolean(d.cidade || d.cidades),
+    { message: 'cidade ou cidades e obrigatorio', path: ['cidade'] }
+  ).refine(
     (d) => new Date(d.dateFrom) <= new Date(d.dateTo),
     { message: 'dateFrom must be before or equal to dateTo', path: ['dateFrom'] }
   ),

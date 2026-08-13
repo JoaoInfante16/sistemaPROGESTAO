@@ -32,11 +32,16 @@ da `develop` de propósito, porque o release da Play Store está engatilhado.
 | — | **tema global** em linguagem de fio (era o "pálido") | ✅ feito |
 | B | formulário de busca (11 blocos → 5) | ✅ feito |
 | C | espera de 7 min + resultados | ✅ feito |
-| D | remoções (favoritos, arrastar, lembrar senha, senha mín. 8) | ⬜ |
+| D | remoções (favoritos, arrastar, lembrar senha, senha mín. 8) | ✅ feito |
 | E | relatório (as **duas** telas) | ✅ feito |
-| E2 | export HTML A4 autocontido | ⬜ **próxima** |
-| F | notificações (digest por cidade, tri-estado) — migration **031** | ⬜ |
-| — | **revisão de todas as copys** (pedido do João, DEPOIS das fases) | ⬜ |
+| E2 | relatório vira documento HTML A4, servido pelo backend | ✅ feito |
+| F | notificações (dois canais, preferência) — migration **032** | ✅ feito |
+| — | **revisão de todas as copys** (pedido do João, DEPOIS das fases) | ⬜ **única que falta** |
+
+⚠️ Esta tabela dizia D, E2 e F por fazer **depois das três estarem prontas**, e
+apontava a migration da F como 031 (é a **032**; a 031 é o DROP dos favoritos).
+Corrigida em 12/08. Tabela de estado que não é corrigida no mesmo turno vira a
+segunda verdade que a regra zero da workdesk descreve.
 
 **`staging` = `feature/design-fio` = `47b8cd8`**, ambas empurradas em 09/08.
 
@@ -262,6 +267,178 @@ Verificado em **04/08**: 026, 027 e 028 aplicadas (`openai` e `jina` com
 de $100.
 
 ---
+
+## 2026-08-12 — Fase E2: o relatório vira documento, e sai de dentro do painel
+
+Pedido do João: *"o relatório ao clicar em compartilhar vai abrir em HTML, com
+opção de baixar em PDF. Vamos caprichar nesse HTML, ele pode chegar NO SUPER
+CLIENTE, o cliente que paga o cliente que paga o cliente que me paga. É pra
+apresentação."*
+
+### O que existia, e por que não servia
+
+O botão compartilhava **um texto com um link**. O link abria
+`admin-panel/src/app/report/[id]/page.tsx` — uma página shadcn genérica,
+`rounded-xl`, "Análise de Risco Criminal", zero SIMEops. E ela morava **dentro
+do painel admin**: um link de cliente dependia de um serviço administrativo
+estar acordado (no staging, free tier, ele dorme ~50s).
+
+Três defeitos estavam no caminho, e os três eram a mesma forma: **parte da tela
+obedecia, parte não.**
+
+1. **`cidade: widget.cidades.first`.** O texto do compartilhamento escrevia
+   *"Florianópolis, São José e Palhoça"* e o documento entregava Florianópolis
+   sozinha. Calado. As queries por baixo (`getCrimeSummary`, `getCrimeTrend`,
+   `getNewsSources`, `getMapPointsRaw`) **já aceitavam `string | string[]`**
+   desde sempre — só o app e o schema não sabiam.
+2. **O recorte não viajava.** A tela é um re-fatiamento client-side (período,
+   categoria, "+ antigas", "+ região") e o backend **reconsultava do zero**,
+   ignorando os quatro. No caminho de busca manual era pior: usava
+   `getSearchResultsAnalytics(searchId)`, que ignora até as datas.
+3. **`expires_at` de 30 dias.** Nada apaga linha de `reports` — o prazo só fazia
+   `getReport()` recusar a partir do dia 31, em silêncio, com a linha intacta no
+   banco.
+
+### As decisões (11 respostas do João, 12/08)
+
+| | escolha |
+|---|---|
+| renderizador | **matar a página Next.js** — um documento, um lugar que o desenha |
+| recorte | **obedecer os filtros da tela e escrever na capa** |
+| validade | **migration 033** — link não expira mais |
+| PDF | **botão de imprimir na própria página** (`window.print()` com CSS A4) |
+| arquivo `.html` | **abandonado** — ver abaixo |
+
+### 🚨 Por que o arquivo `.html` foi abandonado
+
+O pedido original incluía "exportar pro Drive, ou baixar, e poder abrir de novo
+depois". O caminho óbvio era gerar um `.html` autocontido e mandar pela folha de
+compartilhamento. **É o pior dos dois mundos**, e vale registrar pra não voltar
+como ideia:
+
+| | link (HTML no navegador) | arquivo `.html` | PDF |
+|---|---|---|---|
+| PC | sempre | sempre | sempre |
+| Android | sempre | depende de app registrado pra `text/html` | sempre |
+| iPhone | sempre | preview do Files renderiza | sempre |
+| **Google Drive** | — | ❌ **mostra o código-fonte** | preview nativo |
+| **E-mail corporativo** | passa | ❌ vetor clássico de phishing, quarentenado | passa |
+
+**HTML é imbatível como link e frágil como arquivo.** O cenário exato que o João
+descreveu — exportar pro Drive — é onde ele quebra pior: o cliente abre e vê
+`<div class=...>`. Então: HTML é o projeto e o link é a entrega; PDF é o
+artefato que viaja, e sai de dentro da própria página.
+
+Também foi descartado gerar o PDF no servidor: Chromium headless (Puppeteer) no
+Render Starter (512MB, 0.5 CPU) mora **na mesma caixa que roda o CRON 24/7**, com
+pico de ~250MB por render. Um OOM ali não derruba o relatório, derruba o
+monitoramento — que é o produto. Fica no ROADMAP pra quando houver caixa própria.
+
+E `Printing.convertHtml` (que geraria o PDF no aparelho, a partir do mesmo HTML)
+está **deprecada** no pacote `printing`. Foi verificado antes de virar
+recomendação; ia ser o alicerce e não aguentava peso.
+
+### O que foi construído
+
+`backend/src/services/relatorio/` — quatro arquivos:
+
+- **`tipos.ts`** — o contrato, alimentado por **dois produtores**: o app (que já
+  contou tudo com o recorte) e o backend (que consulta, pro painel admin).
+- **`estilo.ts`** — o fio de agência traduzido pra papel. Navy vira **tinta sobre
+  branco**; o que atravessa não é a cor, é a disciplina (filete em vez de caixa,
+  raio zero, título à esquerda, a mesma escada tipográfica). Só a **tinta do
+  texto** escurece pra passar AA no branco — o teal #1A8F9A dá 3.4:1 sobre
+  branco. As cores de categoria **não são reescritas**: vêm de
+  `CATEGORIA_CORES`, que já é fonte única.
+- **`mapa.ts`** — Web Mercator e a grade de tiles.
+- **`html.ts`** — o render. Rosca em SVG escrito à mão, barras em CSS, nenhuma
+  biblioteca de gráfico. Até a **página de erro** é desenhada: ela também chega
+  no cliente quando o link vem truncado pelo WhatsApp.
+
+**O mapa já nasce impresso.** A página anterior desenhava Leaflet e, na hora do
+PDF, rodava html2canvas pra fotografar a `<div>` — um passo que falhava calado e
+trocava o mapa por um parágrafo de texto. Agora são os mesmos tiles da CartoCDN
+como `<img>` posicionadas por CSS, com os pinos por cima: zero JavaScript, zero
+canvas, zero passo que pode falhar.
+
+### 📏 Duas medições que mudaram o desenho
+
+**1. O raio zero vazou pra dentro do mapa.** `* { border-radius: 0 !important }`
+pegou os 74 pinos e transformou em quadradinhos — o mapa virou uma nuvem de
+amostras de legenda sobre a cidade. A disciplina é de **interface** (card, botão,
+chip); marca de dado não entra. Virou `*:not(.pino):not(.marca)`.
+
+**2. Zoom inteiro custava metade da escala.** `enquadrar` só escolhia zoom
+inteiro, e zoom de mapa é potência de 2 — então "não coube por 11 pixels" jogava
+fora um nível inteiro. Medido com os 15 bairros da Grande Florianópolis:
+
+| | antes | depois |
+|---|---|---|
+| zoom | 10 | 11 (efetivo) |
+| altura da caixa aproveitada | ~45% | **90%** |
+| largura aproveitada | ~31% | **63%** |
+
+O conserto é renderizar no zoom inteiro **de cima** e encolher a camada por
+`transform: scale()` — zoom contínuo em cima de tiles que só existem em zoom
+inteiro. Os pinos ficam **fora** da camada escalada, senão encolheriam junto (7px
+viraria 3,8px).
+
+### 🚨 O achado que só apareceu porque o dado de teste era ruim
+
+A primeira fixture era `sin()`/`cos()` numa caixa, e metade dos pinos caía na
+baía. O João olhou e disse "o mapa tá zoado" **duas vezes** — e estava certo:
+mapa com ocorrência no meio da água faz duvidar do código. Trocada por
+coordenadas reais de bairro, ela virou **prova da projeção** (Ingleses ao norte e
+a leste do Centro, Palhoça a oeste e ao sul, os 15 dentro da caixa) — e foi
+exatamente essa prova que revelou o defeito do zoom, que nenhuma inspeção visual
+tinha achado. **Dado de teste ruim não atrasa só a revisão: ele esconde bug.**
+
+### Cache — o motivo de ver a mesma página duas vezes
+
+A rota mandava `ETag` e **nenhum `Cache-Control`**, então o navegador caía no
+cache heurístico: inventava um prazo e servia o HTML velho sem perguntar. Os
+dados do relatório são imutáveis, mas o **render** não é (melhora a cada deploy),
+e um cliente preso numa versão de dois deploys atrás não tem como saber.
+Agora vai `no-cache` — revalida sempre, e com ETag isso custa um 304.
+
+### Removido do painel admin
+
+A página `/report/[id]` e, por transitividade, quatro componentes que ficaram
+órfãos com ela (`crime-radar-map`, `crime-trend-bars`, `executive-section`,
+`sources-section`), a dependência `html2canvas`, `getPublicReport` e a exceção de
+auth no `middleware.ts` — exceção que sobrevive à rota que protegia é buraco
+esperando alguém criar `/report/qualquer-coisa` sem perceber que nasce aberto.
+
+O painel também **montava o link na mão** (`window.location.origin/report/ID`),
+apontando pra si mesmo. Agora usa o `reportUrl` que o backend devolve.
+
+### Verificação
+
+- `npx tsc --noEmit` limpo no backend e no painel; `flutter analyze` no baseline
+  (1 info preexistente em `type_helpers.dart`).
+- **Caminho real**: gravou no banco → `GET /public/report/:id` → HTTP 200,
+  `text/html`, 29 KB, `Cache-Control: no-cache`; id inexistente → 404 com a
+  página de erro desenhada.
+- **Schema contra o payload do app**: os quatro casos reais passam (app completo,
+  sem `searchId`, sem região/antigas, painel admin com cidade singular) e o único
+  que tem que falhar falha (sem cidade nenhuma).
+- ⬜ **Falta o A57.** Os dois botões e o payload nunca rodaram num aparelho.
+
+### Anotado, não feito
+
+- **Domínio próprio** — o link é `sistemaprogestao-7fzs.onrender.com/public/
+  report/<uuid>`. Não piorou nada (o `ADMIN_PANEL_URL` também era subdomínio do
+  Render), mas não é endereço de peça de apresentação. `urlPublica()` já lê
+  `PUBLIC_BASE_URL` primeiro, então é **variável de ambiente, não código**.
+  Levantado em 12/08: `progestao.com.br` existe mas **é de outra empresa de mesmo
+  nome**, e `simeop.com.br` (que o João tentou no Render) não está registrado —
+  daí a verificação nunca passar. **João decidiu: feature futura.**
+- **`contact@progestao.com.br` no User-Agent do Nominatim**
+  (`services/geocoding/nominatim.ts`, 3 lugares) — é o domínio de outra empresa.
+  A política de uso do OSM pede contato válido pra poder avisar sobre abuso.
+- **Links já compartilhados quebram neste deploy** — apontam pro painel. Como
+  expiravam em 30 dias e estamos em beta, aceito.
+- Encurtar a rota pra `/r/<id>` — oferecido, não priorizado.
 
 ## 2026-08-11 (madrugada) — Fase F: o push ia para todo mundo, sempre
 

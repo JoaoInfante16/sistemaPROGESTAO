@@ -295,7 +295,10 @@ CREATE TABLE IF NOT EXISTS reports (
   report_data JSONB NOT NULL,
   sources JSONB NOT NULL DEFAULT '[]',
   created_at TIMESTAMP DEFAULT NOW(),
-  expires_at TIMESTAMP DEFAULT NOW() + INTERVAL '30 days'
+  -- Sem default: relatorio nasce sem prazo (migration 033). O prazo de 30 dias
+  -- nunca apagou nada — nada deleta linha de `reports` —, ele so fazia o link
+  -- do cliente parar de abrir no dia 31, em silencio. NULL = nao expira.
+  expires_at TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_reports_expires ON reports(expires_at);
