@@ -77,19 +77,31 @@ class DocumentoDeRisco {
   /// levanta: a decisão de cair no link é desta função, não de quem chama.
   Future<Uint8List?> _tentarPdf(String url) async {
     try {
+      // 🚨 **`canConvertHtml` NÃO é consultado, e isso não é descuido.**
+      //
+      // O `printingInfo()` do lado Android do plugin devolve `directPrint`,
+      // `dynamicLayout`, `canPrint`, `canShare` e `canRaster` — e **nunca**
+      // `canConvertHtml`. Do outro lado, o Dart lê `map['canConvertHtml'] ??
+      // false`. Resultado: em todo aparelho Android a flag é `false`, sempre.
+      //
+      // Só que `convertHtml` **está implementado** ali no mesmo pacote
+      // (`PrintingHandler.java` → `PrintingJob.convertHtml`, com WebView de
+      // verdade). A capacidade existe; quem mente é a flag.
+      //
+      // Perguntar por ela desligava o PDF em 100% dos Android — foi o que o
+      // A57 mostrou em 13/08, com `convertHtml=false, share=true`. Agora a
+      // resposta vem de tentar: exceção e PDF vazio já caem no link logo
+      // abaixo, e essa prova não depende de o plugin se descrever direito.
       final info = await Printing.info();
-      if (!info.canConvertHtml || !info.canShare) {
-        debugPrint(
-          '[Documento] plataforma sem suporte '
-          '(convertHtml=${info.canConvertHtml}, share=${info.canShare})',
-        );
+      if (!info.canShare) {
+        debugPrint('[Documento] plataforma não compartilha arquivo');
         return null;
       }
 
-      // `formato=pdf` devolve o MESMO documento sem uma única referência
-      // externa — tiles do mapa e fontes embutidos, barra de ações omitida.
-      // É o que impede a WebView de fotografar antes de as imagens chegarem,
-      // que é como o mapa sairia em branco.
+      // `formato=pdf` devolve o MESMO documento com os tiles do mapa embutidos
+      // e a barra de ações omitida. Importa porque o Android converte com
+      // `onPageFinished`, que dispara quando o documento principal terminou —
+      // sem esperar o que ainda está vindo pela rede.
       final resp = await http
           .get(Uri.parse('$url?formato=pdf'))
           .timeout(const Duration(seconds: 45));

@@ -268,6 +268,84 @@ de $100.
 
 ---
 
+## 2026-08-13 (noite, depois) — o botão nunca tinha funcionado, por dois motivos empilhados
+
+O João apertou COMPARTILHAR RELATÓRIO e recebeu *"Não foi possível montar o
+relatório"*. Investigado pelo **logcat do aparelho**, não por leitura de código —
+foi o que deu as duas respostas em minutos.
+
+### Defeito 1 — 500 no POST: o app fala dois dialetos com o mesmo backend
+
+`ApiException(500): Failed to generate report`.
+
+`resolverCidades` é compartilhada entre as rotas GET e as POST, e foi escrita só
+pro formato das GET (`?cidades=A,B,C`). Nos POST o campo chega como **array
+JSON**, porque o schema declara `z.array(z.string())`. `.split()` num array
+levanta `q.cidades.split is not a function`, o `try` da rota engole, 500.
+
+🚨 **Por que passou por três verificações:**
+
+1. o tipo dizia `cidades?: string` e o call site passa `req.body`, que é `any` —
+   o TypeScript não tinha o que conferir;
+2. testei a **validação** contra o schema (passa) e o **documento** pela rota
+   GET, com a linha gravada direto no banco pelo `createReport`. Testei as duas
+   pontas e não o meio: **o POST nunca rodou de ponta a ponta**;
+3. `map-points`, o outro POST, manda `cidades.join(',')` — string dentro do
+   corpo. Por isso o mapa sempre funcionou, e por isso a hipótese "o POST está
+   ok, o app manda certo" parecia confirmada.
+
+### Defeito 2 — o guard perguntava pra uma flag que mente
+
+Com o 500 resolvido, o log seguinte:
+`[Documento] plataforma sem suporte (convertHtml=false, share=true)`.
+
+O `printingInfo()` do lado **Android** do `printing` (5.14.3,
+`PrintingJob.java:81`) devolve `directPrint`, `dynamicLayout`, `canPrint`,
+`canShare` e `canRaster` — e **nunca** `canConvertHtml`. Do lado Dart,
+`PrintingInfo.fromMap` faz `map['canConvertHtml'] ?? false`.
+
+**Logo: em todo aparelho Android a flag é `false`, sempre.** O guard
+`if (!info.canConvertHtml)` desligava o PDF em 100% dos aparelhos — a feature
+nunca teve chance de rodar uma vez.
+
+E `convertHtml` **está implementado** no Android, no mesmo pacote:
+`PrintingHandler.java:61` → `PrintingJob.convertHtml`, com `WebView` de verdade,
+`loadDataWithBaseURL` e `onPageFinished`. A capacidade existe; quem mente é a
+descrição dela.
+
+A lição, que vale além deste caso: **capability flag é declaração, não medição.**
+Onde existe a chance de tentar e falhar barato, tentar é a prova melhor — e aqui
+já havia `try/catch` + checagem de bytes vazios cobrindo a queda.
+
+### O que isso revelou de sério sobre as fontes
+
+Lendo o `convertHtml` do Android para entender o defeito 2, apareceu o desenho da
+conversão: `onPageFinished` → `createPrintDocumentAdapter`. Esse evento dispara
+quando o **documento principal** terminou — **sem esperar o que ainda está vindo
+pela rede**.
+
+O `<head>` do relatório ainda tem o `<link>` do Google Fonts, sem condicional
+(`html.ts:596-598`). Os tiles do mapa foram embutidos na Fase E2; as fontes não.
+Com `display=swap`, o texto pinta na hora com fonte de sistema e troca quando a
+fonte chega — e o retrato pode sair antes.
+
+⚠️ Isso não é "pode falhar", é **cara ou coroa**: a versão intermitente passa no
+teste de hoje e falha no aparelho do cliente. Embutir Archivo e JetBrains Mono em
+base64 deixou de ser opcional. Custo: ~300KB de binário no repositório do
+backend, porque o app usa o pacote `google_fonts`, que baixa em runtime e não
+deixa arquivo pra reaproveitar. As duas são OFL — redistribuir é permitido.
+
+**Pendente, aguardando o João.**
+
+### O que já ficou provado no caminho
+
+- o POST gera relatório de verdade (o link compartilhado trouxe um `reportId`
+  real, `4d798cd5-…`);
+- o **plano B funciona como desenhado** — avisou por snackbar e entregou o link
+  em vez de morrer. Foi o comportamento correto diante de um defeito meu.
+
+---
+
 ## 2026-08-13 (noite) — o relatório do monitoramento também sai da tela
 
 O pedido do João, textual: *"tem que ter compartilhar relatório nos relatórios do
