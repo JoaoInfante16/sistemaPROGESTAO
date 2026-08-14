@@ -268,6 +268,72 @@ de $100.
 
 ---
 
+## 2026-08-14 — o PDF no aparelho foi revertido: 90s não é uma opção
+
+**Desfecho do spike: reprovado.** Não por não funcionar — por demorar.
+
+O log do A57, textual: `TimeoutException after 0:01:30.000000`. A WebView
+carrega, a conversão começa, e **não termina em 90 segundos**. Os três defeitos
+consertados ontem eram reais e o caminho passou a ser exercitado de verdade; o
+que apareceu embaixo deles foi o custo.
+
+### De onde vem o tempo — medido, não estimado
+
+| | |
+|---|---|
+| documento inteiro | 906 KB |
+| **12 tiles do mapa em `@2x`** | **797 KB — 88% do peso** |
+| 2 fontes embutidas | 86 KB |
+| todo o resto (texto, tabelas, gráficos SVG) | 22 KB |
+
+**O documento é um mapa com um relatório em volta.** 20 pinos, 12 tiles.
+
+🚨 **E a lição não é "otimizar o mapa".** Tirar o `@2x` derrubaria pra ~310 KB,
+e talvez a conversão coubesse em 30s — só que **30 segundos de spinner para uma
+ação que o usuário espera ser instantânea continua sendo o produto errado**.
+Otimizar aqui seria consertar o número sem consertar a experiência.
+
+### O que ficou
+
+O botão voltou a compartilhar o **link**, que chega em ~1s. Quem quer o arquivo
+aperta **Baixar PDF** dentro da página — que no Android abre o diálogo nativo de
+impressão: **a mesma engine**, mas com barra de progresso do sistema e botão de
+cancelar, em vez de um spinner do app sem previsão nenhuma. O sistema operacional
+já resolve isso melhor do que eu ia resolver.
+
+Saíram `printing`, `pdf` e 5 dependências transitivas do pubspec.
+
+### O que NÃO mudou, e por quê
+
+O João propôs devolver a página pro **painel admin**. Discordei, e ele derrubou
+metade do meu argumento na hora — eu disse que o painel dorme, e **produção é
+Starter nos dois serviços** ($7 cada); quem dorme é o staging. Estava errado.
+
+O que sobrou de pé, e bastou: a página do painel foi **apagada** na Fase E2, e
+voltar pra lá é reconstruir um **segundo renderizador do mesmo documento** — foi
+exatamente ali que morou o `cidade: cidades.first`, com o texto do
+compartilhamento dizendo "Florianópolis, São José e Palhoça" enquanto a página
+entregava Florianópolis sozinha. E não havia o que ganhar: a página do backend
+**já é** link que abre em qualquer lugar, com "Baixar PDF" dentro, no desenho
+aprovado, e com uma URL igualmente feia.
+
+### O que sobreviveu do trabalho descartado
+
+- **`?formato=pdf`** continua na rota — autocontida, custo zero quando ninguém
+  pede, e é o ponto de partida pronto se o PDF voltar ou se o documento precisar
+  ser gerado fora do navegador. Marcada no código como não-chamada.
+- **As fontes embutidas** e o **embutimento de tiles** ficam com ela.
+- O `resolverCidades` e o botão do auto-scan eram consertos independentes e
+  **continuam valendo** — o 500 acabou, e o relatório do monitoramento agora sai
+  da tela.
+
+⚠️ **Para quem for tentar de novo:** as três armadilhas estão mapeadas no dia
+13-14/08 — `canConvertHtml` é sempre `false` no Android (a flag mente, a
+capacidade existe), não há timeout em lugar nenhum do plugin, e `onPageFinished`
+não espera a rede. Nenhuma delas é o problema. **O problema é o tamanho.**
+
+---
+
 ## 2026-08-13 (noite, terceiro round) — "montando o documento" para sempre
 
 O João apertou o botão e a tela ficou em **MONTANDO O DOCUMENTO… indefinidamente**.

@@ -54,18 +54,16 @@ dependencies:
   sentry_flutter: ^8.13.0
   package_info_plus: ^9.0.1
 
-  # HTML -> PDF no proprio aparelho. TRAVADO sem ^ de proposito: convertHtml
-  # esta DEPRECIADO desde a 5.12.0 (ainda presente na 5.15.0, verificado em
-  # 13/08). Subir de minor sem querer e exatamente como ele sumiria.
+  # AQUI MORAVAM `printing` e `pdf`, por dois dias, pra montar o PDF do
+  # relatorio no proprio aparelho. Sairam em 14/08: no A57 a conversao NAO
+  # terminava em 90s. Medido: o documento tem 906 KB e 797 KB (88%) sao os 12
+  # tiles do mapa em @2x. O botao voltou a compartilhar o link, e a pagina traz
+  # "Baixar PDF" — que no Android abre a impressao nativa, com progresso do
+  # sistema em vez de um spinner do app.
   #
-  # 5.14.3, nao 5.15.0: a 5.15 puxa pdf 3.13 -> xml ^7, e o
-  # flutter_local_notifications 20 puxa xml ^6 por baixo. O conflito vem por
-  # flutter_local_notifications_WINDOWS — pacote de Windows, num app que so
-  # roda Android. Subir o local_notifications de 20 pra 22 (a outra saida)
-  # seria dois majors no pacote de push recem-reescrito na Fase F.
-  printing: 5.14.3
-  # Direto porque o codigo importa PdfPageFormat; vem transitivo do printing.
-  pdf: ^3.11.0
+  # Antes de trazer de volta, ler o DEV_LOG de 13-14/08: as tres armadilhas ja
+  # estao mapeadas (canConvertHtml e sempre false no Android, nao ha timeout em
+  # lugar nenhum do plugin, e onPageFinished nao espera a rede).
 
 dev_dependencies:
   flutter_test:

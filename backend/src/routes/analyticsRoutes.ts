@@ -470,6 +470,13 @@ router.get(
       // imutaveis, mas o RENDER nao e — melhora a cada deploy —, e um cliente
       // com a pagina de dois deploys atras nao tem como saber disso.
       res.set('Cache-Control', 'no-cache');
+
+      // ⚠️ `?formato=pdf` — variante autocontida (tiles e fontes embutidos,
+      // barra de acoes omitida). **Nada no app chama isto hoje.** Ela nasceu
+      // para o PDF montado no aparelho, que foi revertido em 14/08 por ser
+      // lento demais (ver DEV_LOG). Sobrevive porque o custo e zero quando
+      // ninguem pede, e porque e o ponto de partida pronto se um dia o PDF
+      // voltar — ou se o documento precisar ser gerado fora do navegador.
       res.type('html').send(
         await renderizarRelatorio(
           report.report_data as unknown as RelatorioRenderizavel,

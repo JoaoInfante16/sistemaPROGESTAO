@@ -417,7 +417,7 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
 
   /// Monta o documento e joga na folha de compartilhamento do sistema.
   ///
-  /// Sai como **PDF** — o porquê e o plano B moram em [DocumentoDeRisco], que é
+  /// O porquê de ser link — e não o arquivo pronto — mora em [DocumentoDeRisco],
   /// a mesma peça usada pelo relatório do monitoramento.
   Future<void> _publicar() async {
     setState(() => _ocupado = true);
@@ -428,7 +428,7 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
     try {
       final agora = DateTime.now();
 
-      final resultado = await documento.compartilhar(
+      await documento.compartilhar(
         cidades: widget.cidades,
         estado: widget.estado,
         dateFrom: _dateStr(_inicioDoRecorte),
@@ -445,20 +445,6 @@ class _RelatorioDeRiscoState extends State<RelatorioDeRisco> {
         },
         analytics: _paraODocumento(),
       );
-
-      // Caiu no link: o app segue útil, mas **diz** o que aconteceu. Entregar
-      // um link calado quando a pessoa esperava um arquivo é a diferença entre
-      // um plano B e uma surpresa.
-      if (mounted && resultado == ResultadoDoCompartilhar.link) {
-        messenger.showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Não deu para montar o PDF neste aparelho — foi o link do '
-              'relatório, que abre em qualquer navegador.',
-            ),
-          ),
-        );
-      }
     } catch (e) {
       debugPrint('[Relatório] $e');
       messenger.showSnackBar(

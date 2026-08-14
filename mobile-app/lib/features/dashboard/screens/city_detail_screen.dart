@@ -296,7 +296,7 @@ class _CityDetailScreenState extends State<CityDetailScreen>
     final documento = DocumentoDeRisco(context.read<ApiService>());
     final messenger = ScaffoldMessenger.of(context);
     try {
-      final resultado = await documento.compartilhar(
+      await documento.compartilhar(
         cidades: _cidadesDoRelatorio,
         estado: estado,
         dateFrom: _relatorioDe,
@@ -306,17 +306,6 @@ class _CityDetailScreenState extends State<CityDetailScreen>
           'origem': 'monitoramento',
         },
       );
-
-      if (mounted && resultado == ResultadoDoCompartilhar.link) {
-        messenger.showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Não deu para montar o PDF neste aparelho — foi o link do '
-              'relatório, que abre em qualquer navegador.',
-            ),
-          ),
-        );
-      }
     } catch (e) {
       debugPrint('[CityDetail] Compartilhar error: $e');
       messenger.showSnackBar(
