@@ -268,6 +268,105 @@ de $100.
 
 ---
 
+## 2026-08-14 (noite, 2) — Nova consulta: o formulário para de se explicar
+
+O João, olhando a tela no A57: *"Muitos disclaimers, tira todos. Linguagem zoada
+também. Muito confusa, ux estranha. Palavra chave deve ser acessível e não ficar
+escondida."* Depois: *"sobre esse essencial e completa eu tô achando estranho…
+deixamos só 'busca personalizada' onde fica as categorias"*, *"sempre faz busca
+completa"*, *"palavra chave podemos colocar a opção de buscar somente a palavra
+chave"*.
+
+### O que a captura mostrava, e o código confirmou
+
+🚨 **O `INICIAR CONSULTA` não aparecia na tela**, e o número da estimativa estava
+cortado ao meio pelos três botões do Android. Duas falhas somadas: `ListView` com
+40px de padding inferior dentro de um `SafeArea(bottom: false)` **sem
+`bottomNavigationBar`**. Abaixo da dobra *e* atrás da barra do sistema. **A folha
+de assuntos tinha o mesmo defeito** — o `USAR ESTES` cortado igual.
+
+O resto do "ux estranha" tinha nome: o campo montava `Row[ Expanded(valor),
+rotulo ]`, então lia-se `Escolher estado … UF` — **rótulo à direita, valor à
+esquerda**, sem seta, sem caixa. Um filete sob texto cinza parece legenda.
+
+### Três caminhos pro mesmo campo
+
+O redesenho de 09/08 tinha percebido metade: tirou o `ESCOLHER` da fila dos
+cartões porque *"botão que se parece com os vizinhos mas faz outra coisa é
+armadilha"*. Mas continuaram **três** caminhos — `Essencial`, `Completa` e a
+porta. Agora há **um**: `Busca personalizada`, cujo estado inicial é o catálogo
+inteiro. O que era `Essencial` deixou de existir e o que era `Completa` virou o
+padrão.
+
+O rótulo da seção passou a ser **a própria contagem** (`17 ASSUNTOS`), em verde
+do OPS, porque é o número que se move com a escolha. Ao lado, um `?` abre a lista
+**só de leitura**.
+
+⚠️ **Informar e editar viraram peças separadas** (`FolhaOsAssuntos` ×
+`FolhaAssuntos`). Era exatamente a confusão que fazia a porta parecer preset.
+
+### O que "sempre completa" custa — medido antes de decidir
+
+| | 30 dias | 180 dias |
+|---|---|---|
+| antes (5 assuntos) | ~3 min | ~7 min |
+| **agora (17)** | **~10 min** | **~25 min** |
+
+Tempo é proxy de custo: cada assunto é uma pergunta a mais ao buscador, e o que
+ela traz passa por Jina e por dois estágios de GPT. **~3,4× por consulta.** Dito
+ao João com o número na frente; decisão dele.
+
+### Duas travas que só apareceram porque eu fui ao backend
+
+- 🚨 **Lista vazia não pode sair.** `buildManualSearchQueries`
+  (`queryTemplates.ts:146`) faz `assuntos.length > 0 ? assuntos : getAssuntos()`
+  — mandar vazio faz o backend buscar **a lista padrão inteira, calado**, que é o
+  oposto do que o "buscar só palavra-chave" promete. O modo só liga com palavra
+  na lista e **se desliga sozinho** quando a última sai.
+- 🚨 **O teto é 20.** `assuntos: z.array(...).min(1).max(20)`
+  (`validation.ts:157`). Com o padrão em 17, a **4ª palavra-chave** estoura e a
+  consulta toma 400 — algo que quase nunca acontecia com o padrão em 5. O
+  `ADICIONAR` recusa e explica, em vez de deixar a busca falhar depois do toque.
+
+### Um defeito que eu mesmo criei e peguei antes de subir
+
+Ao exigir `n > 0` pro botão, **tranquei a busca quando o catálogo não carrega**:
+sem rede, `n` é 0 pra sempre. Antes disso a busca funcionava — o app manda a lista
+vazia, `triggerManualSearch` omite o campo e o backend cai na lista do painel.
+Agora a barra mostra `LISTA PADRÃO` e o botão continua vivo. **Defeito de rede não
+pode virar tela travada.**
+
+### Vocabulário: o erro que o João pegou no plano
+
+Eu tinha escrito o toggle como *"Buscar só estas palavras"*. Ele: *"não, muito
+ruim kkk que merda. Buscar só palavra chave sim"*. E está certo — a seção logo
+acima se chama `PALAVRA-CHAVE`, e eu inventei um sinônimo **uma linha abaixo do
+termo**. É a doença de vocabulário do app inteiro, em miniatura.
+
+**Regra que fica:** o controle usa o termo do campo que ele controla, sem
+sinônimo. Os rótulos viraram palavras comuns — `LOCAL`, `ASSUNTOS`, `PERÍODO` no
+lugar de `ONDE`, `O QUE PERGUNTAR`, `DESDE QUANDO`.
+
+### Os quatro parágrafos, e onde os fatos foram parar
+
+| texto | destino |
+|---|---|
+| "A região metropolitana vem junto…" | virou **parte do valor**: `Florianópolis + região` |
+| `_descricao` ("Crime comum: roubo e furto…") | virou o `?` |
+| `ESTIMATIVA, NÃO GARANTIA` | o `~` de `~10 min` já diz |
+| "Consulta longa. Pode fechar o app…" | **duplicata** — a tela de espera já diz `PODE FECHAR O APP`, e lá é acionável |
+| `UMA CIDADE · REGIÃO INCLUSA` (masthead) | mesma informação do campo, dita em slug de 9px |
+
+Zero parágrafo na tela, zero informação perdida.
+
+### E o período virou um controle só
+
+`Escolher data exata … OU DATA EXATA` era uma linha separada, com rótulo à
+direita e mecânica própria, pro **mesmo campo** dos cinco retângulos. Virou o
+**sexto retângulo** da fileira: a posição diz o que o rótulo dizia.
+
+---
+
 ## 2026-08-14 (noite) — o documento aprende a ser lido no celular
 
 Consequência direta da reversão do PDF: o botão passou a compartilhar **link**, e

@@ -12,22 +12,33 @@ import '../../../core/widgets/cat_chip.dart';
 // assunto não traz nada; perguntar outra coisa traz. Então "quantos assuntos"
 // é a alavanca de volume — e o preço dela é tempo, ~36s por assunto.
 //
-// Por isso cada preset mostra a própria conta (quantos assuntos, quantos
-// minutos) em vez de só um nome: "Essencial" sozinho não informa nada, e a
-// escolha só é honesta se o custo estiver na frente de quem escolhe.
+// Por isso o custo em minutos anda colado na contagem: a escolha só é honesta
+// se o preço estiver na frente de quem escolhe.
 //
 // ── Redesenho de 09/08 ────────────────────────────────────────────────────
 // Eram três cartões arredondados lado a lado, e o terceiro ("ESCOLHER") fingia
-// ser preset: ele não é um atalho, é uma **porta** — clicar não escolhe nada,
-// abre a escolha manual. Botão que se parece com os vizinhos mas faz outra
-// coisa é armadilha.
+// ser preset: ele não é um atalho, é uma **porta**. Viraram duas linhas de
+// preset mais um link, e a escolha manual foi pra uma folha — porque abrir a
+// taxonomia inteira dentro do formulário empurrava o botão de iniciar pra fora
+// da dobra.
 //
-// Além disso, ao entrar no modo manual a lista inteira de assuntos se abria
-// **dentro do formulário**: cinco blocos de fichas mais o campo de palavra-
-// chave, empurrando o botão de iniciar para muito abaixo da dobra.
+// ── Redesenho de 14/08 ────────────────────────────────────────────────────
+// O João: *"sobre esse essencial e completa eu tô achando estranho… deixamos só
+// 'busca personalizada' onde fica as categorias"*, *"sempre faz busca
+// completa"*, *"palavra chave deve ser acessível e não ficar escondida"*.
 //
-// Agora: dois presets como linhas, e a escolha manual numa folha. Nada foi
-// removido — a taxonomia inteira e a palavra-chave livre continuam lá dentro.
+// 🚨 O diagnóstico de 09/08 estava certo e incompleto: a porta parou de parecer
+// preset, mas **continuavam três caminhos pro mesmo campo**. Agora há um —
+// `Busca personalizada` — e o estado inicial dele é o catálogo inteiro. O que
+// era `Essencial` deixou de ser opção e o que era `Completa` virou o padrão.
+//
+// A palavra-chave subiu da folha pro formulário: estava a dois níveis de
+// profundidade e é o campo que serve pro que é específico da cidade do cliente.
+// A divisão ficou limpa — **catálogo na folha, texto livre na tela** — e ganhou
+// um modo que ignora o catálogo e pergunta só o que foi digitado.
+//
+// O `?` ao lado da contagem abre a lista **só de leitura** ([FolhaOsAssuntos]):
+// informar e editar viraram peças separadas, que é o que faltava em 09/08.
 
 /// Segundos por assunto numa janela de 30 dias.
 ///
@@ -83,7 +94,12 @@ String formatarEstimativa(Duration d) {
   return resto > 0 ? '~${h}h ${resto}min' : '~${h}h';
 }
 
-enum _Modo { essencial, completa, personalizar }
+/// 🚨 Teto do backend: `assuntos: z.array(...).min(1).max(20)`
+/// (`validation.ts:157`). Com o padrão em **todos** os assuntos do catálogo (17),
+/// a **4ª palavra-chave** estoura o limite e a consulta toma 400 — algo que quase
+/// nunca acontecia quando o padrão eram 5. O app barra aqui, com explicação, em
+/// vez de deixar a busca falhar depois de a pessoa apertar iniciar.
+const _tetoDeAssuntos = 20;
 
 class AssuntosField extends StatefulWidget {
   final Taxonomia taxonomia;
@@ -104,19 +120,26 @@ class AssuntosField extends StatefulWidget {
 }
 
 class _AssuntosFieldState extends State<AssuntosField> {
-  _Modo _modo = _Modo.essencial;
-
-  /// Termos do catálogo marcados.
+  /// Termos do catálogo marcados. **Nasce com tudo** — ver [_marcarTudo].
   final Set<String> _marcados = {};
 
   /// Palavras-chave digitadas — não vivem no catálogo, mas viajam no mesmo
   /// campo `assuntos[]` e recebem o mesmo tratamento nos filtros do backend.
   final List<String> _livres = [];
 
+  final _livreCtrl = TextEditingController();
+
+  /// Ignora o catálogo e pergunta **só** o que foi digitado.
+  bool _soPalavraChave = false;
+
+  /// Explicação de por que o `ADICIONAR` recusou. Mora aqui e não num
+  /// `SnackBar` porque a pessoa está olhando o campo, não o rodapé.
+  String? _recusa;
+
   @override
   void initState() {
     super.initState();
-    _aplicarPreset(_Modo.essencial, notificar: false);
+    _marcarTudo(notificar: false);
   }
 
   @override
@@ -124,31 +147,44 @@ class _AssuntosFieldState extends State<AssuntosField> {
     super.didUpdateWidget(old);
     // O catálogo chega depois do primeiro build (é uma chamada de rede).
     if (old.taxonomia.isEmpty && !widget.taxonomia.isEmpty) {
-      _aplicarPreset(_modo, notificar: true);
+      _marcarTudo(notificar: true);
     }
   }
 
-  List<String> get _selecionados => [
-        ...widget.taxonomia.assuntos
-            .where((a) => _marcados.contains(a.termo))
-            .map((a) => a.termo),
-        ..._livres,
-      ];
+  @override
+  void dispose() {
+    _livreCtrl.dispose();
+    super.dispose();
+  }
 
-  void _aplicarPreset(_Modo modo, {bool notificar = true}) {
+  List<String> get _doCatalogo => widget.taxonomia.assuntos
+      .where((a) => _marcados.contains(a.termo))
+      .map((a) => a.termo)
+      .toList();
+
+  /// O que vai pro backend.
+  ///
+  /// 🚨 **Nunca pode sair vazio.** `buildManualSearchQueries`
+  /// (`queryTemplates.ts:146`) faz `assuntos.length > 0 ? assuntos :
+  /// getAssuntos()` — mandar lista vazia faz o backend buscar a lista padrão
+  /// **inteira**, em silêncio, que é o oposto do que a tela prometeu. Por isso
+  /// [_soPalavraChave] só liga com palavra digitada, e se desliga sozinho
+  /// quando a última sai.
+  List<String> get _selecionados =>
+      _soPalavraChave ? [..._livres] : [..._doCatalogo, ..._livres];
+
+  /// O padrão é perguntar **tudo**.
+  ///
+  /// Eram dois presets (`Essencial` 5 · `Completa` 17) mais uma porta que
+  /// parecia um terceiro preset. Três caminhos pro mesmo campo, e o João achou
+  /// estranho com razão. Agora há um caminho — a busca personalizada — e o
+  /// estado inicial dele é o catálogo completo, então quem não quer escolher
+  /// nada continua começando com um toque.
+  void _marcarTudo({bool notificar = true}) {
     setState(() {
-      _modo = modo;
-      if (modo == _Modo.essencial) {
-        _marcados
-          ..clear()
-          ..addAll(widget.taxonomia.essenciais);
-        _livres.clear();
-      } else if (modo == _Modo.completa) {
-        _marcados
-          ..clear()
-          ..addAll(widget.taxonomia.assuntos.map((a) => a.termo));
-        _livres.clear();
-      }
+      _marcados
+        ..clear()
+        ..addAll(widget.taxonomia.assuntos.map((a) => a.termo));
     });
     if (notificar) widget.onChanged(_selecionados);
   }
@@ -166,47 +202,68 @@ class _AssuntosFieldState extends State<AssuntosField> {
       _marcados
         ..clear()
         ..addAll(r.$1);
-      _livres
-        ..clear()
-        ..addAll(r.$2);
-      // Escolher à mão desmarca o preset — mesmo que o resultado coincida com
-      // ele, quem mandou foi a escolha manual.
-      _modo = _Modo.personalizar;
     });
     widget.onChanged(_selecionados);
   }
 
-  /// Descrição do que está escolhido — é o que responde "o que é Essencial?"
-  /// sem obrigar ninguém a abrir nada.
-  String get _descricao {
-    final total = _selecionados.length;
-    if (total == 0) return 'Nenhum assunto escolhido.';
+  /// A lista de assuntos, **só pra ler** — é o que o `?` abre.
+  ///
+  /// ⚠️ É outra folha que a de escolha, de propósito: uma informa, a outra
+  /// edita. Ter as duas no mesmo lugar foi o que fez o antigo `ESCOLHER ASSUNTO
+  /// POR ASSUNTO` parecer um preset sendo uma porta.
+  void _verAssuntos() => FolhaOsAssuntos.abrir(
+    context,
+    taxonomia: widget.taxonomia,
+    marcados: _soPalavraChave ? const {} : _marcados,
+    livres: _livres,
+  );
 
-    if (_modo == _Modo.essencial) {
-      final labels = widget.taxonomia.assuntos
-          .where((a) => a.essencial)
-          .map((a) => a.label.toLowerCase())
-          .toList();
-      return 'Crime comum: ${_listar(labels)}.';
-    }
-    if (_modo == _Modo.completa) {
-      return 'Todos os assuntos do catálogo, de roubo a greve e crime ambiental.';
+  void _adicionarLivre() {
+    final texto = _livreCtrl.text.trim();
+    if (texto.length < 2) return;
+
+    final jaExiste =
+        _livres.any((l) => l.toLowerCase() == texto.toLowerCase()) ||
+        widget.taxonomia.assuntos.any(
+          (a) => a.termo.toLowerCase() == texto.toLowerCase(),
+        );
+    if (jaExiste) {
+      setState(() {
+        _recusa = 'Essa palavra já está na consulta.';
+        _livreCtrl.clear();
+      });
+      return;
     }
 
-    final labels = [
-      ...widget.taxonomia.assuntos
-          .where((a) => _marcados.contains(a.termo))
-          .map((a) => a.label.toLowerCase()),
-      ..._livres.map((l) => l.toLowerCase()),
-    ];
-    return _listar(labels.take(4).toList()) +
-        (labels.length > 4 ? ' e mais ${labels.length - 4}.' : '.');
+    // O teto é do backend, não desta tela — e com o catálogo inteiro marcado
+    // ele chega rápido. Recusar aqui, dizendo o que fazer, é melhor que deixar
+    // a consulta tomar 400 depois do toque em iniciar.
+    if (_selecionados.length >= _tetoDeAssuntos) {
+      setState(() {
+        _recusa =
+            'A consulta cabe $_tetoDeAssuntos assuntos. Tire algum em '
+            '"Busca personalizada" para abrir espaço.';
+      });
+      return;
+    }
+
+    setState(() {
+      _livres.add(texto);
+      _livreCtrl.clear();
+      _recusa = null;
+    });
+    widget.onChanged(_selecionados);
   }
 
-  String _listar(List<String> itens) {
-    if (itens.isEmpty) return '—';
-    if (itens.length == 1) return itens.first;
-    return '${itens.take(itens.length - 1).join(', ')} e ${itens.last}';
+  void _removerLivre(String termo) {
+    setState(() {
+      _livres.remove(termo);
+      _recusa = null;
+      // Sem palavra nenhuma o modo exclusivo mandaria lista vazia, e o backend
+      // buscaria a lista padrão inteira em silêncio. Desliga sozinho.
+      if (_livres.isEmpty) _soPalavraChave = false;
+    });
+    widget.onChanged(_selecionados);
   }
 
   @override
@@ -222,102 +279,186 @@ class _AssuntosFieldState extends State<AssuntosField> {
       );
     }
 
+    final quantos = _selecionados.length;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _LinhaPreset(
-          nome: 'Essencial',
-          quantos: tax.essenciais.length,
-          periodoDias: widget.periodoDias,
-          ativo: _modo == _Modo.essencial,
-          onTap: () => _aplicarPreset(_Modo.essencial),
+        // O rótulo da seção É a contagem: ela se move com a escolha, e o verde
+        // do OPS marca o número que muda. Antes era um `O QUE PERGUNTAR` fixo
+        // com o total escondido três linhas abaixo.
+        Row(
+          children: [
+            Text(
+              '$quantos ${quantos == 1 ? 'ASSUNTO' : 'ASSUNTOS'}',
+              style: SIMEopsType.fieldLabel(color: SIMEopsColors.greenLight),
+            ),
+            const SizedBox(width: 9),
+            _BotaoAjuda(onTap: _verAssuntos),
+          ],
         ),
-        _LinhaPreset(
-          nome: 'Completa',
-          quantos: tax.assuntos.length,
-          periodoDias: widget.periodoDias,
-          ativo: _modo == _Modo.completa,
-          onTap: () => _aplicarPreset(_Modo.completa),
+        _LinhaDeCampo(
+          texto: 'Busca personalizada',
+          apagada: _soPalavraChave,
+          onTap: _soPalavraChave ? null : _abrirEscolha,
         ),
-        if (_modo == _Modo.personalizar)
-          _LinhaPreset(
-            nome: 'Escolhidos a dedo',
-            quantos: _selecionados.length,
-            periodoDias: widget.periodoDias,
-            ativo: true,
-            onTap: _abrirEscolha,
+
+        const SizedBox(height: 26),
+        Text('PALAVRA-CHAVE', style: SIMEopsType.fieldLabel()),
+        // Subiu da folha pra cá em 14/08: estava a dois níveis de profundidade
+        // (tela → folha → rolar até o fim), e é o campo que serve pro que é
+        // específico da cidade do cliente — provavelmente o melhor motivo pra
+        // alguém abrir uma consulta manual em vez de olhar o monitoramento.
+        TextField(
+          controller: _livreCtrl,
+          onSubmitted: (_) => _adicionarLivre(),
+          textInputAction: TextInputAction.done,
+          style: SIMEopsType.fieldValue(),
+          decoration: InputDecoration(
+            hintText: 'ex: acidente rodovia',
+            suffixIcon: InkWell(
+              onTap: _adicionarLivre,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 14),
+                child: Text(
+                  'ADICIONAR',
+                  style: SIMEopsType.slug(color: SIMEopsColors.tealLight),
+                ),
+              ),
+            ),
+            suffixIconConstraints: const BoxConstraints(minWidth: 96),
           ),
-        // Porta, não preset: fica em corpo de link e fora da pilha de linhas,
-        // porque clicar aqui não escolhe nada — abre a escolha.
-        InkWell(
-          onTap: _abrirEscolha,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 13),
-            child: Text('ESCOLHER ASSUNTO POR ASSUNTO →',
-                style: SIMEopsType.slug(color: SIMEopsColors.tealLight)),
-          ),
         ),
-        Text(_descricao, style: SIMEopsType.note()),
+        if (_recusa != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            _recusa!,
+            style: SIMEopsType.note().copyWith(color: SIMEopsColors.alert),
+          ),
+        ],
+        if (_livres.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: _livres
+                .map(
+                  (l) => _Ficha(
+                    label: l,
+                    cor: SIMEopsColors.tealLight,
+                    ativo: true,
+                    onTap: () => _removerLivre(l),
+                    remover: true,
+                  ),
+                )
+                .toList(),
+          ),
+          const SizedBox(height: 6),
+          // Ligado, o catálogo inteiro sai da consulta e sobra só o que foi
+          // digitado. Só existe com palavra na lista — sem isso a lista iria
+          // vazia e o backend buscaria o padrão inteiro, calado.
+          InkWell(
+            onTap: () {
+              setState(() => _soPalavraChave = !_soPalavraChave);
+              widget.onChanged(_selecionados);
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Row(
+                children: [
+                  Icon(
+                    _soPalavraChave
+                        ? Icons.check_box
+                        : Icons.check_box_outline_blank,
+                    size: 19,
+                    color: _soPalavraChave
+                        ? SIMEopsColors.greenLight
+                        : SIMEopsColors.faint,
+                  ),
+                  const SizedBox(width: 9),
+                  Text(
+                    'Buscar só palavra-chave',
+                    style: SIMEopsType.body().copyWith(
+                      fontSize: 14,
+                      color: _soPalavraChave
+                          ? SIMEopsColors.white
+                          : SIMEopsColors.muted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
 }
 
-/// Um preset: nome à esquerda, a conta à direita, filete embaixo.
-class _LinhaPreset extends StatelessWidget {
-  final String nome;
-  final int quantos;
-  final int periodoDias;
-  final bool ativo;
+/// O `?` em círculo — o mesmo tratamento do ícone do dashboard.
+class _BotaoAjuda extends StatelessWidget {
   final VoidCallback onTap;
+  const _BotaoAjuda({required this.onTap});
 
-  const _LinhaPreset({
-    required this.nome,
-    required this.quantos,
-    required this.periodoDias,
-    required this.ativo,
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      customBorder: const CircleBorder(),
+      child: Container(
+        width: 19,
+        height: 19,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: SIMEopsColors.faint, width: 1),
+        ),
+        child: Text(
+          '?',
+          style: SIMEopsType.slug(color: SIMEopsColors.faint),
+        ),
+      ),
+    );
+  }
+}
+
+/// Linha que abre alguma coisa: texto à esquerda, seta à direita, filete
+/// embaixo. Mesma anatomia do [SeletorLugar] — é o vocabulário de "isto abre".
+class _LinhaDeCampo extends StatelessWidget {
+  final String texto;
+  final bool apagada;
+  final VoidCallback? onTap;
+
+  const _LinhaDeCampo({
+    required this.texto,
     required this.onTap,
+    this.apagada = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final tempo = formatarEstimativa(estimativaBusca(quantos, periodoDias));
-
     return InkWell(
       onTap: onTap,
       child: Container(
         decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: SIMEopsColors.rule)),
+          border: Border(bottom: BorderSide(color: SIMEopsColors.ruleStrong)),
         ),
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.only(top: 13, bottom: 12),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
           children: [
-            SizedBox(
-              width: 16,
-              child: ativo
-                  ? Text('▸',
-                      style:
-                          SIMEopsType.slug(color: SIMEopsColors.greenLight))
-                  : null,
-            ),
             Expanded(
               child: Text(
-                nome,
+                texto,
                 style: SIMEopsType.body().copyWith(
                   fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                  color:
-                      ativo ? SIMEopsColors.white : SIMEopsColors.muted,
+                  color: apagada ? SIMEopsColors.faint : SIMEopsColors.white,
                 ),
               ),
             ),
-            Text(
-              '$quantos ASSUNTOS · $tempo',
-              style: SIMEopsType.slug(
-                color: ativo ? SIMEopsColors.tealLight : SIMEopsColors.faint,
-              ),
+            Icon(
+              Icons.chevron_right,
+              size: 20,
+              color: apagada ? SIMEopsColors.hairline : SIMEopsColors.muted,
             ),
           ],
         ),
@@ -326,14 +467,20 @@ class _LinhaPreset extends StatelessWidget {
   }
 }
 
-/// A escolha manual: catálogo inteiro por categoria + palavra-chave livre.
+/// A **busca personalizada**: o catálogo inteiro, por categoria.
 ///
 /// Saiu de dentro do formulário e virou folha porque abria cinco blocos de
 /// fichas no meio da tela e empurrava o botão de iniciar para fora da dobra.
-/// **Nenhuma capacidade mudou** — é a mesma taxonomia e o mesmo campo livre.
+///
+/// ⚠️ **A palavra-chave não mora mais aqui.** Ela subiu pro formulário em 14/08
+/// — estava a dois níveis de profundidade e é o campo que serve pro que é
+/// específico da cidade do cliente. A divisão agora é limpa: **catálogo na
+/// folha, texto livre na tela**, sem a mesma coisa em dois lugares.
 class FolhaAssuntos extends StatefulWidget {
   final Taxonomia taxonomia;
   final Set<String> marcados;
+
+  /// Só pra contar: elas entram no total e no tempo, mas não se editam aqui.
   final List<String> livres;
   final int periodoDias;
 
@@ -345,15 +492,15 @@ class FolhaAssuntos extends StatefulWidget {
     required this.periodoDias,
   });
 
-  /// Devolve `(marcados, livres)` ou null se fechou sem confirmar.
-  static Future<(Set<String>, List<String>)?> abrir(
+  /// Devolve os marcados, ou null se fechou sem confirmar.
+  static Future<(Set<String>,)?> abrir(
     BuildContext context, {
     required Taxonomia taxonomia,
     required Set<String> marcados,
     required List<String> livres,
     required int periodoDias,
   }) {
-    return showModalBottomSheet<(Set<String>, List<String>)>(
+    return showModalBottomSheet<(Set<String>,)>(
       context: context,
       backgroundColor: SIMEopsColors.navy,
       isScrollControlled: true,
@@ -373,34 +520,8 @@ class FolhaAssuntos extends StatefulWidget {
 
 class _FolhaAssuntosState extends State<FolhaAssuntos> {
   late final Set<String> _marcados = {...widget.marcados};
-  late final List<String> _livres = [...widget.livres];
-  final _livreCtrl = TextEditingController();
 
-  @override
-  void dispose() {
-    _livreCtrl.dispose();
-    super.dispose();
-  }
-
-  int get _total => _marcados.length + _livres.length;
-
-  void _adicionarLivre() {
-    final texto = _livreCtrl.text.trim();
-    if (texto.length < 2) return;
-
-    final jaExiste =
-        _livres.any((l) => l.toLowerCase() == texto.toLowerCase()) ||
-            widget.taxonomia.assuntos
-                .any((a) => a.termo.toLowerCase() == texto.toLowerCase());
-    if (jaExiste) {
-      _livreCtrl.clear();
-      return;
-    }
-    setState(() {
-      _livres.add(texto);
-      _livreCtrl.clear();
-    });
-  }
+  int get _total => _marcados.length + widget.livres.length;
 
   @override
   Widget build(BuildContext context) {
@@ -427,14 +548,11 @@ class _FolhaAssuntosState extends State<FolhaAssuntos> {
                   Row(
                     children: [
                       Expanded(
-                        child: Text('Assuntos',
+                        child: Text('Busca personalizada',
                             style: SIMEopsType.sheetTitle()),
                       ),
                       InkWell(
-                        onTap: () => setState(() {
-                          _marcados.clear();
-                          _livres.clear();
-                        }),
+                        onTap: () => setState(() => _marcados.clear()),
                         child: Padding(
                           padding: const EdgeInsets.all(6),
                           child: Text('LIMPAR',
@@ -465,41 +583,46 @@ class _FolhaAssuntosState extends State<FolhaAssuntos> {
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 children: [
                   for (final cat in tax.categorias) ..._bloco(tax, cat),
-                  const SizedBox(height: 22),
-                  _campoLivre(),
                 ],
               ),
             ),
-            Container(
-              decoration: const BoxDecoration(
-                border: Border(
-                  top: BorderSide(color: SIMEopsColors.ruleStrong),
+            // 🚨 `SafeArea` própria. Sem ela o `USAR ESTES` fica ATRÁS da barra
+            // de navegação do sistema — foi o que a captura do João mostrou em
+            // 14/08, com o botão cortado ao meio pelos três botões do Android.
+            SafeArea(
+              top: false,
+              child: Container(
+                decoration: const BoxDecoration(
+                  border: Border(
+                    top: BorderSide(color: SIMEopsColors.ruleStrong),
+                  ),
                 ),
-              ),
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 10),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Text('$_total ${_total == 1 ? 'ASSUNTO' : 'ASSUNTOS'}',
-                          style: SIMEopsType.slug(color: SIMEopsColors.white)),
-                      const Spacer(),
-                      Text(_total == 0 ? '—' : tempo,
-                          style:
-                              SIMEopsType.slug(color: SIMEopsColors.tealLight)),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: _total == 0
-                          ? null
-                          : () => Navigator.pop(context, (_marcados, _livres)),
-                      child: const Text('USAR ESTES'),
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 10),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Text('$_total ${_total == 1 ? 'ASSUNTO' : 'ASSUNTOS'}',
+                            style: SIMEopsType.slug(
+                                color: SIMEopsColors.greenLight)),
+                        const Spacer(),
+                        Text(_total == 0 ? '—' : tempo,
+                            style: SIMEopsType.slug(
+                                color: SIMEopsColors.greenLight)),
+                      ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: _marcados.isEmpty && widget.livres.isEmpty
+                            ? null
+                            : () => Navigator.pop(context, (_marcados,)),
+                        child: const Text('USAR ESTES'),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -545,59 +668,6 @@ class _FolhaAssuntosState extends State<FolhaAssuntos> {
         ),
       ),
     ];
-  }
-
-  Widget _campoLivre() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('PALAVRA-CHAVE', style: SIMEopsType.fieldLabel()),
-          TextField(
-            controller: _livreCtrl,
-            onSubmitted: (_) => _adicionarLivre(),
-            textInputAction: TextInputAction.done,
-            style: SIMEopsType.fieldValue(),
-            decoration: InputDecoration(
-              hintText: 'ex: acidente rodovia',
-              suffixIcon: InkWell(
-                onTap: _adicionarLivre,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 14),
-                  child: Text('ADICIONAR',
-                      style:
-                          SIMEopsType.slug(color: SIMEopsColors.tealLight)),
-                ),
-              ),
-              suffixIconConstraints: const BoxConstraints(minWidth: 96),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Vira uma pergunta a mais ao buscador, igual aos assuntos do '
-            'catálogo. Serve para o que é específico da sua cidade.',
-            style: SIMEopsType.note(),
-          ),
-          if (_livres.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 7,
-              runSpacing: 7,
-              children: _livres
-                  .map((l) => _Ficha(
-                        label: l,
-                        cor: SIMEopsColors.tealLight,
-                        ativo: true,
-                        onTap: () => setState(() => _livres.remove(l)),
-                        remover: true,
-                      ))
-                  .toList(),
-            ),
-          ],
-        ],
-      ),
-    );
   }
 }
 
@@ -649,5 +719,158 @@ class _Ficha extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// **Os assuntos, só pra ler** — a folha que o `?` abre.
+///
+/// ⚠️ É outra peça que a [FolhaAssuntos], de propósito: esta **informa**, aquela
+/// **edita**. Antes as duas eram a mesma, e o `ESCOLHER ASSUNTO POR ASSUNTO`
+/// vivia na pilha dos presets parecendo um atalho quando era uma porta — que foi
+/// o que o João apontou como "muito confusa" em 14/08.
+///
+/// Ela existe porque o padrão passou a ser o catálogo inteiro: "17 assuntos" é
+/// uma contagem, não uma resposta, e quem gera um relatório pro cliente precisa
+/// poder dizer o que a consulta perguntou sem entrar na tela de edição.
+class FolhaOsAssuntos extends StatelessWidget {
+  final Taxonomia taxonomia;
+  final Set<String> marcados;
+  final List<String> livres;
+
+  const FolhaOsAssuntos({
+    super.key,
+    required this.taxonomia,
+    required this.marcados,
+    required this.livres,
+  });
+
+  static void abrir(
+    BuildContext context, {
+    required Taxonomia taxonomia,
+    required Set<String> marcados,
+    required List<String> livres,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: SIMEopsColors.navy,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(),
+      builder: (_) => FolhaOsAssuntos(
+        taxonomia: taxonomia,
+        marcados: marcados,
+        livres: livres,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = marcados.length + livres.length;
+
+    return SizedBox(
+      height: MediaQuery.sizeOf(context).height * 0.75,
+      child: Column(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: SIMEopsColors.white, width: 2),
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'O que a consulta pergunta',
+                    style: SIMEopsType.sheetTitle(),
+                  ),
+                ),
+                Text(
+                  '$total ${total == 1 ? 'ASSUNTO' : 'ASSUNTOS'}',
+                  style: SIMEopsType.slug(color: SIMEopsColors.greenLight),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(18, 4, 18, 18),
+              children: [
+                for (final cat in taxonomia.categorias)
+                  ..._bloco(cat, taxonomia.daCategoria(cat.id)),
+                if (livres.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  Text('PALAVRA-CHAVE', style: SIMEopsType.fieldLabel()),
+                  const SizedBox(height: 8),
+                  for (final l in livres)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Text(
+                        l,
+                        style: SIMEopsType.body().copyWith(fontSize: 15),
+                      ),
+                    ),
+                ],
+                const SizedBox(height: 24),
+                // A tese do produto, dita uma vez, onde a pergunta nasce.
+                Text(
+                  'Cada assunto é uma pergunta separada ao buscador, e ele '
+                  'devolve no máximo ~60 notícias por pergunta. Perguntar mais '
+                  'coisas é a única forma de achar mais — e cada assunto '
+                  'acrescenta cerca de 35 segundos.',
+                  style: SIMEopsType.note(),
+                ),
+              ],
+            ),
+          ),
+          // 🚨 Mesma `SafeArea` do rodapé da outra folha, pelo mesmo motivo.
+          SafeArea(
+            top: false,
+            child: Container(
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: SIMEopsColors.ruleStrong)),
+              ),
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 10),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('FECHAR'),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Só os assuntos **que estão na consulta**. Listar os de fora seria
+  /// responder outra pergunta.
+  List<Widget> _bloco(CategoriaTaxonomia cat, List<Assunto> itens) {
+    final dentro = itens.where((a) => marcados.contains(a.termo)).toList();
+    if (dentro.isEmpty) return const [];
+
+    return [
+      Padding(
+        padding: const EdgeInsets.only(top: 18, bottom: 8),
+        child: Row(
+          children: [
+            CatChip(categoria: cat.id),
+            const SizedBox(width: 8),
+            Text(cat.label.toUpperCase(), style: SIMEopsType.fieldLabel()),
+          ],
+        ),
+      ),
+      for (final a in dentro)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Text(
+            a.label,
+            style: SIMEopsType.body().copyWith(fontSize: 15),
+          ),
+        ),
+    ];
   }
 }

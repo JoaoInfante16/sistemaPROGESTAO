@@ -4,7 +4,14 @@ import '../../../core/data/brazilian_locations.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
 
-/// Linha de escolha: rótulo à esquerda, valor à direita, filete embaixo.
+/// Campo de escolha: **rótulo em cima, valor embaixo, seta à direita.**
+///
+/// 🚨 Era o contrário — `Row[ Expanded(valor), rotulo ]` —, e a tela lia
+/// `Escolher estado … UF`: o rótulo pequeno encostado na borda direita e o valor
+/// ocupando o lugar onde todo formulário põe o nome do campo. Somado à ausência
+/// de qualquer afordância (sem seta, sem caixa, só um filete embaixo de texto
+/// cinza), o resultado parecia legenda, não campo. Foi metade do "ux estranha"
+/// que o João apontou em 14/08.
 ///
 /// Substitui o `MultiCitySearchField`, que foi construído para N cidades e
 /// nunca foi usado assim — `maxCities` já era 1. Ele ainda desenhava chip
@@ -40,26 +47,39 @@ class SeletorLugar extends StatelessWidget {
         decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: SIMEopsColors.ruleStrong)),
         ),
-        padding: const EdgeInsets.only(top: 13, bottom: 11),
+        padding: const EdgeInsets.only(top: 14, bottom: 12),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
           children: [
             Expanded(
-              child: Text(
-                preenchido ? valor! : vazio,
-                style: SIMEopsType.body().copyWith(
-                  fontSize: 17,
-                  color: preenchido
-                      ? (habilitado ? SIMEopsColors.white : SIMEopsColors.faint)
-                      : SIMEopsColors.faint,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(rotulo, style: SIMEopsType.fieldLabel()),
+                  const SizedBox(height: 3),
+                  Text(
+                    preenchido ? valor! : vazio,
+                    style: SIMEopsType.body().copyWith(
+                      fontSize: 17,
+                      color: preenchido
+                          ? (habilitado
+                                ? SIMEopsColors.white
+                                : SIMEopsColors.faint)
+                          : SIMEopsColors.faint,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             ),
             const SizedBox(width: 12),
-            Text(rotulo, style: SIMEopsType.slug(color: SIMEopsColors.faint)),
+            // A seta é a afordância que faltava: sem ela o campo era texto
+            // cinza com um filete embaixo, indistinguível de uma legenda.
+            Icon(
+              Icons.chevron_right,
+              size: 20,
+              color: habilitado ? SIMEopsColors.muted : SIMEopsColors.hairline,
+            ),
           ],
         ),
       ),

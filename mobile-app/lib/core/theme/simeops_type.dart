@@ -193,10 +193,13 @@ class SIMEopsType {
   // nenhum usuário não fica na escala.
 
   /// Rótulo de campo de formulário.
-  static TextStyle fieldLabel() => GoogleFonts.jetBrainsMono(
+  ///
+  /// `color` existe pro caso em que o rótulo **é** o dado — a contagem de
+  /// assuntos da nova consulta, que muda com a escolha e leva o verde do OPS.
+  static TextStyle fieldLabel({Color? color}) => GoogleFonts.jetBrainsMono(
         fontSize: 9.5,
         letterSpacing: 1.9,
-        color: SIMEopsColors.muted,
+        color: color ?? SIMEopsColors.muted,
       );
 
   /// Número de contagem (categoria no dashboard, valor de ranking).

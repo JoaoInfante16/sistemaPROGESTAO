@@ -506,8 +506,13 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
               // cronômetro parado no zero enquanto a tela carrega parece app
               // travado. Sem hora de início não há tempo decorrido; então não
               // se carimba nada.
+              // No formulário o canto direito fica vazio: o
+              // `UMA CIDADE · REGIÃO INCLUSA` que morava aqui dizia, em slug de
+              // 9px no topo, o que agora está escrito dentro do próprio campo
+              // (`Florianópolis + região`). Fato repetido em dois lugares é o
+              // que sobra pra ser esquecido num deles.
               direita: isFormView
-                  ? 'UMA CIDADE · REGIÃO INCLUSA'
+                  ? null
                   : concluida || _searchStartTime == null
                   ? null
                   : _elapsedText.toUpperCase(),
@@ -522,6 +527,9 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
                     )
                   : _buildResults(),
             ),
+            // A barra só existe no formulário — nas outras fases não há o que
+            // iniciar, e o rodapé daquelas telas é delas.
+            if (isFormView && !_loadingLocations) _barraDeAcao(),
           ],
         ),
       ),
@@ -557,19 +565,18 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
       );
     }
 
-    final canSearch = _selectedEstado != null && _selectedCidades.isNotEmpty;
     final cidade = _selectedCidades.isEmpty ? null : _selectedCidades.first;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 40),
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 30),
       children: [
-        // ── 1. ONDE ──────────────────────────────────────────────────────
+        // ── 1. LOCAL ─────────────────────────────────────────────────────
         const SizedBox(height: 22),
-        Text('ONDE', style: SIMEopsType.fieldLabel()),
+        Text('LOCAL', style: SIMEopsType.fieldLabel()),
         SeletorLugar(
-          rotulo: 'UF',
+          rotulo: 'ESTADO',
           valor: _selectedEstado,
-          vazio: 'Escolher estado',
+          vazio: 'Escolher',
           onTap: () async {
             final e = await Lugares.escolherEstado(context, _selectedEstado);
             if (e == null) return;
@@ -581,10 +588,12 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
         ),
         SeletorLugar(
           rotulo: 'CIDADE',
-          valor: cidade,
-          vazio: _selectedEstado == null
-              ? 'Escolha o estado primeiro'
-              : 'Escolher cidade',
+          // A região metropolitana vem junto, e isso vira **parte do valor**.
+          // Era um parágrafo de três linhas abaixo do campo — um dos quatro que
+          // o João mandou tirar em 14/08. O fato não se perdeu: mudou de lugar,
+          // pra dentro do dado que ele descreve.
+          valor: cidade == null ? null : '$cidade + região',
+          vazio: _selectedEstado == null ? 'Escolha o estado antes' : 'Escolher',
           habilitado: _selectedEstado != null,
           onTap: () async {
             final c = await Lugares.escolherCidade(
@@ -596,160 +605,156 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
             setState(() => _selectedCidades = {c});
           },
         ),
-        const SizedBox(height: 9),
-        Text(
-          'A região metropolitana vem junto, sem custo extra — a consulta '
-          'devolve as cidades vizinhas num balde separado.',
-          style: SIMEopsType.note(),
-        ),
 
-        // ── 2. O QUE PERGUNTAR ───────────────────────────────────────────
-        // Cada assunto é uma pergunta a mais ao buscador, e um teto novo de
-        // ~60 notícias. O preço é tempo, e ele fica visível na própria linha.
-        const SizedBox(height: 28),
-        Text('O QUE PERGUNTAR', style: SIMEopsType.fieldLabel()),
-        const SizedBox(height: 4),
+        // ── 2. ASSUNTOS ──────────────────────────────────────────────────
+        // O rótulo desta seção é a própria contagem, e mora dentro do
+        // AssuntosField — só ele sabe quantos são.
+        const SizedBox(height: 26),
         AssuntosField(
           taxonomia: _taxonomia,
           periodoDias: _periodoDias,
           onChanged: (lista) => setState(() => _assuntos = lista),
         ),
 
-        // ── 3. DESDE QUANDO ──────────────────────────────────────────────
+        // ── 3. PERÍODO ───────────────────────────────────────────────────
         //
         // O slider livre de 1 a 180 saiu em 03/08: no device ele erra. O próprio
         // João pediu 30 dias e a busca saiu com 34 — precisão que ninguém pediu
         // custando a que todo mundo queria. Os cinco pontos resolvem o caso
-        // comum com um toque; o calendário cobre "desde o incidente tal".
-        const SizedBox(height: 28),
-        Text('DESDE QUANDO', style: SIMEopsType.fieldLabel()),
+        // comum com um toque; o sexto cobre "desde o incidente tal".
+        const SizedBox(height: 26),
+        Text('PERÍODO', style: SIMEopsType.fieldLabel()),
         const SizedBox(height: 10),
         _pontosPeriodo(),
-        _linhaCalendario(),
-
-        // ── 4. A CONTA ───────────────────────────────────────────────────
-        const SizedBox(height: 28),
-        _aConta(),
-
-        // ── 5. O BOTÃO ───────────────────────────────────────────────────
-        const SizedBox(height: 20),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            onPressed: canSearch ? _startSearch : null,
-            child: const Text('INICIAR CONSULTA'),
-          ),
-        ),
       ],
     );
   }
 
-  /// Os cinco períodos que resolvem quase tudo, um toque cada.
+  /// A barra que não rola: a conta e o botão, sempre visíveis.
   ///
-  /// Retângulos achatados encostados, sem borda e sem canto: o ativo se marca
-  /// por filete embaixo e tinta branca, o mesmo vocabulário das abas de cidade
-  /// e dos cadernos. Eram cinco cápsulas de canto 10 com borda teal — cinco
-  /// caixas desenhadas pra dizer o que um filete diz.
-  Widget _pontosPeriodo() {
-    return Row(
-      children: [
-        for (final dias in _periodoMarcas)
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() {
-                _periodoDias = dias;
-                _desdeQuando = null; // sair do modo calendário
-              }),
-              behavior: HitTestBehavior.opaque,
-              child: Container(
-                margin: const EdgeInsets.only(right: 2),
-                decoration: BoxDecoration(
-                  color: _periodoDias == dias && _desdeQuando == null
-                      ? SIMEopsColors.navyLight
-                      : SIMEopsColors.navyMid,
-                  border: Border(
-                    bottom: BorderSide(
-                      color: _periodoDias == dias && _desdeQuando == null
-                          ? SIMEopsColors.greenLight
-                          : Colors.transparent,
-                      width: 2,
-                    ),
-                  ),
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                child: Text(
-                  '${dias}D',
-                  textAlign: TextAlign.center,
-                  style: SIMEopsType.placeTab(
-                    active: _periodoDias == dias && _desdeQuando == null,
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
+  /// 🚨 Eles viviam no fim do `ListView`, e o João mandou a captura em que o
+  /// `INICIAR CONSULTA` **não aparece na tela** e o número da estimativa está
+  /// cortado ao meio pelos três botões do Android. Duas falhas somadas: abaixo
+  /// da dobra **e** atrás da barra do sistema.
+  ///
+  /// A `SafeArea(top: false)` é obrigatória — a da tela é `bottom: false`, que é
+  /// exatamente por que o conteúdo passava por trás da navegação. Sem ela o
+  /// conserto reproduz o defeito que veio consertar.
+  Widget _barraDeAcao() {
+    final n = _assuntos.length;
+    final dur = estimativaBusca(n, _periodoDias);
 
-  /// Data de início livre — "desde 12/03".
-  ///
-  /// ⚠️ É data de INÍCIO, e não intervalo fechado, por uma razão medida: o
-  /// Google só pagina de hoje pra trás. Buscar "1 a 31 de março" custaria os
-  /// mesmos cinco meses que buscar "desde março" — a busca varre tudo no
-  /// caminho de qualquer jeito (é o balde `fora_do_periodo`). Oferecer as duas
-  /// pontas sugeriria uma economia que não existe.
-  ///
-  /// O recorte fechado já existe onde é de graça: no relatório, depois da
-  /// busca, re-fatiando o que ela já trouxe (9.6).
-  /// Uma linha abaixo dos cinco pontos, no mesmo padrão do seletor de lugar:
-  /// rótulo à direita, valor à esquerda, filete embaixo. Era uma sexta caixa
-  /// arredondada competindo com os cinco retângulos logo acima.
-  Widget _linhaCalendario() {
-    final ativo = _desdeQuando != null;
-    return InkWell(
-      onTap: _escolherDataInicio,
+    // ⚠️ Sem catálogo (a rede falhou) `n` é 0 pra sempre, e exigir assunto aqui
+    // trancaria a busca inteira num defeito que não é do usuário. O app manda a
+    // lista vazia, `triggerManualSearch` omite o campo e o backend cai na lista
+    // do painel — que é o comportamento que existia antes desta tela.
+    final semCatalogo = _taxonomia.isEmpty;
+    final canSearch = _selectedEstado != null &&
+        _selectedCidades.isNotEmpty &&
+        (n > 0 || semCatalogo);
+
+    return SafeArea(
+      top: false,
       child: Container(
         decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: SIMEopsColors.ruleStrong)),
+          border: Border(
+            top: BorderSide(color: SIMEopsColors.white, width: 2),
+          ),
         ),
-        padding: const EdgeInsets.only(top: 15, bottom: 11),
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 10),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
           children: [
             Expanded(
               child: Text(
-                ativo
-                    ? DateFormat('dd/MM/yyyy').format(_desdeQuando!)
-                    : 'Escolher data exata',
-                style: SIMEopsType.body().copyWith(
-                  fontSize: 17,
-                  color: ativo ? SIMEopsColors.white : SIMEopsColors.faint,
+                n > 0
+                    ? '${formatarEstimativa(dur)} · $n '
+                          '${n == 1 ? 'ASSUNTO' : 'ASSUNTOS'}'
+                    : semCatalogo
+                    ? 'LISTA PADRÃO'
+                    : 'NENHUM ASSUNTO',
+                style: SIMEopsType.slug(
+                  color: n == 0 ? SIMEopsColors.faint : SIMEopsColors.greenLight,
                 ),
               ),
             ),
             const SizedBox(width: 12),
-            if (ativo)
-              InkWell(
-                onTap: () => setState(() {
-                  _desdeQuando = null;
-                  _periodoDias = 30;
-                }),
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 10),
-                  child: Text(
-                    'LIMPAR',
-                    style: SIMEopsType.slug(color: SIMEopsColors.tealLight),
-                  ),
-                ),
-              ),
-            Text(
-              ativo ? '$_periodoDias DIAS' : 'OU DATA EXATA',
-              style: SIMEopsType.slug(color: SIMEopsColors.faint),
+            FilledButton(
+              onPressed: canSearch ? _startSearch : null,
+              child: const Text('INICIAR CONSULTA'),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  /// Os cinco períodos que resolvem quase tudo, mais a data exata — **um
+  /// controle só**.
+  ///
+  /// Retângulos achatados encostados, sem borda e sem canto: o ativo se marca
+  /// por filete embaixo e tinta branca, o mesmo vocabulário das abas de cidade
+  /// e dos cadernos.
+  ///
+  /// ⚠️ O sexto retângulo era uma **linha separada** logo abaixo (`Escolher data
+  /// exata … OU DATA EXATA`), com rótulo à direita e mecânica própria: o mesmo
+  /// campo com dois controles e dois visuais. Trazer a data pra dentro da
+  /// fileira diz o que a linha dizia — que é uma alternativa aos cinco — usando
+  /// a posição em vez de um rótulo.
+  Widget _pontosPeriodo() {
+    Widget bloco({
+      required String texto,
+      required bool ativo,
+      required VoidCallback onTap,
+      bool ultimo = false,
+    }) {
+      return Expanded(
+        child: GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            margin: EdgeInsets.only(right: ultimo ? 0 : 2),
+            decoration: BoxDecoration(
+              color: ativo ? SIMEopsColors.navyLight : SIMEopsColors.navyMid,
+              border: Border(
+                bottom: BorderSide(
+                  color: ativo
+                      ? SIMEopsColors.greenLight
+                      : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 13),
+            child: Text(
+              texto,
+              textAlign: TextAlign.center,
+              style: SIMEopsType.placeTab(active: ativo),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        for (final dias in _periodoMarcas)
+          bloco(
+            texto: '${dias}D',
+            ativo: _periodoDias == dias && _desdeQuando == null,
+            onTap: () => setState(() {
+              _periodoDias = dias;
+              _desdeQuando = null;
+            }),
+          ),
+        bloco(
+          texto: _desdeQuando == null
+              ? 'DATA'
+              : DateFormat('dd/MM').format(_desdeQuando!),
+          ativo: _desdeQuando != null,
+          onTap: _escolherDataInicio,
+          ultimo: true,
+        ),
+      ],
     );
   }
 
@@ -780,79 +785,20 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
     });
   }
 
-  /// A conta: o tempo como número grande, colado no botão.
-  ///
-  /// É a moeda da tela — o produto inteiro se resume a "mais assunto traz mais
-  /// notícia e custa mais minuto". Estava numa caixa arredondada com ícone,
-  /// dizendo em corpo de 12.5 o que agora diz em 40, e disputando atenção com
-  /// os três cartões de preset que repetiam o mesmo número.
-  Widget _aConta() {
-    final n = _assuntos.length;
-    final dur = estimativaBusca(n, _periodoDias);
-    // Acima de ~12 min a espera deixa de ser "alguns instantes" e vira decisão
-    // consciente — o aviso é o que transforma isso em escolha, não surpresa.
-    final longa = dur.inMinutes >= 12;
-    final cidades = _selectedCidades.length;
 
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: SIMEopsColors.white, width: 2)),
-      ),
-      padding: const EdgeInsets.only(top: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                n == 0 ? '—' : formatarEstimativa(dur).replaceFirst('~', ''),
-                style: SIMEopsType.hero().copyWith(fontSize: 40),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 5),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        n == 0
-                            ? 'NENHUM ASSUNTO'
-                            : '$n ${n == 1 ? 'ASSUNTO' : 'ASSUNTOS'}'
-                                  '${cidades > 0 ? ' · $_periodoDias DIAS' : ''}',
-                        style: SIMEopsType.slug(color: SIMEopsColors.faint),
-                        textAlign: TextAlign.end,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'ESTIMATIVA, NÃO GARANTIA',
-                        style: SIMEopsType.slug(color: SIMEopsColors.faint),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (longa) ...[
-            const SizedBox(height: 10),
-            Text(
-              'Consulta longa. Pode fechar o app — um aviso chega quando '
-              'terminar.',
-              style: SIMEopsType.note(),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  // O `_explicarAssuntos` (folha "Por que escolher assuntos", aberta por um
-  // ícone de interrogação ao lado do rótulo) saiu em 09/08. O texto não morreu:
-  // foi para dentro da `FolhaAssuntos`, encostado na escolha, que é onde ele é
-  // acionável. Explicação atrás de "?" é explicação que ninguém lê — e essa em
-  // particular é a tese do produto, não um detalhe.
+  // 🗑️ AQUI MORAVA `_aConta()`, e antes dela o `_explicarAssuntos`.
+  //
+  // A conta virou a `_barraDeAcao()`, que não rola. O número em Archivo 40 caiu
+  // pra uma linha de slug: com o botão do lado, o tamanho não estava informando
+  // nada que o próprio lugar já não dissesse.
+  //
+  // Foram junto três textos que o João mandou tirar em 14/08:
+  //   · `ESTIMATIVA, NÃO GARANTIA` — o `~` de `~10 min` já diz isso;
+  //   · "Consulta longa. Pode fechar o app…" — **duplicata**: a tela de espera
+  //     diz `PODE FECHAR O APP. UM AVISO CHEGA QUANDO TERMINAR.`, e lá é onde é
+  //     acionável, porque a busca está rodando. No formulário era ansiedade
+  //     antecipada sobre uma decisão que a pessoa ainda não tomou;
+  //   · o `_explicarAssuntos` já tinha ido pra folha em 09/08.
 
   // ══════════════════════════════════════════════════════════════════════
   // A ESPERA
