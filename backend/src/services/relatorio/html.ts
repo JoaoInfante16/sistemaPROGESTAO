@@ -18,7 +18,7 @@
 // PDF viaja em tudo. O arquivo intermediário não serve pra nenhum dos dois.
 
 import { CATEGORIA_CORES, CATEGORIA_LABELS, CATEGORIA_ORDEM } from '../../utils/taxonomia';
-import { CategoriaGrupo } from '../../utils/types';
+import { CategoriaGrupo, rotuloTipoCrime } from '../../utils/types';
 import { RelatorioRenderizavel } from './tipos';
 import { ESTILO } from './estilo';
 import { FONTES_EMBUTIDAS } from './fontes';
@@ -238,10 +238,18 @@ async function mapaImpresso(
   const pontos = r.mapPoints.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
   if (pontos.length === 0) return '';
 
-  // 168mm × 105mm na folha, em px de CSS (96dpi).
+  // ⚠️ `L` e `A` **não são o tamanho na folha** — o mapa é fluido e ocupa a
+  // largura que tiver. Eles são a **proporção do quadro** (e a referência que
+  // `enquadrar` usa pra escolher o zoom que cabe). O comentário aqui dizia
+  // "168mm × 105mm na folha", e era justamente essa crença que cortava o mapa:
+  // a folha tem 150mm de conteúdo, não 168mm.
   const L = 635, A = 397;
   let q = enquadrar(pontos, L, A);
   if (!q) return '';
+
+  // Tudo que sai daqui pra baixo vira % do quadro. Ver `.mapa` no estilo.
+  const pctL = (v: number) => `${((v / L) * 100).toFixed(3)}%`;
+  const pctA = (v: number) => `${((v / A) * 100).toFixed(3)}%`;
 
   // 🚨 No caminho do PDF os tiles viram `data:` URI. Quem converte é a WebView
   // do aparelho, e ela pode fotografar a página **antes** de as imagens da rede
@@ -249,15 +257,25 @@ async function mapaImpresso(
   // html2canvas de novo, por outra porta. Aqui não há o que esperar.
   if (paraPdf) q = await embutirTiles(q);
 
+  // O tile é posicionado em % da CAMADA (não do quadro): ele vive lá dentro,
+  // no sistema de coordenadas que o `scale` depois encolhe.
+  const pctCamL = (v: number) => `${((v / q.largura) * 100).toFixed(4)}%`;
+  const pctCamA = (v: number) => `${((v / q.altura) * 100).toFixed(4)}%`;
   const tiles = q.tiles.map((t) =>
     `<img src="${t.url}" alt="" loading="eager"
-      style="left:${t.left.toFixed(1)}px;top:${t.top.toFixed(1)}px">`
+      style="left:${pctCamL(t.left)};top:${pctCamA(t.top)};` +
+      `width:${pctCamL(256)};height:${pctCamA(256)}">`
   ).join('');
 
   // 🚨 O pino NÃO entra na camada escalada. Se entrasse, encolheria junto com os
   // tiles: com escala 0.55 um pino de 7px viraria 3,8px, e a marca de dado é a
   // única coisa do mapa que precisa de tamanho constante. Ele fica solto por
   // cima, com a coordenada já multiplicada pela escala.
+  //
+  // ⚠️ A **posição** vai em %, e o **tamanho** continua em px — de propósito, e
+  // é a mesma regra de cima levada ao fim: onde o pino está é relativo ao mapa,
+  // o quanto ele mede não é. Num telefone o mapa encolhe e o pino segue com 7px,
+  // que é o mínimo pra dois vizinhos continuarem legíveis como dois.
   const pinos = pontos.map((p) => {
     const px = paraPixel(p.lat, p.lng, q.z);
     const x = (px.x - q.ox) * q.escala, y = (px.y - q.oy) * q.escala;
@@ -265,7 +283,7 @@ async function mapaImpresso(
     // Ponto sem bairro é geocodado no centro da cidade — ele entra no mapa, mas
     // apagado, pra não fingir precisão que a matéria não deu.
     const vago = p.precisao === 'cidade' ? ' cidade' : '';
-    return `<span class="pino${vago}" style="left:${x.toFixed(1)}px;top:${y.toFixed(1)}px;` +
+    return `<span class="pino${vago}" style="left:${pctL(x)};top:${pctA(y)};` +
       `background:${cor(p.categoria)}"></span>`;
   }).join('');
 
@@ -282,8 +300,8 @@ async function mapaImpresso(
 
   return `<section class="secao">
     ${cabecaDeSecao('Onde', 'Mapa de ocorrências', `${num(pontos.length)} localizadas`)}
-    <div class="mapa" style="height:${A}px">
-      <div class="camada" style="width:${q.largura.toFixed(1)}px;height:${q.altura.toFixed(1)}px;
+    <div class="mapa">
+      <div class="camada" style="width:${pctL(q.largura)};height:${pctA(q.altura)};
         transform:scale(${q.escala.toFixed(4)})">${tiles}</div>
       ${pinos}
     </div>
@@ -390,9 +408,17 @@ function abertura(r: RelatorioRenderizavel): string {
     <div class="hero">${num(r.total)}<small>OCORRÊNCIAS</small></div>
     <div>
       <p class="lead">${partes.join(' ')}</p>
-      <p class="nota">Este documento mede <strong>o que a imprensa publicou</strong>, não o que
-      a polícia registrou. Ocorrência sem repercussão na mídia não aparece aqui, e uma mesma
-      ocorrência coberta por vários veículos é contada uma vez só.</p>
+      <!-- A ressalva na voz do APP, não na de um documento que se explica.
+           Ela dizia "Este documento mede o que a imprensa publicou, não o que a
+           polícia registrou. Ocorrência sem repercussão na mídia não aparece
+           aqui, e uma mesma ocorrência coberta por vários veículos é contada
+           uma vez só." — mesma informação, registro errado: o app AFIRMA e o
+           documento EXPLICAVA. A primeira frase agora é literalmente a que a
+           tela já usa (relatorio_de_risco.dart), e as outras duas seguem no
+           mesmo compasso curto. -->
+      <p class="nota">É o que a imprensa <strong>noticiou</strong> — não o total registrado
+      pelas polícias. Ocorrência sem repercussão não entra, e a mesma ocorrência em vários
+      veículos conta uma vez.</p>
     </div>
   </div>`;
 }
@@ -417,8 +443,10 @@ function secaoCategorias(r: RelatorioRenderizavel): string {
       <td class="n">${r.total > 0 ? Math.round((c.count / r.total) * 100) : 0}%</td>
     </tr>`).join('');
 
+  // ⚠️ Aqui saía `esc(t.tipo_crime)` — a chave crua do banco. O documento que
+  // vai pro cliente imprimia `roubo_furto`, `lesao_corporal`, `trafico`.
   const tipos = r.byCrimeType.slice(0, 8).map((t) => `<tr>
-      <td>${esc(t.tipo_crime)}</td><td class="n">${num(t.count)}</td>
+      <td>${esc(rotuloTipoCrime(t.tipo_crime))}</td><td class="n">${num(t.count)}</td>
     </tr>`).join('');
 
   return `<section class="secao">

@@ -2,8 +2,14 @@
 // city_card e news_detail_sheet ainda carregam mapas próprios; migram para cá
 // na etapa do redesign dos cards.
 
+// ⚠️ Segunda cópia da tabela que vive em `backend/src/utils/types.ts`
+// (`TIPO_CRIME_LABEL`). As duas precisam mudar juntas. Unificar via
+// `GET /settings/taxonomia`, que o app já consome, está anotado no ROADMAP.
+//
+// 🚨 `roubo_furto` mostra **"Roubo"** por decisão do João em 14/08. A chave não
+// muda — o banco, o prompt do Filter2 e as linhas gravadas continuam iguais.
 const crimeTypeLabels = <String, String>{
-  'roubo_furto': 'Roubo/Furto',
+  'roubo_furto': 'Roubo',
   'vandalismo': 'Vandalismo',
   'invasao': 'Invasão',
   'homicidio': 'Homicídio',

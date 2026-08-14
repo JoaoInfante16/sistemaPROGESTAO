@@ -268,6 +268,125 @@ de $100.
 
 ---
 
+## 2026-08-14 (noite) — o documento aprende a ser lido no celular
+
+Consequência direta da reversão do PDF: o botão passou a compartilhar **link**, e
+o documento estreou no celular — onde quase nunca tinha sido aberto, porque até
+ontem o plano era virar arquivo. O João, no A57: *"a margem tá zoada"*,
+*"Distribuição de categoria todo quebrado"*, *"mapa de ocorrências quebrado"*.
+
+E o diagnóstico dele foi o certo: *"olha como tá o relatório do MAIN, lá tava
+funcionando TOP"*.
+
+### Ele tinha razão, e dá pra medir
+
+A página que isto substituiu (`origin/main:admin-panel/src/app/report/[id]/page.tsx`)
+usava `sm:p-6`, `lg:p-10`, `lg:grid-cols-2`, `sm:flex-row`. E Tailwind é
+**mobile-first por construção**: os cinco componentes de gráfico funcionavam com
+**zero** breakpoints porque nasciam fluidos.
+
+🚨 **A folha nova é o oposto: nasceu A4 e corrige pra baixo.** `estilo.ts` não
+tinha **um único** `@media (max-width)` — só `@media print`. A ordem está
+invertida em relação a como se faz hoje, e este commit é o pagamento mínimo, não
+a quitação.
+
+### Três sintomas, uma causa
+
+`* { box-sizing: border-box }`, e `.folha { max-width: 178mm; padding: …14mm }` dá
+**150mm de conteúdo (~567px)**. Num aparelho de 412px, tudo que era coluna fixa
+estourava: `.duas` (62mm 1fr), `.recorte` (40mm 1fr), `.indicadores` e `.fontes`
+em duas colunas sempre.
+
+⚠️ **O `730%` da tabela nunca foi número errado.** Era `7` e `30%` com a coluna
+colada pelo aperto — 7+11+4+1 = 23 e 30+48+17+4 = 99%. **O dado estava certo, e
+o layout fez o cliente duvidar do número em vez do CSS.** É o pior tipo de bug
+visual: ele desacredita o produto, não a folha de estilo.
+
+### O mapa estava errado nas DUAS direções, desde sempre
+
+`mapaImpresso` montava o quadro com `L = 635px` (168mm) — o comentário dizia
+"168mm × 105mm na folha". Mas a folha tem **150mm** de conteúdo. Eram 68px a mais,
+e `.mapa { overflow: hidden }` comia **11% do mapa em qualquer tela**, calado. No
+desktop sumia margem vazia e ninguém notou por dois dias.
+
+No celular a caixa cai pra ~376px e sumiam **40%**: a captura do João mostrava
+Santo Amaro da Imperatriz e mato porque aquilo era a **borda oeste** de um quadro
+que cobre a região inteira, com Florianópolis, São José e Palhoça cortadas fora
+da tela. Não era enquadramento ruim — era recorte.
+
+E na impressão o erro invertia: a A4 dá 184mm de conteúdo e o mapa usava 168mm.
+
+**Solução: o mapa não tem mais nenhuma medida absoluta.** `aspect-ratio: 635/397`
+e **todas** as coordenadas em % — tiles em % da camada, pinos em % do quadro. Sem
+breakpoint: vale pra qualquer largura, incluindo a folha impressa, que agora usa
+os 184mm inteiros.
+
+⚠️ **O tamanho do pino continua em px**, e é a mesma regra do raio-zero levada ao
+fim: *onde* o pino está é relativo ao mapa, *quanto* ele mede não é. Se encolhesse
+junto, num telefone dois vizinhos deixariam de ser legíveis como dois.
+
+`L` e `A` deixaram de ser "o tamanho na folha" e passaram a ser a **proporção do
+quadro** e a referência de zoom do `enquadrar`. A crença errada estava no
+comentário, e era ela que cortava o mapa.
+
+### A chave crua do banco no documento do cliente
+
+`secaoCategorias` emitia `esc(t.tipo_crime)` — o documento imprimia `roubo_furto`,
+`lesao_corporal`, `trafico`, com underline. O app traduz isso desde sempre
+(`crime_labels.dart`); o backend **não tinha** mapa equivalente. `formatTipoCrime`
+(pushService) tem nome enganoso: devolve o rótulo da **categoria**.
+
+Entrou `TIPO_CRIME_LABEL` em `utils/types.ts`, colado no `TIPO_CRIME_GRUPO` que já
+morava lá com a mesma forma.
+
+⚠️ **Não dá pra derivar de `ASSUNTOS_CATALOGO`**: lá a relação é N:1 de propósito
+— `lesao_corporal` é "Violência doméstica" **e** "Agressão", porque são perguntas
+diferentes ao Google que classificam no mesmo tipo. Derivar dali escolheria uma
+das duas por ordem de array.
+
+**`roubo_furto` passa a se chamar "Roubo"** (pedido do João), nos três lugares que
+exibem rótulo. 🚨 **A chave não muda** — nada de migration, de prompt do Filter2
+ou de linha regravada. Fica registrado que o rótulo chama de roubo um tipo que
+também contém furto: crimes distintos (com e sem violência), e quem vai reparar é
+um leitor que faça a distinção jurídica. Foi dito ao João e aceito.
+
+Dívida anotada: a tabela de rótulos existe em **três cópias** (backend,
+`crime_labels.dart`, painel admin). `GET /settings/taxonomia`, que o app já
+consome, é o caminho pra unificar.
+
+### O disclaimer estava em outra voz
+
+*"Este documento mede o que a imprensa publicou, não o que a polícia registrou…"*
+— mesma informação da tela, registro diferente: **o app afirma, o documento
+explicava**. Agora abre com a frase que a tela já usa, literal, e segue no mesmo
+compasso curto. O glossário do produto inteiro fica pra depois, por decisão do
+João.
+
+### A armadilha que o próprio arquivo avisa, e eu caí
+
+`estilo.ts` é um template literal, e tem escrito nele: *"crase dentro do CSS fecha
+a string"*. Escrevi o comentário do bloco novo com `` `Nº` ``, `` `%` `` e
+`` `screen and` `` entre crases e quebrei o arquivo — 8 erros de sintaxe de uma
+vez. **O aviso estava 180 linhas acima do lugar onde eu estava editando.**
+
+### Medido no documento renderizado
+
+| | |
+|---|---|
+| altura fixa inline no mapa | 0 |
+| tiles em px / em % | 0 / 9 |
+| pinos em px / em % | 0 / 20 |
+| `@media screen and (max-width` | 1 |
+| `@media (max-width` **sem** `screen` | **0** — é o que impede a impressão de herdar o layout de celular |
+| chave crua (`roubo_furto` etc.) no HTML | nenhuma |
+
+⚠️ Detalhe que só a conta pega: `.barras`/`.eixo` são flex, e item flex **não
+encolhe abaixo do próprio conteúdo** por padrão. Com 14 baldes de 5 caracteres a
+régua pede ~390px num corpo de 328 — daí o `min-width: 0`, que autoriza a coluna a
+apertar em vez de empurrar a página inteira.
+
+---
+
 ## 2026-08-14 — o PDF no aparelho foi revertido: 90s não é uma opção
 
 **Desfecho do spike: reprovado.** Não por não funcionar — por demorar.

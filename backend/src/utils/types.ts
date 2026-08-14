@@ -26,6 +26,43 @@ export const TIPO_CRIME_GRUPO: Record<TipoCrime, CategoriaGrupo> = {
   crime_ambiental: 'institucional', trabalho_irregular: 'institucional', estatistica: 'institucional', outros: 'institucional',
 };
 
+/**
+ * Como o tipo aparece **pra quem lê** — cliente, documento, push.
+ *
+ * Existe porque o relatorio compartilhado imprimia a chave crua do banco:
+ * `roubo_furto`, `lesao_corporal`, `trafico`, com underline, num documento
+ * desenhado pra chegar no cliente do cliente.
+ *
+ * ⚠️ **Nao da pra derivar de `ASSUNTOS_CATALOGO`** (taxonomia.ts). La a relacao
+ * e N:1 de proposito — `lesao_corporal` aparece como "Violencia domestica" E
+ * como "Agressao", porque sao perguntas diferentes ao Google que classificam no
+ * mesmo tipo. Derivar dali escolheria uma das duas por ordem de array.
+ *
+ * ⚠️ `formatTipoCrime` (pushService.ts) tem nome enganoso: devolve o rotulo da
+ * CATEGORIA, nao o do tipo. Nao e substituto disto.
+ *
+ * 🚨 `roubo_furto` se chama **"Roubo"**, por decisao do Joao em 14/08. A chave
+ * NAO muda — nada de migration, de prompt do Filter2 ou de linha regravada.
+ * O que fica dito: roubo e furto sao crimes distintos (com e sem violencia), e
+ * este rotulo chama de roubo os dois. Quem for reparar e um leitor que faca a
+ * distincao juridica; foi pesado e aceito.
+ */
+export const TIPO_CRIME_LABEL: Record<TipoCrime, string> = {
+  roubo_furto: 'Roubo', vandalismo: 'Vandalismo', invasao: 'Invasão', receptacao: 'Receptação',
+  homicidio: 'Homicídio', latrocinio: 'Latrocínio', lesao_corporal: 'Lesão corporal',
+  trafico: 'Tráfico', operacao_policial: 'Operação policial', manifestacao: 'Manifestação',
+  bloqueio_via: 'Bloqueio de via',
+  estelionato: 'Estelionato',
+  crime_ambiental: 'Crime ambiental', trabalho_irregular: 'Trabalho irregular',
+  estatistica: 'Estatística', outros: 'Outros',
+};
+
+/** O rotulo, tolerante a tipo desconhecido — linha antiga nao pode sumir da tabela. */
+export function rotuloTipoCrime(tipo: string | null | undefined): string {
+  if (!tipo) return TIPO_CRIME_LABEL.outros;
+  return TIPO_CRIME_LABEL[tipo as TipoCrime] ?? tipo.replace(/_/g, ' ');
+}
+
 export interface NewsExtraction {
   e_crime: boolean;
   tipo_crime: TipoCrime;

@@ -36,8 +36,11 @@ const GRUPO_CONFIG: Record<CategoriaGrupo, { label: string; color: string }> = {
   institucional: { label: 'Institucional', color: 'bg-gray-500' },
 };
 
+// Terceira copia da tabela de rotulos (as outras: backend `TIPO_CRIME_LABEL` e
+// `crime_labels.dart`). `roubo_furto` mostra "Roubo" desde 14/08 — a chave nao
+// mudou.
 const TIPO_LABELS: Record<string, string> = {
-  roubo_furto: 'Roubo/Furto',
+  roubo_furto: 'Roubo',
   vandalismo: 'Vandalismo',
   invasao: 'Invasao',
   homicidio: 'Homicidio',

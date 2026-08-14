@@ -166,12 +166,24 @@ tr:last-child td { border-bottom: none; }
 .ind .ctx { margin-top: 3px; }
 
 /* ── mapa ───────────────────────────────────────────────── */
-.mapa { position: relative; overflow: hidden; border: 1px solid var(--filete-med); background: #EFF2F5; }
+/* 🚨 O mapa é FLUIDO, e tudo dentro dele é posicionado em % — não em px.
+   Ele já foi px, e estava errado nas duas direções ao mesmo tempo: o quadro era
+   montado com 635px (168mm) enquanto o conteúdo da folha tem 150mm, então o
+   o overflow:hidden comia 11% do mapa em QUALQUER tela, calado. No celular a
+   caixa cai pra ~376px e sumia 40% — a captura do João mostrava a borda oeste
+   do quadro, com as três cidades cortadas fora da tela. Na impressão era o
+   contrário: a A4 dá 184mm de conteúdo e o mapa usava 168mm.
+   Em %, o mapa passa a valer pra qualquer largura sem nenhum breakpoint. */
+.mapa {
+  position: relative; overflow: hidden;
+  width: 100%; aspect-ratio: 635 / 397;
+  border: 1px solid var(--filete-med); background: #EFF2F5;
+}
 /* A camada nasce maior que a caixa e encolhe pro tamanho exato dela. É o que dá
    zoom contínuo em cima de tiles que só existem em zoom inteiro — sem isso,
    "não coube por 11 pixels" custava metade da escala do mapa. */
 .mapa .camada { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
-.mapa img { position: absolute; width: 256px; height: 256px; display: block; }
+.mapa img { position: absolute; display: block; }
 
 /* O pino é redondo e pequeno de propósito: com 70 ocorrências num município,
    marca grande vira mancha e some a topografia embaixo. O anel branco é o que
@@ -216,6 +228,61 @@ tr:last-child td { border-bottom: none; }
   background: #7AB648; color: #060D18; border: 0; padding: 10px 18px; cursor: pointer;
 }
 .acoes button:hover { background: #92D050; }
+
+/* ══ CELULAR ═════════════════════════════════════════════
+   A folha nasceu A4 e passou meses sem ser aberta num telefone — o botão
+   compartilhava um arquivo, não um endereço. Quando virou link (14/08), o
+   documento estreou no celular e apareceu inteiro: margem de 14mm num aparelho
+   de 412px, duas colunas onde não cabe uma, e a tabela de categoria com o Nº
+   colado no % — 7 e 30% viravam 730%, que faz o leitor duvidar do
+   número em vez do CSS.
+
+   ⚠️ A ordem aqui está invertida em relação a como se faz hoje. A página que
+   isto substituiu era Tailwind, **mobile-first por construção**: os cinco
+   componentes de gráfico funcionavam com ZERO breakpoints porque nasciam
+   fluidos. Esta folha nasce A4 e corrige pra baixo. Reescrever na ordem certa
+   é a dívida; este bloco é o pagamento mínimo.
+
+   🚨 O screen-and NÃO é decoração. Sem ele a consulta também vale na
+   impressão — onde "largura" é a da página —, e qualquer papel estreito
+   herdaria o layout de celular. */
+@media screen and (max-width: 720px) {
+  /* A metáfora de folha sobre a mesa só rouba largura num telefone. */
+  body { background: var(--papel); }
+  .folha { max-width: none; padding: 18px 16px 40px; box-shadow: none; }
+
+  h1 { font-size: 30px; letter-spacing: -1px; }
+  .hero { font-size: 52px; letter-spacing: -2.4px; }
+  .abertura { flex-direction: column; gap: 10px; }
+
+  /* Tudo que era duas colunas empilha. */
+  .duas { grid-template-columns: 1fr; gap: 18px; }
+  .fontes { grid-template-columns: 1fr; gap: 0; }
+  .indicadores { grid-template-columns: 1fr; }
+  /* ⚠️ Este seletor assumia duas colunas: em coluna única ele apagaria o
+     filete que separa o segundo indicador do primeiro. */
+  .ind:nth-child(-n+2) { border-top: 1px solid var(--filete); }
+  .ind:first-child { border-top: none; }
+  .ind { padding-right: 0; }
+
+  /* O rótulo em cima do valor: 40mm de coluna deixava o dd com duas palavras
+     por linha. */
+  .recorte { grid-template-columns: 1fr; gap: 0; margin-top: 7mm; }
+  .recorte dt { padding-top: 9px; }
+  .recorte dd { padding-bottom: 2px; }
+
+  /* O gráfico de volume tem até 14 baldes, e um item flex se recusa a encolher
+     abaixo do próprio conteúdo por padrão. Com 14 rótulos de 5 caracteres a
+     régua pede ~390px num corpo de 328 — o min-width:0 é o que autoriza a
+     coluna a apertar em vez de empurrar a página. */
+  .barras .col, .eixo .col { min-width: 0; }
+  .barras .val, .eixo .col { font-size: 7.5px; }
+  .eixo .col { overflow: hidden; }
+
+  .rodape { flex-direction: column; gap: 3px; }
+  .acoes { padding: 9px 14px; }
+  .acoes button { padding: 9px 14px; }
+}
 
 /* ══ IMPRESSÃO ═══════════════════════════════════════════
    O PDF sai daqui: Ctrl+P no computador, ⋮ → Compartilhar →
