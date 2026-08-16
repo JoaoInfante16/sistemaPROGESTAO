@@ -268,6 +268,93 @@ de $100.
 
 ---
 
+## 2026-08-16 — a estimativa saiu escrita na vertical, e o culpado era o tema
+
+O João mandou a captura da Nova consulta com `~11 min · 18 ASSUNTOS` escrito **de
+cima pra baixo, uma letra por linha**, e o `INICIAR CONSULTA` fora da tela. Junto,
+dois pedidos: *"temos que padronizar os 2 ícones ? que existem… eu queria um ?
+mais reto, esse é muito estilizado"* e *"faz um merge do disclaimer, os 2 têm
+coisas boas e ruins"*.
+
+### O bug não estava na tela — estava no tema, desde sempre
+
+`main.dart:136` define `minimumSize: Size.fromHeight(54)` para o `FilledButton`.
+E **`Size.fromHeight(h)` é `Size(double.infinity, h)`**: largura mínima
+infinita. Num `Row`, o filho não-flexível recebe `maxWidth: infinity`, então o
+botão pediu a tela inteira, o `Expanded` da conta ficou com largura zero e o
+texto quebrou caractere a caractere.
+
+**Por que só agora.** Todos os outros `FilledButton` do app vivem em
+`SizedBox(width: double.infinity)` (login, troca de senha, filtro de feed, as
+duas folhas) ou em `actions:` de diálogo, onde `OverflowBar` empilha sozinho —
+e aí largura mínima infinita é exatamente o comportamento desejado. A barra da
+Nova consulta, criada em 14/08, foi **a primeira vez que um `FilledButton` teve
+vizinho** em quatro meses de app.
+
+**Zerar a mínima não resolveria.** Medido: `~11 min · 18 ASSUNTOS` em mono 9.5 com
+tracking 1.24 = ~146px; `INICIAR CONSULTA` em mono 13 com tracking 2.86, mais o
+padding do Material = ~219px; margens 36px; total **412px**. Não cabe em celular
+nenhum (A-series ficam entre 384 e 411dp). A barra virou duas linhas — conta em
+cima, botão de largura cheia embaixo. Custa 22px de altura, e o botão fica *mais*
+visível, não menos.
+
+⚠️ **A lição, e ela vale para o tema inteiro:** `Size.fromHeight` num
+`ButtonThemeData` é uma decisão de layout global escondida num parâmetro de
+altura. Funciona enquanto todo botão for de largura cheia; quebra silenciosamente
+no primeiro que não for, e quebra de um jeito que não parece bug de botão.
+
+### Os dois `?` viraram um
+
+Havia duas cópias do mesmo ícone com **cinco diferenças**: 23px × 19px, aro
+`teal` × `faint`, tinta `tealLight` × `faint`, corpo 12 × 9.5, e um
+`letterSpacing: 1.24` sobrando no do formulário — tracking é espaço *depois* da
+letra, então num texto de um caractere ele empurrava o `?` para a esquerda dentro
+do círculo. Agora é [`BotaoAjuda`](../mobile-app/lib/core/widgets/botao_ajuda.dart),
+com duas mudanças sobre o padrão do monitoramento:
+
+- **o `?` saiu do JetBrains Mono e foi para o Archivo** — o mono tem a haste
+  angulosa e o bico cortado na diagonal, desenho de fonte de código, e num glifo
+  solto isso lê como enfeite. É o "mais reto" que o João pediu;
+- **o aro é teal nas duas casas** — em `faint` o botão veste a cor que o sistema
+  inteiro usa para dizer *desabilitado*, e sumia no navy.
+
+### O disclaimer: tronco comum, fecho de cada casa
+
+Os dois textos tinham metade certa cada um. O do monitoramento dizia **onde** o
+sistema procura e **de quem é a chave** para mudar a lista, mas em voz passiva
+(*"são feitas varreduras"*). O da consulta dizia a tese do produto — um assunto é
+uma pergunta, teto de ~60 notícias por pergunta, perguntar mais é a única alavanca
+— mas chamava o mecanismo de **"o buscador"**, peça que não existe em lugar nenhum
+do produto.
+
+🚨 **Não viraram um texto só, e isso foi decisão, não preguiça.** Os dois `?`
+respondem perguntas diferentes: no monitoramento, *"o que esse negócio fica
+fazendo o dia todo"*; na consulta, *"o que esta consulta vai perguntar, e o que
+isso me custa"*. Texto único ou põe custo em minutos numa tela onde ninguém
+espera, ou põe *"fale com o administrador"* numa tela onde a pessoa mexe na lista
+sozinha. Nos dois casos o texto que devia dar confiança vira ruído.
+
+O tronco virou a constante `comoOSistemaPergunta` (em `folha_taxonomia.dart`),
+importada pelas duas folhas — **uma constante e não duas cópias** porque foi
+exatamente a divergência entre duas cópias que produziu "varreduras" de um lado e
+"o buscador" do outro. Cada folha acrescenta uma frase própria: `A lista roda
+sozinha, todo dia. Para incluir ou tirar um assunto, fale com o administrador.`
+no monitoramento; `Cada assunto acrescenta cerca de meio minuto à consulta.` na
+consulta.
+
+⚠️ **"Meio minuto" e não "35 segundos" de propósito.** O número real mora em
+`_segundosPorAssunto`, já recalibrado duas vezes (47 → 36) e com nova queda
+prevista pela migration 028. Texto de tela que promete precisão que a constante
+não tem apodrece calado — a precisão fica na barra da consulta, que lê a
+constante; na folha fica a ordem de grandeza.
+
+### Verificação
+
+`flutter analyze` no baseline (1 info em `type_helpers.dart`). APK de staging
+buildado com `flutter clean` e instalado no A57 (`Success`, 58.2MB).
+
+---
+
 ## 2026-08-14 (noite, 2) — Nova consulta: o formulário para de se explicar
 
 O João, olhando a tela no A57: *"Muitos disclaimers, tira todos. Linguagem zoada

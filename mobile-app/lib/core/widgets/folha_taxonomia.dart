@@ -8,6 +8,31 @@ import 'esqueleto.dart';
 import '../theme/simeops_type.dart';
 import 'cat_chip.dart';
 
+/// **A tese do produto, escrita uma vez só.**
+///
+/// Vive nas duas folhas de `?` do app — esta ([FolhaTaxonomia], no cabeçalho do
+/// monitoramento) e a `FolhaOsAssuntos` do formulário de consulta —, e é uma
+/// constante e não duas cópias porque texto duplicado apodrece torto: em 14/08
+/// as duas explicações já divergiam, uma falando em *"varreduras"* e a outra em
+/// *"o buscador"*, uma peça que não existe em lugar nenhum do produto.
+///
+/// Cada folha acrescenta **uma** frase própria depois desta, porque as duas
+/// respondem perguntas diferentes: no monitoramento a pergunta é *"o que esse
+/// negócio fica fazendo o dia todo"*, na consulta é *"o que esta consulta vai
+/// perguntar, e o que isso me custa"*. Foi por isso que o texto não virou um só
+/// — o custo em minutos numa tela onde ninguém espera, ou o *"fale com o
+/// administrador"* numa tela onde a pessoa mexe na lista sozinha, viram ruído
+/// no lugar exato onde o app está tentando ganhar confiança.
+///
+/// ⚠️ **Sem número que apodrece.** A versão antiga prometia *"cerca de 35
+/// segundos"* por assunto — número que sai de `_segundosPorAssunto`, já
+/// recalibrado duas vezes (47 → 36). A precisão fica na barra da consulta, que
+/// lê a constante; aqui fica a ordem de grandeza.
+const comoOSistemaPergunta =
+    'Cada assunto é uma pergunta separada à imprensa e aos canais oficiais, e '
+    'cada pergunta traz no máximo ~60 notícias. Por isso a lista é grande: '
+    'perguntar mais assuntos é a única forma de achar mais.';
+
 /// O que cada categoria reúne.
 ///
 /// Abre pelo `?` do cabeçalho do monitoramento — a casa, na altura da marca:
@@ -152,14 +177,16 @@ class _FolhaTaxonomiaState extends State<FolhaTaxonomia> {
           ),
         ],
       const SizedBox(height: 24),
-      // Duas frases com dois trabalhos: **o que o sistema faz** e **como se
-      // muda isso**. A segunda existe porque a lista é fechada para quem usa —
-      // e uma lista fechada sem porta de saída lê como limitação do produto,
-      // não como configuração. Dizer de quem é a chave devolve o controle.
+      Text(comoOSistemaPergunta, style: SIMEopsType.note()),
+      const SizedBox(height: 14),
+      // O fecho desta casa. Existe porque aqui a lista é **fechada** para quem
+      // usa — e uma lista fechada sem porta de saída lê como limitação do
+      // produto, não como configuração. Dizer de quem é a chave devolve o
+      // controle. Na consulta é o contrário: a lista é da pessoa, e por isso
+      // lá o fecho fala de preço, não de permissão.
       Text(
-        'São feitas varreduras na imprensa e em canais oficiais em busca de '
-        'notícias sobre esses assuntos. Para incluir ou tirar um assunto da '
-        'lista, fale com o administrador.',
+        'A lista roda sozinha, todo dia. Para incluir ou tirar um assunto, '
+        'fale com o administrador.',
         style: SIMEopsType.note(),
       ),
     ],

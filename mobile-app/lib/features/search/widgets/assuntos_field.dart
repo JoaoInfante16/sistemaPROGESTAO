@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../../core/models/assunto.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
+import '../../../core/widgets/botao_ajuda.dart';
 import '../../../core/widgets/cat_chip.dart';
+import '../../../core/widgets/folha_taxonomia.dart' show comoOSistemaPergunta;
 
 // Seletor de ASSUNTOS da busca manual.
 //
@@ -294,7 +296,7 @@ class _AssuntosFieldState extends State<AssuntosField> {
               style: SIMEopsType.fieldLabel(color: SIMEopsColors.greenLight),
             ),
             const SizedBox(width: 9),
-            _BotaoAjuda(onTap: _verAssuntos),
+            BotaoAjuda(onTap: _verAssuntos, tamanho: 19),
           ],
         ),
         _LinhaDeCampo(
@@ -391,33 +393,6 @@ class _AssuntosFieldState extends State<AssuntosField> {
           ),
         ],
       ],
-    );
-  }
-}
-
-/// O `?` em círculo — o mesmo tratamento do ícone do dashboard.
-class _BotaoAjuda extends StatelessWidget {
-  final VoidCallback onTap;
-  const _BotaoAjuda({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      customBorder: const CircleBorder(),
-      child: Container(
-        width: 19,
-        height: 19,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: SIMEopsColors.faint, width: 1),
-        ),
-        child: Text(
-          '?',
-          style: SIMEopsType.slug(color: SIMEopsColors.faint),
-        ),
-      ),
     );
   }
 }
@@ -813,12 +788,15 @@ class FolhaOsAssuntos extends StatelessWidget {
                     ),
                 ],
                 const SizedBox(height: 24),
-                // A tese do produto, dita uma vez, onde a pergunta nasce.
+                // O tronco é o mesmo do `?` do monitoramento, e vem de uma
+                // constante só — ver [comoOSistemaPergunta].
+                Text(comoOSistemaPergunta, style: SIMEopsType.note()),
+                const SizedBox(height: 14),
+                // O fecho desta casa: aqui a lista é da pessoa, então o que
+                // falta dizer é o preço. Lá é o contrário — a lista é fechada,
+                // e o que falta dizer é de quem é a chave.
                 Text(
-                  'Cada assunto é uma pergunta separada ao buscador, e ele '
-                  'devolve no máximo ~60 notícias por pergunta. Perguntar mais '
-                  'coisas é a única forma de achar mais — e cada assunto '
-                  'acrescenta cerca de 35 segundos.',
+                  'Cada assunto acrescenta cerca de meio minuto à consulta.',
                   style: SIMEopsType.note(),
                 ),
               ],

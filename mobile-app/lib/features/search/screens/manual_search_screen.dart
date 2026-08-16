@@ -640,6 +640,25 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
   /// A `SafeArea(top: false)` é obrigatória — a da tela é `bottom: false`, que é
   /// exatamente por que o conteúdo passava por trás da navegação. Sem ela o
   /// conserto reproduz o defeito que veio consertar.
+  ///
+  /// 🚨 **A conta e o botão são duas linhas, e não podem virar `Row`.** A
+  /// primeira versão era `Row[ Expanded(conta), botão ]` e saiu no A57 com a
+  /// estimativa escrita **na vertical, uma letra por linha**, e o botão fora da
+  /// tela. Causa: o tema define `minimumSize: Size.fromHeight(54)`
+  /// (`main.dart:136`), e `Size.fromHeight` é `Size(double.infinity, 54)` —
+  /// **largura mínima infinita**. Dentro de um `Row` o filho não-flexível recebe
+  /// `maxWidth: infinity`, então o botão pede a tela inteira, o `Expanded` fica
+  /// com zero e o texto quebra caractere a caractere.
+  ///
+  /// Passou despercebido no tema porque **todo** outro `FilledButton` do app
+  /// vive em `SizedBox(width: double.infinity)` ou em `actions:` de diálogo, e
+  /// aí largura mínima infinita é justamente o que se quer. Esta foi a primeira
+  /// vez que um deles teve um vizinho.
+  ///
+  /// E não adianta só zerar a mínima aqui: `~11 min · 18 ASSUNTOS` (146px) +
+  /// `INICIAR CONSULTA` em mono 13 com tracking 2.86 (~219px) + as margens dão
+  /// **412px**, que não cabe em celular nenhum. Empilhar é o que cabe — e de
+  /// quebra o botão fica com a mesma largura cheia das outras telas.
   Widget _barraDeAcao() {
     final n = _assuntos.length;
     final dur = estimativaBusca(n, _periodoDias);
@@ -661,26 +680,29 @@ class _ManualSearchScreenState extends State<ManualSearchScreen> {
             top: BorderSide(color: SIMEopsColors.white, width: 2),
           ),
         ),
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 10),
-        child: Row(
+        padding: const EdgeInsets.fromLTRB(18, 11, 18, 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Text(
-                n > 0
-                    ? '${formatarEstimativa(dur)} · $n '
-                          '${n == 1 ? 'ASSUNTO' : 'ASSUNTOS'}'
-                    : semCatalogo
-                    ? 'LISTA PADRÃO'
-                    : 'NENHUM ASSUNTO',
-                style: SIMEopsType.slug(
-                  color: n == 0 ? SIMEopsColors.faint : SIMEopsColors.greenLight,
-                ),
+            Text(
+              n > 0
+                  ? '${formatarEstimativa(dur)} · $n '
+                        '${n == 1 ? 'ASSUNTO' : 'ASSUNTOS'}'
+                  : semCatalogo
+                  ? 'LISTA PADRÃO'
+                  : 'NENHUM ASSUNTO',
+              style: SIMEopsType.slug(
+                color: n == 0 ? SIMEopsColors.faint : SIMEopsColors.greenLight,
               ),
             ),
-            const SizedBox(width: 12),
-            FilledButton(
-              onPressed: canSearch ? _startSearch : null,
-              child: const Text('INICIAR CONSULTA'),
+            const SizedBox(height: 9),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: canSearch ? _startSearch : null,
+                child: const Text('INICIAR CONSULTA'),
+              ),
             ),
           ],
         ),
