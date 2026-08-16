@@ -27,12 +27,29 @@ class AuthService extends ChangeNotifier {
     await _client.auth.signInWithPassword(email: email, password: password);
   }
 
-  Future<void> signOut() async {
-    // Limpa credentials salvas junto — senão o _tryAutoLogin da LoginScreen
-    // relogava o user automaticamente (bug "não consigo sair" quando
-    // "lembrar senha" tá marcado).
-    await clearSavedCredentials();
-    await _client.auth.signOut();
+  /// Sair. **`clearCredentials` separa querer sair de ser expulso.**
+  ///
+  /// 🚨 Veio da `main` (fix de produção) e a `staging` não tinha. Sem o
+  /// parâmetro, o `AuthGate` chamava o mesmo `signOut()` quando o token
+  /// **expirava** — e apagava o cofre de quem não pediu para sair. A pessoa
+  /// abria o app no dia seguinte e tinha que redigitar tudo, sem nada ter
+  /// acontecido de errado.
+  ///
+  /// - `true` — logout manual: a pessoa quis sair, o atalho vai junto.
+  /// - `false` — expiração de token: a sessão morreu, o atalho continua e o
+  ///   `_tryAutoLogin` reentra sozinho.
+  ///
+  /// ⚠️ O `try` em volta do `signOut()` do Supabase também é da `main`: sem
+  /// rede, a chamada levanta **depois** de a sessão local já ter sido limpa, e
+  /// a exceção subia para a tela como se o logout tivesse falhado — quando ele
+  /// tinha funcionado.
+  Future<void> signOut({bool clearCredentials = true}) async {
+    if (clearCredentials) await clearSavedCredentials();
+    try {
+      await _client.auth.signOut();
+    } catch (e) {
+      debugPrint('[Auth] signOut remoto falhou (sessão local já limpa): $e');
+    }
   }
 
   Future<void> resetPassword(String email) async {

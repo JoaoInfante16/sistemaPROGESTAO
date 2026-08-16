@@ -54,6 +54,18 @@ void main() async {
       options.dsn = Env.sentryDsn;
       options.environment = Env.environment;
       options.tracesSampleRate = 0.2;
+      // Ruído de conectividade não é bug. Veio da `main`, onde o Sentry vinha
+      // enchendo de "Failed host lookup" toda vez que um cliente entrava no
+      // elevador — e a cota é paga ($29/mo, plano Team).
+      options.beforeSend = (event, hint) {
+        final msg = event.exceptions?.firstOrNull?.value ?? '';
+        if (msg.contains('AuthRetryableFetchException') ||
+            msg.contains('Failed host lookup') ||
+            msg.contains('SocketException')) {
+          return null;
+        }
+        return event;
+      };
     }, appRunner: () => runApp(const SIMEopsApp()));
   } else {
     runApp(const SIMEopsApp());
@@ -274,8 +286,11 @@ class _AuthGateState extends State<AuthGate> {
 
     // Callback pra forçar logout quando API retorna 401
     api.onAuthExpired = () {
-      debugPrint('[AuthGate] Auth expired — signing out');
-      auth.signOut();
+      // 🚨 `clearCredentials: false` — expirar não é pedir para sair. Sem isto
+      // o token vencido apagava o cofre de quem não tocou em nada, e a pessoa
+      // reabria o app tendo que redigitar. Ver [AuthService.signOut].
+      debugPrint('[AuthGate] Auth expired — signing out (mantendo o cofre)');
+      auth.signOut(clearCredentials: false);
     };
   }
 
