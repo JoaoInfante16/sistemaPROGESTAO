@@ -268,6 +268,82 @@ de $100.
 
 ---
 
+## 2026-08-16 (2) — a tela de senha tinha uma porta só, e ela fechava pra sempre
+
+O João: *"A tela de mudança de senha… Tem que ter a opção de desbloquear com a
+senha do aparelho. Se usar essa opção, pede confirmação no padrão do android, e
+depois ele entra sempre assim."* E, antes de tudo: *"N vi ainda. Coloca 'Mudar
+senha' em configurações"*.
+
+### Três dos quatro pedidos já existiam
+
+Medido antes de escrever qualquer linha:
+
+| pedido | estado |
+|---|---|
+| opção de desbloquear com a senha do aparelho | **já existia** — e é a opção **primária**, marcada `RECOMENDADO` |
+| confirmação no padrão do Android | **já existia** — `_localAuth.authenticate(biometricOnly: false)`, o diálogo do sistema, que aceita digital, rosto, PIN e padrão |
+| "depois ele entra sempre assim" | **já existia** — senha de 32 caracteres sorteada com `Random.secure()`, trocada no servidor, guardada no Keystore; `_handleUnlock` no login desbloqueia e entra |
+| ser um popup | não existia, e ele ainda não viu a tela |
+
+O `local_auth` e o `flutter_secure_storage` estão no `pubspec` e ligados desde
+antes. A confirmação do Android é chamada **antes** de qualquer escrita no
+servidor, de propósito: desistir no diálogo do sistema não deixa rastro.
+
+### O buraco que estava lá, e que ninguém tinha nomeado
+
+🚨 **A tela só tinha uma porta: o gate do `main.dart`**, que a devolve enquanto
+`must_change_password` for verdadeiro — ou seja, **uma vez na vida**. Quem
+escolhesse o desbloqueio pelo celular no primeiro acesso e depois quisesse uma
+senha de verdade, ou trocasse de aparelho, **só voltava com redefinição do
+administrador**.
+
+Isso é pior do que parece pelo desenho da própria feature: quem escolhe esse
+caminho **não sabe a própria senha** (são 32 caracteres que ele nunca vê). A
+escolha é permanente, e é feita no minuto em que a pessoa menos conhece o
+produto. O Ajustes tinha `Sair da conta` e mais nada.
+
+Agora tem `Mudar senha`, logo acima do sair.
+
+### Uma tela, dois modos — e por que não duas telas
+
+`ChangePasswordScreen` ganhou `primeiroAcesso` (default `true`). No **portão**
+nada muda. Na **visita** ela ganha `Masthead` com seta, perde o *"Esta tela
+aparece uma única vez"* (que ali seria mentira) e troca a conversa sobre senha
+provisória por `A forma que você usa hoje para de valer assim que a nova for
+salva.` — que é o que `_apply` de fato faz.
+
+⚠️ **Não virou uma segunda tela de propósito.** `_apply` troca a senha no
+servidor e depois **ou** grava a nova no cofre (desbloqueio) **ou** limpa o cofre
+(senha digitada). Duplicar isso criaria um segundo lugar onde essa regra pode
+divergir — e é justamente ela que, divergindo, deixa alguém trancado fora da
+conta: cofre com a senha velha faz o login automático falhar em silêncio.
+
+Dois detalhes que só aparecem na visita:
+
+- **`_concluir()`.** No portão, quem decide o que vem depois é o gate. Na visita
+  não há gate: sem isto a tela ficaria **parada** depois de a senha já ter
+  mudado — sem erro e sem sinal de sucesso, que é o pior estado possível numa
+  tela de credencial (a pessoa não sabe se pode sair, e tentar de novo é trocar
+  duas vezes). Agora ela devolve `true` e o Ajustes confirma no retorno.
+- **`RECOMENDADO` vira `É COMO VOCÊ ENTRA HOJE`** quando `hasDeviceAuthEnabled()`
+  é verdadeiro. Chamar de recomendado o caminho que já está em uso responde a
+  pergunta errada: quem abre isto pelo Ajustes quer saber primeiro **como entra
+  hoje**.
+
+⚠️ Duas `_LinhaDeToque` encostadas somam o filete de baixo de uma com o de cima
+da outra e desenham traço duplo — daí os 12px entre `Mudar senha` e `Sair da
+conta`.
+
+### Verificação
+
+`flutter analyze` no baseline. APK de staging com `flutter clean`, instalado no
+A57. **Falta o teste no aparelho**, e ele tem duas metades que precisam ser
+feitas nesta ordem: trocar por senha digitada e conferir que o login pede senha;
+depois trocar pelo desbloqueio e conferir que o login volta a desbloquear.
+
+---
+
 ## 2026-08-16 — a estimativa saiu escrita na vertical, e o culpado era o tema
 
 O João mandou a captura da Nova consulta com `~11 min · 18 ASSUNTOS` escrito **de

@@ -6,6 +6,7 @@ import '../../../core/services/api_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/theme/simeops_colors.dart';
 import '../../../core/theme/simeops_type.dart';
+import '../../../core/widgets/masthead.dart';
 
 /// Primeiro acesso: a senha provisória (que o administrador conhece) precisa
 /// morrer aqui. Dois caminhos para isso:
@@ -25,7 +26,30 @@ import '../../../core/theme/simeops_type.dart';
 class ChangePasswordScreen extends StatefulWidget {
   final VoidCallback? onComplete;
 
-  const ChangePasswordScreen({super.key, this.onComplete});
+  /// **Portão** (`true`, o padrão) ou **visita** (`false`).
+  ///
+  /// No portão a tela é devolvida pelo gate do `main.dart` enquanto
+  /// `must_change_password` for verdadeiro: não tem volta, não tem cabeçalho, e
+  /// o texto fala da senha provisória que o administrador conhece.
+  ///
+  /// Na visita ela é empilhada pelas Configurações, e três coisas mudam: ganha
+  /// seta de voltar, perde o *"Esta tela aparece uma única vez"* (que ali seria
+  /// mentira) e perde a conversa sobre senha provisória — quem chegou pelo
+  /// Ajustes já trocou a dele faz tempo.
+  ///
+  /// ⚠️ **A mecânica é a mesma nos dois casos, de propósito.** `_apply` troca a
+  /// senha no servidor e depois **ou** grava a nova no cofre (desbloqueio pelo
+  /// celular) **ou** limpa o cofre (senha digitada). Duplicar isso numa segunda
+  /// tela "de Ajustes" seria criar um segundo lugar onde essa regra pode
+  /// divergir — e é exatamente ela que, se divergir, deixa alguém trancado
+  /// fora da conta.
+  final bool primeiroAcesso;
+
+  const ChangePasswordScreen({
+    super.key,
+    this.onComplete,
+    this.primeiroAcesso = true,
+  });
 
   @override
   State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
@@ -44,6 +68,12 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   /// piscando e depois some.
   bool? _deviceAuthAvailable;
 
+  /// Se o desbloqueio pelo celular é como a pessoa entra **hoje**. Só importa
+  /// na visita: chamar de `RECOMENDADO` o caminho que já está em uso responde
+  /// a pergunta errada — quem abre esta tela pelo Ajustes quer saber primeiro
+  /// **como entra hoje**, e só depois o que pode mudar.
+  bool _deviceAuthAtivo = false;
+
   @override
   void initState() {
     super.initState();
@@ -53,7 +83,13 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   Future<void> _checkDeviceAuth() async {
     final auth = context.read<AuthService>();
     final ok = await auth.isDeviceAuthAvailable();
-    if (mounted) setState(() => _deviceAuthAvailable = ok);
+    final ativo = await auth.hasDeviceAuthEnabled();
+    if (mounted) {
+      setState(() {
+        _deviceAuthAvailable = ok;
+        _deviceAuthAtivo = ativo;
+      });
+    }
   }
 
   @override
@@ -93,6 +129,19 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     }
   }
 
+  /// Fim de linha dos dois caminhos.
+  ///
+  /// 🚨 No portão quem decide o que vem depois é o gate — `onComplete`
+  /// reconstrói o `main.dart` e a tela deixa de ser devolvida. Na visita não há
+  /// gate nenhum, e sem isto a tela ficaria **parada**: sem erro, sem sinal de
+  /// sucesso, depois de a senha já ter mudado no servidor e o cofre já ter sido
+  /// reescrito. É o pior estado possível numa tela de credencial — a pessoa não
+  /// sabe se pode sair, e tentar de novo é trocar duas vezes.
+  void _concluir() {
+    widget.onComplete?.call();
+    if (!widget.primeiroAcesso) Navigator.pop(context, true);
+  }
+
   Future<void> _handleSetPassword() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() {
@@ -101,7 +150,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     });
     try {
       await _apply(_passwordCtrl.text, remember: false);
-      if (mounted) widget.onComplete?.call();
+      if (mounted) _concluir();
     } catch (_) {
       if (mounted) {
         setState(
@@ -131,7 +180,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     if (mounted) setState(() => _loading = true);
     try {
       await _apply(_generateStrongPassword(), remember: true);
-      if (mounted) widget.onComplete?.call();
+      if (mounted) _concluir();
     } catch (_) {
       if (mounted) {
         setState(
@@ -145,145 +194,187 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final portao = widget.primeiroAcesso;
+
     return Scaffold(
       backgroundColor: SIMEopsColors.navy,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(18, 40, 18, 40),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'PRIMEIRO ACESSO',
-                  style: SIMEopsType.slug(color: SIMEopsColors.tealLight),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Sua senha\nprovisória expira\nagora',
-                  style: SIMEopsType.title(),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'A senha que o administrador criou é conhecida por ele. '
-                  'Escolha como você vai entrar a partir de agora.',
-                  style: SIMEopsType.lead(),
-                ),
+        child: Column(
+          children: [
+            // No portão não existe voltar: a senha provisória tem que morrer
+            // aqui, e desenhar uma saída que não existe é pior que não ter.
+            if (!portao)
+              Masthead(
+                titulo: 'Mudar senha',
+                onVoltar: () => Navigator.pop(context),
+              ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(18, portao ? 40 : 24, 18, 40),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (portao) ...[
+                        Text(
+                          'PRIMEIRO ACESSO',
+                          style: SIMEopsType.slug(
+                            color: SIMEopsColors.tealLight,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Sua senha\nprovisória expira\nagora',
+                          style: SIMEopsType.title(),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'A senha que o administrador criou é conhecida por ele. '
+                          'Escolha como você vai entrar a partir de agora.',
+                          style: SIMEopsType.lead(),
+                        ),
+                      ] else
+                        // 🚨 A frase que falta no portão e é obrigatória aqui: salvar
+                        // **derruba a forma antiga**. `_apply` grava a nova senha no
+                        // cofre ou apaga o cofre, e nos dois casos o jeito de entrar
+                        // de ontem para de funcionar. Quem abre isto por curiosidade
+                        // precisa saber disso antes de tocar em qualquer botão.
+                        Text(
+                          'A forma que você usa hoje para de valer assim que a nova '
+                          'for salva.',
+                          style: SIMEopsType.lead(),
+                        ),
 
-                if (_error != null) ...[
-                  const SizedBox(height: 22),
-                  Container(
-                    decoration: const BoxDecoration(
-                      border: Border(
-                        left: BorderSide(color: SIMEopsColors.alert, width: 2),
+                      if (_error != null) ...[
+                        const SizedBox(height: 22),
+                        Container(
+                          decoration: const BoxDecoration(
+                            border: Border(
+                              left: BorderSide(
+                                color: SIMEopsColors.alert,
+                                width: 2,
+                              ),
+                            ),
+                          ),
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                          child: Text(
+                            _error!,
+                            style: SIMEopsType.note(color: SIMEopsColors.alert),
+                          ),
+                        ),
+                      ],
+
+                      // ── Caminho 1: o celular ──
+                      if (_deviceAuthAvailable == true) ...[
+                        const SizedBox(height: 30),
+                        _SectionRule(
+                          label: _deviceAuthAtivo
+                              ? 'É COMO VOCÊ ENTRA HOJE'
+                              : 'RECOMENDADO',
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Desbloquear como o celular',
+                          style: SIMEopsType.body().copyWith(fontSize: 19),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Digital, rosto ou PIN — o mesmo que abre o aparelho. '
+                          'O app cria uma senha longa sozinho e guarda protegida '
+                          'pelo Android. Você não precisa decorar nada.',
+                          style: SIMEopsType.lead(),
+                        ),
+                        const SizedBox(height: 12),
+                        // A ressalva fica JUNTO da opção, não num rodapé que ninguém lê.
+                        Text(
+                          'Se trocar de celular ou limpar os dados do app, o acesso '
+                          'só volta com uma redefinição do administrador.',
+                          style: SIMEopsType.note(),
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: _loading ? null : _handleDeviceAuth,
+                            child: const Text('USAR O DESBLOQUEIO DO CELULAR'),
+                          ),
+                        ),
+                      ],
+
+                      // ── Caminho 2: senha ──
+                      const SizedBox(height: 34),
+                      _SectionRule(
+                        label: _deviceAuthAvailable == true
+                            ? 'OU CRIE UMA SENHA'
+                            : 'CRIE UMA SENHA',
                       ),
-                    ),
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                    child: Text(
-                      _error!,
-                      style: SIMEopsType.note(color: SIMEopsColors.alert),
-                    ),
-                  ),
-                ],
-
-                // ── Caminho 1: o celular ──
-                if (_deviceAuthAvailable == true) ...[
-                  const SizedBox(height: 30),
-                  _SectionRule(label: 'RECOMENDADO'),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Desbloquear como o celular',
-                    style: SIMEopsType.body().copyWith(fontSize: 19),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Digital, rosto ou PIN — o mesmo que abre o aparelho. '
-                    'O app cria uma senha longa sozinho e guarda protegida '
-                    'pelo Android. Você não precisa decorar nada.',
-                    style: SIMEopsType.lead(),
-                  ),
-                  const SizedBox(height: 12),
-                  // A ressalva fica JUNTO da opção, não num rodapé que ninguém lê.
-                  Text(
-                    'Se trocar de celular ou limpar os dados do app, o acesso '
-                    'só volta com uma redefinição do administrador.',
-                    style: SIMEopsType.note(),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: _loading ? null : _handleDeviceAuth,
-                      child: const Text('USAR O DESBLOQUEIO DO CELULAR'),
-                    ),
-                  ),
-                ],
-
-                // ── Caminho 2: senha ──
-                const SizedBox(height: 34),
-                _SectionRule(
-                  label: _deviceAuthAvailable == true
-                      ? 'OU CRIE UMA SENHA'
-                      : 'CRIE UMA SENHA',
-                ),
-                const SizedBox(height: 18),
-                Text('NOVA SENHA', style: SIMEopsType.fieldLabel()),
-                _PasswordField(
-                  controller: _passwordCtrl,
-                  hint: 'Mínimo 8 caracteres',
-                  obscure: _obscurePassword,
-                  onToggle: () =>
-                      setState(() => _obscurePassword = !_obscurePassword),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Informe a nova senha';
-                    if (v.length < 8) return 'Mínimo 8 caracteres';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 20),
-                Text('REPITA A SENHA', style: SIMEopsType.fieldLabel()),
-                _PasswordField(
-                  controller: _confirmCtrl,
-                  hint: 'A mesma de cima',
-                  obscure: _obscureConfirm,
-                  onToggle: () =>
-                      setState(() => _obscureConfirm = !_obscureConfirm),
-                  validator: (v) =>
-                      v != _passwordCtrl.text ? 'As senhas não conferem' : null,
-                  onSubmitted: (_) => _handleSetPassword(),
-                ),
-                const SizedBox(height: 22),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: _loading ? null : _handleSetPassword,
-                    child: const Text('SALVAR SENHA'),
-                  ),
-                ),
-
-                if (_loading) ...[
-                  const SizedBox(height: 26),
-                  const Center(
-                    child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: SIMEopsColors.tealLight,
+                      const SizedBox(height: 18),
+                      Text('NOVA SENHA', style: SIMEopsType.fieldLabel()),
+                      _PasswordField(
+                        controller: _passwordCtrl,
+                        hint: 'Mínimo 8 caracteres',
+                        obscure: _obscurePassword,
+                        onToggle: () => setState(
+                          () => _obscurePassword = !_obscurePassword,
+                        ),
+                        validator: (v) {
+                          if (v == null || v.isEmpty) {
+                            return 'Informe a nova senha';
+                          }
+                          if (v.length < 8) return 'Mínimo 8 caracteres';
+                          return null;
+                        },
                       ),
-                    ),
-                  ),
-                ],
+                      const SizedBox(height: 20),
+                      Text('REPITA A SENHA', style: SIMEopsType.fieldLabel()),
+                      _PasswordField(
+                        controller: _confirmCtrl,
+                        hint: 'A mesma de cima',
+                        obscure: _obscureConfirm,
+                        onToggle: () =>
+                            setState(() => _obscureConfirm = !_obscureConfirm),
+                        validator: (v) => v != _passwordCtrl.text
+                            ? 'As senhas não conferem'
+                            : null,
+                        onSubmitted: (_) => _handleSetPassword(),
+                      ),
+                      const SizedBox(height: 22),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: _loading ? null : _handleSetPassword,
+                          child: const Text('SALVAR SENHA'),
+                        ),
+                      ),
 
-                const SizedBox(height: 30),
-                Text(
-                  'Esta tela aparece uma única vez.',
-                  style: SIMEopsType.note(),
+                      if (_loading) ...[
+                        const SizedBox(height: 26),
+                        const Center(
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: SIMEopsColors.tealLight,
+                            ),
+                          ),
+                        ),
+                      ],
+
+                      if (portao) ...[
+                        const SizedBox(height: 30),
+                        Text(
+                          'Esta tela aparece uma única vez.',
+                          style: SIMEopsType.note(),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );

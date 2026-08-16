@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import '../../../core/models/city_overview.dart';
+import '../../auth/screens/change_password_screen.dart';
 import '../../../core/models/preferencias_de_alerta.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/services/auth_service.dart';
@@ -321,6 +322,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         if (auth.isAuthenticated) ...[
           const SizedBox(height: 34),
+          // 🚨 Esta linha existe porque a tela de senha **só tinha uma porta**:
+          // o gate do `main.dart`, que a mostra enquanto `must_change_password`
+          // for verdadeiro — ou seja, uma vez na vida. Quem escolheu o
+          // desbloqueio pelo celular no primeiro acesso e depois quisesse uma
+          // senha de verdade, ou trocasse de aparelho, só voltava com
+          // redefinição do administrador. Uma escolha permanente feita no
+          // minuto em que a pessoa menos conhece o produto.
+          _LinhaDeToque(titulo: 'Mudar senha', onTap: _abrirMudarSenha),
+          // ⚠️ 12px e não 0: duas `_LinhaDeToque` encostadas somam o filete de
+          // baixo de uma com o de cima da outra e desenham um traço duplo.
+          const SizedBox(height: 12),
           _LinhaDeToque(
             titulo: 'Sair da conta',
             cor: SIMEopsColors.alert,
@@ -354,6 +366,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(height: 30),
       ],
     );
+  }
+
+  /// Empilha a mesma tela do primeiro acesso, em modo visita.
+  ///
+  /// O aviso vem no retorno e não na tela de senha porque quando ela devolve
+  /// `true` a troca **já aconteceu** — inclusive o cofre já foi reescrito ou
+  /// limpo. Confirmar isso aqui, na tela pra onde a pessoa voltou, é o único
+  /// lugar onde ela ainda está olhando.
+  Future<void> _abrirMudarSenha() async {
+    final trocou = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => const ChangePasswordScreen(primeiroAcesso: false),
+      ),
+    );
+    if (trocou == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pronto. É assim que você entra agora.')),
+      );
+    }
   }
 
   void _confirmLogout() {
