@@ -301,10 +301,11 @@ O que **nao** da pra deduzir lendo aquele arquivo:
 chaves que so existem em codigo. Antes elas sumiam da tela — e um toggle vazio
 lia como DESLIGADO enquanto o backend o usava LIGADO.
 
-**`manual_search_max_results_30d/60d/90d` nao sao mais lidas por este codigo, mas
-nao podem ser apagadas:** a `main` (producao) le a `_30d` como teto de **COLETA**
-— significado diferente, mesmo banco. Elas so somem quando a `main` for
-promovida.
+**`manual_search_max_results_30d/60d/90d` podem ser apagadas desde 16/08.** Elas
+sobreviviam porque a `main` (producao) lia a `_30d` como teto de **COLETA** —
+significado diferente, mesmo banco. A `main` foi promovida em 16/08 (`ba0873a`),
+entao nao ha mais dois codigos discordando sobre a mesma chave. Quem apaga e o
+bloco 2 da migration **024**, que continua **pendente** e agora e so limpeza.
 
 **As configs de rate limit vivem na tabela `api_rate_limits`**, por provider
 (`max_concurrent`, `min_time_ms`), e alimentam um Bottleneck cuja instancia e
@@ -322,6 +323,17 @@ deploy**. Producao chegou a roubar jobs de staging, ate o prefixo de fila.
 **Nao deduzir qual codigo esta rodando.** `/health` devolve o commit;
 `budget_tracking.details.commit` diz qual processo processou o job.
 
+🚨 **O auto-deploy do backend de PRODUCAO esta DESLIGADO no Render.** Descoberto
+em 16/08: o `git push` para `main` foi aceito e nada aconteceu — o servico
+`simeops-backend-production` seguiu `Live` no commit `8fcda24`, de **3 de
+julho**. Nem o `faa38b7` (o bump 1.1.1+4, que tres documentos chamavam de "a
+branch de lancamento") tinha chegado a rodar. **O painel admin faz auto-deploy
+normal; so o backend nao.** Depois de empurrar para `main`, ir no dashboard e
+clicar `Manual Deploy -> Deploy latest commit`, e conferir pelo `/health`: o
+`uptime_seconds` tem que zerar e o `commit` tem que ser o novo. Empurrar e ir
+dormir achando que subiu e exatamente o erro que este paragrafo existe para
+impedir.
+
 **O `MIGRATIONS_LOG.md` ja mentiu.** Antes de assumir schema, rodar
 `scripts/diagnostico-banco.ts`.
 
@@ -337,7 +349,20 @@ parseia como local — dava 3h adiantado no app. Resolvido em
 **`--dart-define-from-file` e resolvido em tempo de COMPILACAO.** `flutter run`
 deixa instalado um APK apontando pro IP da LAN que **abre e loga normal** (o
 Supabase tem defaultValue) e so morre nas chamadas ao backend. Conferir com
-`adb shell dumpsys package com.netriosnews.netrios_news`.
+`adb shell dumpsys package com.progestao.simeops`.
+
+**O pacote e `com.progestao.simeops`** — nao `com.netriosnews.netrios_news`, que
+sobrevive so no `namespace` (pacote Kotlin da `MainActivity`). Desde 16/08 o
+`applicationId` vale para **todas** as variantes, entao staging e producao sao o
+**mesmo app** no aparelho: instalar um substitui o outro. Antes coexistiam.
+Separar de novo pede `applicationIdSuffix` por variante **mais** um cliente
+Firebase para o sufixo — sem os dois, o build morre em
+`processReleaseGoogleServices`.
+
+**`MainActivity` tem que ser `FlutterFragmentActivity`.** O `local_auth` usa
+`BiometricPrompt`, que so se hospeda numa `FragmentActivity`; com a
+`FlutterActivity` comum o plugin devolve `NOT_FRAGMENT_ACTIVITY` sem abrir
+dialogo, e o app le isso como "a pessoa cancelou".
 
 **Escrita direta no banco pelo Bash e bloqueada** pelo classificador de
 permissoes. Mudanca de schema vira migration em [SQL/migrations/](./SQL/migrations/)

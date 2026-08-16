@@ -23,81 +23,43 @@ problema já resolvido.
 
 ---
 
-## 📦 O QUE ESPERA O DEPLOY FINAL — decidido em 11/08
+## ✅ O DEPLOY FINAL — FEITO em 16/08
 
-> **Isto era "PRIORIDADE 0 — risco parado", e deixou de ser.** O João decidiu:
-> *"vamos terminar tudo daí faço o main de uma vez só. Estamos em beta, os
-> clientes já sabem que tá em desenvolvimento."*
+> **Esta seção era o maior item do documento e fechou.** `main ← staging`
+> (`ba0873a`, depois `e0d3fed`), migrations **025 → 031 → 032 → 033** aplicadas
+> e verificadas no banco, backend de produção no ar com o commit novo, AAB
+> `1.2.0+5` assinado e pronto para a Play Store.
 >
-> Ou seja: os fatos abaixo continuam **todos verdadeiros** — o banco segue aberto
-> para a chave anon, e a produção segue gravando notícia sem manchete. O que
-> mudou foi o **peso**: com o beta assumido, o custo de esperar é menor que o de
-> abrir várias janelas de deploy arriscadas. Vira checklist, não alarme.
->
-> Não reabrir esta discussão a cada entrega. A ordem de execução no dia está no
-> fim da seção do redesign.
+> Fica aqui como registro do que foi feito e do que **sobrou**; o relato longo,
+> com o que quase deu errado, está no DEV_LOG de 16/08.
 
-Nenhuma das duas é trabalho de código.
-
-### 1. Migration 025 — o banco está aberto para a chave anon
-
-Medido em 02/08 com a chave do próprio `.env`: leitura **e escrita** liberadas em
-praticamente todas as tabelas. A chave anon é pública — está dentro do APK
-entregue ao cliente e no bundle JS do admin.
-
-[025_rls_fechar_anon.sql](./SQL/migrations/025_rls_fechar_anon.sql) está escrita,
-com o teste de verificação no cabeçalho. **Não rodada** — afeta produção na hora.
-
-Verificado que **não quebra nada**: app e admin usam Supabase só para `auth`, e o
-backend usa a service key, que faz bypass de RLS.
-
-### 2. Promover `main` + APK de produção
-
-`main` está em `faa38b7` (**junho**), **104 commits atrás** (eram 75 em 04/08).
-Tudo que foi feito nas Fases 8 e 9 só chega ao cliente aqui. Requer autorização
-explícita — a CLAUDE.md proíbe merge direto em `main`.
-
-🚨 **Isto deixou de ser dívida e virou defeito em produção (10/08).** O
-auto-scan roda 24/7 na **produção** — staging é Render free e dorme —, então o
-banco compartilhado está sendo alimentado **pelo código de junho**. Medido com
-`npx tsx scripts/diagnostico-manchetes.ts 14`: **23 linhas de `news` nos últimos
-14 dias, zero com manchete**, incluindo uma de hoje às 13:00. O
-`scanPipeline.ts` da `main` não tem uma única menção a `titulo`.
-
-Degrada em silêncio, que é por isso que passou: a coluna é anulável e o app
-compõe um título de `tipo + bairro` quando vem null. Ninguém vê erro — vê um
-app pior.
-
-Descarta a hipótese de o Filter2 estar falhando: a busca manual do aparelho
-aponta pra **staging**, é o mesmo `filter2GPT`, e cria manchete certinho.
-
-O que falta lá, confirmado lendo o código:
-
-| falta | efeito |
+| item | estado |
 |---|---|
-| `titulo` no `insertNews` do scan | **toda notícia do auto-scan nasce sem manchete** |
-| `brd_json` | a SERP devolve HTML cru, `JSON.parse` falha **em silêncio** |
-| paginação com `num` (deprecado) | pula as posições 10-19, perde ~1/3 |
-| scraper assíncrono no Top 100 | 660-978s — **a travada que o cliente relatou** |
-| query `allintext:` | o Google responde `results_cnt = 0` |
-| Fases 8 e 9 inteiras | período respeitado, dedup em camadas, extras, progresso, assuntos na tela |
+| `main ← staging` | ✅ fast-forward, sem perder nenhum dos 11 commits que só a `main` tinha |
+| migration **025** (RLS) | ✅ RLS `true` nas 12 tabelas — o banco fechou para a chave anon |
+| migration **031** (`DROP user_favorites`) | ✅ tabela não existe mais |
+| migration **032** (preferências de alerta) | ✅ `user_notification_prefs` criada |
+| migration **033** (relatório sem prazo) | ✅ 20 de 20 sem prazo, **0 vencidos** — 4 relatórios mortos voltaram |
+| backend de produção | ✅ `commit: ba0873a` no `/health`, uptime zerado |
+| AAB de produção | ✅ 57,3 MB, assinado, `com.progestao.simeops` |
 
-**Checklist da promoção:**
+### O que sobrou, e é pequeno
 
-- [ ] conferir `commit` no `/health` de produção
-- [ ] confirmar que a fila de produção manteve o nome **puro** (`manual-search-queue`)
-- [ ] rodar uma busca real e conferir `budget_tracking.details`
-- [ ] **esperar uma varredura do CRON e rodar `npx tsx scripts/diagnostico-manchetes.ts 2`** — tem que sair >0% com manchete. É a prova de que o scan novo está no ar, e não a versão do `/health`
-- [ ] **subir o APK junto** — `cd mobile-app && flutter clean && flutter build apk --dart-define-from-file=env/prod.json`
-- [ ] conferir o APK: `unzip -p app-release.apk lib/arm64-v8a/libapp.so | grep -a onrender` tem que dar `sistemaprogestao-7fzs`
-- [ ] confirmar `AUTO_SCAN_ENABLED` / `NODE_ENV=production` no Render
-- [ ] depois, rodar o **bloco 2** da migration 024 (as faixas `_60d`/`_90d` viram mortas)
-
-⚠️ **Risco aceito pelo João (04/08):** o APK que o cliente tem hoje deixa
-escolher 10 cidades e o backend novo aceita 1 → **400** na janela entre promover
-a `main` e ele instalar o app novo.
-
----
+- ⬜ **Subir o AAB** no Play Console — testa, de quebra, se o Google aprovou a
+  redefinição da chave de upload pedida em 06/08.
+- ⬜ **Segundo admin.** Existe **um só** (`joao.infante16@gmail.com`). Ele se
+  trancou fora da conta em 16/08 e a única saída foi um script com a service
+  key. Sem um segundo admin, isso se repete sem ninguém para socorrer.
+- ⬜ **Backup do `simeops-release.jks` fora da máquina.** É o mesmo arquivo que
+  já se perdeu uma vez, e `.gitignore` não protege contra notebook quebrado.
+- ⬜ **Migration 024** (opcional, agora só limpeza) — apaga 7 configs mortas.
+  Deixou de ter risco quando a `main` subiu: não há mais dois códigos lendo
+  `manual_search_max_results_30d` com significados diferentes.
+- ⬜ **Banco separado para staging.** Criado pelo João em 16/08, ainda vazio e
+  não apontado. É o que transformaria a próxima migration destrutiva em ensaio
+  em vez de estreia.
+- ⬜ **`applicationIdSuffix` por variante.** Staging e produção viraram o mesmo
+  app no aparelho; separar exige o sufixo **mais** um cliente Firebase para ele.
 
 ## 🎨 Redesign "fio de agência" — o que falta (11/08)
 
@@ -202,14 +164,6 @@ três situações diferentes —
 
 A terceira depende de separar "respondeu vazio" de "não respondeu" (ver dívida
 técnica).
-
-### ⬜ Fim da linha: promover a `main`
-
-Numa janela só, com tudo acima pronto: merge, conferir `/health`, esperar uma
-varredura e rodar `diagnostico-manchetes.ts` (tem que sair >0% com manchete),
-**migrations 025 → 031 → 032 → 033** (essa ordem — a 025 liga RLS em
-`user_favorites` e quebra se a 031 já tiver derrubado a tabela), e o APK de produção com
-`env/prod.json`.
 
 ## 📱 Fase 9 — O app
 

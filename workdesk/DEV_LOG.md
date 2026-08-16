@@ -20,8 +20,9 @@
 
 ### 🎨 Redesign em curso (08/08) — leia antes de mexer no app
 
-Branch **`feature/design-fio`**, já mergeada em **`staging`** (`1604b5f`). Fora
-da `develop` de propósito, porque o release da Play Store está engatilhado.
+Branch **`feature/design-fio`** = **`staging`** = **`main`** desde 16/08. O
+release saiu: `1.2.0+5` está na faixa Alpha da Play Store. O redesign **chegou ao
+cliente** — o que segue abaixo é histórico das fases, não fila de trabalho.
 
 **Plano completo (fases A-F):** `~/.claude/plans/composed-splashing-raven.md`
 
@@ -128,16 +129,22 @@ declara o próprio recorte.
 
 | ambiente | branch | situação |
 |---|---|---|
-| local + staging | `develop` = `staging` | ✅ no ar, validado |
-| **produção** | `main` (`faa38b7`, **20/05**) | ⚠️ **é a branch de LANÇAMENTO da Play Store — tem 10 commits que a develop NÃO tem** |
+| local + staging | `staging` | ✅ no ar |
+| **produção** | `main` = `staging` desde **16/08** (`e0d3fed`) | ✅ **alinhadas.** A divergência acabou — ver a entrada de 16/08 (5) |
+| Play Store | `1.2.0+5`, faixa **Teste fechado — Alpha** | ✅ publicado em 16/08 |
 
-🚨 **NÃO é "código de junho quebrado em 4 lugares".** Essa frase estava em três
-documentos e era falsa; ver a entrada de 06/08. A `main` tem o `applicationId`
-publicado (`com.progestao.simeops`), a config de assinatura, o script de AAB e as
-duas páginas exigidas pelo Google Play. **Merge ingênuo destrói o lançamento.**
+A `main` tinha **11 commits** que a `staging` nunca viu, e eles carregavam o
+`applicationId` publicado, a config de assinatura, as duas páginas exigidas pelo
+Google e quatro fixes de produção. Foram trazidos **à mão**, um a um, e a
+ancestralidade registrada com `merge -s ours` — nada foi perdido dos dois lados.
+**Se as branches divergirem de novo, repetir esse método, não mergear.**
 
-Migrations **026, 027 e 028 aplicadas** e verificadas no banco (`openai` e `jina`
-com `max_concurrent` 20). Custo do mês: **$1,75 de $100**.
+🚨 **O auto-deploy do backend de produção está DESLIGADO no Render.** Empurrar
+para `main` não sobe nada: tem que clicar `Manual Deploy` e conferir o `commit`
+no `/health`. Só o backend — o painel admin sobe sozinho.
+
+Migrations **025 a 033 todas aplicadas** e verificadas no catálogo do Postgres.
+Pendentes e **opcionais**: 021, 023, 024. Custo do mês: **$1,75 de $100**.
 
 **A validação que fecha a fase** — Goiânia, 34 dias, 17 assuntos:
 
@@ -265,6 +272,108 @@ produção **na hora, sem deploy**. Quando o significado de uma config mudar,
 Verificado em **04/08**: 026, 027 e 028 aplicadas (`openai` e `jina` com
 `max_concurrent` 20). **024 e 025 seguem não rodadas.** Custo do mês: **$1,75**
 de $100.
+
+---
+
+## 2026-08-16 (5) — o deploy final: a `main` tinha divergido, e quase levamos junto
+
+Fase 9 chegou ao cliente. `main ← staging`, as quatro migrations, o backend de
+produção no ar e o AAB `1.2.0+5` publicado na faixa Alpha. O que segue é o que
+quase deu errado — que é a única parte que vale guardar.
+
+### 🚨 A `main` NÃO era ancestral da `staging`
+
+`git log --oneline origin/main..staging` → 140. E o inverso → **11**. As duas se
+separaram em `330db85` e a `main` seguiu recebendo commit.
+
+Esse erro **já tinha sido cometido e documentado** nesta mesma workdesk (entrada
+de 06/08: *"a premissa que eu tinha repetido a sessão inteira era falsa"*), e a
+regra escrita lá — *"antes de qualquer merge para `main`, rodar `git log`"* — é o
+que me fez rodar. Documento funcionou.
+
+**O que só existia na `main`,** e teria sido apagado por um merge resolvido no
+automático:
+
+| | por que dói |
+|---|---|
+| `applicationId = com.progestao.simeops` | 🚨 é a identidade na loja. Buildar da `staging` produziria **outro app**: não atualiza, instala do lado, sessão zerada |
+| `signingConfig` de release lendo `key.properties` | sem ele o pacote sai com chave de debug e o Play recusa |
+| `privacy` + `delete-account` | exigência da Google para publicar |
+| `createSearchCache` checando `processing` | tocar 2× em INICIAR CONSULTA **apagava a linha com o worker rodando**, e ele seguia gastando Jina e GPT gravando em lugar nenhum |
+| prompt do dedup (Layer 3) | o `identical` fazia o GPT dizer NO para dois veículos cobrindo o mesmo caso — ocorrência repetida no feed |
+| `signOut({clearCredentials})` | expirar token apagava o cofre de quem não pediu para sair |
+| `beforeSend` do Sentry | cota é paga; "Failed host lookup" enchia a fila |
+| `node >=22`, tema do painel, `build-aab-prod.bat` | |
+
+**A estratégia foi inverter quem decide.** Em vez de mergear 140 commits e
+revisar o que o git resolveu, apliquei as 205 linhas **à mão**, conferindo cada
+uma contra `git diff staging...origin/main`, e depois `git merge -s ours
+origin/main` só para registrar a ancestralidade. Com 4 arquivos de pipeline
+reescritos dos dois lados, essa inversão é o que separa "deu certo" de
+"descobrimos em produção".
+
+⚠️ **Quatro coisas da `main` eu deliberadamente NÃO trouxe**, porque a `staging`
+já tinha versão melhor: geocoding de grupo (refeito com cidade vizinha), resumo
+multi-cidade (a `main` fazia `Future.wait` no cliente; a `staging` agrega no
+backend), `Dockerfile` (já em node:22) e `login_screen` — a mudança da `main` ali
+é o pré-preenchimento do "lembrar senha", feature que a Fase D matou por guardar
+senha em texto claro.
+
+### 🚨 O auto-deploy do backend de produção está DESLIGADO
+
+O `git push` para `main` foi aceito e **nada aconteceu**. O serviço seguiu `Live`
+no commit `8fcda24`, de **3 de julho** — nem o `faa38b7` (o bump 1.1.1+4, que
+três documentos chamavam de "a branch de lançamento") tinha rodado. O painel
+admin faz auto-deploy normal; só o backend não.
+
+Isso inverteu a segurança da sequência: as migrations já tinham rodado, então
+por ~40 minutos **produção rodou código de julho contra um banco sem
+`user_favorites`**. Efeito real pequeno (as três rotas de favoritos, e a única
+alcançável tem o erro engolido por um `catch`), mas é descasamento de verdade.
+Registrado na ARQUITETURA.
+
+### O `google-services.json` versionado estava errado desde março
+
+Build de release morreu em `processReleaseGoogleServices`: o arquivo só tinha
+`com.netriosnews.netrios_news`, e o app publicado é `com.progestao.simeops`.
+Última alteração dele: **28/03**.
+
+Conclusão: **o AAB que virou o `versionCode 4` na loja foi montado com um
+`google-services.json` que existiu só na máquina do João e nunca foi commitado.**
+Um `checkout` trouxe o antigo de volta e ninguém viu, porque o arquivo é
+rastreado. Qualquer clone limpo gerava build apontado pro Firebase errado.
+
+⚠️ Antes de trocar, conferi `project_id` e `project_number` — o novo é do **mesmo
+projeto** (`simeops-e8cdc` / `890579135223`). Se fosse projeto novo seria
+migração disfarçada: token FCM é amarrado ao sender ID, então mataria o push dos
+**4 aparelhos** registrados e exigiria trocar a `FIREBASE_SERVICE_ACCOUNT` no
+Render.
+
+### Auditoria do banco, contra o catálogo do Postgres
+
+O João desconfiou das migrations 26 e 27. **As duas estão corretas no banco** — o
+que estava errado era o **cabeçalho da 026**, que dizia `Status: NAO APLICADA`
+enquanto o log dizia aplicada em 04/08 e o banco confirmava o log. A REGRA ZERO
+da workdesk acontecendo dentro de uma migration.
+
+Resultado das quatro do dia, medido e não relatado:
+
+| | |
+|---|---|
+| **025** | RLS `true` nas 12 tabelas restantes |
+| **031** | `user_favorites` não existe mais |
+| **032** | `user_notification_prefs` criada |
+| **033** | 20 de 20 sem prazo, **0 vencidos** — 4 relatórios mortos voltaram a abrir |
+
+### Consequências novas, registradas para não surpreender depois
+
+- **Staging e produção são o mesmo app no aparelho.** O `applicationId` vale para
+  todas as variantes, então instalar um substitui o outro. Separar pede
+  `applicationIdSuffix` **mais** um cliente Firebase para o sufixo.
+- **Existe um admin só.** O João se trancou fora da conta hoje e a única saída
+  foi um script com a service key. Sem segundo admin, repete sem socorro.
+- **O `.jks` não tem backup fora da máquina.** É o mesmo arquivo que já se perdeu
+  uma vez.
 
 ---
 
