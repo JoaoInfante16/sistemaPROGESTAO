@@ -2,7 +2,11 @@
 -- Migration 026: rastrear rejeicoes da BUSCA MANUAL
 -- ============================================
 -- Data: 2026-08-03
--- Status: **NAO APLICADA** — aguarda autorizacao.
+-- Status: **APLICADA em 04/08/2026** (verificado no banco em 16/08: a coluna
+--         `search_id` e o indice `idx_rejected_search` existem).
+--         Este cabecalho dizia "NAO APLICADA" ate 16/08, contradizendo o
+--         MIGRATIONS_LOG — o arquivo mentia sobre si mesmo, que e a REGRA ZERO
+--         da workdesk acontecendo dentro de uma migration.
 --         Aditiva e reversivel (ADD COLUMN nullable, sem default, sem backfill).
 --         Nao afeta nenhuma leitura ou escrita existente.
 --
