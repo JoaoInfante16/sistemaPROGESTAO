@@ -34,7 +34,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _tryAutoLogin() async {
     final auth = context.read<AuthService>();
-    final hasCredentials = await auth.hasDeviceAuthEnabled();
+    // ⚠️ Mesmo defeito que sumiu com o botão da tela de senha em 16/08: um
+    // `await` no cofre sem proteção, antes do `setState` que desenha o
+    // desbloqueio. Levantando, `_deviceAuthReady` fica `false` e a tela some
+    // com o botão — sem erro e sem rastro. Aqui o preço é maior: é a tela que
+    // o cliente vê todo dia, e o caminho que some é o único que ele usa.
+    bool hasCredentials;
+    try {
+      hasCredentials = await auth.hasDeviceAuthEnabled();
+    } catch (e) {
+      debugPrint('[Login] leitura do cofre falhou: $e');
+      return;
+    }
     if (!hasCredentials) return;
     if (mounted) setState(() => _deviceAuthReady = true);
 
