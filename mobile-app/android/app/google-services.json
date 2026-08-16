@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:890579135223:android:6b4bd0e6033421479001f2",
+        "mobilesdk_app_id": "1:890579135223:android:be4bc01dbf45cb449001f2",
         "android_client_info": {
-          "package_name": "com.netriosnews.netrios_news"
+          "package_name": "com.progestao.simeops"
         }
       },
       "oauth_client": [],
