@@ -10,11 +10,14 @@ import {
   Settings,
   LogOut,
   Receipt,
+  Moon,
+  Sun,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { useTheme } from 'next-themes';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -27,6 +30,7 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
+  const { theme, setTheme } = useTheme();
 
   return (
     <aside className="flex h-screen w-64 flex-col border-r bg-card">
@@ -59,6 +63,15 @@ export function Sidebar() {
       <Separator />
       <div className="p-4 space-y-2">
         <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start gap-2"
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        >
+          {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          {theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
+        </Button>
         <Button
           variant="ghost"
           size="sm"

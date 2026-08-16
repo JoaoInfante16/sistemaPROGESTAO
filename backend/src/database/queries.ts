@@ -1028,7 +1028,25 @@ export async function createSearchCache(p: CreateSearchCacheParams): Promise<str
     .single();
 
   if (error && error.message.includes('duplicate key')) {
-    // Busca com mesmos params já existe — deletar antiga e recriar.
+    // 🚨 **Busca em andamento não se apaga.** Veio da `main` (fix de produção de
+    // 12/08) e a `staging` não tinha: sem esta checagem, disparar a MESMA busca
+    // de novo deletava a linha enquanto o worker ainda rodava — e o worker
+    // seguia trabalhando contra um `search_id` que não existe mais, gastando
+    // Jina e GPT para gravar resultado em lugar nenhum. Quem tocasse duas vezes
+    // no INICIAR CONSULTA matava a primeira.
+    //
+    // Só apaga o que já terminou (`completed`/`failed`/`cancelled`).
+    const { data: existing } = await supabase
+      .from('search_cache')
+      .select('search_id, status')
+      .eq('params_hash', paramsHash)
+      .maybeSingle();
+
+    if (existing?.status === 'processing') {
+      return (existing as { search_id: string }).search_id;
+    }
+
+    // Busca com mesmos params já existe e terminou — deletar antiga e recriar.
     // O `user_id` é redundante depois que ele entrou no hash, e fica de propósito:
     // se a fórmula do hash mudar um dia, o delete continua confinado ao dono.
     await supabase
