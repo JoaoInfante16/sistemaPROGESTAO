@@ -268,6 +268,76 @@ de $100.
 
 ---
 
+## 2026-08-16 (4) — o botão "Sair da conta" era um botão de perder a conta
+
+João, testando o desbloqueio meia hora depois de ele passar a funcionar:
+*"Quando muda a senha pelo aparelho, as 32 são criadas, e depois… o user se
+fechar a sessão não consegue mais abrir."* E, junto, o desenho certo: *"Criar
+senha + registrar biometria. A biometria vai pra facilitar no próprio celular a
+entrada, e a senha caso mude de aparelho."*
+
+Ele mesmo ficou trancado — do app **e** do painel admin, que usam o mesmo
+usuário do Supabase.
+
+### O defeito
+
+Quem escolhia o desbloqueio recebia uma senha de **32 caracteres sorteada** que
+nunca via, trocada no servidor e guardada só no Keystore. O cofre era a **única
+cópia dela no universo**. Quatro caminhos apagavam esse cofre, e todos trancavam
+a conta em definitivo:
+
+| # | caminho | gravidade |
+|---|---|---|
+| 1 | `signOut()` faz `clearSavedCredentials()` **antes** de deslogar | o botão `Sair da conta` era um botão de perder a conta |
+| 2 | `_tryAutoLogin` → `catch (_)` que limpa o cofre | 🚨 **abrir o app sem internet destruía a senha** |
+| 3 | `_handleUnlock` → o mesmo `catch (_)` | idem |
+| 4 | limpar dados do app / trocar de aparelho | previsto, mas sem saída |
+
+O 2 é o pior: `signInWithDeviceAuth` levanta em qualquer falha de rede, e o
+`catch` não distinguia "senha inválida" de "sem sinal".
+
+### A correção é do João, e ela dissolve os quatro de uma vez
+
+**Senha + biometria, não senha OU biometria.** A senha é a credencial — sempre
+conhecida por quem a criou, válida em qualquer aparelho. O desbloqueio é
+**conveniência local**, um atalho pra não digitar. Com isso o cofre vira
+**cache**, e cache pode ser apagado à vontade.
+
+A tela virou uma coluna só: `NOVA SENHA`, `REPITA A SENHA`, uma caixa marcada por
+padrão `Entrar com o desbloqueio do aparelho · Padrão · PIN · Rosto`, e um
+`SALVAR`. Morreram `_generateStrongPassword()`, `_handleDeviceAuth()` e o
+`_SectionRule` — dois caminhos concorrentes viraram um campo e um atalho.
+
+⚠️ O diálogo do Android continua vindo **antes** de qualquer escrita no servidor,
+e recusá-lo **não cancela a troca**: só desliga o atalho. A senha já foi digitada
+e conferida; abortar por causa do atalho seria punir a pessoa pelo opcional.
+
+### Ninguém mais estava exposto, e dá pra provar
+
+- `origin/main` não tem o caminho: `authenticateWithDevice` aparece **0 vezes**
+  na tela de senha de produção;
+- `origin/main` é `FlutterActivity`, então mesmo no login o `authenticate()`
+  sempre devolveu `NOT_FRAGMENT_ACTIVITY`.
+
+O desbloqueio **nunca funcionou para ninguém** até `8906275`, hoje 12h25. O João
+foi o primeiro a conseguir usá-lo e o primeiro a cair na armadilha, na mesma
+hora. **O bug do `FlutterActivity` estava protegendo todo mundo do bug pior** —
+o que é sorte, não desenho.
+
+### Recuperação
+
+Sem caminho pelo produto: o `Esqueci a senha` do app abre chamado para o
+administrador, e o administrador é ele. Redefinido pelo mesmo mecanismo da rota
+oficial (`userRoutes.ts:151`): `auth.admin.updateUserById` + `must_change_password
+= true`, com a mesma convenção de senha temporária de 8 caracteres. Ele cai
+direto na tela nova.
+
+🚨 **Fica a lacuna:** o único admin é `joao.infante16@gmail.com`. Se essa conta
+se perder, não há segundo admin para redefinir nada — a saída passa a ser a
+service key. Vale um segundo admin antes do deploy.
+
+---
+
 ## 2026-08-16 (3) — o desbloqueio pelo aparelho nunca funcionou, e a tela parou de explicar
 
 João: *"o botão usar o desbloqueio de celular não existe"*. Depois, vendo a

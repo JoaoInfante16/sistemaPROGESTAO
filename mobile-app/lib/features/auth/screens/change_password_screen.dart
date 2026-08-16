@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/api_service.dart';
@@ -78,11 +76,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   /// piscando e depois some.
   bool? _deviceAuthAvailable;
 
-  /// Se o desbloqueio pelo celular é como a pessoa entra **hoje**. Só importa
-  /// na visita: chamar de `RECOMENDADO` o caminho que já está em uso responde
-  /// a pergunta errada — quem abre esta tela pelo Ajustes quer saber primeiro
-  /// **como entra hoje**, e só depois o que pode mudar.
-  bool _deviceAuthAtivo = false;
+  /// O atalho fica **marcado por padrão** quando o aparelho suporta: é o que
+  /// quase todo mundo quer, e agora não custa nada — a senha existe do mesmo
+  /// jeito. Reconciliado com o estado real em [_checkDeviceAuth].
+  bool _usarDesbloqueio = false;
 
   @override
   void initState() {
@@ -100,17 +97,19 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   Future<void> _checkDeviceAuth() async {
     final auth = context.read<AuthService>();
     var ok = false;
-    var ativo = false;
+
     try {
       ok = await auth.isDeviceAuthAvailable();
-      ativo = await auth.hasDeviceAuthEnabled();
     } catch (e) {
       debugPrint('[MudarSenha] checagem de desbloqueio falhou: $e');
     }
     if (mounted) {
       setState(() {
         _deviceAuthAvailable = ok;
-        _deviceAuthAtivo = ativo;
+
+        // Marcado sempre que o aparelho suporta — inclusive pra quem já usa.
+        // Desmarcar é um toque, e agora não custa a conta.
+        _usarDesbloqueio = ok;
       });
     }
   }
@@ -122,31 +121,45 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     super.dispose();
   }
 
-  /// Senha que ninguém digita, então pode ser longa e feia.
-  /// `Random.secure()` usa a fonte de entropia do sistema — `Random()` comum
-  /// é previsível e não serve para credencial.
-  static String _generateStrongPassword() {
-    const chars =
-        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-        '!@#\$%^&*-_=+';
-    final rnd = Random.secure();
-    return List.generate(32, (_) => chars[rnd.nextInt(chars.length)]).join();
-  }
-
-  Future<void> _apply(String newPassword, {required bool remember}) async {
+  /// 🗑️ **AQUI MORAVA `_generateStrongPassword()`**, e com ela o pior bug que
+  /// este app já teve.
+  ///
+  /// O desenho antigo: quem escolhesse o desbloqueio pelo aparelho recebia uma
+  /// senha de 32 caracteres sorteada, trocada no servidor e guardada só no
+  /// Keystore. A pessoa **nunca via essa senha** — e o cofre era a única cópia
+  /// dela no universo.
+  ///
+  /// Quatro caminhos apagavam esse cofre, e todos deixavam a pessoa trancada
+  /// para fora em definitivo, dependendo de reset do administrador:
+  ///
+  /// 1. `signOut()` — faz `clearSavedCredentials()` **antes** de deslogar. Ou
+  ///    seja: o botão `Sair da conta` era um botão de perder a conta.
+  /// 2. `_tryAutoLogin` — `catch (_)` que apaga o cofre em **qualquer**
+  ///    exceção. Abrir o app sem internet destruía a senha.
+  /// 3. `_handleUnlock` — o mesmo `catch (_)`, o mesmo estrago.
+  /// 4. limpar dados do app / trocar de aparelho.
+  ///
+  /// Achado pelo João em 16/08: *"quando muda a senha pelo aparelho, as 32 são
+  /// criadas, e depois… se fechar a sessão não consegue mais abrir"*. E a
+  /// solução é dele: **senha + biometria, não senha OU biometria.** A senha é a
+  /// credencial, sempre conhecida por quem a criou e válida em qualquer
+  /// aparelho; o desbloqueio é **conveniência local**, um atalho para não
+  /// digitar. Assim o cofre vira cache, e cache pode ser apagado à vontade —
+  /// os quatro caminhos acima deixam de ser destrutivos de uma vez só.
+  Future<void> _apply(String novaSenha, {required bool comDesbloqueio}) async {
     final api = context.read<ApiService>();
     final auth = context.read<AuthService>();
 
-    await api.changePassword(newPassword);
+    await api.changePassword(novaSenha);
 
     final email = auth.currentUser?.email;
     if (email != null) {
-      await auth.signIn(email, newPassword);
-      if (remember) {
-        await auth.saveCredentials(email, newPassword);
+      await auth.signIn(email, novaSenha);
+      if (comDesbloqueio) {
+        await auth.saveCredentials(email, novaSenha);
       } else {
-        // Trocou por senha digitada: qualquer credencial guardada de antes
-        // aponta pra senha velha e faria o login automático falhar em silêncio.
+        // Sem desbloqueio: qualquer credencial guardada antes aponta pra senha
+        // velha e faria o login automático falhar em silêncio.
         await auth.clearSavedCredentials();
       }
     }
@@ -165,49 +178,45 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     if (!widget.primeiroAcesso) Navigator.pop(context, true);
   }
 
-  Future<void> _handleSetPassword() async {
+  /// Um caminho só: **a senha é obrigatória, o desbloqueio é opcional.**
+  ///
+  /// ⚠️ A ordem importa. O diálogo do Android vem **antes** de qualquer escrita
+  /// no servidor: se a pessoa desistir dele, nada aconteceu e a senha de agora
+  /// continua valendo. Perguntar depois de trocar deixaria a conta num estado
+  /// que a tela não sabe descrever.
+  ///
+  /// E o desbloqueio recusado **não cancela a troca de senha** — só desliga o
+  /// atalho. A senha é o que importa, e ela já foi digitada e confirmada.
+  Future<void> _handleSalvar() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    final auth = context.read<AuthService>();
+
+    setState(() => _error = null);
+
+    var comDesbloqueio = _usarDesbloqueio;
+    if (comDesbloqueio) {
+      final ok = await auth.authenticateWithDevice();
+      if (!ok) {
+        if (!mounted) return;
+        setState(() {
+          _usarDesbloqueio = false;
+          comDesbloqueio = false;
+          _error =
+              'O desbloqueio não foi confirmado. A senha vai ser salva mesmo '
+              'assim — você pode ligar o atalho depois.';
+        });
+      }
+    }
+
+    if (!mounted) return;
+    setState(() => _loading = true);
     try {
-      await _apply(_passwordCtrl.text, remember: false);
+      await _apply(_passwordCtrl.text, comDesbloqueio: comDesbloqueio);
       if (mounted) _concluir();
     } catch (_) {
       if (mounted) {
         setState(
           () => _error = 'Não foi possível alterar a senha. Tente de novo.',
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _handleDeviceAuth() async {
-    final auth = context.read<AuthService>();
-
-    setState(() => _error = null);
-
-    // Pergunta ao Android ANTES de mexer no servidor: se o usuário desistir no
-    // diálogo do sistema, nada aconteceu e a senha provisória segue valendo.
-    final ok = await auth.authenticateWithDevice();
-    if (!ok) {
-      if (mounted) {
-        setState(() => _error = 'Desbloqueio cancelado. Nada foi alterado.');
-      }
-      return;
-    }
-
-    if (mounted) setState(() => _loading = true);
-    try {
-      await _apply(_generateStrongPassword(), remember: true);
-      if (mounted) _concluir();
-    } catch (_) {
-      if (mounted) {
-        setState(
-          () => _error = 'Não foi possível concluir. Tente criar uma senha.',
         );
       }
     } finally {
@@ -272,46 +281,12 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                         ),
                       ],
 
-                      // ── Caminho 1: o celular ──
-                      if (_deviceAuthAvailable == true) ...[
-                        const SizedBox(height: 30),
-                        _SectionRule(
-                          label: _deviceAuthAtivo
-                              ? 'É COMO VOCÊ ENTRA HOJE'
-                              : 'RECOMENDADO',
-                        ),
-                        const SizedBox(height: 14),
-                        // Os três métodos, e nada mais. Aqui havia um título, um
-                        // parágrafo explicando o que é biometria e uma ressalva
-                        // sobre reset do administrador — três blocos de prosa
-                        // para um botão. João, 16/08: *"porra o user n é burro"*.
-                        //
-                        // A ressalva saiu com razão de ser, não por corte cego:
-                        // ela existia porque a escolha era **permanente**, e o
-                        // "Mudar senha" no Ajustes acabou de torná-la
-                        // reversível.
-                        Text(
-                          'Padrão · PIN · Rosto',
-                          style: SIMEopsType.body().copyWith(fontSize: 17),
-                        ),
-                        const SizedBox(height: 14),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton(
-                            onPressed: _loading ? null : _handleDeviceAuth,
-                            child: const Text('USAR O DESBLOQUEIO DO CELULAR'),
-                          ),
-                        ),
-                      ],
-
-                      // ── Caminho 2: senha ──
-                      const SizedBox(height: 34),
-                      _SectionRule(
-                        label: _deviceAuthAvailable == true
-                            ? 'OU CRIE UMA SENHA'
-                            : 'CRIE UMA SENHA',
-                      ),
-                      const SizedBox(height: 18),
+                      // 🚨 **Uma coluna só, e a senha é obrigatória.** Eram dois
+                      // caminhos concorrentes — `USAR O DESBLOQUEIO` e `SALVAR
+                      // SENHA` — e escolher o primeiro trocava a senha por 32
+                      // caracteres sorteados que a pessoa nunca via. Sair da
+                      // conta apagava a única cópia deles. Ver [_apply].
+                      const SizedBox(height: 26),
                       Text('NOVA SENHA', style: SIMEopsType.fieldLabel()),
                       _PasswordField(
                         controller: _passwordCtrl,
@@ -339,14 +314,72 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                         validator: (v) => v != _passwordCtrl.text
                             ? 'As senhas não conferem'
                             : null,
-                        onSubmitted: (_) => _handleSetPassword(),
+                        onSubmitted: (_) => _handleSalvar(),
                       ),
-                      const SizedBox(height: 22),
+
+                      // O atalho. Não é uma alternativa à senha — é o que
+                      // dispensa digitá-la neste aparelho. A senha continua
+                      // sendo a credencial, e é ela que atravessa a troca de
+                      // celular.
+                      if (_deviceAuthAvailable == true) ...[
+                        const SizedBox(height: 26),
+                        InkWell(
+                          onTap: _loading
+                              ? null
+                              : () => setState(
+                                  () => _usarDesbloqueio = !_usarDesbloqueio,
+                                ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  _usarDesbloqueio
+                                      ? Icons.check_box
+                                      : Icons.check_box_outline_blank,
+                                  size: 19,
+                                  color: _usarDesbloqueio
+                                      ? SIMEopsColors.greenLight
+                                      : SIMEopsColors.faint,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Entrar com o desbloqueio do aparelho',
+                                        style: SIMEopsType.body().copyWith(
+                                          fontSize: 15,
+                                          color: _usarDesbloqueio
+                                              ? SIMEopsColors.white
+                                              : SIMEopsColors.muted,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Padrão · PIN · Rosto',
+                                        style: SIMEopsType.slug(
+                                          color: SIMEopsColors.faint,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 24),
                       SizedBox(
                         width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: _loading ? null : _handleSetPassword,
-                          child: const Text('SALVAR SENHA'),
+                        child: FilledButton(
+                          onPressed: _loading ? null : _handleSalvar,
+                          child: const Text('SALVAR'),
                         ),
                       ),
 
@@ -373,20 +406,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       ),
     );
   }
-}
-
-class _SectionRule extends StatelessWidget {
-  final String label;
-  const _SectionRule({required this.label});
-
-  @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      Text(label, style: SIMEopsType.dateline(color: SIMEopsColors.faint)),
-      const SizedBox(width: 11),
-      const Expanded(child: Divider(color: SIMEopsColors.rule, height: 1)),
-    ],
-  );
 }
 
 /// Campo de senha sem caixa: filete embaixo, como o resto do fio.
