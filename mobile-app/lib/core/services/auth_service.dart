@@ -41,13 +41,23 @@ class AuthService extends ChangeNotifier {
 
   // ── Autenticação local (padrão/PIN/digital/face do device) ──
 
-  /// Checa se o device tem algum método de autenticação configurado
+  /// Checa se o device tem algum método de autenticação configurado.
+  ///
+  /// ⚠️ O `catch` **fala** agora. Ele engolia o motivo em silêncio, e o efeito
+  /// era um botão que simplesmente não nascia na tela: sem log, sem erro, sem
+  /// nada pra investigar — em 16/08 o João relatou exatamente isso ("o botão
+  /// não existe") e não havia uma linha de saída pra ler. Falha que se
+  /// manifesta como ausência é a mais cara de achar; ela precisa deixar rastro.
   Future<bool> isDeviceAuthAvailable() async {
     try {
       final canCheck = await _localAuth.canCheckBiometrics;
       final isSupported = await _localAuth.isDeviceSupported();
+      debugPrint(
+        '[Auth] deviceAuth canCheckBiometrics=$canCheck isDeviceSupported=$isSupported',
+      );
       return canCheck || isSupported;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[Auth] isDeviceAuthAvailable error: $e');
       return false;
     }
   }

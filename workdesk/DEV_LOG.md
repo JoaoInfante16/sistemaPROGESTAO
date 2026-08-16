@@ -268,6 +268,72 @@ de $100.
 
 ---
 
+## 2026-08-16 (3) — o desbloqueio pelo aparelho nunca funcionou, e a tela parou de explicar
+
+João: *"o botão usar o desbloqueio de celular não existe"*. Depois, vendo a
+tela: *"Imagino que seja a mesma tela que o user vai ver né? Porra o user n é
+burro… Deixa usar o desbloqueio do dispositivo. Padrão - pin - rosto. E tira
+esses disclaimer tudo."*
+
+### 🚨 `MainActivity` era `FlutterActivity`, e isso mata o `local_auth` inteiro
+
+`local_auth` usa `androidx.biometric.BiometricPrompt`, que só sabe se hospedar
+numa `FragmentActivity`. Lendo o fonte do plugin no pub cache
+(`local_auth_android-2.0.7/…/LocalAuthPlugin.java:112`):
+
+```java
+if (!(activity instanceof FragmentActivity)) {
+  result.success(new AuthResult.Builder().setCode(AuthResultCode.NOT_FRAGMENT_ACTIVITY).build());
+  return;
+}
+```
+
+O app declarava `class MainActivity : FlutterActivity()`. Ou seja: **o
+desbloqueio pelo aparelho nunca funcionou neste app** — nem no primeiro acesso,
+nem no login. E falhava do pior jeito possível: o erro voltava como `false`, que
+`authenticateWithDevice()` não distingue de desistência, então a tela dizia
+*"Desbloqueio cancelado. Nada foi alterado."* — culpando a pessoa por um defeito
+de configuração do Android.
+
+Corrigido para `FlutterFragmentActivity`. O tema não entra na conta: o
+`LaunchTheme` não é AppCompat, mas a partir do API 28 o `BiometricPrompt` usa o
+diálogo do **sistema** e não infla view própria.
+
+⚠️ Isto **não** explica o botão sumido — `isDeviceSupported()` é
+`isDeviceSecure() || canAuthenticateWithBiometrics()` e não olha o tipo da
+activity. Medido no A57: `locksettings get-disabled` = `false` (tem bloqueio) e
+`dumpsys biometric` mostra Nubank, Itaú e WhatsApp autenticando com sucesso.
+Então a capacidade existe e a visibilidade tem outra causa — **a confirmar no
+log**, não deduzir.
+
+### Duas falhas que se manifestavam como ausência
+
+- `isDeviceAuthAvailable()` tinha `catch (_) { return false; }`. Engolia o motivo
+  e o efeito era um botão que não nascia: sem log, sem erro, sem nada pra
+  investigar. Agora imprime as duas capacidades e a exceção.
+- `_checkDeviceAuth()` tinha **dois `await` sem proteção** antes de um único
+  `setState` (o segundo, `hasDeviceAuthEnabled()`, entrou hoje mesmo). Qualquer
+  um levantando deixa `_deviceAuthAvailable` **null pra sempre**, e null não
+  desenha nada.
+
+🚨 **A lição é a mesma das duas últimas caçadas:** o defeito não apareceu como
+erro, apareceu como **ausência** — igual ao `INICIAR CONSULTA` fora da tela e ao
+`convertHtml` que respondia `false`. Ausência não deixa rastro, e por isso todo
+`catch` que apaga um elemento da interface precisa falar.
+
+### A tela parou de explicar
+
+Tinha quatro blocos de prosa: o que é a senha provisória, o que é biometria, o
+que acontece se trocar de aparelho, e um rodapé dizendo que aparecia uma vez só.
+Saíram todos. Sobraram duas seções, `Padrão · PIN · Rosto` e dois botões.
+
+⚠️ A ressalva sobre reset do administrador saiu **com razão de ser, não por
+corte cego**: ela era verdade enquanto a escolha era permanente, e o `Mudar
+senha` no Ajustes acabou de torná-la reversível. Registrado no doc da classe: se
+essa porta sumir do Ajustes, o aviso volta junto.
+
+---
+
 ## 2026-08-16 (2) — a tela de senha tinha uma porta só, e ela fechava pra sempre
 
 O João: *"A tela de mudança de senha… Tem que ter a opção de desbloquear com a

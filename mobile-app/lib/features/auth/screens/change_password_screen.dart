@@ -19,10 +19,15 @@ import '../../../core/widgets/masthead.dart';
 /// A partir daí entrar é desbloquear.
 ///
 /// O caminho 2 é mais seguro que o 1 na prática — senha de 32 caracteres
-/// sorteada contra "Mudar@123" que a pessoa reusa no e-mail — **mas tem um
-/// custo que precisa estar escrito na tela**: quem escolhe ele não sabe a
-/// própria senha. Perdeu o celular ou limpou os dados do app, só volta com
-/// reset do administrador. Esconder isso seria armadilha.
+/// sorteada contra "Mudar@123" que a pessoa reusa no e-mail.
+///
+/// ⚠️ **Aqui havia uma ressalva na tela** dizendo que quem escolhesse o
+/// caminho 2 não saberia a própria senha e, trocando de aparelho, só voltaria
+/// com reset do administrador. Ela era verdade **enquanto a escolha era
+/// permanente** — a tela só existia como portão de primeiro acesso. Com o
+/// `Mudar senha` no Ajustes (16/08) a escolha virou reversível a qualquer
+/// momento, e a ressalva passou a descrever um problema que não existe mais.
+/// Se algum dia essa porta sumir do Ajustes, o aviso tem que voltar junto.
 class ChangePasswordScreen extends StatefulWidget {
   final VoidCallback? onComplete;
 
@@ -32,10 +37,15 @@ class ChangePasswordScreen extends StatefulWidget {
   /// `must_change_password` for verdadeiro: não tem volta, não tem cabeçalho, e
   /// o texto fala da senha provisória que o administrador conhece.
   ///
-  /// Na visita ela é empilhada pelas Configurações, e três coisas mudam: ganha
-  /// seta de voltar, perde o *"Esta tela aparece uma única vez"* (que ali seria
-  /// mentira) e perde a conversa sobre senha provisória — quem chegou pelo
-  /// Ajustes já trocou a dele faz tempo.
+  /// Na visita ela é empilhada pelas Configurações: ganha seta de voltar e
+  /// perde a manchete sobre senha provisória — quem chegou pelo Ajustes já
+  /// trocou a dele faz tempo.
+  ///
+  /// 🚨 **É a mesma tela que o cliente vê, e por isso ela não explica nada.**
+  /// Tinha quatro blocos de prosa: o que é a senha provisória, o que é
+  /// biometria, o que acontece se trocar de aparelho, e um rodapé avisando que
+  /// aparecia uma vez só. Saíram todos em 16/08 — *"porra o user n é burro"*.
+  /// Sobraram duas seções, um `Padrão · PIN · Rosto` e dois botões.
   ///
   /// ⚠️ **A mecânica é a mesma nos dois casos, de propósito.** `_apply` troca a
   /// senha no servidor e depois **ou** grava a nova no cofre (desbloqueio pelo
@@ -80,10 +90,23 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     _checkDeviceAuth();
   }
 
+  /// ⚠️ **O `try` inteiro é obrigatório, e o motivo não é teórico.** São dois
+  /// `await` antes de um único `setState`: um no plugin do Android, outro no
+  /// cofre. Se qualquer um levantar, a função morre no meio e
+  /// `_deviceAuthAvailable` fica **null pra sempre** — e null não desenha nada,
+  /// então a falha aparece como *"o botão não existe"*, sem erro na tela e sem
+  /// rastro. Falhando, o caminho do celular some (que é o certo: não dá pra
+  /// oferecer o que não se sabe se existe) e a senha digitada continua lá.
   Future<void> _checkDeviceAuth() async {
     final auth = context.read<AuthService>();
-    final ok = await auth.isDeviceAuthAvailable();
-    final ativo = await auth.hasDeviceAuthEnabled();
+    var ok = false;
+    var ativo = false;
+    try {
+      ok = await auth.isDeviceAuthAvailable();
+      ativo = await auth.hasDeviceAuthEnabled();
+    } catch (e) {
+      debugPrint('[MudarSenha] checagem de desbloqueio falhou: $e');
+    }
     if (mounted) {
       setState(() {
         _deviceAuthAvailable = ok;
@@ -228,23 +251,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                           'Sua senha\nprovisória expira\nagora',
                           style: SIMEopsType.title(),
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'A senha que o administrador criou é conhecida por ele. '
-                          'Escolha como você vai entrar a partir de agora.',
-                          style: SIMEopsType.lead(),
-                        ),
-                      ] else
-                        // 🚨 A frase que falta no portão e é obrigatória aqui: salvar
-                        // **derruba a forma antiga**. `_apply` grava a nova senha no
-                        // cofre ou apaga o cofre, e nos dois casos o jeito de entrar
-                        // de ontem para de funcionar. Quem abre isto por curiosidade
-                        // precisa saber disso antes de tocar em qualquer botão.
-                        Text(
-                          'A forma que você usa hoje para de valer assim que a nova '
-                          'for salva.',
-                          style: SIMEopsType.lead(),
-                        ),
+                      ],
 
                       if (_error != null) ...[
                         const SizedBox(height: 22),
@@ -273,26 +280,21 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                               ? 'É COMO VOCÊ ENTRA HOJE'
                               : 'RECOMENDADO',
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 14),
+                        // Os três métodos, e nada mais. Aqui havia um título, um
+                        // parágrafo explicando o que é biometria e uma ressalva
+                        // sobre reset do administrador — três blocos de prosa
+                        // para um botão. João, 16/08: *"porra o user n é burro"*.
+                        //
+                        // A ressalva saiu com razão de ser, não por corte cego:
+                        // ela existia porque a escolha era **permanente**, e o
+                        // "Mudar senha" no Ajustes acabou de torná-la
+                        // reversível.
                         Text(
-                          'Desbloquear como o celular',
-                          style: SIMEopsType.body().copyWith(fontSize: 19),
+                          'Padrão · PIN · Rosto',
+                          style: SIMEopsType.body().copyWith(fontSize: 17),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Digital, rosto ou PIN — o mesmo que abre o aparelho. '
-                          'O app cria uma senha longa sozinho e guarda protegida '
-                          'pelo Android. Você não precisa decorar nada.',
-                          style: SIMEopsType.lead(),
-                        ),
-                        const SizedBox(height: 12),
-                        // A ressalva fica JUNTO da opção, não num rodapé que ninguém lê.
-                        Text(
-                          'Se trocar de celular ou limpar os dados do app, o acesso '
-                          'só volta com uma redefinição do administrador.',
-                          style: SIMEopsType.note(),
-                        ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 14),
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton(
@@ -359,14 +361,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                               color: SIMEopsColors.tealLight,
                             ),
                           ),
-                        ),
-                      ],
-
-                      if (portao) ...[
-                        const SizedBox(height: 30),
-                        Text(
-                          'Esta tela aparece uma única vez.',
-                          style: SIMEopsType.note(),
                         ),
                       ],
                     ],
