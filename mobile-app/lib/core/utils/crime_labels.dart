@@ -17,6 +17,8 @@ const crimeTypeLabels = <String, String>{
   'lesao_corporal': 'Lesão Corporal',
   'trafico': 'Tráfico',
   'operacao_policial': 'Operação Policial',
+  'greve': 'Greve',
+  // Congelado em 17/08 — nada novo classifica aqui, mas linha antiga aponta.
   'manifestacao': 'Manifestação',
   'bloqueio_via': 'Bloqueio de Via',
   'estelionato': 'Estelionato',

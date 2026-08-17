@@ -6,7 +6,7 @@
 export type TipoCrime =
   | 'roubo_furto' | 'vandalismo' | 'invasao' | 'receptacao'  // patrimonial
   | 'homicidio' | 'latrocinio' | 'lesao_corporal'      // seguranca
-  | 'trafico' | 'operacao_policial' | 'manifestacao' | 'bloqueio_via' // operacional
+  | 'trafico' | 'operacao_policial' | 'greve' | 'bloqueio_via' | 'manifestacao' // operacional
   | 'estelionato'                                       // fraude
   | 'crime_ambiental' | 'trabalho_irregular' | 'estatistica' | 'outros'; // institucional
 
@@ -21,7 +21,7 @@ export type Natureza = 'ocorrencia' | 'estatistica';
 export const TIPO_CRIME_GRUPO: Record<TipoCrime, CategoriaGrupo> = {
   roubo_furto: 'patrimonial', vandalismo: 'patrimonial', invasao: 'patrimonial', receptacao: 'patrimonial',
   homicidio: 'seguranca', latrocinio: 'seguranca', lesao_corporal: 'seguranca',
-  trafico: 'operacional', operacao_policial: 'operacional', manifestacao: 'operacional', bloqueio_via: 'operacional',
+  trafico: 'operacional', operacao_policial: 'operacional', greve: 'operacional', bloqueio_via: 'operacional', manifestacao: 'operacional',
   estelionato: 'fraude',
   crime_ambiental: 'institucional', trabalho_irregular: 'institucional', estatistica: 'institucional', outros: 'institucional',
 };
@@ -46,11 +46,20 @@ export const TIPO_CRIME_GRUPO: Record<TipoCrime, CategoriaGrupo> = {
  * O que fica dito: roubo e furto sao crimes distintos (com e sem violencia), e
  * este rotulo chama de roubo os dois. Quem for reparar e um leitor que faca a
  * distincao juridica; foi pesado e aceito.
+ *
+ * 🚨 `manifestacao` esta CONGELADO desde 17/08 — nada novo classifica ali. Ele
+ * saiu da lista do Filter2 (o GPT nao consegue mais escolher) mas continua aqui
+ * porque ha linhas gravadas apontando pra ele, e tipo sem rotulo imprime a chave
+ * crua na tela. O motivo da aposentadoria: a palavra e ELASTICA — cabe forum,
+ * campanha, passeata e ato. Medido em 17/08, as 3 unicas linhas do banco eram um
+ * forum sobre violencia domestica e uma campanha do Agosto Lilas: nenhuma era
+ * manifestacao. Quem herdou o que interessa ao cliente e `bloqueio_via`
+ * (protesto que fecha via) e `greve`.
  */
 export const TIPO_CRIME_LABEL: Record<TipoCrime, string> = {
   roubo_furto: 'Roubo', vandalismo: 'Vandalismo', invasao: 'Invasão', receptacao: 'Receptação',
   homicidio: 'Homicídio', latrocinio: 'Latrocínio', lesao_corporal: 'Lesão corporal',
-  trafico: 'Tráfico', operacao_policial: 'Operação policial', manifestacao: 'Manifestação',
+  trafico: 'Tráfico', operacao_policial: 'Operação policial', greve: 'Greve', manifestacao: 'Manifestação',
   bloqueio_via: 'Bloqueio de via',
   estelionato: 'Estelionato',
   crime_ambiental: 'Crime ambiental', trabalho_irregular: 'Trabalho irregular',

@@ -84,7 +84,7 @@ export async function filter1GPTBatch(snippets: string[], assuntos?: string[]): 
  */
 function contextoDosAssuntos(assuntos?: string[]): string {
   if (!assuntos || assuntos.length === 0) return '';
-  return `\n- O USUARIO PEDIU ESPECIFICAMENTE por: ${assuntos.join(', ')}. Trecho sobre qualquer um desses assuntos = true, MESMO que nao seja crime nenhum (ex: greve de onibus, manifestacao pacifica, bloqueio de rodovia, acidente). Foi ele quem perguntou — nao descarte por "nao e seguranca publica".`;
+  return `\n- O USUARIO PEDIU ESPECIFICAMENTE por: ${assuntos.join(', ')}. Trecho sobre qualquer um desses assuntos = true, MESMO que nao seja crime nenhum (ex: greve de onibus, bloqueio de rodovia, acidente). Foi ele quem perguntou — nao descarte por "nao e seguranca publica".`;
 }
 
 async function filter1GPTBatchSingle(snippets: string[], assuntos?: string[]): Promise<Filter1Result> {

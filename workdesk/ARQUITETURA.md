@@ -155,7 +155,8 @@ de corte sao config e mudam; a **ordem** e a **razao de cada estagio** nao.
    +----+----------------------------+
    |                                 |
   AUTO-SCAN                     BUSCA MANUAL
-  (+ dedup contra DB, + push)   (salva em search_results)
+  (+ dedup contra DB,           (salva em search_results)
+   + push da RODADA)
 ```
 
 ### Por que cada regra do funil existe
@@ -169,6 +170,13 @@ o orcamento inteiro.
 **O Filter2 SEMPRE exige cidade + estado juntos.** Sem o estado, Sao Jose (SC)
 vira Sao Jose (SP). Nao relaxar isso.
 
+**A regra 1 do Filter2 exige EVENTO, e a regra 2 tem lista negativa** (17/08).
+Antes bastava ser "public safety content", e por isso campanha de conscientizacao,
+forum, palestra, aviso de votacao e alerta de tempestade entravam no feed — e
+caiam em `manifestacao`, que virou balde de qualquer ajuntamento e por isso foi
+congelada. Quem herdou o que interessa: `bloqueio_via` (protesto que fecha via) e
+`greve`, agora tipo proprio.
+
 **Os assuntos escolhidos pelo usuario entram como contexto nos prompts do Filter1
 e do Filter2** (03/08). Sem isso o Filter1 matava `greve` e `bloqueio` pacifico
 **antes do Jina**, em silencio: sao assuntos que o modelo nao considera
@@ -177,6 +185,23 @@ e do Filter2** (03/08). Sem isso o Filter1 matava `greve` e `bloqueio` pacifico
 **Dedup contra DB tem 3 camadas por custo, nao por precisao:** geo-temporal em
 SQL ($0) elimina a maioria, cosine ($0) resolve quase todo o resto, e o GPT so
 ve os ~5% duvidosos.
+
+⚠️ **A camada 1 e um PORTAO, nao um veredito** — quem ela nao devolve, ninguem
+mais examina. Por isso a janela de data e de **3 dias** (`DEDUP_JANELA_DIAS`) e
+nao de 1: `data_ocorrencia` da MESMA materia pode divergir entre scans, porque a
+regra 4 do Filter2 manda usar a data de hoje quando nao acha a de publicacao.
+Em 17/08 isso deixou uma duplicata entrar sem que as camadas 2 e 3 fossem
+sequer consultadas.
+
+🚨 **O limiar da camada 2 vem do BANCO** (`dedup_similarity_threshold` = 0.70),
+nao do `DEFAULT_SIMILARITY_THRESHOLD = 0.85` que esta no codigo. O default tem
+nome de verdade e nao e a verdade — conferir no painel antes de raciocinar com
+ele.
+
+🚨 **A camada 3 so pergunta pelo TOP match**, e a pergunta e SIMETRICA por
+construcao do prompt desde 17/08. Ate entao ela nao era: `(A,B)` dava YES e
+`(B,A)` dava NO para o mesmo par, deterministicamente. Quem mexer no prompt tem
+que testar **nas duas ordens**.
 
 ### Trocas de prompt testadas e DESCARTADAS
 
@@ -212,6 +237,21 @@ noticia. As metricas vao em `budget_tracking.details`.
 que cada estagio grava em `budget_tracking`. A antiga `calculateCost()`, que
 recalculava por formula com taxas fixas na mao, foi **removida** — os dois
 numeros discordavam por construcao.
+
+**O push sai UMA VEZ POR RODADA, depois do laco que grava** (17/08). Era um por
+noticia, de dentro do laco: com media de 2,0/dia isso era invisivel, e no dia em
+que entraram 31 virou 31 vibracoes onde cabiam 15.
+
+🚨 **O agrupamento acontece POR USUARIO, nunca por lote.** O recorte de
+`querReceber` (cidade, assunto, estatistica) e individual, entao "quantas
+chegaram" e pergunta diferente para cada pessoa — agrupar antes de filtrar
+mandaria "5 noticias" para quem pediu 1. Aparelhos com o MESMO recorte dividem
+uma chamada ao FCM.
+
+⚠️ **Push e a unica parte do sistema que nao da para conferir sem incomodar o
+cliente** — o caminho real termina no bolso de quem esta trabalhando. Por isso
+`sendPushForBatch(…, { dryRun: true })`: monta titulo, corpo, canal e alvos, loga
+e para antes do FCM. Nao prova canal nem som; prova o texto.
 
 ---
 

@@ -48,6 +48,8 @@ const TIPO_LABELS: Record<string, string> = {
   lesao_corporal: 'Lesao Corporal',
   trafico: 'Trafico',
   operacao_policial: 'Op. Policial',
+  greve: 'Greve',
+  // Congelado em 17/08 — nada novo classifica aqui, mas linha antiga aponta.
   manifestacao: 'Manifestacao',
   bloqueio_via: 'Bloqueio de Via',
   estelionato: 'Estelionato',

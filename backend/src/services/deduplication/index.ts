@@ -107,6 +107,18 @@ export async function deduplicateNews(
  * preso") nunca batem literalmente, o GPT respondia NO e a mesma ocorrência
  * aparecia duas vezes no feed. A regra passou a ser o **evento central**, com a
  * nota sobre ângulos escrita no prompt.
+ *
+ * 🚨 **O prompt era SENSÍVEL À ORDEM, e isso deixava duplicata passar.** Medido
+ * em 17/08 com o par real que entrou duas vezes no feed (`Operação Olimpo`,
+ * cosine 0.8343): `(resumo antigo, resumo novo)` deu **YES 5/5**, e
+ * `(resumo novo, resumo antigo)` deu **NO 5/5** — determinístico, temperature 0.
+ * O código chama sempre `(nova, existente)`, e a nova costuma ser a MAIS
+ * detalhada porque é o follow-up: o modelo lia "detalhe que só um tem" como
+ * fato divergente. As duas notas novas (assimetria de detalhe + simetria da
+ * pergunta) levaram o mesmo par a **YES 10/10 nas duas ordens**.
+ *
+ * ⚠️ Quem mexer aqui: teste **nas duas ordens**. Um prompt que acerta num
+ * sentido e erra no outro passa em qualquer bateria que só teste um lado.
  */
 async function confirmDuplicateWithGPT(resumo1: string, resumo2: string): Promise<{ isDupe: boolean; tokensUsed: number }> {
   const prompt = `Do these two news summaries describe the SAME criminal incident?
@@ -119,6 +131,10 @@ They describe the SAME incident if the core event matches: same approximate loca
 They are DIFFERENT incidents if they clearly involve different victims/locations or contradictory facts.
 
 Note: articles may cover different angles of the same event (victim found vs suspect arrested, early report vs follow-up) — these still count as the SAME incident.
+
+Note: one summary is often MORE DETAILED than the other (naming the victim, the neighborhood, the operation). Detail present in only one summary is NOT a contradiction and NOT evidence of a different incident. Judge only on facts that CONFLICT.
+
+The question is symmetric: the answer must not depend on which summary is listed first.
 
 Answer ONLY "YES" or "NO":`;
 

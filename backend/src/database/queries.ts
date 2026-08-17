@@ -148,6 +148,26 @@ export interface DedupCandidate {
   embedding: number[];
 }
 
+/**
+ * Quantos dias para cada lado a camada 1 aceita como "pode ser o mesmo fato".
+ *
+ * 🚨 Era **1**, e por isso uma duplicata escapou em 17/08 (`Bancário desaparece
+ * em Florianópolis`): a MESMA matéria, lida com 2h de diferença, foi gravada com
+ * `data_ocorrencia` 17/08 numa linha e 15/08 na outra. Dois dias de distância,
+ * janela de um: a linha antiga nunca virou candidata, e as camadas 2 e 3 — que
+ * teriam acertado, medido YES 5/5 — nunca chegaram a ser consultadas.
+ *
+ * A causa da divergência é a **regra 4 do prompt do Filter2**: *"If unsure, use
+ * today's date"*. Fallback que muda conforme a hora do scan. Enquanto ele
+ * existir, `data_ocorrencia` pode divergir em até `scan_period_days` para a
+ * mesma matéria, e a janela do dedup precisa cobrir isso.
+ *
+ * ⚠️ Alargar aqui **não** afrouxa o critério: só amplia quem é *perguntado*.
+ * Quem decide continua sendo o cosine e o GPT, e o GPT lê "same time frame".
+ * O custo é candidato a mais na camada 2, que é local e grátis.
+ */
+const DEDUP_JANELA_DIAS = 3;
+
 export async function findGeoTemporalCandidates(
   cidade: string,
   tipoCrime: string,
@@ -155,12 +175,12 @@ export async function findGeoTemporalCandidates(
   estado?: string | null,
   bairro?: string | null,
 ): Promise<DedupCandidate[]> {
-  // Buscar candidatos: mesma cidade + (mesmo estado) + (mesmo bairro ou algum NULL) + mesmo tipo + ±1 dia
+  // Buscar candidatos: mesma cidade + (mesmo estado) + (mesmo bairro ou algum NULL) + mesmo tipo + a janela acima
   // Bairro: tolerante a NULL — se ambos têm bairro e diferem, filtra. Se um for NULL, deixa passar
   // pra camadas 2/3 decidirem (evita falso negativo de eventos com bairro ausente).
   const date = new Date(dataOcorrencia);
-  const dateFrom = new Date(date.getTime() - 86400000).toISOString().split('T')[0];
-  const dateTo = new Date(date.getTime() + 86400000).toISOString().split('T')[0];
+  const dateFrom = new Date(date.getTime() - DEDUP_JANELA_DIAS * 86400000).toISOString().split('T')[0];
+  const dateTo = new Date(date.getTime() + DEDUP_JANELA_DIAS * 86400000).toISOString().split('T')[0];
 
   let query = supabase
     .from('news')

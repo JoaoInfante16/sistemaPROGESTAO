@@ -120,9 +120,9 @@ export const DEFAULTS: Record<string, string> = {
   //   - NUNCA pôr o estado — empurra pro institucional (quem desambigua cidade
   //     homônima é o pós-filtro do Filter2, lendo cidade e estado do corpo).
   //
-  // 03/08: o default passou a ser a TAXONOMIA INTEIRA (17 assuntos), e não os 5
+  // 03/08: o default passou a ser a TAXONOMIA INTEIRA (ASSUNTOS_TODOS), e não os 5
   // de antes. O motivo é que os 5 cobriam 7 dos 16 tipos que o Filter2 sabe
-  // classificar — vandalismo, invasão, receptação, latrocínio, manifestação,
+  // classificar — vandalismo, invasão, receptação, latrocínio, greve,
   // bloqueio de via, estelionato, crime ambiental e trabalho irregular só
   // entravam de carona, se por acaso aparecessem numa das 5 perguntas.
   //

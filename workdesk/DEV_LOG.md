@@ -46,6 +46,24 @@ segunda verdade que a regra zero da workdesk descreve.
 
 **`staging` = `feature/design-fio` = `47b8cd8`**, ambas empurradas em 09/08.
 
+### 📈 17/08 — o volume mudou de ordem de grandeza
+
+**31 notícias num dia**, contra média histórica de **2,0/dia**. Todo o desenho de
+notificação e de dedup foi feito para o número antigo. Um dia não prova padrão —
+pode ser o novo normal (o backend de produção só saiu do código de 3 de julho
+ontem) ou recuperação de fila. **Vale reconferir em 3-4 dias.**
+
+O que mudou por causa disso, tudo em `staging` (ver entrada de 17/08):
+
+- push **agrupado por rodada**, com a manchete no corpo — 31 pushes viraram 15
+- `manifestacao` **congelada**, `greve` virou tipo próprio, regra 2 do Filter2
+  ganhou lista negativa (campanha, fórum, alerta meteorológico)
+- dedup: prompt **simétrico** (era sensível à ordem) e janela da camada 1 em 3 dias
+
+🚨 **Nada disso está em produção.** O auto-deploy do backend está DESLIGADO no
+Render — depois do merge para `main`, é `Manual Deploy → Deploy latest commit` e
+conferir o `commit` no `/health`.
+
 ✅ **029 e 030 aplicadas** (confirmadas pelo João em 09/08). O banco tem
 `news.titulo` e `news.hora_publicacao`, e o staging está inteiro.
 
@@ -75,21 +93,6 @@ Conserto: aceitar `cidades` (lista) e trocar `.eq` por `.in` nas quatro
 consultas — aditivo e retrocompatível. O app já sabe fazer isso no feed
 (`FeedScreen(citiesFilter:)`); só a analytics não sabe.
 
-
-
-Medido em 09/08 com a Grande Florianópolis: o cabeçalho diz **21 EM 30D** e o
-relatório abre com **12**. Não é arredondamento — são coisas diferentes.
-
- () filtra com ,
-uma cidade só. E  (), quando a aba
- está selecionada, devolve **a primeira cidade do grupo**. Então o
-relatório de um grupo de 4 cidades é o relatório de Florianópolis, sem dizer.
-Vale para os quatro: , ,  e
-.
-
-Conserto: aceitar  (lista) e trocar  por  nas quatro
-consultas — aditivo e retrocompatível. O app já sabe fazer isso no feed
-(); só a analytics não.
 
 ### O que falta na Fase E (o export)
 
@@ -272,6 +275,230 @@ produção **na hora, sem deploy**. Quando o significado de uma config mudar,
 Verificado em **04/08**: 026, 027 e 028 aplicadas (`openai` e `jina` com
 `max_concurrent` 20). **024 e 025 seguem não rodadas.** Custo do mês: **$1,75**
 de $100.
+
+---
+
+## 2026-08-17 — o volume subiu 15× e mostrou quatro defeitos que sempre existiram
+
+Entraram **31 notícias** hoje. A média histórica é **2,0/dia** (medida em 11/08,
+21 dias de janela). Nada foi construído para esse número, e quatro coisas que
+estavam erradas desde o começo ficaram visíveis de uma vez.
+
+⚠️ **Um dia não prova padrão.** Pode ser o novo normal — o backend de produção só
+foi deployado ontem, depois de meses rodando código de 3 de julho — ou pode ser
+recuperação de fila. O que segue vale nos dois volumes, então não esperei medir
+mais.
+
+### 🚨 `manifestacao` era um balde de "gente reunida por causa de algo"
+
+O João relatou: *"o GPT tá pegando manifestação como qualquer coisa"*. Medido
+contra as 254 linhas do banco:
+
+| tipo | linhas |
+|---|---|
+| `manifestacao` | **3** |
+| `bloqueio_via` | **1** |
+
+E as 3 de `manifestacao`, na íntegra:
+
+```
+17/08 [Porto Alegre]   Fórum discute violência doméstica em condomínios
+17/08 [Florianópolis]  Campanha Agosto Lilás promove reflexão sobre violência contra a mulher
+01/05 [Porto Alegre]   (sem título)
+```
+
+Um fórum e uma campanha. **Nenhuma manifestação.**
+
+🚨 **Trocar o nome do balde não resolveria nada, e essa foi a descoberta que
+mudou o conserto.** Se `manifestacao` sumisse sozinha, aquelas duas cairiam em
+`outros` — que já guardava exatamente o mesmo tipo de coisa: *"Defesa Civil
+alerta para tempestades"*, *"Mulheres com medida protetiva podem mudar local de
+votação"*, *"Uma em cada dez brasileiras sofre violência digital"*.
+
+A causa estava uma camada acima, na **regra 1 do Filter2**:
+
+> `"is_crime": true for ANY public safety content: ... protests, strikes`
+
+Campanha sobre violência contra a mulher **é** "public safety content". O modelo
+estava obedecendo. Então a regra 1 passou a exigir **evento concreto**, e a regra
+2 ganhou a lista negativa que faltava (campanha, data comemorativa, fórum,
+seminário, palestra, debate, aviso de serviço, alerta meteorológico).
+
+**Medido com `filter2GPTWithReason`, o caminho real:**
+
+| lote | resultado |
+|---|---|
+| as 4 matérias que o João reclamou | **4/4 rejeitadas** (`e_crime=false`) |
+| controle (roubo, tráfico, homicídio) | **3/3 entraram**, tipo certo |
+
+### `greve` virou tipo próprio, e não foi para institucional
+
+O João sugeriu `institucional`. Discordei com argumento e ele topou o pacote:
+**`institucional` é o balde do "vale saber"** — crime ambiental, trabalho
+irregular, estatística. Contexto. **Greve de ônibus não é contexto: é o
+funcionário do cliente não chegando no turno**, que é a tese do produto.
+
+E apontar `greve` para `bloqueio_via` seria mentira na tela — greve de ônibus não
+fecha rodovia nenhuma.
+
+O que fez `manifestacao` apodrecer foi a palavra ser **elástica**: cabe fórum,
+campanha, passeata, ato. `greve` não é elástica. A taxonomia **não inflou**: saiu
+um tipo, entrou outro.
+
+⚠️ `manifestacao` **continua no enum**, congelado. Há linha gravada apontando pra
+ele, e tipo sem rótulo imprime a chave crua na tela. Ele só parou de receber
+gente nova — saiu da lista do Filter2, então o modelo não consegue mais escolhê-lo.
+
+✅ **Sem migration.** Testei inserindo `tipo_crime = 'greve'` direto: a coluna é
+texto livre, sem `CHECK` nem enum de Postgres. A linha de teste foi removida.
+
+### 🚨 O push nunca mandou a manchete — e o título dizia a categoria
+
+O João pediu "manda a manchete na notificação", achando que era feature nova. Era
+**conserto**. É assim que a notificação saía, de verdade, hoje:
+
+```
+Institucional em Florianópolis
+Mulheres com medida protetiva de urgência podem solicitar mudança de local de vot...
+```
+
+Dois erros numa notificação só:
+
+1. **`formatTipoCrime` tinha nome enganoso e devolvia a CATEGORIA.** Um homicídio
+   chegava como *"Segurança em Florianópolis"*. O aviso disso já estava escrito
+   em `types.ts` desde 14/08 — e ninguém tinha ligado o aviso ao push.
+2. **O corpo era o `resumo`**, que por contrato de prompt é *"never a paraphrase"*
+   da manchete: ele **complementa**. A notificação entregava o complemento sem o
+   fato. A manchete estava gravada, ao lado, e `PushNewsData` nem carregava o campo.
+
+🚨 **E havia uma cópia podre.** `pushService.ts` tinha `TIPO_TO_GRUPO` e
+`GRUPO_LABELS` locais, duplicando `types.ts`. A cópia dizia que `receptacao` era
+**fraude**; `TIPO_CRIME_GRUPO` diz **patrimonial** desde que a decisão foi tomada
+e escrita. O push anunciava "Fraude em X" para o que o app lista em Patrimonial.
+As duas morreram — o rótulo agora vem de `rotuloTipoCrime`, que é a fonte. Regra
+zero da workdesk acontecendo dentro do código.
+
+### 🚨 Um push por notícia: 31 vibrações onde cabiam 15
+
+A Fase F **descartou o digest com medição** (2,0/dia) e deixou o gatilho escrito:
+*"acima de ~10/dia ele volta à mesa com número"*. Hoje deu **31**. O documento
+funcionou: a regra existia e disparou sozinha.
+
+Medido nas rodadas reais de hoje (cidade + janela de 10 min):
+
+```
+9 de 15 rodadas agrupariam
+25 de 31 noticias cairiam num push agrupado
+ANTES 31 pushes  ->  DEPOIS 15 pushes
+```
+
+O push saía de **dentro do laço que grava**, um por notícia. Saiu do laço:
+`scanPipeline` agora acumula em `paraNotificar` e chama `sendPushForBatch` uma
+vez, no fim da rodada.
+
+🚨 **O agrupamento é POR USUÁRIO, e não dá para ser de outro jeito.** O recorte de
+`querReceber` (cidade, assunto, estatística) é individual: das 5 notícias de uma
+rodada, o cliente A pode querer 3 e o B só 1 — *"quantas chegaram"* é pergunta
+diferente para cada um. Agrupar antes de filtrar mandaria "5 notícias" para quem
+pediu 1. Aparelhos com o **mesmo** recorte compartilham uma chamada ao FCM, então
+no caso comum continua sendo um multicast só.
+
+**Formato:** uma notícia → `Roubo em Moinhos de Vento, Porto Alegre` + manchete no
+corpo. Várias → `Porto Alegre · 4 noticias` + as manchetes que couberem em 130
+caracteres + `+N`. O lote sobe pelo canal **urgente** se qualquer notícia dele for
+urgente. `cidade` continua no payload (é o que abre a tela certa no toque), e sai
+quando o lote tem mais de uma cidade — sem destino único, não se inventa um.
+
+**`dryRun` novo, e ele existe por um motivo:** push é a única parte do sistema que
+não dá para conferir sem incomodar o cliente — o caminho real termina no bolso de
+quem está trabalhando. Com ele, rodei a função **de verdade** sobre as 31 notícias
+de hoje e li as 15 notificações que teriam chegado, sem disparar nenhuma.
+
+### 🚨 Duas duplicatas no feed, e os dois motivos eram diferentes
+
+Achado no meio da medição, sem ninguém ter pedido — duas manchetes idênticas
+entraram duas vezes hoje. Investigar as duas como "o dedup falhou" teria
+consertado no máximo uma.
+
+**Caso 1 — `Operação Olimpo`: o prompt do dedup é SENSÍVEL À ORDEM.**
+
+O caminho: camada 1 devolveu o candidato certo (confirmado rodando
+`findGeoTemporalCandidates` real), cosine **0.8343** contra limiar **0.70** —
+passou. Foi ao GPT, e o GPT disse **NO**.
+
+Só que rodando o par manualmente eu tinha tido **YES**. A diferença era a ordem
+dos argumentos. Medido, 5 rodadas de cada lado, temperature 0:
+
+```
+prompt atual  (resumo antigo, resumo novo):  YES YES YES YES YES
+prompt atual  (resumo novo, resumo antigo):  NO  NO  NO  NO  NO   <- a ordem do codigo
+prompt novo   nos dois sentidos:             YES x10
+```
+
+Determinístico, não ruído. O modelo lia **detalhe que só um resumo tem** como
+fato divergente — e o código chama sempre `(nova, existente)`, sendo a nova
+justamente a mais detalhada, porque é o follow-up. Duas notas no prompt
+resolveram: *detalhe presente em só um lado não é contradição* e *a pergunta é
+simétrica*.
+
+⚠️ **Um prompt que acerta num sentido e erra no outro passa em qualquer bateria
+que só teste um lado** — foi o que aconteceu com os 10 pares validados em 04/16.
+
+🚨 **Correção de rota registrada:** eu disse ao João, com o número na mão, que o
+par tinha morrido na camada 2 por 0.016. Estava errado — usei o
+`DEFAULT_SIMILARITY_THRESHOLD` (0.85) do código, e o valor que roda em produção é
+o `dedup_similarity_threshold` do painel: **0.70**. Constante em código com nome
+de default, mas o que vale vem do banco.
+
+**Caso 2 — `Bancário desaparece`: a janela de ±1 dia da camada 1.**
+
+A mesma matéria, lida com 2h de diferença, foi gravada com `data_ocorrencia`
+**17/08** numa linha e **15/08** na outra. Dois dias de distância, janela de um:
+a linha antiga **nunca virou candidata**, e as camadas 2 e 3 — que acertariam,
+medido YES 5/5 nas duas ordens — nunca foram consultadas.
+
+A causa da divergência é a **regra 4 do prompt do Filter2**: *"If unsure, use
+today's date"*. Fallback que muda conforme a hora do scan. Enquanto ele existir,
+a mesma matéria pode divergir em até `scan_period_days`. Janela virou
+`DEDUP_JANELA_DIAS = 3`, com o porquê colado.
+
+⚠️ Alargar a camada 1 **não** afrouxa o critério: só amplia quem é *perguntado*.
+Quem decide continua sendo o cosine e o GPT, e o GPT lê "same time frame".
+
+### A manchete era cortada no meio da palavra
+
+Apareceu no teste do push, porque a manchete virou o corpo e ficou sozinha na
+tela de bloqueio:
+
+```
+Corpo de mulher é encontrado em área de difícil acesso em Florianópoli
+Torcedores do Inter são presos por tentativa de homicídio em Porto Ale
+```
+
+Exatos 70 caracteres, sem reticência, sem aviso: `headline.substring(0, 70)`.
+Ao lado, no mesmo arquivo, `cortarNaFrase` existia justamente para não fazer isso
+com o resumo — e o comentário dela até dizia *"reticências no fim de um titulo
+são toleráveis"*, sem que o código as colocasse.
+
+Agora `cortarNaPalavra` corta na palavra, tira conector pendurado (`...acesso em…`
+→ `...acesso…`) e marca com reticência. **Só vale para linha nova** — as gravadas
+continuam cortadas.
+
+### Consequências e o que NÃO foi feito
+
+- **`outros` não está na taxonomia** (o João perguntou). É tipo, não assunto:
+  nunca vira pergunta ao Google, só recebe o que o Filter2 não classifica. Hoje
+  guarda **desaparecimento**, **suspeita de bomba** e **sequestro/tortura** — três
+  ocorrências legítimas sem tipo próprio. Vale decidir se merecem um; ficou no
+  ROADMAP.
+- **Estatística nacional entra como se fosse local.** *"Uma em cada dez
+  brasileiras sofre violência digital"* foi gravada com `cidade = Florianópolis`
+  porque a query era sobre Florianópolis. A lista negativa nova não cobre isso.
+  Não mexi — é defeito de localização, não de classificação.
+- **A taxonomia foi de 17 para 16 assuntos.** Menos uma pergunta ao índice, e cada
+  pergunta é um teto novo de ~60 itens. Perda deliberada: era cobertura de lixo.
+  Efeito colateral bom — com `assuntos.max(20)` na validação, a folga para
+  palavra-chave subiu de 3 para 4.
 
 ---
 

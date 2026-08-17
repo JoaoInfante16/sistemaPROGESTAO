@@ -147,8 +147,16 @@ artefato que viaja, e sai do botão de imprimir dentro da própria página.
 Migration **032** (a 031 é o DROP dos favoritos), dois canais Android e
 preferência por cidade/assunto/estatística. **O digest foi descartado com
 medição:** 30 notícias em 21 dias, média 2,0/dia, pico 5, 4 aparelhos — não há
-problema de volume, há problema de relevância. ⬜ Falta o teste real de push no
-A57, que depende da 032 estar rodada.
+problema de volume, há problema de relevância.
+
+🚨 **O gatilho disparou em 17/08.** A frase acima dizia *"acima de ~10/dia ele
+volta à mesa com número"* — e o dia deu **31**. O agrupamento por rodada foi
+feito (ver DEV_LOG de 17/08): 31 pushes viraram 15. O documento funcionou: a
+regra estava escrita e disparou sozinha.
+
+⬜ Falta o teste real de push no A57. Existe agora `sendPushForBatch(…, {
+dryRun: true })`, que monta tudo e para antes do FCM — dá para conferir o texto
+sem incomodar ninguém, mas **não** prova canal, som nem toque.
 
 ### ⬜ Revisão de copy, tela por tela — POR ÚLTIMO
 
@@ -352,6 +360,27 @@ caminho é subir devagar (10 → 15 → 20) e observar quando o 429 aparece; com
 passo 1 feito, um 429 custa só um segundo a mais.
 
 ---
+
+## 🆕 Saiu de 17/08 — decidir
+
+- 🚨 **O balde `outros` tem ocorrência legítima sem tipo.** Ele não está na
+  taxonomia (é tipo, nunca vira pergunta), mas hoje guarda **desaparecimento de
+  pessoa**, **suspeita de bomba** e **sequestro/tortura**. As três interessam ao
+  cliente e as três aparecem no app como "Outros". Decidir se viram tipo próprio
+  — `desaparecimento` é o mais frequente dos três.
+- **Estatística nacional entra como se fosse local.** *"Uma em cada dez
+  brasileiras sofre violência digital"* foi gravada com `cidade =
+  Florianópolis` porque a query era sobre Florianópolis. A lista negativa da
+  regra 2 (17/08) **não** cobre isso: é defeito de localização, não de
+  classificação. Provável conserto: exigir que a estatística cite a cidade ou o
+  estado monitorado.
+- **Reconferir o volume por volta de 21/08.** 31 notícias em 17/08 contra média
+  de 2,0/dia. Se firmar acima de ~10/dia, revisar de novo o formato do push (a
+  janela de agrupamento hoje é a rodada de scan, não o relógio) e o custo de
+  Jina + GPT, que escala junto.
+- **Manchetes cortadas no meio da palavra continuam gravadas.** O conserto
+  (`cortarNaPalavra`) vale só para linha nova. Regravar as antigas exigiria
+  passar GPT de novo — provavelmente não vale.
 
 ## 💡 Em aberto (não decidido)
 

@@ -15,7 +15,7 @@ import { configManager } from '../../services/configManager';
 import { SearchResult } from '../../services/search/SearchProvider';
 import { buildQueries } from '../../services/search/queryTemplates';
 import { fetchGoogleNewsRSS } from '../../services/search/GoogleNewsRSSProvider';
-import { sendPushNotification } from '../../services/notifications/pushService';
+import { sendPushForBatch, PushNewsData } from '../../services/notifications/pushService';
 import {
   runFilter0,
   runFilter1,
@@ -311,6 +311,8 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
 
   // STAGE 6: Dedup contra DB + Save
   let newsSaved = 0;
+  // 🚨 O push NAO sai daqui de dentro. Ver o bloco depois do laco.
+  const paraNotificar: PushNewsData[] = [];
   let duplicatesFound = 0;
   const dedupLayerStats = { layer1: 0, layer2: 0, layer3: 0 };
   // `deduplicateNews` já devolve os tokens da camada 3 e eles eram DESCARTADOS.
@@ -353,25 +355,32 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
         await db.invalidateExecutiveCacheByCity(news.cidade);
       }
 
-      // Push notification
-      try {
-        const pushResult = await sendPushNotification({
-          id: newsId, tipo_crime: news.tipo_crime,
-          cidade: news.cidade, bairro: news.bairro || null, resumo: news.resumo,
-          categoria_grupo: news.categoria_grupo, natureza: news.natureza,
-        });
-        if (pushResult.sent) {
-          logger.info(`${LOG_PREFIX} Push sent for ${newsId}: ${pushResult.successCount}/${pushResult.deviceCount} devices`);
-        } else {
-          logger.warn(`${LOG_PREFIX} Push not sent for ${newsId}: ${pushResult.reason}`);
-        }
-      } catch (pushErr) {
-        logger.error(`${LOG_PREFIX} Push failed for news ${newsId}: ${(pushErr as Error).message}`);
-      }
+      paraNotificar.push({
+        id: newsId, tipo_crime: news.tipo_crime, titulo: news.titulo ?? null,
+        cidade: news.cidade, bairro: news.bairro || null, resumo: news.resumo,
+        categoria_grupo: news.categoria_grupo, natureza: news.natureza,
+      });
 
       newsSaved++;
     } catch (err) {
       logger.error(`Failed to save news: ${(err as Error).message}`);
+    }
+  }
+
+  // 🚨 UM push por aparelho para a rodada inteira, e nao um por noticia.
+  // Antes isto vivia dentro do laco acima: em 17/08 uma rodada de 4 noticias da
+  // mesma cidade virava 4 vibracoes seguidas no bolso do cliente. O recorte por
+  // preferencia continua individual — quem agrupa e o `sendPushForBatch`.
+  if (paraNotificar.length > 0) {
+    try {
+      const pushResult = await sendPushForBatch(paraNotificar);
+      if (pushResult.sent) {
+        logger.info(`${LOG_PREFIX} Push: ${paraNotificar.length} noticia(s) → ${pushResult.successCount}/${pushResult.deviceCount} aparelhos`);
+      } else {
+        logger.warn(`${LOG_PREFIX} Push nao enviado: ${pushResult.reason}`);
+      }
+    } catch (pushErr) {
+      logger.error(`${LOG_PREFIX} Push failed: ${(pushErr as Error).message}`);
     }
   }
 

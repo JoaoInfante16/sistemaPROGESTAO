@@ -8,10 +8,17 @@
 //
 // Cada entrada e um ASSUNTO — uma pergunta que vale a pena fazer ao indice — e
 // aponta pro `tipo_crime` que o Filter2 vai atribuir. A relacao e N:1 de
-// proposito: "greve" e "manifestacao" sao perguntas diferentes que classificam
-// no mesmo `manifestacao`, e "violencia domestica" e "agressao" no mesmo
-// `lesao_corporal`. Perguntar as duas rende materia diferente; classificar nos
+// proposito: "violencia domestica" e "agressao" sao perguntas diferentes que
+// classificam no mesmo `lesao_corporal`, e "estelionato" e "golpe" no mesmo
+// `estelionato`. Perguntar as duas rende materia diferente; classificar nos
 // dois seria taxonomia inflada sem ganho pro cliente.
+//
+// 🚨 17/08: a pergunta "manifestacao" MORREU e o tipo `manifestacao` congelou.
+// A palavra pega qualquer ajuntamento — as 3 linhas que existiam no banco eram
+// um forum e uma campanha do Agosto Lilas, nenhuma manifestacao. "greve" ficou,
+// mas com tipo PROPRIO: greve de onibus para o turno do cliente (operacional de
+// verdade) e nao fecha rodovia nenhuma, entao chamar de "Bloqueio de via" seria
+// mentira na tela. Ver TIPO_CRIME_LABEL em types.ts.
 //
 // POR QUE ISTO IMPORTA: o indice do Google tem teto de ~60-70 itens POR QUERY e
 // nao ha parametro que mude isso (medido em 01-02/08 — ver o topo de
@@ -60,8 +67,7 @@ export const ASSUNTOS_CATALOGO: AssuntoCatalogo[] = [
   // ── operacional ──
   { termo: 'polícia', label: 'Operação policial', tipo: 'operacao_policial', categoria: 'operacional', essencial: true },
   { termo: 'tráfico drogas', label: 'Tráfico de drogas', tipo: 'trafico', categoria: 'operacional', essencial: true },
-  { termo: 'manifestação', label: 'Manifestação', tipo: 'manifestacao', categoria: 'operacional' },
-  { termo: 'greve', label: 'Greve', tipo: 'manifestacao', categoria: 'operacional' },
+  { termo: 'greve', label: 'Greve', tipo: 'greve', categoria: 'operacional' },
   { termo: 'bloqueio rodovia', label: 'Bloqueio de via', tipo: 'bloqueio_via', categoria: 'operacional' },
 
   // ── fraude ──

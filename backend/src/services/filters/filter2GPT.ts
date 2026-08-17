@@ -43,6 +43,32 @@ const NATURE_MAP: Record<string, Natureza> = {
 };
 
 /**
+ * Corta a manchete no fim de uma PALAVRA, com reticencias.
+ *
+ * 🚨 Era `substring(0, 70)` cru, e cortava no meio da palavra: em 17/08 o banco
+ * tinha `"...em Florianópoli"` e `"...em Porto Ale"` — exatos 70 caracteres,
+ * sem reticencia, sem aviso. Ficou meses invisivel porque manchete cortada
+ * ainda parece manchete; so apareceu quando ela virou o CORPO do push e passou
+ * a ser a unica coisa na tela de bloqueio.
+ *
+ * O teto continua 70 — o pedido esta no prompt e o modelo as vezes passa. O que
+ * muda e o que fazer quando ele passa.
+ */
+export function cortarNaPalavra(texto: string, teto: number): string {
+  const limpo = texto.trim();
+  if (limpo.length <= teto) return limpo;
+  // -1 para a reticencia caber dentro do teto.
+  const corte = limpo.slice(0, teto - 1);
+  const ultimoEspaco = corte.lastIndexOf(' ');
+  // Palavra unica gigante (nao existe em manchete real): corta onde der.
+  let base = ultimoEspaco > teto * 0.5 ? corte.slice(0, ultimoEspaco) : corte;
+  base = base.replace(/[ ,;:.–—-]+$/, '');
+  // Conector pendurado no fim fica pior que o corte: "...em area de acesso em…".
+  base = base.replace(/ (em|de|do|da|dos|das|no|na|nos|nas|ao|aos|a|o|e|com|por|para|apos|após)$/i, '');
+  return `${base}…`;
+}
+
+/**
  * Corta o resumo no fim de uma FRASE, nunca no meio de uma palavra.
  *
  * O prompt pede 190 caracteres, e o modelo passa às vezes — o mesmo aconteceu
@@ -94,7 +120,7 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
     return { extraction: null, rejectionReason: `confianca=${confidence} (min=${minConfidence})` };
   }
 
-  // tipo_crime: deve ser uma das 15 categorias (ou alias)
+  // tipo_crime: deve ser um dos tipos de TIPO_CRIME_GRUPO (ou alias)
   const mappedType = VALID_TIPOS.has(crimeType) ? crimeType : (TIPO_ALIAS[crimeType] || null);
   if (!mappedType) {
     return { extraction: null, rejectionReason: `tipo_crime_invalido=${crimeType}` };
@@ -152,7 +178,7 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
   // uteis, ~32 caracteres por linha — 70 dao 2.2 linhas e cabem no maxLines: 2
   // do TakeCard, 90 dao 2.8 e estouravam com reticencias. Deixar o codigo mais
   // frouxo que o prompt so servia pra esconder quando o modelo desobedecia.
-  const titulo = headline.length > 0 ? headline.substring(0, 70).trim() : undefined;
+  const titulo = headline.length > 0 ? cortarNaPalavra(headline, 70) : undefined;
 
   return {
     extraction: {
@@ -207,8 +233,8 @@ export async function filter2GPTWithReason(content: string, options: Filter2Opti
   const prompt = `Analyze the following news article and extract structured data as JSON.
 
 RULES:${contextoUsuario}
-1. "is_crime": true for ANY public safety content: police occurrences, crimes, operations, crime statistics, protests, strikes, labor stoppages, road blockades.
-2. "is_crime": false ONLY for: academic essays, opinion editorials, category/tag pages, or content unrelated to public safety.
+1. "is_crime": true ONLY for a CONCRETE public-safety EVENT or its measurement: a crime, a police occurrence, a police operation, crime statistics for the region, a strike or labor stoppage, a road blockade or street interdiction.
+2. "is_crime": false for anything that only TALKS ABOUT public safety without an event having happened — awareness campaigns and commemorative dates (a campaign about violence against women is NOT an occurrence), forums, seminars, lectures, debates and panel discussions, service notices (voting, documents, benefits, protective-order procedures), weather and civil-defence alerts, academic essays, opinion editorials, and category/tag pages.
 3. "nature": "occurrence" for individual events (robbery at store X, murder in neighborhood Y). "statistic" for aggregated data (robberies up 20%, violence index drops).
 4. "date": MUST be the article's PUBLICATION DATE, not dates mentioned in the article body. Look for date in the header, byline, or URL. If unsure, use today's date.
 
@@ -221,8 +247,8 @@ MANDATORY CATEGORIES for "crime_type" (use EXACTLY one):
 - lesao_corporal: assault, fight, attempted murder
 - trafico: drug trafficking, drug seizure
 - operacao_policial: police operation, raid, warrant, arrest, weapon seizure
-- manifestacao: protest, demonstration, riot, strike, labor stoppage
-- bloqueio_via: road blockade, street interdiction
+- greve: strike, labor stoppage, work stoppage, union walkout
+- bloqueio_via: road blockade, street interdiction, protest or demonstration that blocks traffic
 - estelionato: scam, fraud
 - receptacao: receiving stolen goods, chop shop
 - crime_ambiental: environmental crime, pollution
@@ -262,7 +288,7 @@ ${truncated}
 Return ONLY JSON:
 {
   "is_crime": true/false,
-  "crime_type": "one of 15 categories above",
+  "crime_type": "one of the categories above",
   "nature": "occurrence" or "statistic",
   "city": "Municipality where the crime happened (cidade/município)",
   "state": "Brazilian State of that municipality" or null,
