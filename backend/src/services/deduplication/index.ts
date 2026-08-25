@@ -1,19 +1,48 @@
 // ============================================
 // Sistema de Deduplicação - 3 Camadas
 // ============================================
-// Camada 1: Geo-Temporal (SQL, grátis, 70% eliminados)
-// Camada 2: Embedding Similarity (cosine, <200ms, 92% precisão)
-// Camada 3: GPT Confirmation (caro, 98% precisão, só ~5% dos casos)
+// Camada 1: portão geo-temporal (SQL, grátis) — quem sequer é comparado
+// Camada 2: similaridade de embedding (cosine, local, grátis) — ordena candidatos
+// Camada 3: confirmação por GPT (paga) — quem decide
+//
+// 🚨 **A regra que atravessa as três, e que custou duas rodadas de conserto para
+// ser aprendida: NÃO USAR COMO PORTÃO O QUE O PRÓPRIO GPT INVENTOU.**
+//
+// O Filter2 extrai `tipo_crime`, `data_ocorrencia` e `bairro`. Usar qualquer um
+// deles como igualdade na camada 1 é circular: a duplicata nasce exatamente
+// quando o GPT é inconsistente, que é exatamente quando o portão fecha. Foi
+// assim com a data (17/08) e com o tipo (24/08). Sobrou `cidade` + janela — ver
+// `findGeoTemporalCandidates`.
 
 import { openai } from '../openaiClient';
 import { config } from '../../config';
 import { logger } from '../../middleware/logger';
 import { db } from '../../database/queries';
+import type { DedupCandidate } from '../../database/queries';
 import { cosineSimilarity } from '../../utils/helpers';
-import { NewsExtraction } from '../../utils/types';
+import { NewsExtraction, TipoCrime, TIPO_CRIME_GRUPO, rotuloTipoCrime } from '../../utils/types';
+import { buildEmbeddingText, embeddingProvider } from '../../jobs/pipeline/pipelineCore';
+import { cortarNaPalavra, cortarNaFrase } from '../filters/filter2GPT';
 
-
+/**
+ * ⚠️ Nome enganoso, mantido por compatibilidade: **este valor não é o que roda.**
+ * Quem manda é o `dedup_similarity_threshold` do painel, que em 24/08 estava em
+ * **0.70**. Em 17/08 eu raciocinei com o 0.85 daqui e cheguei à conclusão errada
+ * sobre qual camada tinha deixado uma duplicata passar. Conferir no banco antes
+ * de usar este número para qualquer coisa.
+ */
 const DEFAULT_SIMILARITY_THRESHOLD = 0.85;
+
+/**
+ * Quantos candidatos acima do limiar chegam a ser perguntados ao GPT.
+ *
+ * 🚨 Era **1** — só o `topMatch`. Com a camada 1 filtrando por tipo, o pool era
+ * pequeno e isso raramente doía; agora que o pool cresceu, o campeão do cosine
+ * pode ser um quase-acerto enquanto a duplicata de verdade está em segundo. Três
+ * é o suficiente para cobrir os clusters medidos (o maior tem 4 linhas) sem virar
+ * uma conta de GPT por rodada.
+ */
+const MAX_CANDIDATOS_AO_GPT = 3;
 
 export interface DedupResult {
   isDuplicate: boolean;
@@ -26,8 +55,9 @@ export interface DedupResult {
  * Verifica se uma notícia é duplicata usando 3 camadas progressivas.
  * Mais barato primeiro, mais preciso por último.
  *
- * Se for duplicata, TODAS as URLs extras do cluster intra-batch também viram sources
- * da notícia existente (evita perda de agregação de veículos quando um crime ja estava no DB).
+ * Se for duplicata: as URLs extras do cluster intra-batch também viram sources da
+ * notícia existente, **e o texto da linha sobrevivente é consolidado** — ver
+ * `consolidarFusao`.
  */
 export async function deduplicateNews(
   newsData: NewsExtraction & { embedding: number[] },
@@ -35,106 +65,155 @@ export async function deduplicateNews(
   similarityThreshold: number = DEFAULT_SIMILARITY_THRESHOLD,
   extraSourceUrls: string[] = [],
 ): Promise<DedupResult> {
-  // CAMADA 1: Busca Geo-Temporal (SQL, instantâneo, grátis)
+  const euSou = `"${newsData.titulo ?? newsData.resumo.slice(0, 50)}"`;
+
+  // CAMADA 1: portão geo-temporal (SQL, instantâneo, grátis)
   const candidates = await db.findGeoTemporalCandidates(
     newsData.cidade,
-    newsData.tipo_crime,
     newsData.data_ocorrencia,
     newsData.estado,
-    newsData.bairro,
   );
 
   if (candidates.length === 0) {
-    logger.debug('[Dedup] Layer 1: no candidates → new');
+    logger.info(`[Dedup] ${euSou} → NOVA (camada 1: nenhum candidato na cidade/janela)`);
     return { isDuplicate: false, layer: 1, tokensUsed: 0 };
   }
 
-  logger.debug(`[Dedup] Layer 1: ${candidates.length} candidates found`);
-
-  // CAMADA 2: Embedding Similarity (cosine distance, <200ms)
-  const validCandidates = candidates.filter(c => Array.isArray(c.embedding) && c.embedding.length === 1536);
+  // CAMADA 2: similaridade de embedding (cosine, local)
+  const validCandidates = candidates.filter(
+    (c) => Array.isArray(c.embedding) && c.embedding.length === 1536,
+  );
   if (validCandidates.length === 0) {
-    logger.debug('[Dedup] Layer 2: no candidates with valid embeddings → new');
+    logger.info(`[Dedup] ${euSou} → NOVA (camada 2: ${candidates.length} candidatos, nenhum com embedding válido)`);
     return { isDuplicate: false, layer: 2, tokensUsed: 0 };
   }
 
-  const similarities = validCandidates.map((c) => ({
-    id: c.id,
-    resumo: c.resumo,
-    score: cosineSimilarity(newsData.embedding, c.embedding),
-  }));
+  const ranking = validCandidates
+    .map((c) => ({ candidato: c, score: cosineSimilarity(newsData.embedding, c.embedding) }))
+    .sort((a, b) => b.score - a.score);
 
-  similarities.sort((a, b) => b.score - a.score);
-  const topMatch = similarities[0];
+  const acimaDoLimiar = ranking.filter((r) => r.score >= similarityThreshold);
 
-  logger.debug(`[Dedup] Top similarity score: ${topMatch.score.toFixed(3)}`);
-
-  if (topMatch.score < similarityThreshold) {
-    logger.debug(`[Dedup] Layer 2: score ${topMatch.score.toFixed(3)} < ${similarityThreshold} → new`);
+  if (acimaDoLimiar.length === 0) {
+    logger.info(
+      `[Dedup] ${euSou} → NOVA (camada 2: melhor score ${ranking[0].score.toFixed(3)} < ${similarityThreshold}, ` +
+        `entre ${validCandidates.length} candidatos)`,
+    );
     return { isDuplicate: false, layer: 2, tokensUsed: 0 };
   }
 
-  // CAMADA 3: Confirmação GPT (caro, mas só ~5% dos casos chegam aqui)
-  logger.debug('[Dedup] High similarity, confirming with GPT...');
-  const { isDupe, tokensUsed } = await confirmDuplicateWithGPT(newsData.resumo, topMatch.resumo);
+  // CAMADA 3: confirmação por GPT — até MAX_CANDIDATOS_AO_GPT, do melhor pro pior
+  const aPerguntar = acimaDoLimiar.slice(0, MAX_CANDIDATOS_AO_GPT);
+  let tokensTotal = 0;
 
-  if (isDupe) {
-    // Adicionar URL principal + extras do cluster intra-batch como fontes alternativas
-    await db.insertNewsSource(topMatch.id, sourceUrl);
-    for (const extraUrl of extraSourceUrls) {
-      await db.insertNewsSource(topMatch.id, extraUrl);
+  for (const { candidato, score } of aPerguntar) {
+    const { isDupe, tokensUsed } = await confirmDuplicateWithGPT(
+      { titulo: newsData.titulo ?? null, resumo: newsData.resumo },
+      { titulo: candidato.titulo, resumo: candidato.resumo },
+    );
+    tokensTotal += tokensUsed;
+
+    if (!isDupe) {
+      logger.debug(
+        `[Dedup] ${euSou} ≠ "${candidato.titulo}" (score ${score.toFixed(3)}, GPT disse NO)`,
+      );
+      continue;
     }
-    logger.info(`[Dedup] Duplicate confirmed (score=${topMatch.score.toFixed(3)}), ${1 + extraSourceUrls.length} source(s) added to ${topMatch.id} (${tokensUsed} tokens)`);
-    return { isDuplicate: true, existingId: topMatch.id, layer: 3, tokensUsed };
+
+    await db.insertNewsSource(candidato.id, sourceUrl);
+    for (const extraUrl of extraSourceUrls) {
+      await db.insertNewsSource(candidato.id, extraUrl);
+    }
+
+    const tokensFusao = await consolidarFusao(candidato, newsData);
+    tokensTotal += tokensFusao;
+
+    logger.info(
+      `[Dedup] ${euSou} → FUNDIDA em ${candidato.id} "${candidato.titulo}" ` +
+        `(score ${score.toFixed(3)}, ${1 + extraSourceUrls.length} fonte(s), ${tokensTotal} tokens)`,
+    );
+    return { isDuplicate: true, existingId: candidato.id, layer: 3, tokensUsed: tokensTotal };
   }
 
-  logger.debug('[Dedup] Layer 3: GPT says different → new');
-  return { isDuplicate: false, layer: 3, tokensUsed };
+  logger.info(
+    `[Dedup] ${euSou} → NOVA (camada 3: GPT disse NO para ${aPerguntar.length} candidato(s), ` +
+      `melhor score ${aPerguntar[0].score.toFixed(3)})`,
+  );
+  return { isDuplicate: false, layer: 3, tokensUsed: tokensTotal };
+}
+
+// ============================================
+// Camada 3 — a única que decide
+// ============================================
+
+export interface LadoDaComparacao {
+  titulo: string | null;
+  resumo: string;
 }
 
 /**
- * Confirmação via GPT: compara dois resumos para determinar se descrevem o mesmo evento.
- * Só chamada quando cosine similarity >= 0.85 (~5% dos casos).
+ * Compara dois relatos e responde se são o MESMO caso.
  *
- * Nota: o prompt foi validado com script `scripts/test-dedup-prompt.ts` (10 pares, 9/10
- * acertos incluindo borderlines). Tentativa de reescrita com viés "quando em duvida, NO"
- * regrediu em casos YES claros (veiculos diferentes cobrindo mesmo evento). Revertido.
+ * Validado com `scripts/test-dedup-prompt.ts` e com o gabarito de produção em
+ * `scripts/dedup-casos-reais.ts` — 15 pares reais, rotulados à mão.
  *
- * 🚨 **A versão atual veio da `main`** (`add0967`, produção) e a `staging` tinha
- * ficado com a anterior — a lista de "Consider duplicate if" com `Location, date
- * and crime type are identical`. Aquele `identical` é o defeito: dois veículos
- * cobrindo o MESMO caso por ângulos diferentes ("corpo encontrado" e "suspeito
- * preso") nunca batem literalmente, o GPT respondia NO e a mesma ocorrência
- * aparecia duas vezes no feed. A regra passou a ser o **evento central**, com a
- * nota sobre ângulos escrita no prompt.
+ * 🚨 **O prompt já foi SENSÍVEL À ORDEM, e isso deixava duplicata passar.**
+ * Medido em 17/08 com o par real `Operação Olimpo` (cosine 0.8343):
+ * `(antigo, novo)` deu **YES 5/5** e `(novo, antigo)` deu **NO 5/5** —
+ * determinístico, temperature 0. O código chama sempre `(nova, existente)`, e a
+ * nova costuma ser a mais detalhada porque é o follow-up: o modelo lia "detalhe
+ * que só um tem" como fato divergente. As notas de assimetria e de simetria
+ * levaram o mesmo par a YES 10/10 nos dois sentidos.
  *
- * 🚨 **O prompt era SENSÍVEL À ORDEM, e isso deixava duplicata passar.** Medido
- * em 17/08 com o par real que entrou duas vezes no feed (`Operação Olimpo`,
- * cosine 0.8343): `(resumo antigo, resumo novo)` deu **YES 5/5**, e
- * `(resumo novo, resumo antigo)` deu **NO 5/5** — determinístico, temperature 0.
- * O código chama sempre `(nova, existente)`, e a nova costuma ser a MAIS
- * detalhada porque é o follow-up: o modelo lia "detalhe que só um tem" como
- * fato divergente. As duas notas novas (assimetria de detalhe + simetria da
- * pergunta) levaram o mesmo par a **YES 10/10 nas duas ordens**.
+ * ⚠️ **Quem mexer aqui: teste NAS DUAS ORDENS.** Um prompt que acerta num sentido
+ * e erra no outro passa em qualquer bateria que só teste um lado — foi o que
+ * aconteceu com os 10 pares validados em 04/16.
  *
- * ⚠️ Quem mexer aqui: teste **nas duas ordens**. Um prompt que acerta num
- * sentido e erra no outro passa em qualquer bateria que só teste um lado.
+ * 🚨 **A manchete entra na comparação desde 24/08.** Até então só os resumos eram
+ * comparados, e a identidade do fato mora frequentemente no título — o nome da
+ * operação, o bairro, a vítima.
  */
-async function confirmDuplicateWithGPT(resumo1: string, resumo2: string): Promise<{ isDupe: boolean; tokensUsed: number }> {
-  const prompt = `Do these two news summaries describe the SAME criminal incident?
+async function confirmDuplicateWithGPT(
+  a: LadoDaComparacao,
+  b: LadoDaComparacao,
+): Promise<{ isDupe: boolean; tokensUsed: number }> {
+  const prompt = `Do these two news reports describe the SAME incident?
 
-Summary 1: "${resumo1}"
-Summary 2: "${resumo2}"
+REPORT 1:
+headline: "${a.titulo ?? ''}"
+summary: "${a.resumo}"
 
-They describe the SAME incident if the core event matches: same approximate location, same time frame, same type of crime, and details do not contradict each other.
+REPORT 2:
+headline: "${b.titulo ?? ''}"
+summary: "${b.resumo}"
 
-They are DIFFERENT incidents if they clearly involve different victims/locations or contradictory facts.
+They describe the SAME incident if the core event matches: same approximate location, same time frame, same case, and details do not contradict each other.
 
-Note: articles may cover different angles of the same event (victim found vs suspect arrested, early report vs follow-up) — these still count as the SAME incident.
+IDENTITY ANCHORS — these identify a case:
+- 🔒 DECISIVE: both reports naming the SAME police operation ("Operação Boreal", "Operação Ad Extremum"). A named operation is a unique identifier. When both name the same one, answer YES — no other difference outweighs it.
+- 🔒 DECISIVE: both reports pointing at the SAME underlying crime — the same massacre with the same number of dead, the same robbery investigation, the same victim. This holds even when only ONE of them names the operation: an operation and the crime it investigates are one case.
+- strong: the victim's name, age or description; the neighborhood or address
 
-Note: one summary is often MORE DETAILED than the other (naming the victim, the neighborhood, the operation). Detail present in only one summary is NOT a contradiction and NOT evidence of a different incident. Judge only on facts that CONFLICT.
+🚨 IGNORE THESE ENTIRELY when judging. They are not evidence in either direction, and reading them as "different" is the single most common mistake here:
+- **the number of people arrested, detained, charged or denounced.** One outlet says eight, another says seven, and the figure changes during the day. This number carries NO information about whether the case is the same. Do not let it produce a NO.
+- the amount seized, the estimated loss, the number of warrants
+- which police force is credited
+- one report naming the operation and the other not
+- one summary being MORE DETAILED than the other. Detail present in only one side is not a contradiction. Judge only on facts that CONFLICT.
 
-The question is symmetric: the answer must not depend on which summary is listed first.
+IS a contradiction — these mean DIFFERENT incidents:
+- different victims
+- a different neighborhood or address
+- a genuinely different event (two separate crashes, two separate blockades on the same road)
+
+SAME CASE, DIFFERENT MOMENTS — still the SAME incident, but ONLY when an identity anchor ties them to one another:
+- articles covering different angles (victim found vs suspect arrested, early report vs follow-up)
+- the crime and the police operation that later arrests the suspects FOR THAT crime
+- an investigation update about a crime already reported
+
+⚠️ This does NOT make every related police activity one case. Two separate police actions in the same city — a raid and a shootout, an operation and an arrest — are DIFFERENT incidents unless an anchor above ties them to the same underlying event. Sharing a crime type and a city is not an anchor.
+
+The question is symmetric: the answer must not depend on which report is listed first.
 
 Answer ONLY "YES" or "NO":`;
 
@@ -161,3 +240,176 @@ export { confirmDuplicateWithGPT };
 
 // Export para testes (nome antigo, mantido pra nao quebrar scripts)
 export { confirmDuplicateWithGPT as _confirmDuplicateWithGPT };
+
+// ============================================
+// Fusão: consolidar, e não descartar
+// ============================================
+
+export interface TextoConsolidado {
+  titulo: string;
+  resumo: string;
+  tipo_crime: TipoCrime;
+  /** `false` = o relato novo não acrescentou nada; nada foi regravado. */
+  mudou: boolean;
+  tokensUsed: number;
+}
+
+/**
+ * Reescreve a linha sobrevivente cobrindo os dois relatos, e regrava o vetor.
+ *
+ * 🚨 **Existe porque fundir estava JOGANDO FORA informação.** Até 24/08 a fusão
+ * só adicionava a URL: a manchete e o resumo do relato novo eram descartados. Com
+ * a camada 1 alargada, fundir virou rotina — e sem isto a linha que sobrevive
+ * seria sempre a primeira. O caso real que decidiu: a morte de uma menina de 4
+ * anos em Porto Alegre e a prisão do tio são o mesmo caso, e sem consolidar o
+ * feed mostraria para sempre *"Menina de 4 anos é morta após maus-tratos"*, com a
+ * prisão virando uma URL que ninguém vê.
+ *
+ * ⚠️ **Falha aqui NÃO desfaz a fusão.** As fontes já foram somadas quando esta
+ * função é chamada; se o GPT ou o embedding falharem, a linha fica com o texto
+ * antigo — que é exatamente o comportamento de antes, e não uma regressão. Erro
+ * de rede não pode virar notícia duplicada.
+ *
+ * Devolve os tokens gastos (0 quando nada mudou ou quando degradou).
+ */
+async function consolidarFusao(
+  existente: DedupCandidate,
+  nova: NewsExtraction,
+): Promise<number> {
+  let consolidado: TextoConsolidado;
+  try {
+    consolidado = await reescreverNaFusao(existente, nova);
+  } catch (err) {
+    logger.error(`[Dedup] Consolidação falhou para ${existente.id}, texto antigo mantido: ${(err as Error).message}`);
+    return 0;
+  }
+
+  if (!consolidado.mudou) {
+    logger.debug(`[Dedup] ${existente.id}: relato novo não acrescenta, texto preservado`);
+    return consolidado.tokensUsed;
+  }
+
+  try {
+    // 🚨 MESMA formula do pipeline. O vetor e derivado do texto: regravar um sem
+    // o outro faz os dois deixarem de corresponder, e a degradacao e silenciosa.
+    const { embedding } = await embeddingProvider.generate(
+      buildEmbeddingText({
+        tipo_crime: consolidado.tipo_crime,
+        estado: existente.estado || undefined,
+        cidade: existente.cidade,
+        bairro: existente.bairro || undefined,
+        data_ocorrencia: existente.data_ocorrencia,
+        resumo: consolidado.resumo,
+      }),
+    );
+
+    await db.atualizarNoticiaFundida(existente.id, {
+      titulo: consolidado.titulo,
+      resumo: consolidado.resumo,
+      tipo_crime: consolidado.tipo_crime,
+      categoria_grupo: TIPO_CRIME_GRUPO[consolidado.tipo_crime],
+      embedding,
+    });
+
+    const virouOutro = consolidado.tipo_crime !== existente.tipo_crime;
+    logger.info(
+      `[Dedup] ${existente.id} consolidada: "${consolidado.titulo}"` +
+        (virouOutro
+          ? ` · tipo ${rotuloTipoCrime(existente.tipo_crime)} → ${rotuloTipoCrime(consolidado.tipo_crime)}`
+          : ''),
+    );
+  } catch (err) {
+    logger.error(`[Dedup] Gravação da consolidação falhou para ${existente.id}: ${(err as Error).message}`);
+  }
+
+  return consolidado.tokensUsed;
+}
+
+/**
+ * A chamada de GPT que funde os dois textos. Separada de `consolidarFusao` para
+ * poder ser rodada a seco (sem gravar) pelos scripts de verificação.
+ *
+ * As regras de manchete e resumo são as MESMAS do Filter2, de propósito — se
+ * divergissem, o feed teria dois estilos de texto dependendo de a notícia ter
+ * sido fundida ou não.
+ */
+export async function reescreverNaFusao(
+  existente: { titulo: string | null; resumo: string; tipo_crime: string },
+  nova: { titulo?: string; resumo: string; tipo_crime: string },
+): Promise<TextoConsolidado> {
+  const tipoExistente = existente.tipo_crime as TipoCrime;
+
+  const prompt = `Two news reports describe the SAME incident. Produce the consolidated version that replaces the published one.
+
+PUBLISHED (currently in the feed):
+headline: "${existente.titulo ?? ''}"
+summary: "${existente.resumo}"
+crime_type: ${existente.tipo_crime}
+
+NEW REPORT:
+headline: "${nova.titulo ?? ''}"
+summary: "${nova.resumo}"
+crime_type: ${nova.tipo_crime}
+
+RULES:
+1. "changed": false when the NEW REPORT adds nothing the PUBLISHED one does not already convey. This is the common case — do not rewrite for style. When false, repeat the published headline and summary verbatim.
+2. "changed": true only when the new report brings something the published one lacks: an arrest, a death or other outcome, a named police operation, a figure, a location detail, a charge.
+3. 🚨 The result is a UNION, not a replacement. Every concrete fact present in EITHER report must survive: people killed, people injured, what was seized, the named operation, the charge, the outcome. Dropping a fact that one side had is a FAILURE, even when the other side reads better. An arrest that followed a crime belongs in the result; the crime is not erased by the arrest.
+3b. When space forces a choice, keep facts in this order: (a) victims — killed, injured; (b) what happened and where; (c) the outcome — arrests, charges; (d) the operation name; (e) amounts seized or lost.
+3c. When a FIGURE differs between the two reports (seven arrested vs eight), keep the PUBLISHED report's figure. You cannot tell which outlet is right, and silently adopting the other rewrites history on every merge.
+4. "crime_type": the type that describes the case NOW, from this list: ${Object.keys(TIPO_CRIME_GRUPO).join(', ')}. If an assault became a homicide, return homicidio. Keep the published type when nothing changed the nature of the case.
+5. "headline": Brazilian Portuguese, at most 70 characters. Journalistic present tense ("Homem é preso após...", not "Homem foi preso"). Sober: no ALL CAPS, no exclamation marks, no value judgments, no victim or suspect full names, no gore.
+6. "summary": Brazilian Portuguese, at most 190 characters, COMPLEMENTARY to the headline and never a paraphrase of it. The reader has already read the headline; every clause must add something it could not fit.
+
+Return ONLY this JSON:
+{"changed": true|false, "headline": "...", "summary": "...", "crime_type": "..."}`;
+
+  const response = await openai.chat.completions.create({
+    model: config.openaiModel,
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 300,
+    temperature: 0,
+    response_format: { type: 'json_object' },
+  });
+
+  const tokensUsed = response.usage?.total_tokens || 0;
+  const bruto = response.choices[0].message.content ?? '{}';
+  const data = JSON.parse(bruto) as {
+    changed?: boolean;
+    headline?: string;
+    summary?: string;
+    crime_type?: string;
+  };
+
+  const semMudanca: TextoConsolidado = {
+    titulo: existente.titulo ?? '',
+    resumo: existente.resumo,
+    tipo_crime: tipoExistente,
+    mudou: false,
+    tokensUsed,
+  };
+
+  if (data.changed !== true) return semMudanca;
+
+  const titulo = (data.headline ?? '').trim();
+  const resumo = (data.summary ?? '').trim();
+  // Texto vazio nao substitui texto bom — degrada pra "nao mudou".
+  if (titulo.length === 0 || resumo.length === 0) {
+    logger.warn('[Dedup] Consolidação devolveu texto vazio; mantendo o publicado');
+    return semMudanca;
+  }
+
+  // Tipo desconhecido nao vira `outros` calado: mantem o que estava.
+  const tipoNovo = (data.crime_type ?? '').trim();
+  const tipoValido = Object.prototype.hasOwnProperty.call(TIPO_CRIME_GRUPO, tipoNovo)
+    ? (tipoNovo as TipoCrime)
+    : tipoExistente;
+
+  return {
+    titulo: cortarNaPalavra(titulo, 70),
+    resumo: cortarNaFrase(resumo, 190),
+    tipo_crime: tipoValido,
+    mudou: true,
+    tokensUsed,
+  };
+}

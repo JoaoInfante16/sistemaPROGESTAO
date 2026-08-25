@@ -120,8 +120,13 @@ export async function runIntraBatchDedupLayered(
       // Camada 3 — GPT so na faixa duvidosa, e so se estiver ligada
       if (gptConfirmEnabled && score < BANDA_CONFIANTE) {
         try {
+          // A manchete vai junto desde 24/08 — e nela que mora a identidade do
+          // fato (nome da operacao, bairro, vitima). Ver o prompt da camada 3.
           const r = await rateLimiter.schedule('openai', () =>
-            confirmDuplicateWithGPT(extractions[i].resumo, extractions[j].resumo)
+            confirmDuplicateWithGPT(
+              { titulo: extractions[i].titulo ?? null, resumo: extractions[i].resumo },
+              { titulo: extractions[j].titulo ?? null, resumo: extractions[j].resumo },
+            )
           );
           tokensUsed += r.tokensUsed;
           if (!r.isDupe) {

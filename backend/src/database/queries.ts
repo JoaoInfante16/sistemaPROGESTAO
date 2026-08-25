@@ -106,6 +106,55 @@ export async function insertNewsSource(newsId: string, url: string, sourceName?:
   }
 }
 
+export interface FusaoParams {
+  titulo: string;
+  resumo: string;
+  tipo_crime: string;
+  categoria_grupo: string;
+  embedding: number[];
+}
+
+/**
+ * Reescreve a linha que sobreviveu a uma fusão de duplicatas.
+ *
+ * 🚨 **Existe porque fundir estava DESCARTANDO informação.** Até 24/08 a fusão
+ * chamava só `insertNewsSource`: guardava a URL do relato novo e jogava fora a
+ * manchete e o resumo dele. Com o feed antigo isso quase não aparecia; depois
+ * que a camada 1 parou de filtrar por `tipo_crime`, fundir virou rotina — e a
+ * linha sobrevivente seria sempre a PRIMEIRA. Na prática: *"Menina de 4 anos é
+ * morta após maus-tratos"* ficaria no feed para sempre e a prisão do tio viraria
+ * uma URL que ninguém vê. Consertar a detecção sem isto pioraria o produto.
+ *
+ * ⚠️ **`tipo_crime` também muda, e isso não é detalhe.** Se a agressão virou
+ * homicídio, a linha tem que virar homicídio: `getCrimeSummary` conta por tipo,
+ * e manter `lesao_corporal` subnotifica um homicídio no relatório que chega ao
+ * cliente.
+ *
+ * 🚨 **O `embedding` é obrigatório aqui.** Ele é gerado A PARTIR do texto; trocar
+ * o resumo sem regravar o vetor faz os dois deixarem de corresponder, e as
+ * comparações futuras degradam **em silêncio** — o modo de falha mais caro que
+ * este projeto já teve. Quem chamar tem que regerar com a MESMA fórmula
+ * (`textoParaEmbedding` em `pipelineCore.ts`), nunca uma variação.
+ *
+ * `data_ocorrencia` NÃO entra: o fato aconteceu quando aconteceu.
+ */
+export async function atualizarNoticiaFundida(id: string, params: FusaoParams): Promise<void> {
+  const { error } = await supabase
+    .from('news')
+    .update({
+      titulo: params.titulo,
+      resumo: params.resumo,
+      tipo_crime: params.tipo_crime,
+      categoria_grupo: params.categoria_grupo,
+      embedding: params.embedding,
+    })
+    .eq('id', id);
+
+  if (error) {
+    throw new Error(`Failed to update merged news ${id}: ${error.message}`);
+  }
+}
+
 /**
  * Quais destas URLs já viraram notícia salva. Serve pro auto-scan não pagar
  * Jina + GPT de novo pelo mesmo artigo a cada rodada: ele roda de hora em hora
@@ -146,6 +195,23 @@ export interface DedupCandidate {
   id: string;
   resumo: string;
   embedding: number[];
+  /**
+   * A manchete. Entra porque a camada 3 passou a compará-la junto com o resumo:
+   * é nela que mora a identidade do fato ("Operação Ad Extremum", o bairro, a
+   * vítima), e até 24/08 ela era simplesmente ignorada pelo dedup.
+   */
+  titulo: string | null;
+  /** Necessário na fusão: se a agressão virou homicídio, a linha tem que virar. */
+  tipo_crime: string;
+  /**
+   * Metadata da linha que SOBREVIVE. Vem junto porque `buildEmbeddingText` a
+   * exige para regerar o vetor na fusão — e o vetor tem que ser reconstruído
+   * com os dados de quem fica, não de quem chegou.
+   */
+  cidade: string;
+  estado: string | null;
+  bairro: string | null;
+  data_ocorrencia: string;
 }
 
 /**
@@ -168,25 +234,52 @@ export interface DedupCandidate {
  */
 const DEDUP_JANELA_DIAS = 3;
 
+/**
+ * A camada 1 do dedup: quem sequer é COMPARADO com a notícia que chegou.
+ *
+ * 🚨 **É um portão, não um veredito** — quem ela não devolve, ninguém mais
+ * examina. Por isso ela filtra só pelo que é confiável, e deixa o resto para as
+ * camadas 2 e 3, que sabem julgar.
+ *
+ * ⚠️ **Até 24/08 ela filtrava também por `tipo_crime` e por `bairro`, e isso era
+ * circular:** os dois campos são inventados pelo GPT no Filter2, e a duplicata
+ * nasce justamente quando o GPT é inconsistente. Ou seja, o portão fechava
+ * exatamente nos casos que ele deveria pegar. Medido em 24/08 — **5 dos 7
+ * clusters de repetição do feed** morriam aqui:
+ *
+ *   "Carro invade loja em Palhoça e causa prejuízo de R$50 mil"   -> vandalismo
+ *   "Carro invade loja de bebidas em Palhoça e motorista é preso" -> invasao
+ *   (mesmo carro, mesma loja, mesmo dia, cosine 0.9513, nunca comparados)
+ *
+ * O par mais constrangedor diferia em UMA LETRA no título (`roubos`/`roubo`) e
+ * caiu em `operacao_policial` contra `roubo_furto`.
+ *
+ * A mesma doença já tinha aparecido em 17/08 no `data_ocorrencia` — ver
+ * `DEDUP_JANELA_DIAS` acima. Lá foi tratada alargando a janela; aqui não dá para
+ * "alargar" uma igualdade de string, então o filtro sai.
+ *
+ * **Sobra `cidade` + `estado` + janela de data.** Cidade resiste porque é
+ * pós-filtrada contra a localização monitorada: em 24/08 o banco inteiro tinha
+ * cinco valores, todos municípios reais. O caso em que ela falha — fato de
+ * alcance estadual pendurado na cidade que disparou a query — é conhecido,
+ * aceito e está no ROADMAP.
+ *
+ * Custo de alargar: ~20-30 candidatos em vez de ~4, no volume de 2026-08. Cosine
+ * é local e grátis, e só o topo vai ao GPT.
+ */
 export async function findGeoTemporalCandidates(
   cidade: string,
-  tipoCrime: string,
   dataOcorrencia: string,
   estado?: string | null,
-  bairro?: string | null,
 ): Promise<DedupCandidate[]> {
-  // Buscar candidatos: mesma cidade + (mesmo estado) + (mesmo bairro ou algum NULL) + mesmo tipo + a janela acima
-  // Bairro: tolerante a NULL — se ambos têm bairro e diferem, filtra. Se um for NULL, deixa passar
-  // pra camadas 2/3 decidirem (evita falso negativo de eventos com bairro ausente).
   const date = new Date(dataOcorrencia);
   const dateFrom = new Date(date.getTime() - DEDUP_JANELA_DIAS * 86400000).toISOString().split('T')[0];
   const dateTo = new Date(date.getTime() + DEDUP_JANELA_DIAS * 86400000).toISOString().split('T')[0];
 
   let query = supabase
     .from('news')
-    .select('id, resumo, embedding')
+    .select('id, titulo, resumo, tipo_crime, cidade, estado, bairro, data_ocorrencia, embedding')
     .eq('cidade', cidade)
-    .eq('tipo_crime', tipoCrime)
     .gte('data_ocorrencia', dateFrom)
     .lte('data_ocorrencia', dateTo)
     .eq('active', true)
@@ -194,11 +287,6 @@ export async function findGeoTemporalCandidates(
 
   if (estado) {
     query = query.eq('estado', estado);
-  }
-
-  if (bairro && bairro.trim().length > 0) {
-    // Aceita: mesmo bairro OU bairro NULL no DB (tolerante)
-    query = query.or(`bairro.eq.${bairro},bairro.is.null`);
   }
 
   const { data, error } = await query;
@@ -1390,6 +1478,7 @@ export const db = {
   updateLocationLastCheck,
   insertNews,
   insertNewsSource,
+  atualizarNoticiaFundida,
   findKnownSourceUrls,
   findGeoTemporalCandidates,
   insertOperationLog,

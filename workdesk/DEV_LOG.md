@@ -278,6 +278,145 @@ de $100.
 
 ---
 
+## 2026-08-24 — o dedup parou de usar como portão o que o próprio GPT inventou
+
+Uma semana depois do conserto de 17/08 o João disse *"tá duplicando muito"*. E
+estava: **~17% do feed era repetição** — 7 clusters, ~10 linhas excedentes nas 59
+notícias que entraram desde o deploy.
+
+⚠️ **O conserto de 17/08 funcionou no que mirava:** zero manchete idêntica
+repetida desde então (as duas que existem são de 17/08, pré-deploy). O que
+sobrou é a mesma ocorrência entrando com manchete **diferente**.
+
+🚨 **Por que era prioridade e não cosmética:** `getCrimeSummary` monta
+`byCrimeType` **contando linhas**. As três cópias do carro que invadiu uma loja em
+Palhoça viravam **três ocorrências** na estatística, espalhadas em `vandalismo`,
+`invasao` e `outros`. Número errado num documento que chega ao cliente do cliente.
+Argumento do João, e é o certo: *"se repetir, corrompe o relatório; se sumir,
+reduz a qualidade dele"*.
+
+### A doença, em uma frase
+
+**O pipeline extraía `tipo_crime`, `data_ocorrencia` e `bairro` com o GPT, e
+usava esses mesmos campos como PORTÃO de igualdade para achar duplicata.**
+
+É circular: a duplicata nasce exatamente quando o GPT é inconsistente, que é
+exatamente quando o portão fecha. Em 17/08 isso apareceu na **data** e foi tratado
+alargando a janela — sem que ninguém percebesse que era um caso particular de uma
+doença maior. Em 24/08 apareceu no **tipo**, e aí não dá para "alargar" uma
+igualdade de string.
+
+**5 dos 7 clusters morriam na camada 1.** O par mais constrangedor diferia em
+**uma letra** no título:
+
+```
+"Seis pessoas são presas em operação contra roubos de veículos"  -> operacao_policial
+"Seis pessoas são presas em operação contra roubo de veículos"   -> roubo_furto
+```
+
+Sobraram no portão `cidade` + `estado` + janela de 3 dias. Cidade resiste porque é
+pós-filtrada contra a localização monitorada — conferido, o banco inteiro tem
+cinco valores e todos são municípios reais.
+
+### O segundo modo: contagem lida como contradição
+
+Dois clusters chegavam à camada 3 e o GPT reprovava:
+
+```
+"Operação Boreal ... seis suspeitos"  x  "Operação Boreal ... cinco prisões"  -> NO
+"chacina ... prendeu oito"            x  "operação Ad Extremum ... sete"      -> NO
+```
+
+O nome da operação aparecia **por extenso nos dois resumos** e o modelo separava
+mesmo assim, porque 6≠5 lê como fato contraditório. Veículos contam presos de
+forma diferente, e o número muda ao longo do dia.
+
+### 🚨 O que finalmente resolveu, depois de duas tentativas erradas
+
+Registrado porque o caminho torto é a parte cara:
+
+1. **"âncora de identidade é evidência forte"** → não bastou. O modelo via
+   "Operação Boreal" nos dois lados e ainda dizia NO.
+2. **"isto não faz de toda atividade policial um caso só"** → consertou um
+   `DIFERENTE` e **quebrou** um `IGUAL` que já passava. Whack-a-mole de prompt.
+3. ✅ **O que funcionou foi parar de "tolerar" e mandar IGNORAR:** a contagem de
+   presos deixou de ser "não é contradição" e passou a ser *"não é evidência em
+   direção nenhuma; não deixe isso produzir um NO"*. Junto, o nome da operação
+   virou **decisivo**, não indício.
+
+Resultado: **13/14 e zero assimetria** — todos os pares concordam nas duas ordens.
+
+⚠️ Regra que sai daqui: *tolerar* um sinal ruim não impede o modelo de usá-lo.
+Sinal que não deve pesar precisa ser proibido, não permitido com ressalva.
+
+### A fusão passou a consolidar, e isso nasceu de um defeito que o conserto ia AGRAVAR
+
+Fundir chamava só `insertNewsSource`: guardava a URL e **jogava fora a manchete e
+o resumo novos**. Com o feed antigo isso era raro; com a camada 1 alargada, fundir
+virou rotina — e a linha sobrevivente seria sempre a **primeira**.
+
+Na prática: *"Menina de 4 anos é morta após maus-tratos"* ficaria no feed para
+sempre e a prisão do tio viraria uma URL invisível. **Consertar a detecção sem
+consertar a fusão pioraria o produto.** Decisão do João: um GPT reescreve os dois
+relatos num só, e o `tipo_crime` consolida junto (agressão que virou homicídio tem
+que virar homicídio, senão o relatório subnotifica).
+
+🚨 **A primeira versão da reescrita PERDEU informação, e só apareceu no segundo
+caso testado:**
+
+```
+A: "...chacina que deixou quatro mortos E QUATRO FERIDOS... desmantelar facções"
+B: "...operação Ad Extremum... sete suspeitos... quatro mortos"
+consolidado: "...Ad Extremum... sete pessoas... quatro mortos"   <- feridos sumiram
+```
+
+Ela **adotou o relato novo** em vez de unir. O conserto foi mandar explicitamente
+que o resultado é **união**: todo fato concreto presente em qualquer um dos lados
+sobrevive, com ordem de prioridade quando o teto de 190 aperta (vítimas → o que
+houve e onde → desfecho → nome da operação → valores). E figura que diverge mantém
+a da linha **publicada**, para não reescrever a história a cada fusão.
+
+⚠️ O `embedding` é regravado junto, com a **mesma fórmula**. Trocar o resumo sem
+regerar o vetor faria os dois deixarem de corresponder e degradaria as comparações
+futuras em silêncio.
+
+### A rede de proteção, que é o que muda o método
+
+[`scripts/dedup-casos-reais.ts`](../backend/scripts/dedup-casos-reais.ts) — **15
+pares reais de produção, rotulados à mão**, guardando `id` + rótulo + o **porquê**;
+o texto vem do banco na hora de rodar, nunca copiado.
+[`scripts/test-dedup-gabarito.ts`](../backend/scripts/test-dedup-gabarito.ts) roda
+os 15 **nas duas ordens** e falha o processo se algum cobrado quebrar.
+
+Sem isso, cada uma das três tentativas de prompt acima teria parecido uma
+melhoria.
+
+### Três coisas que eu afirmei e estavam erradas
+
+- **"o par morreu na camada 2 por 0.016"** (17/08) — eu usei o
+  `DEFAULT_SIMILARITY_THRESHOLD = 0.85` do código; o que roda é o
+  `dedup_similarity_threshold` do painel, que está em **0.70**. Constante com nome
+  de default que não é o default efetivo.
+- **"a cidade gravada difere entre `Palhoça` e `SC`"** — o campo diz
+  `Florianópolis`; o "SC" estava só no texto da manchete. O caso continua sendo
+  duplicata invisível, mas por outro motivo (fato estadual pendurado na cidade que
+  disparou a query), e isso virou item de ROADMAP.
+- **"o pipeline pega por transitividade"** — testei: `A+B x C` continua NO. Era
+  teoria, não fato. O par ficou marcado como falha conhecida.
+
+### Dois achados soltos
+
+- 🚨 **Nome completo de vítima e suspeito no resumo.** O Filter2 proíbe nome
+  completo na **manchete**, e a regra nunca foi estendida ao **resumo** — há uma
+  menina de 4 anos morta identificada pelo nome inteiro, junto com o do suspeito.
+  A fusão herda e perpetua. Não corrigido nesta rodada.
+- **Script que importa `pipelineCore` nunca termina sozinho.** O import abre
+  conexão com o Redis e segura o event loop; o `Redis connected` no log é a
+  pista. Todo script de diagnóstico precisa de `process.exit(0)` explícito — dois
+  timeouts foram gastos até eu ler o log em vez de suspeitar da lógica.
+
+---
+
 ## 2026-08-17 — o volume subiu 15× e mostrou quatro defeitos que sempre existiram
 
 Entraram **31 notícias** hoje. A média histórica é **2,0/dia** (medida em 11/08,
