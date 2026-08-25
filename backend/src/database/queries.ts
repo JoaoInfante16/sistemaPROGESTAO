@@ -59,6 +59,8 @@ interface InsertNewsParams {
   hora_publicacao?: string;
   titulo?: string;
   resumo: string;
+  /** Texto de leitura da folha (migration 034). Ver `NewsExtraction.corpo`. */
+  corpo?: string;
   embedding: number[];
   confianca: number;
 }
@@ -78,6 +80,7 @@ export async function insertNews(params: InsertNewsParams): Promise<string> {
       hora_publicacao: params.hora_publicacao || null,
       titulo: params.titulo || null,
       resumo: params.resumo,
+      corpo: params.corpo || null,
       embedding: `[${params.embedding.join(',')}]`,
       confianca: params.confianca,
     })
@@ -109,6 +112,8 @@ export async function insertNewsSource(newsId: string, url: string, sourceName?:
 export interface FusaoParams {
   titulo: string;
   resumo: string;
+  /** `null` quando nenhum dos dois lados tinha corpo — linha antiga. */
+  corpo: string | null;
   tipo_crime: string;
   categoria_grupo: string;
   embedding: number[];
@@ -144,6 +149,7 @@ export async function atualizarNoticiaFundida(id: string, params: FusaoParams): 
     .update({
       titulo: params.titulo,
       resumo: params.resumo,
+      corpo: params.corpo,
       tipo_crime: params.tipo_crime,
       categoria_grupo: params.categoria_grupo,
       embedding: params.embedding,
@@ -201,6 +207,8 @@ export interface DedupCandidate {
    * vítima), e até 24/08 ela era simplesmente ignorada pelo dedup.
    */
   titulo: string | null;
+  /** Texto de leitura da folha (migration 034). Consolidado junto na fusão. */
+  corpo: string | null;
   /** Necessário na fusão: se a agressão virou homicídio, a linha tem que virar. */
   tipo_crime: string;
   /**
@@ -278,7 +286,7 @@ export async function findGeoTemporalCandidates(
 
   let query = supabase
     .from('news')
-    .select('id, titulo, resumo, tipo_crime, cidade, estado, bairro, data_ocorrencia, embedding')
+    .select('id, titulo, resumo, corpo, tipo_crime, cidade, estado, bairro, data_ocorrencia, embedding')
     .eq('cidade', cidade)
     .gte('data_ocorrencia', dateFrom)
     .lte('data_ocorrencia', dateTo)
@@ -396,6 +404,11 @@ interface NewsFeedItem {
   /** null nas linhas anteriores a migration 029 — o app compoe um titulo. */
   titulo: string | null;
   resumo: string;
+  /**
+   * Texto de leitura da folha (migration 034). null nas linhas anteriores —
+   * o app cai no `resumo`, que e o que ele ja fazia.
+   */
+  corpo: string | null;
   confianca: number;
   created_at: string;
   news_sources: Array<{ url: string; source_name: string | null }>;
@@ -404,7 +417,7 @@ interface NewsFeedItem {
 export async function getNewsFeed(params: NewsFeedParams): Promise<{ news: NewsFeedItem[]; hasMore: boolean }> {
   let query = supabase
     .from('news')
-    .select('id, tipo_crime, categoria_grupo, natureza, cidade, estado, bairro, rua, data_ocorrencia, hora_publicacao, titulo, resumo, confianca, created_at, news_sources(url, source_name)')
+    .select('id, tipo_crime, categoria_grupo, natureza, cidade, estado, bairro, rua, data_ocorrencia, hora_publicacao, titulo, resumo, corpo, confianca, created_at, news_sources(url, source_name)')
     .eq('active', true)
     .order('created_at', { ascending: false })
     .range(params.offset, params.offset + params.limit - 1);
@@ -446,7 +459,7 @@ interface SearchNewsParams {
 export async function searchNews(params: SearchNewsParams): Promise<{ news: NewsFeedItem[]; hasMore: boolean }> {
   let query = supabase
     .from('news')
-    .select('id, tipo_crime, categoria_grupo, natureza, cidade, estado, bairro, rua, data_ocorrencia, hora_publicacao, titulo, resumo, confianca, created_at, news_sources(url, source_name)')
+    .select('id, tipo_crime, categoria_grupo, natureza, cidade, estado, bairro, rua, data_ocorrencia, hora_publicacao, titulo, resumo, corpo, confianca, created_at, news_sources(url, source_name)')
     .eq('active', true)
     .ilike('resumo', `%${params.query}%`)
     .order('created_at', { ascending: false })
@@ -981,7 +994,7 @@ export async function upsertNotificationPrefs(
 export async function getUserNewsFeed(userId: string, params: { offset: number; limit: number; cidade?: string; cidades?: string[]; estado?: string }) {
   let query = supabase
     .from('news')
-    .select('id, tipo_crime, categoria_grupo, natureza, cidade, estado, bairro, rua, data_ocorrencia, hora_publicacao, titulo, resumo, confianca, created_at, news_sources(url, source_name)')
+    .select('id, tipo_crime, categoria_grupo, natureza, cidade, estado, bairro, rua, data_ocorrencia, hora_publicacao, titulo, resumo, corpo, confianca, created_at, news_sources(url, source_name)')
     .eq('active', true)
     .order('created_at', { ascending: false })
     .range(params.offset, params.offset + params.limit - 1);

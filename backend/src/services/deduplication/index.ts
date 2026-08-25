@@ -248,6 +248,8 @@ export { confirmDuplicateWithGPT as _confirmDuplicateWithGPT };
 export interface TextoConsolidado {
   titulo: string;
   resumo: string;
+  /** Texto da folha, unido. `null` quando nenhum dos lados tinha. */
+  corpo: string | null;
   tipo_crime: TipoCrime;
   /** `false` = o relato novo não acrescentou nada; nada foi regravado. */
   mudou: boolean;
@@ -306,6 +308,7 @@ async function consolidarFusao(
     await db.atualizarNoticiaFundida(existente.id, {
       titulo: consolidado.titulo,
       resumo: consolidado.resumo,
+      corpo: consolidado.corpo,
       tipo_crime: consolidado.tipo_crime,
       categoria_grupo: TIPO_CRIME_GRUPO[consolidado.tipo_crime],
       embedding,
@@ -334,8 +337,8 @@ async function consolidarFusao(
  * sido fundida ou não.
  */
 export async function reescreverNaFusao(
-  existente: { titulo: string | null; resumo: string; tipo_crime: string },
-  nova: { titulo?: string; resumo: string; tipo_crime: string },
+  existente: { titulo: string | null; resumo: string; corpo?: string | null; tipo_crime: string },
+  nova: { titulo?: string; resumo: string; corpo?: string | null; tipo_crime: string },
 ): Promise<TextoConsolidado> {
   const tipoExistente = existente.tipo_crime as TipoCrime;
 
@@ -344,11 +347,13 @@ export async function reescreverNaFusao(
 PUBLISHED (currently in the feed):
 headline: "${existente.titulo ?? ''}"
 summary: "${existente.resumo}"
+body: "${existente.corpo ?? ''}"
 crime_type: ${existente.tipo_crime}
 
 NEW REPORT:
 headline: "${nova.titulo ?? ''}"
 summary: "${nova.resumo}"
+body: "${nova.corpo ?? ''}"
 crime_type: ${nova.tipo_crime}
 
 RULES:
@@ -360,9 +365,10 @@ RULES:
 4. "crime_type": the type that describes the case NOW, from this list: ${Object.keys(TIPO_CRIME_GRUPO).join(', ')}. If an assault became a homicide, return homicidio. Keep the published type when nothing changed the nature of the case.
 5. "headline": Brazilian Portuguese, at most 70 characters. Journalistic present tense ("Homem é preso após...", not "Homem foi preso"). Sober: no ALL CAPS, no exclamation marks, no value judgments, no victim or suspect full names, no gore.
 6. "summary": Brazilian Portuguese, at most 190 characters, COMPLEMENTARY to the headline and never a paraphrase of it. The reader has already read the headline; every clause must add something it could not fit.
+7. "body": Brazilian Portuguese, at most 900 characters, 2 to 4 short paragraphs separated by a blank line. This is the reading text of the opened sheet, and it is where the UNION actually fits — the 190-char summary cannot hold three outlets. Same sober register. Do NOT print full names of victims or of suspects who have not been convicted. Return "" only when NEITHER side has a body.
 
 Return ONLY this JSON:
-{"changed": true|false, "headline": "...", "summary": "...", "crime_type": "..."}`;
+{"changed": true|false, "headline": "...", "summary": "...", "body": "...", "crime_type": "..."}`;
 
   const response = await openai.chat.completions.create({
     model: config.openaiModel,
@@ -378,12 +384,14 @@ Return ONLY this JSON:
     changed?: boolean;
     headline?: string;
     summary?: string;
+    body?: string;
     crime_type?: string;
   };
 
   const semMudanca: TextoConsolidado = {
     titulo: existente.titulo ?? '',
     resumo: existente.resumo,
+    corpo: existente.corpo ?? null,
     tipo_crime: tipoExistente,
     mudou: false,
     tokensUsed,
@@ -405,9 +413,16 @@ Return ONLY this JSON:
     ? (tipoNovo as TipoCrime)
     : tipoExistente;
 
+  // Corpo vazio nao apaga corpo que existia — degrada pro que ja estava.
+  const corpoNovo = (data.body ?? '').trim();
+  const corpo = corpoNovo.length > 0
+    ? cortarNaFrase(corpoNovo, 900)
+    : (existente.corpo ?? null);
+
   return {
     titulo: cortarNaPalavra(titulo, 70),
     resumo: cortarNaFrase(resumo, 190),
+    corpo,
     tipo_crime: tipoValido,
     mudou: true,
     tokensUsed,

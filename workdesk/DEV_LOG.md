@@ -278,6 +278,80 @@ de $100.
 
 ---
 
+## 2026-08-25 — tocar num card não entregava nenhuma palavra a mais
+
+Pedido do João: *"faça o corpo do texto dentro do card melhor quando o user
+clicar"*. Investigando, o problema não era de formatação.
+
+🚨 **A folha aberta no toque mostrava o MESMO texto do card, caractere por
+caractere.** O card imprime o `resumo` INTEIRO — decisão do João em 09/08, e
+continua certa: se o parágrafo cabe todo, não precisa de sanfona, e o toque passa
+a ter um significado só. O efeito colateral nunca tinha sido fechado: a folha
+repetia manchete e resumo e só acrescentava a ficha (rua, tipo, fontes). O
+cabeçalho de `news_detail_sheet.dart` já registrava que ela quase morreu por isso.
+
+O teto de 190 do `resumo` é **do card** e não pode subir sem quebrar o ritmo
+vertical da lista. Então o texto de leitura virou campo próprio.
+
+### Por que custa ~zero, que é o que decidiu
+
+A Jina já busca o artigo inteiro e o Filter2 já lê até `filter2_max_content_chars`
+(6000) para extrair cidade, data e tipo. **O conteúdo estava em mãos e era
+descartado.** Escrever ~900 caracteres a mais sai no MESMO request: ~200 tokens
+de saída, algo como US$ 0,0001 por matéria. Nenhuma chamada nova, nenhum fetch
+novo.
+
+⚠️ **Ficou mais necessário depois do dedup de ontem.** Agora vários relatos do
+mesmo caso são FUNDIDOS num texto só, e a união de três veículos não cabe em 190
+caracteres — sem o corpo, consolidar significaria escolher o que jogar fora. Por
+isso a fusão consolida o `corpo` junto, e é lá que a união realmente cabe.
+
+### O que entrou
+
+| | |
+|---|---|
+| migration **034** | `news.corpo` TEXT, nullable, aditiva |
+| Filter2 | regras 17-21: o corpo tem que **ganhar o toque** — o que o resumo não teve espaço de dizer, em 2-4 parágrafos |
+| dedup | `FusaoParams.corpo`, consolidado na mesma chamada da fusão |
+| API | as 3 queries do feed devolvem o campo |
+| app | `corpoDeLeitura` cai no `resumo` quando não há corpo; `_Corpo` renderiza parágrafos com o primeiro em lide |
+
+**NULL nas linhas antigas de propósito**, pelos mesmos dois motivos da 029: não
+vale reprocessar (custaria Jina + GPT de novo por item), e item novo sem corpo
+**não é rejeitado** — jogar fora uma ocorrência já paga em SERP + Jina por um
+campo de leitura seria o pior negócio possível. A folha cai no resumo, que é o
+comportamento de hoje.
+
+### 🚨 A ordem do deploy não pode inverter
+
+**A 034 tem que rodar ANTES do backend subir.** Com `corpo` no INSERT e a coluna
+inexistente, **toda gravação de notícia falha** e o scan para de salvar.
+
+É o espelho do erro de 16/08, onde as migrations foram na frente e o código velho
+ficou atrás rodando contra um banco novo. Aqui o risco é o oposto e pior:
+lá o efeito era três rotas de favoritos quebradas, aqui seria o produto inteiro
+parando de gravar.
+
+Sequência: **034 no Supabase → commit → deploy**.
+
+### Nome completo de vítima: a regra existia e era desobedecida
+
+Achado ontem, na revisão da fusão: há uma menina de **4 anos morta identificada
+pelo nome inteiro** no resumo, junto com o nome do suspeito.
+
+⚠️ **A regra 15 já proibia isso** ("no victim/suspect full names") — estava
+enterrada no meio de uma lista de três proibições, e o modelo passava por cima.
+Virou regra própria (**15b**), enfática, valendo para manchete, resumo e corpo,
+com o caso real citado dentro dela.
+
+Isso é o mesmo padrão de ontem no prompt do dedup: **sinal que não deve pesar
+precisa ser proibido em destaque, não mencionado de passagem.** Regra que divide
+espaço com outras duas não é lida como regra.
+
+⚠️ Vale só para linha nova. As gravadas seguem com os nomes.
+
+---
+
 ## 2026-08-24 — o dedup parou de usar como portão o que o próprio GPT inventou
 
 Uma semana depois do conserto de 17/08 o João disse *"tá duplicando muito"*. E

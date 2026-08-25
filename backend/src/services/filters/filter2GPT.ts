@@ -106,6 +106,7 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
   const city = ((data.city ?? data.cidade) as string | undefined)?.trim() ?? '';
   const summary = ((data.summary ?? data.resumo) as string | undefined)?.trim() ?? '';
   const headline = ((data.headline ?? data.titulo) as string | undefined)?.trim() ?? '';
+  const body = ((data.body ?? data.corpo) as string | undefined)?.trim() ?? '';
   const date = ((data.date ?? data.data_ocorrencia) as string | undefined)?.trim() ?? '';
   const time = ((data.time ?? data.hora) as string | undefined)?.trim() ?? '';
   const state = ((data.state ?? data.estado) as string | undefined)?.trim() ?? '';
@@ -180,6 +181,13 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
   // frouxo que o prompt so servia pra esconder quando o modelo desobedecia.
   const titulo = headline.length > 0 ? cortarNaPalavra(headline, 70) : undefined;
 
+  // Corpo da folha (migration 034): cosmetico, entao NUNCA rejeita o item.
+  //
+  // Corta em fim de FRASE, nao de palavra: aqui o texto e paragrafo, e
+  // reticencia no meio de um paragrafo e bug — o leitor fica sem o desfecho.
+  // Mesmo raciocinio do `resumo`, teto diferente.
+  const corpo = body.length > 0 ? cortarNaFrase(body, 900) : undefined;
+
   return {
     extraction: {
       e_crime: true,
@@ -194,6 +202,7 @@ function validateExtraction(data: Record<string, unknown>, minConfidence: number
       hora_publicacao: horaPublicacao,
       titulo,
       resumo,
+      corpo,
       confianca: confidence,
     },
   };
@@ -269,6 +278,13 @@ HEADLINE RULES:
 PUBLICATION TIME:
 16. "time": the time the OUTLET published the article, exactly as printed on the page ("Publicado em 04/08/2026 às 14:32" → "14:32"). 24h format "HH:MM". Return null if the page does not state a time — do NOT guess it, do NOT use a time mentioned inside the story ("por volta das 3h da madrugada" is when the event happened, which is approximate and sometimes another day).
 
+BODY RULES:
+17. "body": Brazilian Portuguese, **at most 900 characters**. This is what a professional reads after tapping the item, and it is the ONLY place in the product where the article's content actually lands — everything else is a field. The app shows the summary on the card and this on the opened sheet.
+18. It must EARN the tap: everything the summary already said is not enough. Bring what the summary had no room for — how the event unfolded, who acted, what was seized or recovered, figures, the state of the investigation, consequences.
+19. Write it self-contained, in 2 to 4 short paragraphs separated by a blank line. Same sober register as the headline: no ALL CAPS, no exclamation marks, no value judgments, no gore.
+20. 🚨 Do NOT print the full name of victims or of suspects who have not been convicted. First name, age and role are enough ("o tio da criança", "um homem de 34 anos"). This is a work tool, not a police blotter.
+21. Use ONLY what the article states. Never infer, never fill gaps, never add context you were not given. When the article is thin, a short body is correct — do not pad.
+
 SUMMARY RULES:
 12. "summary": Brazilian Portuguese, **at most 190 characters in total**. Use as many sentences as the event actually needs — usually 2, sometimes 1 when the fact is simple. The ceiling is a hard budget, not a target: the app prints the summary WHOLE, with no "read more", and anything past it is cut by the server. Never pad to reach the limit.
 
@@ -280,7 +296,8 @@ SUMMARY RULES:
 
 14. Sentence 1 carries the specifics of the event; the next one carries the consequence or what came out of it. Every sentence must stand without the headline — do not start with "ele", "o caso" or any pronoun pointing back at the headline.
 
-15. No speculation, no adjectives of severity, no victim/suspect full names. If the article does not say something, leave it out — a summary of 120 characters that adds facts beats one of 190 that repeats the headline.
+15. No speculation and no adjectives of severity. If the article does not say something, leave it out — a summary of 120 characters that adds facts beats one of 190 that repeats the headline.
+15b. 🚨 NEVER print the full name of a victim, or of a suspect who has not been convicted — not in the headline, not in the summary, not in the body. First name, age and role are enough ("o tio da criança", "um homem de 34 anos", "a vítima, de 4 anos"). This rule has been broken before, including for a murdered 4-year-old who was named in full alongside her suspect: this is a work tool for public-safety professionals, not a police blotter, and the text is republished in documents that reach third parties.
 
 ARTICLE:
 ${truncated}
@@ -298,6 +315,7 @@ Return ONLY JSON:
   "time": "HH:MM as printed by the outlet" or null,
   "headline": "Factual headline in Brazilian Portuguese, max 70 chars, neutral tone",
   "summary": "2 sentences in Brazilian Portuguese, max 190 chars TOTAL, first sentence self-contained",
+  "body": "The reading text in Brazilian Portuguese, max 900 chars — see BODY RULES",
   "confidence": 0.0 to 1.0
 }
 

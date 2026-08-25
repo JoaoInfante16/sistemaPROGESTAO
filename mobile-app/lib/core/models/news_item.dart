@@ -54,6 +54,18 @@ class NewsItem {
   final String? titulo;
 
   final String resumo;
+
+  /// O texto de LEITURA, mostrado só na folha aberta (migration 034).
+  ///
+  /// 🚨 Não confundir com [resumo]. O card imprime o resumo INTEIRO — é por isso
+  /// que ele tem teto de 190 e por isso que o toque tem um significado só. O
+  /// efeito colateral é que a folha aberta mostrava exatamente o mesmo texto,
+  /// caractere por caractere: tocar não entregava nenhuma palavra a mais.
+  ///
+  /// **Pode ser null** — toda linha anterior a 25/08/2026, e qualquer item novo
+  /// em que o GPT não devolveu o campo. Use [corpoDeLeitura], nunca este direto.
+  final String? corpo;
+
   final double? confianca;
   final DateTime createdAt;
   final List<NewsSource> sources;
@@ -83,6 +95,7 @@ class NewsItem {
     this.horaPublicacao,
     this.titulo,
     required this.resumo,
+    this.corpo,
     this.confianca,
     required this.createdAt,
     this.sources = const [],
@@ -106,6 +119,7 @@ class NewsItem {
       horaPublicacao: hhmm(json['hora_publicacao'] as String?),
       titulo: json['titulo'] as String?,
       resumo: json['resumo'] as String,
+      corpo: json['corpo'] as String?,
       confianca: safeDoubleOrNull(json['confianca']),
       // `created_at` do Postgres vem sem sufixo de fuso — ver parseApiDate.
       // `data_ocorrencia` é só data (YYYY-MM-DD) e não tem esse problema.
@@ -169,6 +183,7 @@ class NewsItem {
       horaPublicacao: hhmm(json['hora_publicacao'] as String?),
       titulo: json['titulo'] as String?,
       resumo: json['resumo'] as String? ?? '',
+      corpo: json['corpo'] as String?,
       confianca: safeDoubleOrNull(json['confianca']),
       createdAt: DateTime.now(),
       sources: sources,
@@ -217,5 +232,24 @@ class NewsItem {
     final tipo = crimeTypeLabel(tipoCrime);
     if (bairro != null && bairro!.isNotEmpty) return '$tipo no $bairro';
     return '$tipo em $cidade';
+  }
+
+  /// O texto que a folha mostra — SEMPRE use isto, nunca [corpo] direto.
+  ///
+  /// Cai no [resumo] quando não há corpo, que é o comportamento que a folha
+  /// sempre teve. Ou seja: linha antiga não fica vazia, só não melhora.
+  String get corpoDeLeitura {
+    final c = corpo?.trim();
+    if (c != null && c.isNotEmpty) return c;
+    return resumo;
+  }
+
+  /// A folha tem algo a mais para mostrar do que o card já mostrou?
+  ///
+  /// Serve para a folha não repetir o resumo embaixo da manchete quando ele é
+  /// tudo o que existe — repetição é o que quase matou essa tela.
+  bool get temCorpoProprio {
+    final c = corpo?.trim();
+    return c != null && c.isNotEmpty && c != resumo.trim();
   }
 }

@@ -340,7 +340,7 @@ async function runPipeline(locationId: string, startTime: number): Promise<Pipel
         bairro: news.bairro, rua: news.rua,
         data_ocorrencia: news.data_ocorrencia,
         hora_publicacao: news.hora_publicacao,
-        titulo: news.titulo, resumo: news.resumo,
+        titulo: news.titulo, resumo: news.resumo, corpo: news.corpo,
         embedding: news.embedding, confianca: news.confianca,
       });
 

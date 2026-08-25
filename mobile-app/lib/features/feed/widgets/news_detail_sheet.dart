@@ -138,10 +138,9 @@ class NewsDetailSheet extends StatelessWidget {
               children: [
                 Text(news.headline,
                     style: SIMEopsType.title().copyWith(fontSize: 27)),
-                if (news.resumo.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Text(news.resumo,
-                      style: SIMEopsType.lead().copyWith(fontSize: 15.5)),
+                if (news.corpoDeLeitura.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  _Corpo(texto: news.corpoDeLeitura),
                 ],
                 const SizedBox(height: 26),
 
@@ -220,6 +219,54 @@ class NewsDetailSheet extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// O texto da matéria, em parágrafos.
+///
+/// 🚨 Existe porque até 25/08 esta folha mostrava o **mesmo** `resumo` do card,
+/// caractere por caractere: tocar num item não entregava nenhuma palavra a mais.
+/// O teto de 190 do resumo é do CARD (ele imprime inteiro, sem "ler mais") e não
+/// pode subir sem quebrar o ritmo da lista — então o texto de leitura virou um
+/// campo próprio, `news.corpo`, escrito pelo Filter2 no mesmo request.
+///
+/// Linha anterior à migration 034 não tem corpo e cai no resumo: a folha volta a
+/// ser exatamente o que era, sem quebrar.
+///
+/// O primeiro parágrafo entra como **lide** — maior e em tinta cheia — e os
+/// demais em corpo de leitura. Dá ao olho um ponto de entrada em vez de um
+/// bloco uniforme.
+class _Corpo extends StatelessWidget {
+  final String texto;
+
+  const _Corpo({required this.texto});
+
+  @override
+  Widget build(BuildContext context) {
+    // O Filter2 separa parágrafo com linha em branco (regra 19). Partir por
+    // linha e descartar as vazias cobre isso sem regex, e é tolerante a texto
+    // antigo que venha em bloco único — nesse caso dá um parágrafo só.
+    final paragrafos = <String>[];
+    for (final linha in texto.split('\n')) {
+      final t = linha.trim();
+      if (t.isNotEmpty) paragrafos.add(t);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < paragrafos.length; i++) ...[
+          if (i > 0) const SizedBox(height: 15),
+          Text(
+            paragrafos[i],
+            style: i == 0
+                ? SIMEopsType.lead(color: SIMEopsColors.white)
+                    .copyWith(fontSize: 16.5, height: 1.58)
+                : SIMEopsType.lead().copyWith(fontSize: 15.5, height: 1.62),
+          ),
+        ],
+      ],
     );
   }
 }

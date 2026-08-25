@@ -102,6 +102,18 @@ export interface NewsExtraction {
    */
   titulo?: string;
   resumo: string;
+  /**
+   * O texto de leitura da FOLHA (migration 034), ate ~900 caracteres.
+   *
+   * 🚨 Nao confundir com `resumo`. O `resumo` cabe INTEIRO no card e por isso
+   * tem teto de 190; a folha que abre no toque mostrava ele de novo, caractere
+   * por caractere, e tocar num item nao entregava nenhuma palavra a mais. Este
+   * campo e o que justifica o toque.
+   *
+   * Opcional pelos mesmos motivos do `titulo`: item sem corpo NAO e rejeitado, e
+   * linha anterior a 25/08 nao tem nenhum — a folha cai no `resumo`.
+   */
+  corpo?: string;
   confianca: number; // 0.0 a 1.0
   embedding?: number[];
 }
