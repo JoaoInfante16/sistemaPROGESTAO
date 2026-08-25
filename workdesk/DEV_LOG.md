@@ -18,6 +18,38 @@
 > Bloco de orientação para instâncias novas do Claude (ou para o João depois de
 > um tempo longe). Atualizar quando mudar.
 
+### 🚦 ONDE PARAMOS — 25/08, fim de sessao
+
+`staging` = `6283cef`. **`main` esta em `5654361`** (o deploy de 17/08).
+Ou seja: duas mudancas grandes commitadas em staging e **nenhuma delas em
+producao**.
+
+🚨 **A ORDEM IMPORTA E NAO PODE INVERTER:**
+
+```
+1. rodar a migration 034 no Supabase        <- SEM ISSO O SCAN PARA DE GRAVAR
+2. simular o dedup (portao de verificacao)
+3. staging -> main + Manual Deploy no Render
+4. conferir o commit no /health
+```
+
+O passo 1 e obrigatorio **antes** do deploy: o codigo novo poe `corpo` no
+INSERT, e se a coluna nao existir **toda gravacao de noticia falha**.
+
+| o que falta | como se faz |
+|---|---|
+| **migration 034** | `workdesk/SQL/migrations/034_news_corpo.sql` no SQL Editor. Aditiva, reversivel |
+| **simular o dedup** | `cd backend && npx tsx scripts/simular-dedup.ts` — le e imprime o que fundiria, **nao grava**. E o portao que decide o deploy |
+| **bateria do dedup** | `npx tsx scripts/test-dedup-gabarito.ts` — hoje **13/14**, zero assimetria. O par `5d1a9168/b04c143b` e falha conhecida (sem ancora comum) |
+| **testar a folha** | device fisico via LAN IP, `flutter clean` antes. So aparece em noticia NOVA (linha antiga cai no resumo) |
+
+⚠️ **Script que importa `pipelineCore` nunca termina sozinho** — o import abre
+conexao com o Redis e segura o event loop. Todo script de diagnostico precisa de
+`process.exit(0)` explicito. Dois timeouts foram gastos ate eu ler o log em vez
+de desconfiar da logica.
+
+---
+
 ### 🎨 Redesign em curso (08/08) — leia antes de mexer no app
 
 Branch **`feature/design-fio`** = **`staging`** = **`main`** desde 16/08. O
