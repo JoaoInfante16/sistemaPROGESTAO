@@ -2,7 +2,8 @@
 -- 031 — Remove a tabela de favoritos
 -- ============================================
 -- Data: 2026-08-11
--- Status: ESCRITA, NAO RODADA. Roda no deploy final, junto da 025.
+-- Status: APLICADA em 16/08, depois da 025. Verificado em 26/08: a tabela
+--         user_favorites nao existe mais.
 --
 -- POR QUE
 -- A feature inteira saiu do codigo na Fase D. A tela de favoritos do app era

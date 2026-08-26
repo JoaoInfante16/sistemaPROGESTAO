@@ -2,7 +2,9 @@
 -- Migration 025: fechar o banco para a chave anon
 -- ============================================
 -- Data: 2026-08-02
--- Status: **NAO APLICADA** — precisa de autorizacao explicita do Joao.
+-- Status: APLICADA. Verificado em 26/08 medindo pela propria chave anon: ela le
+--         news e user_devices SEM erro e volta ZERO linha (news tem 324) — que e a
+--         assinatura de RLS ativa sem policy permissiva.
 --         Afeta staging E producao na hora (banco compartilhado).
 --
 -- ACHADO (medido em 02/08, com a SUPABASE_ANON_KEY do proprio .env):

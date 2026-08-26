@@ -2,7 +2,8 @@
 -- 032 — Preferencias de notificacao por usuario
 -- ============================================
 -- Data: 2026-08-11
--- Status: ESCRITA, NAO RODADA. Aditiva e reversivel.
+-- Status: APLICADA em 16/08. Verificado em 26/08: user_notification_prefs existe,
+--         com a coluna estatisticas.
 --
 -- POR QUE
 -- Hoje o push vai para TODOS os aparelhos ativos, sem filtro nenhum:

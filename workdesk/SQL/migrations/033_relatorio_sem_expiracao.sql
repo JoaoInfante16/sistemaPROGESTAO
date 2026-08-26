@@ -2,7 +2,8 @@
 -- 033 — Relatorio compartilhado para de expirar
 -- ============================================
 -- Data: 2026-08-12
--- Status: ESCRITA, NAO RODADA. Aditiva e reversivel.
+-- Status: APLICADA em 16/08. Verificado em 26/08: 20 relatorios, 0 com expires_at
+--         preenchido.
 --
 -- POR QUE
 -- `reports.expires_at` nasceu com `NOW() + INTERVAL '30 days'`, e

@@ -18,6 +18,40 @@
 > Bloco de orientação para instâncias novas do Claude (ou para o João depois de
 > um tempo longe). Atualizar quando mudar.
 
+### 🧾 26/08 — quatro migrations diziam "NAO RODADA" e tinham rodado
+
+O Joao olhou a 031 aberta no editor, leu `Status: ESCRITA, NAO RODADA` e
+concluiu que faltava rodar 031, 032, 033 e 034. Conclusao razoavel — o arquivo
+diz isso. **Medido no banco, so a 034 falta:**
+
+| | o arquivo dizia | o banco diz |
+|---|---|---|
+| 025 | `NAO APLICADA` | ✅ a chave anon le `news` sem erro e recebe **zero linha** (a tabela tem 324) — RLS ativa |
+| 031 | `ESCRITA, NAO RODADA` | ✅ `user_favorites` nao existe mais |
+| 032 | `ESCRITA, NAO RODADA` | ✅ `user_notification_prefs` existe, com `estatisticas` |
+| 033 | `ESCRITA, NAO RODADA` | ✅ 20 relatorios, **0** com `expires_at` |
+| 034 | — | ❌ `news.corpo` nao existe |
+
+O MIGRATIONS_LOG estava **certo** nas quatro. Quem apodreceu foi o cabecalho
+dentro do proprio `.sql` — o lugar onde se olha primeiro. Corrigidos os quatro,
+com a evidencia junto em vez de so a data.
+
+⚠️ **A primeira sondagem minha deu falso positivo:** `select("*", { head: true })`
+nao popula `error` quando a tabela sumiu, entao `user_favorites` apareceu como
+existente. E o codigo do PostgREST pra tabela ausente e **`PGRST205`**, nao
+`42P01`. Todo script de diagnostico que checa tabela precisa de `select` de
+verdade e do codigo certo.
+
+🚨 **A simulacao do dedup depende da 034.** Rodou e morreu em
+`findGeoTemporalCandidates`: o SELECT novo pede `corpo`. Entao o portao de
+verificacao **nao roda antes da migration** — a fila inteira e uma so, e comeca
+nela. Eu tinha dito o contrario no mesmo dia; estava errado.
+
+Junto: `simular-dedup.ts` terminava em `main();` sem `process.exit(0)` — a
+armadilha do Redis que ja custou dois timeouts, no script que e justamente o
+portao.
+
+---
 ### 🚦 ONDE PARAMOS — 25/08, fim de sessao
 
 `staging` = `6283cef`. **`main` esta em `5654361`** (o deploy de 17/08).
