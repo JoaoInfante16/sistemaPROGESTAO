@@ -61,6 +61,38 @@ problema já resolvido.
 - ⬜ **`applicationIdSuffix` por variante.** Staging e produção viraram o mesmo
   app no aparelho; separar exige o sufixo **mais** um cliente Firebase para ele.
 
+## 🗄️ PRÓXIMA TAREFA — separar o banco do staging (pedido do João, 26/08)
+
+Ele criou o projeto novo no Supabase em 16/08; segue **vazio e não apontado**.
+
+**Por que é a tarefa certa agora:** hoje staging, produção e dev usam o **mesmo
+Supabase**. Isso significa que *toda* mudança de dedup, migration ou pipeline
+**estreia em produção** — não existe ensaio. O dedup de 24-26/08 teve que ser
+validado por simulação read-only justamente porque não havia onde rodar de
+verdade. E o `system_config` compartilhado faz o painel admin atingir produção
+sem deploy nenhum.
+
+**O que a separação mata na raiz:** a disputa pelo `last_check` de
+`monitored_locations` — que é o motivo de o `AUTO_SCAN_ENABLED` existir
+([config/index.ts](../backend/src/config/index.ts)). O prefixo de fila matou o
+roubo de jobs em 04/08, mas a contenção migrou para uma coluna de banco.
+
+⚠️ **Redis NÃO precisa separar, e separar seria contraproducente** (levantado em
+24/08). São três coisas diferentes morando nele:
+
+| | situação |
+|---|---|
+| **filas** | já isoladas por [`queueName()`](../backend/src/jobs/queueNames.ts) — produção com nome puro, outros ambientes com sufixo do `NODE_ENV` |
+| **caches** (embedding, Jina, nominatim, metroRegion) | função pura da entrada. **Compartilhar é vantagem**: staging reaproveita o que produção já pagou. Separar dobraria a conta de Jina + embedding + geocoding |
+| **lock do scan** | 🚨 `scan-lock:${locationId}` **não tem ambiente na chave**. Com `AUTO_SCAN_ENABLED=true` em staging, os dois disputam o mesmo lock. Conserto: passar pelo `queueName()` — **uma linha** |
+
+**O que a tarefa envolve** (não levantado em detalhe ainda):
+- replicar o schema no projeto novo — 34 migrations, ou um dump da estrutura
+- apontar as env vars do serviço de staging no Render (`SUPABASE_URL`,
+  `SUPABASE_SERVICE_KEY`, `SUPABASE_ANON_KEY`)
+- semear o mínimo: `monitored_locations`, `system_config`, um usuário admin
+- ⚠️ o app mobile de staging e o admin de staging também apontam pra lá
+
 ## 🎨 Redesign "fio de agência" — o que falta (11/08)
 
 > Contexto que muda a leitura deste roadmap: **o produto está em beta e os

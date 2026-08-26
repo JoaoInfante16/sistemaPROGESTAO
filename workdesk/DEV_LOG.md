@@ -59,15 +59,37 @@ migration **034 rodou** (confirmada no banco) e os dois portoes do dedup
 passaram. O codigo esta no GitHub.
 
 ⬜ **FALTA SO O `Manual Deploy → Deploy latest commit` no Render** (a `main` nao
-tem auto-deploy) e conferir `commit: c4f17e6` no `/health`. Ate isso, producao
-segue rodando `5654361`, de 17/08.
+tem auto-deploy) e conferir `commit` no `/health`. Ate isso, producao segue
+rodando `5654361`, de 17/08.
+
+🚨 **O APK NAO PODE SER BUILDADO ANTES DO DEPLOY — e o teste vai enganar.** Do
+que mudou desde o que esta na loja, so `6283cef` toca o app (a folha com
+`corpo`); o dedup e 100% backend. Mas a folha so mostra texto proprio em
+noticia **NOVA**, gravada pelo backend novo — linha antiga cai no `resumo`, que
+e o comportamento atual. Ordem obrigatoria:
+
+```
+1. Manual Deploy no Render
+2. esperar o scan rodar algumas vezes com o backend novo
+3. build-prod.bat  (versao ja esta em 1.2.1+6 no pubspec)
+4. testar no A57, device fisico via LAN IP, flutter clean antes
+```
+
+Buildar e testar antes do passo 2 mostra a folha identica ao card, e a conclusao
+errada e "nao funcionou".
 
 **Os dois portoes, com numero (26/08):**
 
 | portao | resultado |
 |---|---|
 | `npx tsx scripts/simular-dedup.ts` | **70 noticias → 13 fusoes**, 50 chamadas ao GPT (0,71/noticia). As 13 explicadas uma a uma. **Zero fusao indevida** |
-| `npx tsx scripts/test-dedup-gabarito.ts` | **13/14**, zero assimetria. Sai com **exit 1** de proposito — ver abaixo |
+| `npx tsx scripts/test-dedup-gabarito.ts` | **15/16**, zero assimetria. Sai com **exit 1** de proposito — ver abaixo |
+
+⚠️ Era 13/14 mais cedo no mesmo dia. Subiu para 15/16 porque a simulacao achou
+**dois clusters reais que a revisao a mao de 24/08 tinha perdido** (a extorsao
+da adolescente, com o titulo dizendo "Ubirata" que e a cidade da VITIMA; e a
+TERCEIRA linha do confronto de Palhoca — aquele cluster e de tres). Os dois
+entraram no gabarito e passam nas duas ordens.
 
 🚨 **A bateria sai vermelha e isso e correto.** O caso que falha e
 `5d1a9168/b04c143b` ("chacina" x "operacao contra faccao"): mesmo bairro e dia,
@@ -113,7 +135,7 @@ Branch **`feature/design-fio`** = **`staging`** = **`main`** desde 16/08. O
 release saiu: `1.2.0+5` está na faixa Alpha da Play Store. O redesign **chegou ao
 cliente** — o que segue abaixo é histórico das fases, não fila de trabalho.
 
-**Plano completo (fases A-F):** `~/.claude/plans/composed-splashing-raven.md`
+**Plano completo (fases A-F):** ⚠️ o arquivo de plano foi SOBRESCRITO (slot unico).<br>O que sobreviveu esta no ROADMAP, secao "Redesign fio de agencia".
 
 | fase | o quê | estado |
 |---|---|---|

@@ -127,6 +127,31 @@ export const CASOS: CasoDedup[] = [
             'levantamento automatico — so apareceu na revisao a mao.',
   },
 
+  // ── os dois que a REVISAO A MAO perdeu e a simulacao de 26/08 achou ──
+  // 🚨 Estes dois nao vieram de revisao humana: sairam da simulacao completa
+  // (`scripts/simular-dedup.ts`) sobre as 70 noticias desde 18/08, e so entao
+  // foram conferidos a mao, linha por linha, no banco. Ficam registrados porque
+  // sao a prova de que o levantamento manual de 24/08 era incompleto — e porque
+  // o segundo mostra um cluster de TRES, nao de dois.
+  {
+    a: '55336060', b: 'a765e601', esperado: 'IGUAL',
+    porque: 'Mesmo homem de 23 anos, mesma data, mesma vitima adolescente, mesma ' +
+            'extorsao com ameaca de vazar fotos intimas — `a765e601` nomeia a ' +
+            'Operacao Escudo Digital. ⚠️ O titulo de `55336060` diz "em Ubirata", ' +
+            'que e de onde a VITIMA e, nao onde o crime foi; os dois estao ' +
+            'gravados em Florianopolis. Tipos `outros` e `estelionato` — mais um ' +
+            'caso do balde `outros` que o ROADMAP manda revisar.',
+  },
+  {
+    a: '8cd74d81', b: '75f24b0e', esperado: 'IGUAL',
+    porque: 'TERCEIRA linha do confronto em Palhoca (as outras duas sao o par ' +
+            '`8cd74d81/1cd119cc` acima) — o cluster e de tres, nao de dois. O ' +
+            'proprio resumo de `8cd74d81` diz "Barricadas foram montadas em ' +
+            'represalia" e o de `75f24b0e` diz "reacao a um confronto policial ' +
+            'que deixou um baleado": os textos se citam. Mesmo bairro (Caminho ' +
+            'Novo), mesma data. Tipos `trafico` e `bloqueio_via`.',
+  },
+
   // ── IGUAL que o desenho NAO pega, e esta tudo bem ──
   {
     a: 'd1a6ca57', b: '8f5b7a86', esperado: 'IGUAL', falhaConhecida: true,
