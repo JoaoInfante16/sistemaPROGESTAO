@@ -52,35 +52,58 @@ armadilha do Redis que ja custou dois timeouts, no script que e justamente o
 portao.
 
 ---
-### 🚦 ONDE PARAMOS — 25/08, fim de sessao
+### 🚦 ONDE PARAMOS — 26/08
 
-`staging` = `6283cef`. **`main` esta em `5654361`** (o deploy de 17/08).
-Ou seja: duas mudancas grandes commitadas em staging e **nenhuma delas em
-producao**.
+**`staging` = `main` = `origin/staging` = `origin/main` = `c4f17e6`.** A
+migration **034 rodou** (confirmada no banco) e os dois portoes do dedup
+passaram. O codigo esta no GitHub.
 
-🚨 **A ORDEM IMPORTA E NAO PODE INVERTER:**
+⬜ **FALTA SO O `Manual Deploy → Deploy latest commit` no Render** (a `main` nao
+tem auto-deploy) e conferir `commit: c4f17e6` no `/health`. Ate isso, producao
+segue rodando `5654361`, de 17/08.
 
-```
-1. rodar a migration 034 no Supabase        <- SEM ISSO O SCAN PARA DE GRAVAR
-2. simular o dedup (portao de verificacao)
-3. staging -> main + Manual Deploy no Render
-4. conferir o commit no /health
-```
+**Os dois portoes, com numero (26/08):**
 
-O passo 1 e obrigatorio **antes** do deploy: o codigo novo poe `corpo` no
-INSERT, e se a coluna nao existir **toda gravacao de noticia falha**.
-
-| o que falta | como se faz |
+| portao | resultado |
 |---|---|
-| **migration 034** | `workdesk/SQL/migrations/034_news_corpo.sql` no SQL Editor. Aditiva, reversivel |
-| **simular o dedup** | `cd backend && npx tsx scripts/simular-dedup.ts` — le e imprime o que fundiria, **nao grava**. E o portao que decide o deploy |
-| **bateria do dedup** | `npx tsx scripts/test-dedup-gabarito.ts` — hoje **13/14**, zero assimetria. O par `5d1a9168/b04c143b` e falha conhecida (sem ancora comum) |
-| **testar a folha** | device fisico via LAN IP, `flutter clean` antes. So aparece em noticia NOVA (linha antiga cai no resumo) |
+| `npx tsx scripts/simular-dedup.ts` | **70 noticias → 13 fusoes**, 50 chamadas ao GPT (0,71/noticia). As 13 explicadas uma a uma. **Zero fusao indevida** |
+| `npx tsx scripts/test-dedup-gabarito.ts` | **13/14**, zero assimetria. Sai com **exit 1** de proposito — ver abaixo |
+
+🚨 **A bateria sai vermelha e isso e correto.** O caso que falha e
+`5d1a9168/b04c143b` ("chacina" x "operacao contra faccao"): mesmo bairro e dia,
+mas **nenhuma ancora aparece nos dois titulos** — nao ha nome de operacao para
+reconhecer nem contagem divergente para ignorar. **Nao marcar como
+`falhaConhecida` para a bateria ficar verde**; isso seria fraudar o portao. O
+erro e para o lado seguro (funde de MENOS: sobra uma linha duplicada), e o
+cluster do Rubem Berta funde assim mesmo pelos outros pares.
+
+✅ **O que o dedup novo destravou, medido:** das 13 fusoes, **8 tinham
+`tipo_crime` diferente** entre os dois lados e **nunca chegavam a ser
+comparadas** — o portao antigo filtrava por tipo. Outras 2 eram as que o prompt
+antigo reprovava por ler "cinco x seis presos" como contradicao. **10 das 13
+eram invisiveis por construcao.**
+
+⚠️ **O caminho de ESCRITA nunca rodou contra dado real.** A simulacao e
+read-only: ela prova a deteccao, nao a fusao (reescrever textos, somar fontes,
+regravar embedding). A primeira execucao de verdade sera em producao — por isso
+o passo 8 do plano (acompanhar 2-3 dias) e obrigatorio: alvo **zero cluster
+novo** e, tao importante quanto, **nenhuma queda estranha no total diario**, que
+seria sinal de fusao a mais.
+
+**Dois buracos conhecidos, aceitos, no ROADMAP:** o caso sem ancora comum acima,
+e o fato de alcance estadual (a denuncia do MP gravada em duas cidades) — o GPT
+acerta esse, o portao de cidade bloqueia antes de perguntar.
 
 ⚠️ **Script que importa `pipelineCore` nunca termina sozinho** — o import abre
 conexao com o Redis e segura o event loop. Todo script de diagnostico precisa de
 `process.exit(0)` explicito. Dois timeouts foram gastos ate eu ler o log em vez
 de desconfiar da logica.
+
+⚠️ **Sonda de banco:** o codigo do PostgREST para tabela ausente e **`PGRST205`**
+(nao `42P01`), e `select(..., { head: true })` **nao popula `error`** quando a
+tabela sumiu — da falso positivo de "existe". Toda sonda precisa de um **caso de
+controle** (uma tabela que sabidamente nao existe) antes de confiar no
+resultado.
 
 ---
 
