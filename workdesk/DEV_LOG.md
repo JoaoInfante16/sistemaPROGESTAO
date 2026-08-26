@@ -389,6 +389,209 @@ de $100.
 
 ---
 
+## 2026-08-26 (2) — separar o banco de staging: o que foi medido antes de codar
+
+Pedido do João: *"separar o banco de dados do main e do staging, tá tudo no
+main"*. Sessão nova, então a primeira coisa foi conferir no banco em vez de na
+doc. Nada abaixo foi lido em documento — tudo saiu de consulta ao Postgres, da
+chave anon ou de grep no código.
+
+### Confirmado: um projeto Supabase só
+
+`uywvrkiujzcmfmoxbwna`, apontado por `backend/.env`, `admin-panel/.env` e pelo
+default **compilado** do Flutter (`env.dart:4`). Dev local, staging e produção
+escrevem os três na `news` que alimenta o cliente. PG 17.6, pgvector 0.8 no
+schema `public`, 19 tabelas, 9 usuários em `auth.users`.
+
+### 🚨 Quatro tabelas abertas para a chave anon
+
+Medido com a `SUPABASE_ANON_KEY` do próprio `.env`, **com caso de controle**
+(tabela inexistente devolveu `PGRST205`, então a sonda vale):
+
+| tabela | RLS | anon |
+|---|---|---|
+| `reports` | ❌ | leu 3 linhas — conteúdo de relatório de cliente |
+| `billing_history` | ❌ | leu 3 — `total_cost_usd`, `breakdown` |
+| `city_groups` / `city_group_members` | ❌ | leu |
+
+E o grant do role `anon` **em todas as 20 relações** é
+`SELECT,INSERT,UPDATE,DELETE,TRUNCATE`. Onde a RLS está desligada não existe
+trava nenhuma — e a chave anon vai dentro do APK.
+
+**Por que escaparam:** a 025 afirma, no comentário da linha 65, que `reports` já
+estava fechada. **Não estava.** As outras três nem são citadas. Virou a
+**migration 035**, para rodar nos dois bancos.
+
+### Auditoria de tabelas × código: nada morto
+
+As 19 tabelas são todas usadas pelo backend. Quase reportei três colunas como
+mortas e **estava errado nas três** — a assinatura "sempre NULL" é fraca:
+
+- `news.corpo` — a 034 rodou; só notícia nova recebe. ✅ **E isso confirma que o
+  deploy de produção não aconteceu** (prod roda `5654361`, uptime 9 dias)
+- `reports.expires_at` — é exatamente o que a 033 mandou fazer
+- `pipeline_rejected_urls.search_id` — a tabela é janela de 24h
+  (`cleanupOldRejectedUrls`), as 308 linhas são todas do auto-scan. O código
+  **grava sim** (`manualSearchWorker.ts:429`)
+
+Ociosas de verdade, sem serem defeito: `monitored_locations.keywords` (o modo
+`keywords` funciona, nunca foi configurado) e `api_rate_limits.updated_by`.
+
+**Consequência prática: não há o que podar antes de clonar.**
+
+### Três caminhos descartados, com o motivo
+
+- **Replay das migrations** — `schema.sql` declara 14 tabelas e o banco tem 19
+  (faltam `city_groups`, `city_group_members`, `billing_history`,
+  `executive_cache`, `user_notification_prefs`). Reconstrói errado.
+- **`pg_dump` / `psql` / Supabase CLI** — nenhum existe nesta máquina, e o
+  `supabase db dump` exige Docker, que também não há.
+- **Branch do Supabase** (pedido do João) — a doc é literal: *"New branches do
+  not start with any data from your main project"*. Ela **roda as migrations**,
+  que são justamente as quebradas. Sairia vazia **e torta**. E custa
+  `$0,01344`/h ≈ **$35/mês** com o Pro obrigatório, sobre $43 de custo fixo:
+  **+81% por um banco pior.** Descartada com o argumento aceito.
+
+### O que foi construído
+
+Quatro scripts, todos com `process.exit()` explícito (regra da casa):
+
+- `exportar-schema.ts` — **só leitura.** Gera o DDL a partir dos emissores do
+  próprio Postgres (`pg_get_constraintdef`, `indexdef`, `viewdef`,
+  `functiondef`, `triggerdef`) — as mesmas funções que o `pg_dump` chama por
+  dentro, então não é aproximação. Saída em `workdesk/SQL/schema_staging.sql`:
+  19 tabelas, 140 colunas, 54 constraints, 25 índices (inclui o HNSW do
+  pgvector), 1 view, 1 função, 1 trigger, 3 policies, 60 grants.
+- `aplicar-schema.ts` — **três travas**: destino sai de `STAGING_DATABASE_URL`,
+  aborta se o host for igual ao de `DATABASE_URL`, aborta se o destino já tiver
+  tabela. Roda em transação.
+- `comparar-bancos.ts` — o **portão**. Inventaria os dois bancos e diffa.
+  Autoteste: apontado para produção dos dois lados, **350 objetos, idênticos**.
+- `semear-staging.ts` — copia só config + cidades + grupos + `news`/
+  `news_sources`, em ordem de FK.
+
+### Armadilha achada ao escrever a semeadura
+
+**`system_config.updated_by` é FK para `auth.users` e 13 das 26 linhas têm
+valor.** Como `auth.users` não é copiada (credencial de cliente real não vai
+para ambiente de teste), as 13 quebrariam na inserção. O script **anula** a
+coluna na cópia. Mesmo tratamento em `api_rate_limits.updated_by`.
+`monitored_locations.parent_id` aponta para a própria tabela — a leitura é
+ordenada `parent_id nulls first`.
+
+### Decidido com o João
+
+- **Projeto free separado**, não branch. Produção não é tocada em momento algum
+- Staging entra com **`auth_required = false`** — mecanismo que já existe ponta
+  a ponta (`middleware/auth.ts:70` → `/public/config` → `main.dart:358`) e tem
+  toggle no painel. Zero código
+- **`news` inteira (324)**, não amostra de 30d: filtrar dá mais trabalho que
+  copiar e rende material pior para testar o dedup
+- **Redis continua compartilhado, de propósito.** As chaves são endereçadas por
+  conteúdo (`content:<urlHash>`, `embedding:<textHash>`, `geo:`) — compartilhar
+  reaproveita Jina e OpenAI já pagos. O roubo de job já foi resolvido pelo
+  `queueNames.ts`. Separar só faria repagar
+
+### Também neste turno
+
+- `.gitignore`: as regras eram `.env`, `.env.local` e `.env.*.local` — **nenhuma
+  das três pega `.env.staging`**. Um arquivo com `service_role` key entraria no
+  commit sem aviso. Passou a `.env.*` com exceção para `.example`
+- MIGRATIONS_LOG: a 034 estava marcada **pendente** e já tinha rodado (`news.corpo`
+  existe). Corrigida com a evidência junto
+- `develop` estava **81 commits atrás** de `staging` e zero à frente —
+  fast-forward limpo. `develop = staging = main = e1aa6ef`
+
+### ✅ Executado no mesmo dia — staging de pé
+
+Projeto novo: **`amrpitduoogfzhonfugu`**, PG 17.6 (mesma versão de produção). A
+conexão **direta** funcionou — a preocupação com IPv6 não se aplicou, não
+precisou da Session pooler.
+
+| passo | resultado |
+|---|---|
+| aplicar schema | 19 tabelas, em transação |
+| **comparar bancos** | **350 objetos dos dois lados, ZERO diferença** |
+| semear | 26 config, 5 rate limits, 6 cidades, 2 grupos, 3 membros, 324 news, 576 fontes — todas batendo |
+| 035 no staging | RLS **19/19** |
+| sonda anon | staging fechado nas 6 tabelas testadas; controle deu `PGRST205` |
+| caminho real | backend local → `/public/auth-required` = `false`, `/public/locations` e `/news/feed` devolvendo dado de staging |
+
+**O embedding foi conferido byte a byte:** md5 dos 324 vetores concatenados é
+**idêntico** nos dois bancos. Ele passou por JSON no caminho
+(`json_populate_recordset`) e não perdeu precisão. `vector_dims` 1536 dos dois
+lados.
+
+**Só uma diferença sobra entre os bancos**, e é a intencional: `auth_required`
+(`true` em prod, `false` em staging). Confirmado comparando as 26 chaves uma a
+uma.
+
+### 🚨 O painel admin nasceria inacessível — achado durante a execução
+
+O app resolve login com `auth_required=false`, mas **o painel admin não tem esse
+mecanismo**: o `middleware.ts` exige sessão do Supabase e redireciona pro
+`/login`, ponto. Como `auth.users` não foi copiada, staging nascia com o painel
+morto. Criado um admin **só no staging** (credenciais em `backend/.env.staging`),
+com login verificado pela chave anon — o mesmo caminho que o painel usa.
+
+### Repontado
+
+- `backend/.env` → **staging**. O dev local parou de escrever na `news` do
+  cliente. As credenciais de produção foram para `backend/.env.production` com
+  prefixo **`PROD_`**, e os quatro scripts passaram a lê-las de lá
+- `admin-panel/.env` → staging, **as três variáveis juntas**: token emitido pelo
+  Supabase de staging não vale no backend de produção, que valida contra o
+  Supabase dele. Misturar dá 401 sem explicação na tela
+- `env/dev.json` e `env/staging.json` ganharam `SUPABASE_URL`/`ANON_KEY`. O
+  default do `env.dart` **continua produção de propósito** — build de prod não
+  define nada e cai nele; o inverso faria o APK do cliente autenticar em teste
+- `config/index.ts` e `render.yaml`: o comentário da guarda do auto-scan dizia
+  "os três ambientes usam o mesmo Supabase". Reescrito com o motivo novo — a
+  guarda fica **por custo** (scan gasta OpenAI/BrightData/Jina de verdade) e
+  porque dev local e staging ainda dividem o banco de staging entre si
+
+⚠️ **Trava adicionada depois de quase errar:** o `comparar-bancos.ts` agora
+recusa comparar um banco consigo mesmo. Sem isso, dois apontamentos iguais dão
+**falso verde** no portão principal — ele diria "idênticos" e a separação
+pareceria verificada sem nunca ter sido. O autoteste legítimo virou `--autoteste`.
+
+### ✅ Render repontado — a separação está no ar
+
+| | medido |
+|---|---|
+| staging `/public/auth-required` | **`false`** — valor que só existe no banco novo |
+| produção `/public/auth-required` | `true` |
+| staging `/news/feed` | devolve notícia do banco novo |
+| staging `/health` | `database: ok`, `redis: ok`, `environment: staging` |
+| admin staging | `307 → /login` (middleware de pé) |
+| **produção `/health`** | `commit 5654361`, uptime **783.894s (9 dias)** — **nunca reiniciou** |
+
+O uptime de produção é a prova de que ela não foi tocada: 9 dias de pé, o mesmo
+processo desde 17/08, atravessando a separação inteira sem um restart.
+
+🚨 **Armadilha que custou um boot quebrado:** o editor em massa do Render
+**substitui TODAS** as variáveis pelo bloco colado. O primeiro handoff que eu
+gerei tinha só as 4 do Supabase — colar apagou `REDIS_URL` e o resto, e o
+staging subiu com `Missing required environment variable: REDIS_URL`. Handoff de
+env var para o Render tem que ser **sempre o conjunto completo**, nunca o delta.
+Refeito em `backend/.env.render-staging` (24 variáveis) e
+`admin-panel/.env.render-staging` (3).
+
+⚠️ E o `FIREBASE_SERVICE_ACCOUNT` mora entre aspas simples no `.env` — o dotenv
+as remove ao ler, o campo do Render **não**. Colado cru, as aspas virariam parte
+do valor e o `JSON.parse` do `pushService.ts:32` quebraria o push inteiro, com
+erro só no log. O bloco gerado tira as aspas, e o JSON foi validado antes de
+entregar.
+
+### ⬜ Falta
+
+**A 035 em produção.** Rodou só no staging. Os quatro buracos (`reports`,
+`billing_history`, `city_groups`, `city_group_members`) seguem abertos para a
+chave anon em prod. É escrita em produção — espera ordem do João. Hoje é a
+**única diferença** que o `comparar-bancos.ts` aponta entre os dois.
+
+---
+
 ## 2026-08-25 — tocar num card não entregava nenhuma palavra a mais
 
 Pedido do João: *"faça o corpo do texto dentro do card melhor quando o user

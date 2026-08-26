@@ -356,9 +356,22 @@ caminhos ao mesmo tempo.
 
 ## Armadilhas que ja custaram tempo
 
-**Infra compartilhada — a numero 1.** Staging, producao e dev usam o **mesmo**
-Redis e o **mesmo** Supabase. Mudar config atinge producao **na hora, sem
-deploy**. Producao chegou a roubar jobs de staging, ate o prefixo de fila.
+**Infra compartilhada — resolvida pela metade em 26/08.**
+
+O **Supabase deixou de ser compartilhado**: producao usa `uywvrkiujzcmfmoxbwna`
+e staging usa `amrpitduoogfzhonfugu`, projetos separados. O `backend/.env` local
+aponta para **staging** — mexer em config no dev local nao atinge mais o cliente.
+Producao so e alcancada pelas variaveis `PROD_*` de `backend/.env.production`,
+que sao lidas por scripts e nunca pelo servidor.
+
+O **Redis segue compartilhado, de proposito.** As chaves sao endereçadas por
+conteudo (`content:<urlHash>`, `embedding:<textHash>`, `geo:<chave>`), entao
+compartilhar reaproveita fetch da Jina e embedding da OpenAI ja pagos. O roubo
+de JOBS, que era o problema real, esta resolvido pelo `queueNames.ts`.
+
+⚠️ **O que ainda divide banco: dev local e o Render de staging.** Os dois falam
+com o banco de staging, entao a disputa pela coluna `last_check` continua entre
+esses dois — mas o estrago ficou em staging, fora do feed do cliente.
 
 **Nao deduzir qual codigo esta rodando.** `/health` devolve o commit;
 `budget_tracking.details.commit` diz qual processo processou o job.
@@ -390,6 +403,12 @@ parseia como local — dava 3h adiantado no app. Resolvido em
 deixa instalado um APK apontando pro IP da LAN que **abre e loga normal** (o
 Supabase tem defaultValue) e so morre nas chamadas ao backend. Conferir com
 `adb shell dumpsys package com.progestao.simeops`.
+
+🚨 **Desde 26/08 isso ficou mais grave.** O defaultValue de `SUPABASE_URL` e
+`SUPABASE_ANON_KEY` e **producao** (escolha deliberada — ver o comentario em
+`env.dart`). Entao um build que esqueca o `--dart-define-from-file` nao autentica
+em staging: autentica no banco do CLIENTE, e abre normal, sem sinal nenhum de que
+esta no ambiente errado. Para staging, `env/staging.json` **precisa** ser passado.
 
 **O pacote e `com.progestao.simeops`** — nao `com.netriosnews.netrios_news`, que
 sobrevive so no `namespace` (pacote Kotlin da `MainActivity`). Desde 16/08 o

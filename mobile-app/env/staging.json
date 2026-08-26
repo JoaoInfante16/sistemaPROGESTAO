@@ -1,5 +1,7 @@
 {
   "API_URL": "https://simeops-backend.onrender.com",
   "ENVIRONMENT": "staging",
-  "SENTRY_DSN": ""
+  "SENTRY_DSN": "",
+  "SUPABASE_URL": "https://amrpitduoogfzhonfugu.supabase.co",
+  "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFtcnBpdGR1b29nZnpob25mdWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4ODk2NzUsImV4cCI6MjEwMjQ2NTY3NX0.wD2_7cpLWU5k3B1I6uAAFELF8vXI5tpAftkrPO2JJKI"
 }

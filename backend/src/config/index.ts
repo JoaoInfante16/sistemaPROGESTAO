@@ -16,21 +16,31 @@ function optionalEnv(key: string, defaultValue: string): string {
 
 /**
  * As tarefas agendadas (auto-scan e fechamento de billing) sao SINGLETON: tem
- * que rodar em UM ambiente so.
+ * que rodar em UM ambiente so por banco.
  *
- * Staging, producao e dev local usam o mesmo Supabase, e o gatilho do scan e a
- * coluna `last_check` de `monitored_locations` — linha compartilhada. Sem esta
- * guarda os ambientes se REVEZAM escaneando: quem tica primeiro pega a cidade e
- * o outro pula. Resultado: a tabela `news`, que alimenta o feed do cliente,
- * recebe resultado de codigo de teste, e qualquer medicao "antes/depois" do
- * auto-scan fica contaminada por misturar duas versoes.
+ * ⚠️ O MOTIVO DESTA GUARDA MUDOU EM 26/08. Ate essa data os tres ambientes
+ * usavam o MESMO Supabase, e como o gatilho do scan e a coluna `last_check` de
+ * `monitored_locations`, eles se revezavam escaneando — a `news` que alimenta o
+ * feed do cliente recebia resultado de codigo de teste. Isso acabou: producao
+ * tem banco proprio (`uywvrkiujzcmfmoxbwna`) e staging tem o dele
+ * (`amrpitduoogfzhonfugu`). Producao nao disputa mais com ninguem.
  *
- * O `queueNames.ts` resolveu o roubo de JOBS, mas nao isto — a disputa migrou
- * pro `last_check`.
+ * A guarda continua, por DOIS motivos novos:
+ *
+ * 1. CUSTO. Scan em staging gasta OpenAI, BrightData e Jina de verdade — nao ha
+ *    ambiente de teste para essas APIs. Ligar staging 24/7 e dinheiro queimado
+ *    sem ninguem lendo o resultado.
+ * 2. Dev local e o Render de staging apontam para o MESMO banco de staging,
+ *    entao a disputa por `last_check` ainda existe entre esses dois. A
+ *    diferenca e que agora o estrago fica em staging, nao no feed do cliente.
+ *
+ * O `queueNames.ts` resolve o roubo de JOBS e segue necessario: o Redis
+ * continua compartilhado de proposito (cache endereçado por conteudo — ver o
+ * comentario la).
  *
  * Default derivado do NODE_ENV de proposito: se fosse `false` fixo e producao
  * esquecesse de setar, o scan do cliente morreria calado. Setar
- * AUTO_SCAN_ENABLED=true em staging permite testar o scan la sem tocar em prod.
+ * AUTO_SCAN_ENABLED=true em staging agora e seguro para o cliente — so custa.
  */
 function tarefasAgendadasHabilitadas(): boolean {
   const explicito = process.env.AUTO_SCAN_ENABLED;

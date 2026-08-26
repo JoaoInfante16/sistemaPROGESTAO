@@ -1,4 +1,20 @@
 abstract class Env {
+  // 🚨 O default destas duas e PRODUCAO, e continua sendo de proposito.
+  //
+  // Ate 26/08 os tres ambientes usavam o mesmo Supabase e nenhum env/*.json
+  // definia estas chaves — todo build, inclusive o de staging, autenticava no
+  // banco do cliente. Desde a separacao, `env/dev.json` e `env/staging.json`
+  // sobrescrevem as duas (via --dart-define-from-file) e apontam pro projeto de
+  // staging; `env/prod.json` NAO define nenhuma das duas e cai aqui.
+  //
+  // Manter producao como default e a escolha segura: se um build de producao
+  // esquecer o arquivo de env, ele ainda fala com o banco certo. O inverso
+  // (default de staging) faria o APK do cliente autenticar num banco de teste,
+  // e o erro so apareceria na mao de quem paga.
+  //
+  // ⚠️ O APK que ja esta na Play Store tem o valor abaixo COMPILADO dentro. Por
+  // isso producao nao pode trocar de projeto Supabase sem release novo: binario
+  // instalado nao se conserta remotamente.
   static const supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',
     defaultValue: 'https://uywvrkiujzcmfmoxbwna.supabase.co',

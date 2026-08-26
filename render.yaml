@@ -9,12 +9,13 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # Tarefas agendadas (auto-scan + fechamento de billing) sao singleton: o
-      # Supabase e compartilhado entre os ambientes e o gatilho do scan e a
-      # coluna last_check, entao dois schedulers se revezam e o feed do cliente
-      # recebe resultado de codigo de teste. Sem esta variavel, so NODE_ENV=
-      # production roda — e este arquivo descreve producao. Em staging, deixar
-      # ausente (ou 'false'); por 'true' so pra testar o scan de proposito.
+      # Tarefas agendadas (auto-scan + fechamento de billing) sao singleton por
+      # banco. ⚠️ Desde 26/08 o Supabase NAO e mais compartilhado: producao e
+      # staging tem projetos separados, entao o feed do cliente nao recebe mais
+      # resultado de codigo de teste. A variavel fica por custo — scan gasta
+      # OpenAI/BrightData/Jina de verdade em qualquer ambiente. Sem ela, so
+      # NODE_ENV=production roda, e este arquivo descreve producao. Em staging,
+      # deixar ausente (ou 'false'); por 'true' so pra testar o scan de proposito.
       - key: AUTO_SCAN_ENABLED
         value: "true"
       - key: PORT
