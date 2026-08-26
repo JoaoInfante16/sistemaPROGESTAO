@@ -583,12 +583,32 @@ do valor e o `JSON.parse` do `pushService.ts:32` quebraria o push inteiro, com
 erro só no log. O bloco gerado tira as aspas, e o JSON foi validado antes de
 entregar.
 
-### ⬜ Falta
+### ✅ 035 aplicada em produção — o buraco fechou
 
-**A 035 em produção.** Rodou só no staging. Os quatro buracos (`reports`,
-`billing_history`, `city_groups`, `city_group_members`) seguem abertos para a
-chave anon em prod. É escrita em produção — espera ordem do João. Hoje é a
-**única diferença** que o `comparar-bancos.ts` aponta entre os dois.
+Autorizada pelo João no mesmo dia. Medido antes e depois:
+
+- RLS **19/19** em produção (era 15/19)
+- a chave anon devolve **0 linhas** nas quatro; o controle seguiu dando
+  `PGRST205`, então a sonda continua valendo
+- **as contagens não mudaram** (`reports` 20, `billing_history` 4, `city_groups`
+  2, `city_group_members` 3). RLS é acesso, não apaga dado — medido de
+  propósito, porque "ligar segurança" soa destrutivo e não é
+- produção **não reiniciou**: uptime de 784.457s (9 dias) atravessou a migration
+- `comparar-bancos.ts`: **350 objetos, ZERO diferença** entre os dois bancos
+
+Commit da separação: **`7553f40`** em `develop`.
+
+### O que fica valendo desta sessão
+
+- **Sonda de banco precisa de caso de controle.** "Sempre NULL" e "tabela
+  ausente" mentem sem ele. Três colunas quase foram reportadas como mortas
+- **Documento dentro de arquivo `.sql` apodrece igual.** A 025 afirmava que
+  `reports` estava fechada; a afirmação sobreviveu meses porque ninguém mediu
+- **Handoff de env var pro Render é o conjunto completo, nunca o delta** — o
+  editor em massa substitui tudo
+- **Nem toda separação vale a pena.** O Redis segue compartilhado por decisão:
+  as chaves são endereçadas por conteúdo, e separar só faria repagar Jina e
+  OpenAI
 
 ---
 
