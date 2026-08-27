@@ -168,6 +168,60 @@ o erro e sai com 0 — nunca derruba a sessão.
 pipe-test passou e o JSON foi validado, mas a confirmação de verdade é a próxima
 sessão. Se não aparecer, abrir `/hooks` uma vez (recarrega a config) ou reiniciar.
 
+### Segunda parte: a ARQUITETURA estava fazendo o papel do DEV_LOG
+
+O João leu o resultado e apontou o que faltava: *"a arquitetura tem informações
+que não falam de arquitetura. Aquilo é pra ser um MAPA."* Estava certo, e eu
+tinha piorado o quadro de manhã — o bloco que escrevi no topo contava a história
+do ESTADO DO MUNDO em seis linhas, dentro do documento que não é para ter
+história.
+
+Medido antes de mexer: **25 linhas com data e 25 com verbo no passado, contra 3
+diagramas em 498 linhas.**
+
+**O que confundia os dois papéis** é que o CLAUDE.md manda a workdesk guardar "o
+porquê das decisões" — e o porquê virou licença para contar o incidente inteiro.
+A linha certa não é *porquê × o quê*:
+
+| fica na ARQUITETURA | vai para o DEV_LOG |
+|---|---|
+| a **razão** de a regra existir, atemporal | **como se descobriu**, datado |
+| "Não paralelizar o Nominatim: a política é 1 req/s" | "foi isso que fez o mapa nunca carregar; corrigido em 04/08 com cache de duas camadas" |
+| "Push sai 1× por rodada — nunca dentro do laço" | "era um por notícia; no dia de 31 virou 31 vibrações onde cabiam 15" |
+
+**O teste da frase, que virou regra:** verbo no passado + data → DEV_LOG.
+Presente ou imperativo → ARQUITETURA.
+
+**O documento foi reescrito como mapa**, com sumário no topo e numeração de 1 a
+12. O que mudou de fundo:
+
+- **Sete diagramas** onde havia três. Novos: **ambientes e bancos** (a armadilha
+  nº 1 do projeto era parágrafo denso e agora é desenho), **os dois caminhos**
+  lado a lado, **o modelo de dados**, e **o dedup em três camadas** com a camada
+  1 marcada como PORTÃO.
+- **As armadilhas subiram.** Estavam depois da linha 390 — tarde demais para quem
+  chega frio. Agora `§2 — O que não se quebra` é uma tabela de 10 regras logo
+  depois do que o produto faz, e o detalhe por área (app, banco, ambiente) ficou
+  embaixo.
+- **`§11 — Quando der ruim`**, nova: uma tabela de "pergunta → comando que
+  responde de verdade". Concluir por inferência qual código está rodando já
+  custou duas sessões inteiras; são dois minutos de comando.
+- **Três coisas que nem eram arquitetura saíram**: a migration 024 pendente e o
+  APK que ainda manda 10 cidades foram para o ROADMAP, e o plano de trocar a
+  região metropolitana por raio já estava lá.
+
+Resultado: **datas 25 → 2** (as duas que ficaram são datas de *medição*, que a
+regra manda manter), **verbos no passado 25 → 10**, **diagramas 3 → 7**, tabelas
+4 → 7. O arquivo **cresceu** de 498 para 582 linhas — eu tinha estimado ~300, e
+errei: os quatro diagramas e o sumário custam linhas. Mas metade dele agora é
+desenho ou tabela, e é isso que muda a leitura de quem chega frio.
+
+⚠️ **Duas coisas quase se perderam no recorte, pegas por checagem automática** de
+36 conceitos-chave contra o arquivo antigo: a seção inteira de **região
+metropolitana** (com a medição das alucinações — Goiânia → Mara Rosa, 350 km) e o
+nome `DEDUP_JANELA_DIAS`, que tinha quebrado no meio de uma linha do diagrama.
+Reescrita grande pede checagem mecânica, não releitura.
+
 ### O que eu errei nesta sessão
 
 **Vendi um corte de ~87 linhas duplicadas entre a ARQUITETURA e o FUNIL, e a

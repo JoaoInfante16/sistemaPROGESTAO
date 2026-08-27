@@ -1,90 +1,97 @@
-# SIMEops / PROGESTAO — ARQUITETURA DO SISTEMA
-## Documento tecnico — revisado em 2026-08-27
+# ARQUITETURA — o mapa do SIMEops
 
-> 📌 **Documento vivo** — descreve o **presente**: como o sistema funciona hoje.
-> Editado in-place quando algo estrutural muda, nunca arquivado com a fase.
-> O historico de *como se chegou aqui* e o [DEV_LOG](./DEV_LOG.md).
-> Ver [CLAUDE.md](../CLAUDE.md), secao 2.
+> 📌 **Documento vivo.** Descreve o **presente**: como o sistema é hoje e o que
+> não pode ser quebrado. Editado in-place quando algo estrutural muda.
+> Ver [CLAUDE.md](../CLAUDE.md), seção 2.
 
 ---
 
-## 🚪 COMECE POR AQUI — onboarding de sessao nova
+## 🚪 COMECE POR AQUI
 
-**Este e o unico documento de estado do sistema.** Se voce e uma instancia nova
-do Claude, ou o Joao depois de um tempo longe: leia este arquivo inteiro antes de
-tocar em codigo. Ele e curto de proposito.
+**Este é o único documento de estado do sistema.** Instância nova do Claude, ou
+o João depois de um tempo longe: leia daqui até o fim antes de tocar em código.
 
-Ate 27/08 existia um **segundo** documento de estado — o bloco "ESTADO DO MUNDO"
-no topo do DEV_LOG. Ele cresceu para **376 linhas** e passou a mentir: listava
-como "ACHADO NAO CORRIGIDO" um bug consertado 18 dias antes, e respondia
-**tres coisas diferentes** para "a migration 025 rodou?" no mesmo bloco. Foi
-dissolvido. Se voce sentir vontade de escrever o estado atual do sistema em
-qualquer outro arquivo, e aqui que ele vai.
+**É um MAPA, não um diário.** Aqui tudo está no presente: o que é, como se liga,
+o que não se faz. *Como se descobriu* cada coisa é o [DEV_LOG](./DEV_LOG.md);
+*o que ainda falta* é o [ROADMAP](./ROADMAP.md). Se você for escrever aqui uma
+frase com data e verbo no passado, ela pertence ao DEV_LOG.
 
-**A ordem de leitura, por tipo de trabalho:**
+**Não copie o código para cá.** Stack, árvore de arquivos, valores de config e
+shapes de request se leem na fonte, em dois segundos e sempre certos. A cópia
+apodrece calada e vira uma segunda verdade. Entra aqui só o que **custa dinheiro
+ou tempo para redescobrir**: a razão de uma regra existir, o que foi tentado e
+falhou, e o que não se enxerga lendo o código. Número indispensável vem **com a
+data da medição**.
 
-| voce vai mexer em | leia, nesta ordem |
-|---|---|
-| qualquer coisa | este arquivo (o [CLAUDE.md](../CLAUDE.md) ja carrega sozinho) |
-| rota, contrato, shape | + [API_CONTRATO.md](./API_CONTRATO.md) |
-| pipeline, filtros, custo | + [FUNIL.md](./FUNIL.md) |
-| app, tela, cor, tipografia | + [DESIGN_CONTRATO.md](./DESIGN_CONTRATO.md) |
-| schema, migration | + [SQL/MIGRATIONS_LOG.md](./SQL/MIGRATIONS_LOG.md), e **rodar** `scripts/diagnostico-banco.ts` |
-
-**O que NAO ler para se orientar:** o [DEV_LOG](./DEV_LOG.md) e historico
-(append-only, cronologico) e o [ROADMAP](./ROADMAP.md) e futuro. Nenhum dos dois
-diz como o sistema esta. A unica excecao e o bloco **ONDE PARAMOS** no topo do
-DEV_LOG: ~25 linhas sobre a sessao em curso, sobrescritas a cada vez.
-
-**Estado real, quando a duvida for factual:** nao deduza de documento nenhum,
-nem deste. `GET /health` diz o commit no ar; `scripts/diagnostico-banco.ts` diz
-o schema; `git log` diz o codigo. Documento e para **porque**, nao para **o que**.
+**Na dúvida factual, não deduza — meça.** `GET /health` diz o commit no ar,
+`scripts/diagnostico-banco.ts` diz o schema, `git log` diz o código. Ver
+[§11](#11-quando-der-ruim--o-que-rodar).
 
 ---
 
-## Regra deste documento (2026-08-04)
+## 📑 Sumário
 
-**Aqui NAO entra o que o codigo ja diz.** Nada de stack, arvore de arquivos,
-lista de chaves de config, shapes de rota ou valores numericos que vivem no
-`configManager`. Isso se le na fonte, em dois segundos, e sempre certo.
-
-O motivo nao e economia de espaco — e que a copia **apodrece calada**. Na revisao
-de 04/08 este documento afirmava, ao mesmo tempo, que a busca aceitava 10 cidades
-(aceita 1), que o Stage 5 rodava em serie (foi paralelizado), que nenhuma chamada
-externa tinha timeout (o proprio cabecalho, 470 linhas acima, listava os
-timeouts) e que os tetos eram por faixa 30d/60d/90d (sao por raiz quadrada). Tudo
-isso estava dentro de uma caixa escrita **"LEIA ANTES DE MEXER"**.
-
-Entao a regra e:
-
-| entra | fica de fora |
-|---|---|
-| **por que** algo e assim | o que a linha de codigo faz |
-| o que foi tentado e **falhou** | a lista de arquivos e pastas |
-| medicoes que custaram dinheiro | valores de config (leia o `configManager`) |
-| armadilhas que ja custaram tempo | shapes de request/response (leia o zod) |
-| coisas que eu **nao enxergo** do codigo | versoes de dependencia (leia o package.json) |
-
-Quando um numero for indispensavel para o raciocinio, ele vem **com a data da
-medicao** e com o ponteiro pra fonte viva.
+| # | seção | para quê |
+|---|---|---|
+| 1 | [O produto](#1-o-produto--o-que-promete-e-o-que-não-promete) | o que o sistema entrega, e o que ele **não** entrega |
+| 2 | [🚨 O que não se quebra](#2--o-que-não-se-quebra) | **leia antes de mudar qualquer coisa** |
+| 3 | [O mapa em quatro desenhos](#3-o-mapa-em-quatro-desenhos) | sistema, ambientes, os dois caminhos, dados |
+| 4 | [O funil](#4-o-funil--pipeline-core) | como uma URL vira notícia, e por que cada estágio existe |
+| 5 | [O dedup](#5-o-dedup--três-camadas-por-custo) | como a mesma ocorrência vira um item só |
+| 6 | [Auto-scan](#6-auto-scan) | o que é próprio do caminho automático |
+| 7 | [Busca manual](#7-busca-manual) | o que é próprio do caminho sob demanda |
+| 8 | [Serviços externos](#8-serviços-externos--só-o-que-morde) | o que cada um cobra, demora e esconde |
+| 9 | [Configuração](#9-configuração--o-que-não-está-no-código) | onde os valores moram e como mudam |
+| 10 | [Armadilhas](#10-armadilhas-que-já-custaram-tempo) | por área: deploy, app, banco, ambiente |
+| 11 | [Quando der ruim](#11-quando-der-ruim--o-que-rodar) | os comandos que respondem "como está agora?" |
+| 12 | [Onde procurar o resto](#12-onde-procurar-o-resto) | qual documento responde qual pergunta |
 
 ---
 
-## O que o sistema faz
+## 1. O produto — o que promete e o que não promete
 
-Um robo jornalista: varre a imprensa brasileira atras de ocorrencias policiais,
-filtra com IA, consolida a mesma ocorrencia vinda de veiculos diferentes, e
-entrega no celular — por push automatico (auto-scan) ou sob demanda (busca
-manual).
+Um robô jornalista: varre a imprensa brasileira atrás de ocorrências policiais,
+filtra com IA, consolida a mesma ocorrência vinda de veículos diferentes e
+entrega no celular — por push automático (**auto-scan**) ou sob demanda
+(**busca manual**).
 
-**O que o produto entrega e "o que a imprensa publicou sobre criminalidade na
-cidade", NAO "a criminalidade da cidade".** Sao coisas diferentes, e a segunda e
-muito maior. Isso precisa estar alinhado com o cliente, porque e a origem de toda
-frustracao com volume baixo.
+🚨 **O produto entrega "o que a imprensa publicou sobre criminalidade na cidade",
+NÃO "a criminalidade da cidade".** São coisas diferentes, e a segunda é muito
+maior. Isso precisa estar alinhado com o cliente: é a origem de toda frustração
+com volume baixo. Uma cidade pode ter 40 ocorrências e 2 notícias.
+
+**Quem usa:** profissionais de segurança pública e gestão de risco. Não é app de
+notícia para o público geral — o que se vende é o recorte e a consolidação.
 
 ---
 
-## Mapa do sistema
+## 2. 🚨 O que não se quebra
+
+As regras abaixo custaram dinheiro, tempo ou um cliente vendo coisa errada. Cada
+uma tem a razão colada; a história está no [DEV_LOG](./DEV_LOG.md).
+
+| # | regra | por quê |
+|---|---|---|
+| 1 | **Escanear só `type='city'`, nunca `state`** | escanear estado polui o banco com cidades erradas |
+| 2 | **Filter2 exige cidade + estado juntos** | sem estado, São José (SC) vira São José (SP) |
+| 3 | **Cidade casa por igualdade, nunca por substring** | `includes` já pôs 10 notícias de São José do Cedro no feed de São José |
+| 4 | **Nunca fazer retry por contagem baixa** | não dá para distinguir "fui bloqueado" de "essa cidade não tem notícia". Só sobre sinal explícito (`x-brd-err-code`, corpo de 0 bytes) |
+| 5 | **`gpt-5-nano` não funciona** — manter `gpt-4o-mini` | reasoning tokens |
+| 6 | **CORS no Render exige callback function** | array direto não funciona em produção |
+| 7 | **Tempo se ataca por vazão, nunca por descarte** | descartar candidato joga fora coleta já paga (com cota 50: 142 candidatos viraram 50) |
+| 8 | **Filter1 nunca faz fallback "aprova tudo"** | aprovar tudo por segurança explode o orçamento nos estágios caros que vêm depois |
+| 9 | **Todo script que fala com Redis termina em `process.exit(0)`** | `main();` solto pendura o processo — já custou dois timeouts |
+| 10 | **Mudança de schema vira migration + entrada no log, no mesmo turno** | escrita direta pelo Bash é bloqueada, e o log é o que a próxima instância lê |
+
+⚠️ **Antes de "otimizar" qualquer coisa aqui, leia o [FUNIL](./FUNIL.md).** As
+alavancas que parecem óbvias (mais páginas, teto menor, retry) já foram medidas e
+não fazem o que parecem fazer.
+
+---
+
+## 3. O mapa em quatro desenhos
+
+### 3.1 O sistema
 
 ```
    Bright Data SERP API  ---+
@@ -105,60 +112,121 @@ frustracao com volume baixo.
         (PG + pgvector)    (Android)         (configuracao)
 ```
 
-`BraveNewsProvider.ts` existe mas esta **fora do caminho ativo** (so com
-`SEARCH_BACKEND=brave`). Se voce achar o Brave citado em algum calculo de custo,
-o calculo e velho.
+`BraveNewsProvider.ts` existe mas está **fora do caminho ativo** (só com
+`SEARCH_BACKEND=brave`). Cálculo de custo que cite Brave é velho.
+
+### 3.2 Ambientes e bancos — a armadilha nº 1
+
+```
+  BRANCH        SERVICO RENDER          BANCO (Supabase)      DEPLOY
+  ------------  ----------------------  --------------------  ------------
+  develop   ->  (so local)          ->  STAGING amrpit...     n/a
+  staging   ->  simeops-backend     ->  STAGING amrpit...     automatico
+  main      ->  ...-production      ->  PROD    uywvrk...     !! MANUAL !!
+                admin-panel                                   automatico
+
+  backend/.env local ---> STAGING   (mexer aqui NAO atinge o cliente)
+  backend/.env.production (PROD_*) --> so scripts, nunca o servidor
+
+  REDIS/UPSTASH: UM SO, compartilhado DE PROPOSITO
+     +-- content:<urlHash>     ) chaves endereçadas por CONTEUDO:
+     +-- embedding:<textHash>  ) compartilhar reaproveita fetch e
+     +-- geo:<chave>           ) embedding JA PAGOS
+     +-- filas BullMQ ........... sufixo POR AMBIENTE (queueNames.ts)
+         producao mantem o nome puro de proposito
+```
+
+🚨 **O backend de produção NÃO tem auto-deploy.** `git push` para `main` é aceito
+e **nada acontece**. Depois de empurrar: dashboard do Render →
+`Manual Deploy → Deploy latest commit`, e conferir no `/health` que o
+`uptime_seconds` zerou e o `commit` é o novo. O painel admin sobe sozinho; só o
+backend não.
+
+⚠️ **Dev local e staging dividem o mesmo banco** — a disputa pela coluna
+`last_check` continua entre esses dois, mas o estrago fica fora do feed do
+cliente.
+
+⚠️ **Config é compartilhada dentro de cada banco.** Mudar uma chave no painel
+vale **na hora, sem deploy**. Se o significado de uma config mudar, **mude o
+nome** — não reaproveite a chave.
+
+🚨 **O `defaultValue` de `SUPABASE_URL`/`SUPABASE_ANON_KEY` no app é PRODUÇÃO**
+(escolha deliberada — ver o comentário em `env.dart`). Build sem
+`--dart-define-from-file` não falha: autentica no banco do **cliente** e abre
+normal, sem sinal nenhum. Para staging, `env/staging.json` é obrigatório.
+
+### 3.3 Os dois caminhos
+
+```
+  AUTO-SCAN (automatico)          |  BUSCA MANUAL (sob demanda)
+  ------------------------------  |  ------------------------------
+  CRON, env SCAN_CRON_SCHEDULE    |  usuario dispara no app
+  (a config do banco e IGNORADA)  |
+  janela de operacao:             |  qualquer hora
+    dias uteis, horario comercial |
+    America/Sao_Paulo forcado     |
+  so type='city'                  |  1 cidade (+ regiao junto)
+  assuntos em RODIZIO             |  assuntos escolhidos na tela
+  STAGE 1.5: peneira barata       |  dual-source em paralelo:
+    URL ja em news_sources -> fora |    Web Top 100 (volume)
+    fora da janela -> fora         |    News paginado (qualidade)
+    SEM data legivel -> MANTEM     |
+  ------------------------------  |  ------------------------------
+  DEDUP CONTRA O BANCO (3 camadas)|  SEM dedup contra o banco
+  push por RODADA, agrupado       |  push de conclusao (deep link)
+  grava em news + news_sources    |  progress persistido em JSONB
+```
+
+### 3.4 Modelo de dados
+
+```
+  monitored_locations           city_groups
+    id, name, type              id, name
+    parent_id ---+                 ^
+    (cidade -> estado)             |
+    last_check   |            city_group_members
+    keywords[]   |              group_id --+
+                 |              location_id -----+
+                 +---------------------------------+
+
+  news                          news_sources
+    id                            id
+    cidade  <<< TEXTO             news_id ------> news.id
+    estado                        url  (unica)
+    titulo / resumo / corpo       source_name
+    tipo_crime                    fetched_at
+    categoria_grupo
+    data_ocorrencia             (1 noticia : N fontes)
+    hora_publicacao
+    embedding vector(1536)
+    natureza (ocorrencia|estatistica)
+    confianca / active
+```
+
+🚨 **`news` NÃO tem chave estrangeira para `monitored_locations`** — a ligação é
+o **texto** da coluna `cidade`. É por isso que cidade homônima é problema de
+pós-filtro (§4) e não do banco, e por isso o relatório de um grupo precisa de
+`.in('cidade', [...])` com a lista de nomes.
+
+⚠️ **Sem `parent_id` não há pós-filtro nenhum** (`locationPostFilter =
+undefined`): a cidade aceitaria notícia de qualquer lugar. Hoje as cidades
+monitoradas têm pai — é latente, não ativo.
+
+As outras 13 tabelas (`budget_tracking`, `reports`, `user_notification_prefs`,
+`pipeline_rejected_urls`, `search_cache`, `executive_cache`…) estão em
+[SQL/schema_staging.sql](./SQL/schema_staging.sql). **Não deduza schema: rode
+`scripts/diagnostico-banco.ts`.**
 
 ---
 
-## Servicos externos — so o que surpreende
+## 4. O funil — pipeline core
 
-O que cada servico *e* esta no proprio nome. O que morde:
+> 📍 Este bloco diz **por que cada estágio existe**. Onde cada item morre, com
+> números medidos e custo por estágio, é o [FUNIL.md](./FUNIL.md) — número de
+> mortalidade vai lá, razão de regra vem para cá.
 
-**Bright Data — dois modos com custo e latencia muito diferentes.**
-O modo *news* (`tbm=nws`) e sincrono e responde em segundos. O modo *web* ("Top
-100") e uma Dataset API: trigger, polling, download de snapshot. **O polling vai
-a ate 60 tentativas de 3s, com 1 retry — ou seja, ate ~6 minutos por cidade no
-pior caso.** Esse e o maior sumidouro de tempo isolado do sistema.
-
-**O teto do indice do Google e por QUERY, e nao e regulavel.** Medido com
-paginacao correta (Floripa, 30 dias): 10, 10, 10, 1, 0, 0 = **31 noticias
-unicas**. Aumentar config alem disso nao cria noticia que nao existe. **Mais
-assuntos e a unica alavanca real de alcance** — cada assunto e um teto novo. Foi
-isso que levou a taxonomia inteira para a busca (03/08).
-
-**Paginacao do news:** `num` foi deprecado pelo Google (set/2025) e a SERP
-devolve ~10 por pagina — paginar com `start` de 10 em 10. Com incremento de 20 o
-codigo **pula as posicoes 10-19 de cada pagina** e perde ~1/3 do material. E
-`brd_json=1` e OBRIGATORIO na URL: sem ele vem HTML bruto e o `JSON.parse` falha
-em silencio.
-
-**Jina** e o fallback Web Unlocker (Bright Data) para quando o Jina leva
-403/422/503/SSL — tipicamente dominios `.gov.br`. O cache **nao guarda respostas
-com menos de 100 chars**, senao uma pagina vazia envenenaria o cache por 24h.
-Desde 04/08 trata `429` lendo o `Retry-After`.
-
-**Nominatim/OpenStreetMap** e gratis e a politica de uso e **1 requisicao por
-segundo** — nao paralelizavel. Foi isso que fez o mapa do relatorio nunca
-carregar: geocode sequencial x 1,1s x ate 3 lookups por ponto dava 85-254s contra
-um timeout de 15s no cliente. Corrigido em 04/08 com cache em duas camadas
-(memoria + Redis, 90 dias) e aquecimento **depois** da entrega.
-
-**Redis/Upstash** carrega fila (BullMQ), cache de config, de conteudo e de
-embedding. Os TTLs estao no codigo.
-
----
-
-## Pipeline core — o funil
-
-> 📍 **Este bloco responde "POR QUE cada regra existe".** Onde cada item morre,
-> com numeros medidos e custo por estagio, e o [FUNIL.md](./FUNIL.md) — os dois
-> se completam e nao se repetem: se voce for escrever aqui um numero de
-> mortalidade, ele vai no FUNIL; se for escrever la a razao de uma regra, ela
-> vem para ca.
-
-Este desenho e o **modelo mental** do sistema: onde cada item morre. Os valores
-de corte sao config e mudam; a **ordem** e a **razao de cada estagio** nao.
+O desenho é o **modelo mental** do sistema. Os valores de corte são config e
+mudam; a **ordem** e a **razão de cada estágio** não.
 
 ```
   SEARCH PROVIDER
@@ -198,113 +266,130 @@ de corte sao config e mudam; a **ordem** e a **razao de cada estagio** nao.
    + push da RODADA)
 ```
 
-### Por que cada regra do funil existe
+### Por que cada estágio é assim
 
 **Filter1 nunca faz fallback "aprova tudo".** Se a API falhar depois do retry,
-ele **lanca** e deixa o BullMQ retentar. Aprovar tudo por seguranca explodiria o
-orcamento nos estagios seguintes, que sao os caros. Ja parse invalido ou tamanho
-de array errado faz padding `true` — ali o custo de errar e um artigo a mais, nao
-o orcamento inteiro.
+ele **lança** e deixa o BullMQ retentar. Aprovar tudo por segurança explodiria o
+orçamento nos estágios seguintes, que são os caros. Já parse inválido ou tamanho
+de array errado faz padding `true` — ali o custo de errar é um artigo a mais, não
+o orçamento inteiro.
 
-**O Filter2 SEMPRE exige cidade + estado juntos.** Sem o estado, Sao Jose (SC)
-vira Sao Jose (SP). Nao relaxar isso.
+**O Filter2 SEMPRE exige cidade + estado juntos.** Sem o estado, São José (SC)
+vira São José (SP). Não relaxar isso.
 
-**A regra 1 do Filter2 exige EVENTO, e a regra 2 tem lista negativa** (17/08).
-Antes bastava ser "public safety content", e por isso campanha de conscientizacao,
-forum, palestra, aviso de votacao e alerta de tempestade entravam no feed — e
-caiam em `manifestacao`, que virou balde de qualquer ajuntamento e por isso foi
-congelada. Quem herdou o que interessa: `bloqueio_via` (protesto que fecha via) e
-`greve`, agora tipo proprio.
+**A regra 1 do Filter2 exige EVENTO, e a regra 2 tem lista negativa.** Só "public
+safety content" fazia entrar campanha de conscientização, fórum, palestra, aviso
+de votação e alerta de tempestade — tudo caindo em `manifestacao`, que virou
+balde de qualquer ajuntamento e por isso está **congelada**. Quem herdou o que
+interessa: `bloqueio_via` (protesto que fecha via) e `greve`, hoje tipo próprio.
 
-**Os assuntos escolhidos pelo usuario entram como contexto nos prompts do Filter1
-e do Filter2** (03/08). Sem isso o Filter1 matava `greve` e `bloqueio` pacifico
-**antes do Jina**, em silencio: sao assuntos que o modelo nao considera
-"seguranca publica". A regra do usuario vence a regra de crime.
+**Os assuntos escolhidos pelo usuário entram como contexto nos prompts do Filter1
+e do Filter2.** Sem isso o Filter1 mata `greve` e `bloqueio` pacífico **antes do
+Jina**, em silêncio: são assuntos que o modelo não considera "segurança pública".
+**A regra do usuário vence a regra de crime.**
 
-**Dedup contra DB tem 3 camadas por custo, nao por precisao:** geo-temporal em
-SQL ($0) elimina a maioria, cosine ($0) resolve quase todo o resto, e o GPT so
-ve os ~5% duvidosos.
-
-⚠️ **A camada 1 e um PORTAO, nao um veredito** — quem ela nao devolve, ninguem
-mais examina. Por isso a janela de data e de **3 dias** (`DEDUP_JANELA_DIAS`) e
-nao de 1: `data_ocorrencia` da MESMA materia pode divergir entre scans, porque a
-regra 4 do Filter2 manda usar a data de hoje quando nao acha a de publicacao.
-Em 17/08 isso deixou uma duplicata entrar sem que as camadas 2 e 3 fossem
-sequer consultadas.
-
-🚨 **O limiar da camada 2 vem do BANCO** (`dedup_similarity_threshold` = 0.70),
-nao do `DEFAULT_SIMILARITY_THRESHOLD = 0.85` que esta no codigo. O default tem
-nome de verdade e nao e a verdade — conferir no painel antes de raciocinar com
-ele.
-
-🚨 **A camada 3 so pergunta pelo TOP match**, e a pergunta e SIMETRICA por
-construcao do prompt desde 17/08. Ate entao ela nao era: `(A,B)` dava YES e
-`(B,A)` dava NO para o mesmo par, deterministicamente. Quem mexer no prompt tem
-que testar **nas duas ordens**.
-
-### Trocas de prompt testadas e DESCARTADAS
-
-Em 16/04 tentei reescrever o prompt da Layer 3 do dedup para reduzir um suposto
-vies pro "YES". O teste com 10 pares (`scripts/test-dedup-prompt.ts`) mostrou
-**regressao**: o prompt novo, mais rigoroso, dava NO para o mesmo evento escrito
-de formas diferentes — que e exatamente o valor central do sistema. Revertido.
+**Trocas de prompt já testadas e DESCARTADAS:** reescrever o prompt da camada 3
+do dedup para reduzir um suposto viés pró-"YES" deu **regressão** no teste de 10
+pares (`scripts/test-dedup-prompt.ts`) — o prompt mais rigoroso passou a dar NO
+para o mesmo evento escrito de formas diferentes, que é o valor central do
+sistema. Não refazer sem um teste melhor.
 
 ---
 
-## Auto-scan
+## 5. O dedup — três camadas por custo
 
-Disparado por CRON. **A config `scan_cron_schedule` no banco e IGNORADA** — quem
-manda e a env `SCAN_CRON_SCHEDULE`.
+As camadas são separadas **por custo, não por precisão**: a barata elimina a
+maioria, e o GPT só vê o que sobra.
 
-Roda so em **janela de operacao** (timezone `America/Sao_Paulo` forcado via
-`Intl`): dias uteis, horario comercial, fim de semana desligado por default.
-Fora da janela o tick inteiro e pulado — nada enfileira, nada e marcado.
+```
+  candidato novo
+        |
+        v
+  [1] GEO-TEMPORAL em SQL .... $0 ...... << E UM PORTAO, NAO UM VEREDITO
+        |   mesma cidade, dentro de           quem esta consulta nao
+        |   DEDUP_JANELA_DIAS = 3 dias        devolve, ninguem mais
+        |   (nao 1 — ver abaixo)              examina
+        v
+  [2] COSINE sobre embedding . $0 ...... limiar 0.70
+        |                                 !! vem do BANCO
+        |                                 (dedup_similarity_threshold)
+        v
+  [3] GPT, so o TOP match .... ~5% ..... pergunta SIMETRICA
+        |                                 por construcao do prompt
+        v
+   duplicata? -> vira source[] do lead (maior confianca)
+```
+
+🚨 **A camada 1 é um PORTÃO.** Por isso a janela de data é de **3 dias** e não de
+1: a `data_ocorrencia` da mesma matéria pode divergir entre scans, porque a regra
+4 do Filter2 manda usar a data de hoje quando não acha a de publicação. Janela
+curta deixa duplicata passar sem que as camadas 2 e 3 sejam sequer consultadas.
+
+🚨 **O limiar da camada 2 vem do BANCO** (`dedup_similarity_threshold` = 0.70),
+**não** do `DEFAULT_SIMILARITY_THRESHOLD = 0.85` que está no código. O default
+tem nome de verdade e não é a verdade — conferir no painel antes de raciocinar
+com ele.
+
+🚨 **A camada 3 pergunta de forma simétrica, e isso é load-bearing.** Antes não
+era: `(A,B)` dava YES e `(B,A)` dava NO para o mesmo par, deterministicamente.
+Quem mexer no prompt tem que testar **nas duas ordens**.
+
+---
+
+## 6. Auto-scan
+
+**Quem manda no horário é a env `SCAN_CRON_SCHEDULE`** — a config
+`scan_cron_schedule` no banco é **ignorada**.
+
+Roda só na **janela de operação** (timezone `America/Sao_Paulo` forçado via
+`Intl`): dias úteis, horário comercial, fim de semana desligado por default. Fora
+da janela o tick inteiro é pulado — nada enfileira, nada é marcado.
 
 **Escaneia apenas `type='city'`.** Escanear `state` polui o banco com cidades
 erradas.
 
-Os assuntos rodam **em rodizio**, alguns por execucao, cobrindo a lista inteira
-ao longo do dia. Por isso levar a taxonomia inteira para `search_subjects` (03/08)
-**nao aumenta o custo recorrente** — aumenta a cobertura ao longo do dia.
+**Os assuntos rodam em rodízio**, alguns por execução, cobrindo a lista inteira
+ao longo do dia. Por isso levar a taxonomia inteira para `search_subjects`
+**não aumenta o custo recorrente** — aumenta a cobertura ao longo do dia.
 
-**STAGE 1.5 — peneira barata antes de qualquer GPT** (02/08): URL que ja esta em
-`news_sources` cai fora, e materia publicada antes da janela cai fora com 1 dia
-de folga. **Sem data legivel, MANTEM** — na duvida paga-se o Jina, nao se perde a
-noticia. As metricas vao em `budget_tracking.details`.
+**STAGE 1.5, a peneira barata antes de qualquer GPT:** URL que já está em
+`news_sources` cai fora, e matéria publicada antes da janela cai fora com 1 dia
+de folga. **Sem data legível, MANTÉM** — na dúvida paga-se o Jina, não se perde a
+notícia. As métricas vão em `budget_tracking.details`.
 
-**Contabilidade de custo e uma so** (02/08): `custoDoRun` acumula exatamente o
-que cada estagio grava em `budget_tracking`. A antiga `calculateCost()`, que
-recalculava por formula com taxas fixas na mao, foi **removida** — os dois
-numeros discordavam por construcao.
+**A contabilidade de custo tem uma fonte só:** `custoDoRun` acumula exatamente o
+que cada estágio grava em `budget_tracking`. Não recriar cálculo por fórmula com
+taxas na mão — dois números que se calculam por caminhos diferentes discordam por
+construção.
 
-**O push sai UMA VEZ POR RODADA, depois do laco que grava** (17/08). Era um por
-noticia, de dentro do laco: com media de 2,0/dia isso era invisivel, e no dia em
-que entraram 31 virou 31 vibracoes onde cabiam 15.
+### O push
 
-🚨 **O agrupamento acontece POR USUARIO, nunca por lote.** O recorte de
-`querReceber` (cidade, assunto, estatistica) e individual, entao "quantas
-chegaram" e pergunta diferente para cada pessoa — agrupar antes de filtrar
-mandaria "5 noticias" para quem pediu 1. Aparelhos com o MESMO recorte dividem
-uma chamada ao FCM.
+**Sai UMA VEZ POR RODADA, depois do laço que grava.** Nunca de dentro do laço:
+com média de 2,0 notícias/dia isso é invisível, e num dia de 31 vira 31 vibrações
+onde cabem 15.
 
-⚠️ **Push e a unica parte do sistema que nao da para conferir sem incomodar o
-cliente** — o caminho real termina no bolso de quem esta trabalhando. Por isso
-`sendPushForBatch(…, { dryRun: true })`: monta titulo, corpo, canal e alvos, loga
-e para antes do FCM. Nao prova canal nem som; prova o texto.
+🚨 **O agrupamento acontece POR USUÁRIO, nunca por lote.** O recorte de
+`querReceber` (cidade, assunto, estatística) é individual, então "quantas
+chegaram" é pergunta diferente para cada pessoa — agrupar antes de filtrar
+mandaria "5 notícias" para quem pediu 1. Aparelhos com o **mesmo** recorte
+dividem uma chamada ao FCM.
+
+⚠️ **Push é a única parte do sistema que não dá para conferir sem incomodar o
+cliente** — o caminho real termina no bolso de quem está trabalhando. Por isso
+`sendPushForBatch(…, { dryRun: true })`: monta título, corpo, canal e alvos, loga
+e para antes do FCM. Não prova canal nem som; prova o texto.
 
 ---
 
-## Busca manual
+## 7. Busca manual
 
-Disparada pelo usuario no app. Mesmo pipeline core, mais: filtro de cidade/estado
-pos-Filter2, progress persistido em JSONB, push de conclusao, e **sem** dedup
-contra o banco.
+Mesmo pipeline core, mais: filtro de cidade/estado pós-Filter2, progress
+persistido em JSONB, push de conclusão, e **sem** dedup contra o banco.
 
 **Dual-source por cidade, em paralelo** (`Promise.allSettled`): Web Top 100 para
 volume, News paginado para qualidade.
 
 ```
-  +==================================================================+
   |  AS DUAS FONTES TEM CONFIABILIDADES DIFERENTES (medido 30/07)    |
   |                                                                   |
   |  NEWS = ALICERCE. Estavel: 20 resultados por cidade em TODAS as   |
@@ -325,174 +410,173 @@ volume, News paginado para qualidade.
   +==================================================================+
 ```
 
-**Os tetos derivam do periodo por raiz quadrada, sem faixas**
+**Os tetos derivam do período por raiz quadrada, sem faixas**
 (`manualSearchCaps.ts`).
 
-**O teto de analise (`manual_search_analysis_cap`) e 0 = SEM TETO, e isso e
+**O teto de análise (`manual_search_analysis_cap`) é 0 = SEM TETO, e isso é
 deliberado.** Com cota de 50, mediu-se **142 candidatos dentro da janela virando
-50** (Fase 8). Tempo se ataca por **vazao**, nunca por descarte — quem descarta
-joga fora noticia que ja foi coletada e paga.
+50** (medido na Fase 8). Tempo se ataca por **vazão**, nunca por descarte — quem
+descarta joga fora notícia já coletada e paga.
 
-**Quem escolhe os assuntos e o usuario, na tela** (03/08). O `tipo_crime` (uma
-string, uma query) virou `assuntos: string[]`. O catalogo unico vive em
-[`backend/src/utils/taxonomia.ts`](../backend/src/utils/taxonomia.ts) e e servido
+**Quem escolhe os assuntos é o usuário, na tela.** O catálogo único vive em
+[`backend/src/utils/taxonomia.ts`](../backend/src/utils/taxonomia.ts) e é servido
 por `GET /settings/taxonomia` — a mesma lista alimenta as queries, a tela e a
-classificacao.
+classificação.
 
-**A validacao aceita 1 cidade por busca.** Nao vale a pena subir: `1 cidade +
-regiao` custa o mesmo que `1 cidade`, entao permitir N seria pagar N vezes por
-algo que ja vem junto. ⚠️ O APK que o cliente tem hoje ainda deixa escolher 10 —
-enquanto ele nao atualizar, 2+ cidades da **400**.
+**A validação aceita 1 cidade por busca.** `1 cidade + região` custa o mesmo que
+`1 cidade`, então permitir N seria pagar N vezes por algo que já vem junto.
 
----
+### Região metropolitana — hoje é por GPT, e ela alucina
 
-## Regiao metropolitana — hoje e por GPT, e ela alucina
-
-A lista de cidades vizinhas vem de um GPT com cache. Medido no cache do Redis
-(04/08):
+A lista de cidades vizinhas vem de um GPT com cache, e o pipeline compara por
+**nome**, nunca por coordenada. Medido no cache do Redis (04/08):
 
 | capital | cidade devolvida | realidade |
 |---|---|---|
-| Goiania | Mara Rosa | **350 km** |
-| Goiania | Jussara / Caldas Novas | ~300 km / ~170 km |
-| Porto Alegre | Marica | fica no **Rio de Janeiro** |
-| Campo Grande | Cristalina | fica em **Goias** |
+| Goiânia | Mara Rosa | **350 km** |
+| Goiânia | Jussara / Caldas Novas | ~300 km / ~170 km |
+| Porto Alegre | Maricá | fica no **Rio de Janeiro** |
+| Campo Grande | Cristalina | fica em **Goiás** |
 
-Sao Paulo e Salvador saem corretas — o modelo memorizou as famosas. As de outro
-estado sao inofensivas (o pos-filtro exige o estado bater); as do mesmo estado,
-longe, **passam** e ja foram exibidas ao usuario como "regiao metropolitana".
+São Paulo e Salvador saem corretas — o modelo memorizou as famosas.
 
-**Decidido: substituir por raio geografico** (dataset de municipios com lat/lng +
-haversine, ~30 km conurbacao, ~100 km regiao). **Nao estender o GPT pra isso** —
-regiao metropolitana e fato juridico memorizavel, "municipios a 100 km" e conta,
-e o modelo erra conta. O raio produz a **lista de nomes**; o pipeline continua
-comparando por nome, nao por coordenada.
+⚠️ **As de outro estado são inofensivas** (o pós-filtro exige o estado bater).
+**As do mesmo estado, longe, passam** e chegam ao usuário rotuladas como região
+metropolitana. Substituir por raio geográfico está no
+[ROADMAP](./ROADMAP.md); não estender o GPT para isso é decisão fechada no
+[API_CONTRATO](./API_CONTRATO.md) — raio é conta, e o modelo erra conta.
 
 ---
 
-## Configuracao — o que nao esta no codigo
+## 8. Serviços externos — só o que morde
 
-As chaves e seus valores estao em
-[`backend/src/services/configManager/index.ts`](../backend/src/services/configManager/index.ts).
-O que **nao** da pra deduzir lendo aquele arquivo:
+O que cada serviço *é* está no próprio nome. O que morde:
 
-**O painel MESCLA banco + DEFAULTS desde 02/08**, e marca `origem='default'` nas
-chaves que so existem em codigo. Antes elas sumiam da tela — e um toggle vazio
-lia como DESLIGADO enquanto o backend o usava LIGADO.
+**Bright Data — dois modos com custo e latência muito diferentes.** O modo *news*
+(`tbm=nws`) é síncrono e responde em segundos. O modo *web* ("Top 100") é uma
+Dataset API: trigger, polling, download de snapshot. **O polling vai a até 60
+tentativas de 3s, com 1 retry — até ~6 minutos por cidade no pior caso.** É o
+maior sumidouro de tempo isolado do sistema. Não tem limite de concorrência, só
+de vazão: **100 QPS**, e uma busca faz ~0,07.
 
-**`manual_search_max_results_30d/60d/90d` podem ser apagadas desde 16/08.** Elas
-sobreviviam porque a `main` (producao) lia a `_30d` como teto de **COLETA** —
-significado diferente, mesmo banco. A `main` foi promovida em 16/08 (`ba0873a`),
-entao nao ha mais dois codigos discordando sobre a mesma chave. Quem apaga e o
-bloco 2 da migration **024**, que continua **pendente** e agora e so limpeza.
+**O teto do índice do Google é por QUERY e não é regulável.** Medido com
+paginação correta (Floripa, 30 dias, 04/08): 10, 10, 10, 1, 0, 0 = **31 notícias
+únicas**. Aumentar config além disso não cria notícia que não existe. **Mais
+assuntos é a única alavanca real de alcance** — cada assunto é um teto novo.
 
-**As configs de rate limit vivem na tabela `api_rate_limits`**, por provider
-(`max_concurrent`, `min_time_ms`), e alimentam um Bottleneck cuja instancia e
-**unica e compartilhada** entre auto-scan e busca manual. Mexer ali afeta os dois
-caminhos ao mesmo tempo.
+**Paginação do news:** `num` foi deprecado pelo Google (set/2025) e a SERP devolve
+~10 por página — paginar com `start` de 10 em 10. Incremento de 20 **pula as
+posições 10–19 de cada página** e perde ~1/3 do material. E `brd_json=1` é
+**obrigatório** na URL: sem ele vem HTML bruto e o `JSON.parse` falha em silêncio.
 
----
+**O Google ignora o filtro de data.** Só `sbd:1` (ordenar por data) é obedecido.
 
-## Armadilhas que ja custaram tempo
+**Query curta ganha de query longa, e nunca colocar o estado na query** — o
+estado empurra o resultado para conteúdo institucional. Quem desambigua cidade
+homônima é o pós-filtro do Filter2.
 
-**Infra compartilhada — resolvida pela metade em 26/08.**
+**Jina** leva **~7,4s por artigo** (medido com pool de 10) e tem fallback Web
+Unlocker (Bright Data) para 403/422/503/SSL — tipicamente domínios `.gov.br`. O
+cache **não guarda respostas com menos de 100 chars**, senão uma página vazia
+envenenaria o cache por 24h. Trata `429` lendo o `Retry-After`.
 
-O **Supabase deixou de ser compartilhado**: producao usa `uywvrkiujzcmfmoxbwna`
-e staging usa `amrpitduoogfzhonfugu`, projetos separados. O `backend/.env` local
-aponta para **staging** — mexer em config no dev local nao atinge mais o cliente.
-Producao so e alcancada pelas variaveis `PROD_*` de `backend/.env.production`,
-que sao lidas por scripts e nunca pelo servidor.
+**Google News RSS obedece `when:`** mas é inútil como fonte: a URL é redirect
+opaco e o Jina devolve ~98 chars de boilerplate. Serve como *índice*, nunca como
+fonte.
 
-O **Redis segue compartilhado, de proposito.** As chaves sao endereçadas por
-conteudo (`content:<urlHash>`, `embedding:<textHash>`, `geo:<chave>`), entao
-compartilhar reaproveita fetch da Jina e embedding da OpenAI ja pagos. O roubo
-de JOBS, que era o problema real, esta resolvido pelo `queueNames.ts`.
+**Nominatim/OpenStreetMap** é grátis e a política de uso é **1 requisição por
+segundo — não paralelizável**. Por isso o geocode tem cache em duas camadas
+(memória + Redis, 90 dias) e o aquecimento roda **depois** da entrega, nunca
+antes: sequencial × 1,1s × até 3 lookups por ponto estoura qualquer timeout de
+cliente.
 
-⚠️ **O que ainda divide banco: dev local e o Render de staging.** Os dois falam
-com o banco de staging, entao a disputa pela coluna `last_check` continua entre
-esses dois — mas o estrago ficou em staging, fora do feed do cliente.
-
-**Nao deduzir qual codigo esta rodando.** `/health` devolve o commit;
-`budget_tracking.details.commit` diz qual processo processou o job.
-
-🚨 **O auto-deploy do backend de PRODUCAO esta DESLIGADO no Render.** Descoberto
-em 16/08: o `git push` para `main` foi aceito e nada aconteceu — o servico
-`simeops-backend-production` seguiu `Live` no commit `8fcda24`, de **3 de
-julho**. Nem o `faa38b7` (o bump 1.1.1+4, que tres documentos chamavam de "a
-branch de lancamento") tinha chegado a rodar. **O painel admin faz auto-deploy
-normal; so o backend nao.** Depois de empurrar para `main`, ir no dashboard e
-clicar `Manual Deploy -> Deploy latest commit`, e conferir pelo `/health`: o
-`uptime_seconds` tem que zerar e o `commit` tem que ser o novo. Empurrar e ir
-dormir achando que subiu e exatamente o erro que este paragrafo existe para
-impedir.
-
-**O `MIGRATIONS_LOG.md` ja mentiu.** Antes de assumir schema, rodar
-`scripts/diagnostico-banco.ts`.
-
-🚨 **E o script de diagnostico tambem ja mentiu, em 26/08.** Duas armadilhas
-empilhadas, as duas no PostgREST:
-
-- **`select("*", { head: true })` NAO popula `error` quando a tabela nao existe.**
-  A sondagem volta limpa e a tabela ausente aparece como existente —
-  `user_favorites`, dropada pela 031, foi dada como viva. Checagem de tabela
-  precisa de `select` de verdade, com linha.
-- **O codigo de "tabela nao encontrada" e `PGRST205`, nao `42P01`.** O `42P01` e
-  do Postgres; o PostgREST tem os seus. Quem checa o codigo errado le "existe".
-
-**Todo script que fala com o Redis precisa terminar em `process.exit(0)`.** O
-`main();` solto deixa o processo pendurado na conexao — ja custou dois timeouts,
-e a segunda vez foi justamente no `simular-dedup.ts`, que era o portao de
-verificacao da fase.
-
-**`gpt-5-nano` nao funciona** (reasoning tokens) — manter `gpt-4o-mini`.
-
-**CORS no Render exige callback function**, nao array direto. Array nao funciona
-em producao.
-
-**Timestamps do Postgres vem sem fuso** (`TIMESTAMP` + `DEFAULT NOW()`), e o Dart
-parseia como local — dava 3h adiantado no app. Resolvido em
-`mobile-app/lib/core/utils/datas.dart`.
-
-**`--dart-define-from-file` e resolvido em tempo de COMPILACAO.** `flutter run`
-deixa instalado um APK apontando pro IP da LAN que **abre e loga normal** (o
-Supabase tem defaultValue) e so morre nas chamadas ao backend. Conferir com
-`adb shell dumpsys package com.progestao.simeops`.
-
-🚨 **Desde 26/08 isso ficou mais grave.** O defaultValue de `SUPABASE_URL` e
-`SUPABASE_ANON_KEY` e **producao** (escolha deliberada — ver o comentario em
-`env.dart`). Entao um build que esqueca o `--dart-define-from-file` nao autentica
-em staging: autentica no banco do CLIENTE, e abre normal, sem sinal nenhum de que
-esta no ambiente errado. Para staging, `env/staging.json` **precisa** ser passado.
-
-**O pacote e `com.progestao.simeops`** — nao `com.netriosnews.netrios_news`, que
-sobrevive so no `namespace` (pacote Kotlin da `MainActivity`). Desde 16/08 o
-`applicationId` vale para **todas** as variantes, entao staging e producao sao o
-**mesmo app** no aparelho: instalar um substitui o outro. Antes coexistiam.
-Separar de novo pede `applicationIdSuffix` por variante **mais** um cliente
-Firebase para o sufixo — sem os dois, o build morre em
-`processReleaseGoogleServices`.
-
-**`MainActivity` tem que ser `FlutterFragmentActivity`.** O `local_auth` usa
-`BiometricPrompt`, que so se hospeda numa `FragmentActivity`; com a
-`FlutterActivity` comum o plugin devolve `NOT_FRAGMENT_ACTIVITY` sem abrir
-dialogo, e o app le isso como "a pessoa cancelou".
-
-**Escrita direta no banco pelo Bash e bloqueada** pelo classificador de
-permissoes. Mudanca de schema vira migration em [SQL/migrations/](./SQL/migrations/)
-+ entrada no [MIGRATIONS_LOG.md](./SQL/MIGRATIONS_LOG.md) no mesmo turno, e o
-Joao roda.
-
-**`.bat` via `cmd.exe /c` nao executa de verdade** neste ambiente — chamar o
-`flutter build` direto.
+**Redis/Upstash** carrega fila (BullMQ), cache de config, de conteúdo e de
+embedding. Os TTLs estão no código.
 
 ---
 
-## Onde procurar o resto
+## 9. Configuração — o que não está no código
+
+As chaves e seus valores estão em
+[`configManager/index.ts`](../backend/src/services/configManager/index.ts). O que
+**não** dá para deduzir lendo aquele arquivo:
+
+- **O painel mescla banco + DEFAULTS** e marca `origem='default'` nas chaves que
+  só existem em código. Sem isso elas somem da tela, e um toggle vazio lê como
+  DESLIGADO enquanto o backend o usa LIGADO.
+- **As configs de rate limit vivem na tabela `api_rate_limits`**, por provider
+  (`max_concurrent`, `min_time_ms`), e alimentam um Bottleneck.
+- **Config vale na hora, sem deploy** — e é compartilhada por todos que falam com
+  aquele banco. Significado novo exige **nome novo**.
+
+---
+
+## 10. Armadilhas que já custaram tempo
+
+### App / Flutter
+
+| armadilha | o que fazer |
+|---|---|
+| **`--dart-define-from-file` é resolvido em tempo de COMPILAÇÃO** | `flutter run` deixa instalado um APK apontando pro IP da LAN que **abre e loga normal** e só morre nas chamadas ao backend. Conferir com `adb shell dumpsys package com.progestao.simeops` |
+| **O `defaultValue` do Supabase no app é PRODUÇÃO** | build sem o arquivo de env autentica no banco do cliente sem sinal nenhum. Para staging, passar `env/staging.json` |
+| **O pacote é `com.progestao.simeops`** | `com.netriosnews.netrios_news` sobrevive só no `namespace` (pacote Kotlin da `MainActivity`) |
+| **Staging e produção são o MESMO app no aparelho** | instalar um substitui o outro. Separar exige `applicationIdSuffix` por variante **mais** um cliente Firebase para o sufixo — sem os dois, o build morre em `processReleaseGoogleServices` |
+| **`MainActivity` tem que ser `FlutterFragmentActivity`** | o `local_auth` usa `BiometricPrompt`, que só se hospeda numa `FragmentActivity`. Com a `FlutterActivity` comum o plugin devolve `NOT_FRAGMENT_ACTIVITY` sem abrir diálogo, e o app lê isso como "a pessoa cancelou" |
+| **Timestamps do Postgres vêm sem fuso** (`TIMESTAMP` + `DEFAULT NOW()`) | o Dart parseia como local e adianta 3h. A conversão mora em `core/utils/datas.dart` |
+| **Testar sempre em device físico via LAN IP** | emulador não simula push real |
+
+### Banco e migrations
+
+| armadilha | o que fazer |
+|---|---|
+| **O `MIGRATIONS_LOG.md` já mentiu** | é preenchido à mão. Antes de assumir schema, rodar `scripts/diagnostico-banco.ts` |
+| **O cabeçalho dentro do `.sql` também já mentiu** | quatro migrations diziam "NÃO RODADA" e tinham rodado. O log e o arquivo são pistas; o banco é a prova |
+| **`select("*", { head: true })` NÃO popula `error` quando a tabela não existe** | a sondagem volta limpa e a tabela ausente aparece como existente. Checagem de tabela precisa de `select` de verdade, com linha |
+| **O código de "tabela não encontrada" é `PGRST205`, não `42P01`** | `42P01` é do Postgres; o PostgREST tem os seus. Quem checa o código errado lê "existe" |
+| **Escrita direta no banco pelo Bash é bloqueada** | mudança de schema vira migration em [SQL/migrations/](./SQL/migrations/) + entrada no [MIGRATIONS_LOG](./SQL/MIGRATIONS_LOG.md) no mesmo turno, e o João roda |
+
+### Ambiente de trabalho
+
+| armadilha | o que fazer |
+|---|---|
+| **`.bat` via `cmd.exe /c` não executa de verdade** aqui | chamar o `flutter build` direto |
+| **Script que fala com Redis precisa de `process.exit(0)`** | `main();` solto pendura o processo — já custou dois timeouts |
+| **Não dá para ver o Flutter renderizado** | pedir foto do aparelho ao João; a tela passa no analyzer e reprova na foto |
+
+---
+
+## 11. Quando der ruim — o que rodar
+
+**Nunca deduza o estado do sistema de documento nenhum, inclusive este.**
+
+| pergunta | como responder de verdade |
+|---|---|
+| que código está no ar? | `GET /health` → `commit` e `uptime_seconds`. Identifica o **serviço web** |
+| que código processou este job? | `budget_tracking.details.commit`, gravado a cada busca manual **e** a cada scan. Pode não ser o mesmo do `/health` |
+| o schema tem a coluna X? | `npx tsx scripts/diagnostico-banco.ts` (só leitura) |
+| onde a busca perdeu os itens? | `npx tsx scripts/diagnostico-funil.ts` — funil com motivos de rejeição |
+| quanto já gastamos este mês? | tabela `budget_tracking`; o Dev Panel (`localhost:3100`) mostra consolidado |
+| o push sairia certo? | `sendPushForBatch(…, { dryRun: true })` — prova o texto, não o canal |
+| o app está falando com qual banco? | `adb shell dumpsys package com.progestao.simeops` + conferir o env do build |
+
+⚠️ **Concluir por inferência qual código está rodando já custou duas sessões
+inteiras.** São dois minutos de comando contra horas de raciocínio errado.
+
+---
+
+## 12. Onde procurar o resto
 
 | pergunta | documento |
 |---|---|
-| o que cada rota recebe e devolve | [API_CONTRATO.md](./API_CONTRATO.md) |
-| onde cada item do funil morre, com numeros | [FUNIL.md](./FUNIL.md) |
-| o que falta fazer e o risco de cada item | [ROADMAP.md](./ROADMAP.md) |
-| **por que** cada decisao foi tomada | [DEV_LOG.md](./DEV_LOG.md) |
-| historico das fases fechadas | [Fases/](./Fases/) |
+| o que cada rota recebe e devolve, e as decisões que não se desfazem | [API_CONTRATO.md](./API_CONTRATO.md) |
+| onde cada item do funil morre, com números e custo | [FUNIL.md](./FUNIL.md) |
+| cor, tipografia, o que a tela pode e não pode fazer | [DESIGN_CONTRATO.md](./DESIGN_CONTRATO.md) |
+| o que falta fazer, e o risco de cada item | [ROADMAP.md](./ROADMAP.md) |
+| **como** se chegou a cada decisão, com a data | [DEV_LOG.md](./DEV_LOG.md) |
+| a sessão em curso, em ~25 linhas | bloco **ONDE PARAMOS**, topo do [DEV_LOG](./DEV_LOG.md) |
+| história das fases fechadas | [Fases/README.md](./Fases/README.md) |
+| que rotas existem | [`backend/src/routes/`](../backend/src/routes/) |
+| o que cada rota aceita, e **por que** aquele limite | [`validation.ts`](../backend/src/middleware/validation.ts) |
+| como o item de resultado é montado | [`manualSearchWorker.ts`](../backend/src/jobs/workers/manualSearchWorker.ts) |
+| como o app lê tudo isso | [`news_item.dart`](../mobile-app/lib/core/models/news_item.dart) |
+| como trabalhamos (regras, "pronto", disciplina) | [CLAUDE.md](../CLAUDE.md) |
