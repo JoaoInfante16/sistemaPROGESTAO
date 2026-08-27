@@ -35,7 +35,7 @@ data da medição**.
 |---|---|---|
 | 1 | [O produto](#1-o-produto--o-que-promete-e-o-que-não-promete) | o que o sistema entrega, e o que ele **não** entrega |
 | 2 | [🚨 O que não se quebra](#2--o-que-não-se-quebra) | **leia antes de mudar qualquer coisa** |
-| 3 | [O mapa em quatro desenhos](#3-o-mapa-em-quatro-desenhos) | sistema, ambientes, os dois caminhos, dados |
+| 3 | [Como as peças se ligam](#3-como-as-peças-se-ligam) | sistema, ambientes, os dois caminhos, dados |
 | 4 | [O funil](#4-o-funil--pipeline-core) | como uma URL vira notícia, e por que cada estágio existe |
 | 5 | [O dedup](#5-o-dedup--três-camadas-por-custo) | como a mesma ocorrência vira um item só |
 | 6 | [Auto-scan](#6-auto-scan) | o que é próprio do caminho automático |
@@ -89,7 +89,7 @@ não fazem o que parecem fazer.
 
 ---
 
-## 3. O mapa em quatro desenhos
+## 3. Como as peças se ligam
 
 ### 3.1 O sistema
 
@@ -117,24 +117,27 @@ não fazem o que parecem fazer.
 
 ### 3.2 Ambientes e bancos — a armadilha nº 1
 
-```
-  BRANCH        SERVICO RENDER          BANCO (Supabase)      DEPLOY
-  ------------  ----------------------  --------------------  ------------
-  develop   ->  (so local)          ->  STAGING amrpit...     n/a
-  staging   ->  simeops-backend     ->  STAGING amrpit...     automatico
-  main      ->  ...-production      ->  PROD    uywvrk...     !! MANUAL !!
-                admin-panel                                   automatico
+| branch | serviço Render | banco Supabase | deploy |
+|---|---|---|---|
+| `develop` | — (só local) | **staging** `amrpit…` | n/a |
+| `staging` | `simeops-backend` | **staging** `amrpit…` | automático |
+| `main` | `…-production` | **produção** `uywvrk…` | 🚨 **MANUAL** |
+| `main` | `admin-panel` | — | automático |
 
-  backend/.env local ---> STAGING   (mexer aqui NAO atinge o cliente)
-  backend/.env.production (PROD_*) --> so scripts, nunca o servidor
+| arquivo de env | aponta para | quem lê |
+|---|---|---|
+| `backend/.env` (local) | **staging** | o servidor local — mexer aqui não atinge o cliente |
+| `backend/.env.production` (`PROD_*`) | **produção** | só scripts, **nunca** o servidor |
 
-  REDIS/UPSTASH: UM SO, compartilhado DE PROPOSITO
-     +-- content:<urlHash>     ) chaves endereçadas por CONTEUDO:
-     +-- embedding:<textHash>  ) compartilhar reaproveita fetch e
-     +-- geo:<chave>           ) embedding JA PAGOS
-     +-- filas BullMQ ........... sufixo POR AMBIENTE (queueNames.ts)
-         producao mantem o nome puro de proposito
-```
+**Redis/Upstash é UM SÓ, compartilhado de propósito.** As chaves são endereçadas
+por **conteúdo**, então compartilhar reaproveita fetch e embedding já pagos:
+
+| chave | o que guarda |
+|---|---|
+| `content:<urlHash>` | corpo do artigo (Jina) |
+| `embedding:<textHash>` | vetor 1536-dim (OpenAI) |
+| `geo:<chave>` | geocode (Nominatim, 90 dias) |
+| filas BullMQ | **sufixo por ambiente** (`queueNames.ts`) — produção mantém o nome puro de propósito |
 
 🚨 **O backend de produção NÃO tem auto-deploy.** `git push` para `main` é aceito
 e **nada acontece**. Depois de empurrar: dashboard do Render →
@@ -157,25 +160,17 @@ normal, sem sinal nenhum. Para staging, `env/staging.json` é obrigatório.
 
 ### 3.3 Os dois caminhos
 
-```
-  AUTO-SCAN (automatico)          |  BUSCA MANUAL (sob demanda)
-  ------------------------------  |  ------------------------------
-  CRON, env SCAN_CRON_SCHEDULE    |  usuario dispara no app
-  (a config do banco e IGNORADA)  |
-  janela de operacao:             |  qualquer hora
-    dias uteis, horario comercial |
-    America/Sao_Paulo forcado     |
-  so type='city'                  |  1 cidade (+ regiao junto)
-  assuntos em RODIZIO             |  assuntos escolhidos na tela
-  STAGE 1.5: peneira barata       |  dual-source em paralelo:
-    URL ja em news_sources -> fora |    Web Top 100 (volume)
-    fora da janela -> fora         |    News paginado (qualidade)
-    SEM data legivel -> MANTEM     |
-  ------------------------------  |  ------------------------------
-  DEDUP CONTRA O BANCO (3 camadas)|  SEM dedup contra o banco
-  push por RODADA, agrupado       |  push de conclusao (deep link)
-  grava em news + news_sources    |  progress persistido em JSONB
-```
+| | auto-scan | busca manual |
+|---|---|---|
+| **dispara** | CRON, env `SCAN_CRON_SCHEDULE` (a config do banco é **ignorada**) | o usuário, no app |
+| **quando** | só na janela de operação: dias úteis, horário comercial, `America/Sao_Paulo` forçado | qualquer hora |
+| **alvo** | todas as `type='city'` | 1 cidade (+ região junto) |
+| **assuntos** | em rodízio, cobrindo a lista ao longo do dia | escolhidos na tela |
+| **coleta** | News paginado | dual-source em paralelo: Web Top 100 (volume) + News paginado (qualidade) |
+| **peneira própria** | **STAGE 1.5**: URL já em `news_sources` → fora; fora da janela → fora; **sem data legível → MANTÉM** | — |
+| **dedup contra o banco** | ✅ 3 camadas (§5) | ❌ **não faz** |
+| **grava em** | `news` + `news_sources` | `search_results` (JSONB) |
+| **push** | 1 por **rodada**, agrupado por usuário | de conclusão, com deep link |
 
 ### 3.4 Modelo de dados
 
@@ -389,26 +384,24 @@ persistido em JSONB, push de conclusão, e **sem** dedup contra o banco.
 **Dual-source por cidade, em paralelo** (`Promise.allSettled`): Web Top 100 para
 volume, News paginado para qualidade.
 
-```
-  |  AS DUAS FONTES TEM CONFIABILIDADES DIFERENTES (medido 30/07)    |
-  |                                                                   |
-  |  NEWS = ALICERCE. Estavel: 20 resultados por cidade em TODAS as   |
-  |  medicoes. Sustenta o auto-scan e e o piso da busca manual.       |
-  |                                                                   |
-  |  WEB = LOTERIA. Erratico: 85, 10, 1, 11, 98... com requisicao     |
-  |  IDENTICA. NAO e instabilidade — e o Google BLOQUEANDO trafego    |
-  |  raspado (respondeu results_cnt=1 pra query com 61500            |
-  |  resultados). O indice organico e o dado mais raspado da          |
-  |  internet, entao e o que o Google mais defende.                   |
-  |                                                                   |
-  |  >>> NAO ADICIONAR RETRY POR CONTAGEM BAIXA <<<                   |
-  |  Nao da pra distinguir "fui bloqueado" de "essa cidade nao tem    |
-  |  noticia": Florianopolis ~26/mes, Santos 1, Aguas da Prata 1.     |
-  |  Gatilho apertado queima dinheiro em cidade pequena; frouxo nao   |
-  |  dispara quando precisa. Repetir sobre SINAL explicito            |
-  |  (x-brd-err-code), nunca sobre suspeita.                          |
-  +==================================================================+
-```
+🚨 **As duas fontes têm confiabilidades diferentes** (medido 30/07):
+
+| | NEWS | WEB (Top 100) |
+|---|---|---|
+| **papel** | **alicerce** | **loteria** |
+| **comportamento** | estável: 20 resultados por cidade em **todas** as medições | errático: 85, 10, 1, 11, 98… com requisição **idêntica** |
+| **sustenta** | o auto-scan inteiro, e é o piso da busca manual | volume extra, quando vem |
+
+**O erratismo do web não é instabilidade — é o Google bloqueando tráfego
+raspado.** Ele respondeu `results_cnt=1` para uma query com 61.500 resultados. O
+índice orgânico é o dado mais raspado da internet, então é o que o Google mais
+defende.
+
+🚨 **NÃO ADICIONAR RETRY POR CONTAGEM BAIXA.** Não dá para distinguir "fui
+bloqueado" de "essa cidade não tem notícia": Florianópolis rende ~26/mês, Santos
+1, Águas da Prata 1. Gatilho apertado queima dinheiro em cidade pequena; gatilho
+frouxo não dispara quando precisa. Repetir só sobre **sinal explícito**
+(`x-brd-err-code`, corpo de 0 bytes), nunca sobre suspeita.
 
 **Os tetos derivam do período por raiz quadrada, sem faixas**
 (`manualSearchCaps.ts`).

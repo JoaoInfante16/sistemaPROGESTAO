@@ -222,6 +222,44 @@ metropolitana** (com a medição das alucinações — Goiânia → Mara Rosa, 3
 nome `DEDUP_JANELA_DIAS`, que tinha quebrado no meio de uma linha do diagrama.
 Reescrita grande pede checagem mecânica, não releitura.
 
+### Terceira parte: desenho ASCII é caro, e tabela ganha dos dois
+
+O João perguntou se prosa é melhor que desenho **para IA** — e quando eu disse
+que o desenho existia em parte para ele, que não lê código, a resposta fechou a
+questão: *"só tu precisa ler, eu sempre vou perguntar pra ti."*
+
+Com um leitor só, e sendo esse leitor uma máquina, a ordem é
+**tabela > prosa > desenho ASCII**, e o desenho só ganha quando o que se
+transmite é **topologia ou ordem**. Medido nos 7 blocos: ~6.800 chars e **292
+sequências de espaço de alinhamento**, que são tokens sem significado.
+
+O pior caso é **coluna lado a lado**: a linha
+`CRON, env SCAN_CRON_SCHEDULE  |  usuario dispara no app` mistura dois assuntos
+numa sequência só. O olho separa as colunas; a leitura linear não.
+
+Convertidos em tabela: **ambientes e bancos** (era tabela disfarçada de desenho),
+**os dois caminhos** (colunas lado a lado) e o quadro **"as duas fontes"** — este
+era 1.277 chars de prosa dentro de uma moldura que não acrescentava nada, e a
+moldura já estava **quebrada** havia dois commits, sem ninguém notar.
+
+Mantidos como desenho os quatro que codificam topologia: mapa do sistema, modelo
+de dados, funil e dedup. **Blocos ASCII 7 → 4, tabelas 7 → 13**, 582 → 575
+linhas.
+
+⚠️ **O título da §3 dizia "O mapa em quatro desenhos" e virou mentira** no
+instante em que dois deles deixaram de ser desenho. Renomeada para "Como as
+peças se ligam". É o apodrecimento silencioso acontecendo em tempo real, dentro
+do documento cuja regra zero é justamente essa.
+
+🚨 **E eu quebrei o arquivo no meio da conversão.** Um `awk` com lógica de
+pareamento de ``` errada comeu **177 linhas** — levou junto a seção inteira de
+região metropolitana e as armadilhas de banco. A checagem mecânica de conceitos
+pegou (`Mara Rosa` e `PGRST205` voltaram 0), restaurei com
+`git checkout` e refiz por fatia de linha numerada, verificando os sentinelas a
+cada passo. **Duas lições:** `awk` que casa delimitador por paridade é frágil
+demais para editar documento; e o commit anterior foi o que tornou o estrago
+reversível em um comando.
+
 ### O que eu errei nesta sessão
 
 **Vendi um corte de ~87 linhas duplicadas entre a ARQUITETURA e o FUNIL, e a
