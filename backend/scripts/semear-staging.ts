@@ -8,7 +8,7 @@
 //   user_devices      tokens de push REAIS. Um teste em staging viraria
 //                     notificacao no aparelho do cliente.
 //   user_profiles     credencial de cliente real em ambiente de teste. Staging
-//   / auth.users      entra com `auth_required=false` (ver no fim do script).
+//   / auth.users      staging precisa de usuario PROPRIO — ver o fim do script.
 //   user_news_read    FK para user_profiles, que nao vai.
 //   budget_tracking   9021 linhas de historico operacional. Ruido.
 //   operation_logs    2509, idem.
@@ -138,18 +138,28 @@ async function main(): Promise<void> {
       }
     }
 
-    // ---------- staging entra sem senha ----------
-    // Decisao do Joao em 26/08. `auth_required` e lido pelo backend
-    // (middleware/auth.ts) e obedecido pelo app (main.dart), entao staging abre
-    // direto no feed. Producao segue `true` — agora sao bancos diferentes, que
-    // e justamente o que a separacao destrava.
-    await destino.query(
-      `update public.system_config set value = 'false' where key = 'auth_required'`
-    );
+    // ---------- auth_required NAO e mais sobrescrito ----------
+    // Em 26/08 este script forcava `auth_required = false` no destino, para
+    // staging abrir sem login. Revertido no MESMO dia, medindo: com `false` o
+    // app pula o login e nunca pega token, e toda rota com `requireAuth`
+    // responde 401 — relatorio, registro de push, preferencias de notificacao e
+    // marcar como lido. Sobrava so o feed (`conditionalAuth`). Staging que nao
+    // testa o que producao faz nao serve de staging.
+    //
+    // Agora o valor vem copiado da origem, como qualquer outra config. O que
+    // staging precisa e de USUARIO proprio, nao de bypass — e o painel admin
+    // exige sessao de verdade de qualquer jeito (admin-panel/src/middleware.ts),
+    // entao o bypass nunca resolveu esse lado.
+    //
+    // Criar usuario de staging depois de semear:
+    //   auth.admin.createUser({ email, password, email_confirm: true })
+    //   + linha em user_profiles com must_change_password: true
+    //     (o app abre a ChangePasswordScreen no primeiro login)
     const auth = (
-      await destino.query(`select value from public.system_config where key='auth_required'`)
+      await destino.query(`select value from public.system_config where key = 'auth_required'`)
     ).rows[0];
-    console.log(`\n  auth_required no destino: ${auth ? auth.value : '(chave ausente!)'}`);
+    console.log(`\n  auth_required (copiado da origem): ${auth ? auth.value : '(chave ausente!)'}`);
+    console.log('  ⚠️  staging precisa de usuario proprio — ver o comentario no script');
 
     await destino.query('COMMIT');
     console.log('\n✅ Semeado e commitado.');

@@ -389,6 +389,45 @@ de $100.
 
 ---
 
+## 2026-08-26 (3) — o `auth_required=false` durou algumas horas
+
+**Correção da entrada abaixo.** Staging entrou com `auth_required = false`
+(decisão do João, e eu recomendei). Estava errado, e o erro só apareceu quando
+ele perguntou se dava pra não buildar o APK de staging.
+
+**O que eu não tinha dito na hora da escolha:** `auth_required=false` faz o app
+**pular o login e nunca pegar token** (`main.dart:358`). E `requireAuth` ignora
+essa config — sempre exige token válido (`auth.ts:28`). Medido no staging, sem
+token:
+
+| rota | |
+|---|---|
+| `/news/feed` (`conditionalAuth`) | **200** |
+| `/news/unread-count` (`requireAuth`) | **401** |
+
+O mesmo 401 valia para registro de push, preferências de notificação, marcar
+como lido e **todo o `/analytics/*`, inclusive o relatório**. Sobrava feed e
+busca. **Staging que não testa o que produção faz não serve de staging** — e
+rebuildar o APK não resolveria, porque o problema não era o binário, era não ter
+login.
+
+Revertido: `auth_required = true` nos dois bancos. Os `system_config` agora são
+**byte a byte idênticos** (mesmo md5). Criado usuário `joao.infante16@gmail.com`
+no staging com `must_change_password = true` — o app abre a `ChangePasswordScreen`
+no primeiro login e o João define a própria senha. Senha temporária entregue no
+chat, some no primeiro acesso.
+
+⚠️ O `semear-staging.ts` **forçava** `auth_required='false'` no destino: rodar de
+novo desfaria isto em silêncio. A linha saiu; o valor agora vem copiado da
+origem como qualquer outra config.
+
+🚨 **O que o João achava e não era:** ele quis ligar de volta para "não ter
+conflito ao subir pra `main`". `auth_required` é **dado no banco**, não código —
+nunca sobe por git, não gera conflito nenhum. A conclusão estava certa pela razão
+errada, e a razão certa é melhor: staging tem que se comportar como produção.
+
+---
+
 ## 2026-08-26 (2) — separar o banco de staging: o que foi medido antes de codar
 
 Pedido do João: *"separar o banco de dados do main e do staging, tá tudo no
