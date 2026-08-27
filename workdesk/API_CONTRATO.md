@@ -3,11 +3,14 @@
 > 📌 **Documento vivo** — atualizado sempre que uma *decisao* de contrato muda.
 > Nao e arquivado com a fase. Ver [CLAUDE.md](../CLAUDE.md), secao 2.
 >
-> Ultima revisao: **2026-08-04**.
+> Ultima revisao: **2026-08-27**.
 >
 > Staging: `https://simeops-backend.onrender.com`
 > Producao: `https://sistemaprogestao-7fzs.onrender.com`
-> ⚠️ Producao ainda roda codigo de junho (`main`). Ver [ROADMAP](./ROADMAP.md).
+> ⚠️ A `main` foi promovida em 16/08 e nao roda mais codigo de junho. Ela esta
+> **3 commits atras** da `staging` desde 26/08, e o backend de producao so sobe
+> com `Manual Deploy` no Render. Estado atual: bloco ONDE PARAMOS do
+> [DEV_LOG](./DEV_LOG.md).
 
 ---
 
@@ -169,6 +172,27 @@ Ja manda `search_id` e `type: manual_search_completed | _failed`, e o app ja abr
 o resultado direto (9.7, 02/08).
 
 ---
+
+---
+
+## Decisoes que nao se reabrem
+
+> Vieram do topo do DEV_LOG em 27/08. Cada uma foi discutida, medida e fechada —
+> reabrir exige argumento novo, nao preferencia.
+
+**`manual_search_analysis_cap` fica em 0 = SEM TETO.** Propor fecha-lo para
+ganhar tempo ja foi tentado e o Joao barrou, com razao: com cota 50 eram **142
+candidatos dentro da janela virando 50**. **Tempo se ataca por vazao, nunca por
+descarte** — descartar candidato e jogar fora coleta ja paga.
+
+**Data de INICIO, nao intervalo fechado.** O Google so pagina de hoje para tras:
+pedir "1 a 31 de marco" custaria os mesmos 5 meses de paginacao que pedir "desde
+marco". O recorte fechado vive no **relatorio**, depois, de graca.
+
+**Nao estender o GPT para raio.** Regiao metropolitana e fato juridico
+memorizavel; "municipios a 100 km" e conta, e o modelo erra conta. Ver a secao
+de regiao metropolitana na [ARQUITETURA](./ARQUITETURA.md) — ela ja alucina no
+que e memorizavel.
 
 ## Onde procurar o resto
 

@@ -1,49 +1,34 @@
-# ROADMAP — SIMEops (Fase 9: o app à altura do backend)
+# ROADMAP — SIMEops (Fase 11)
 
-> 🗂️ **Documento da Fase 9** — arquivado em `Fases/Fase 9/` quando ela fechar.
+> 🗂️ **Documento da Fase 11** — arquivado em `Fases/Fase 11/` quando ela fechar.
 > Ver [CLAUDE.md](../CLAUDE.md), seção 2.
 >
-> Planos, backlog e próximos passos — **incluindo a dívida que atravessa fases**
-> (o `BACKEND_PENDENTE` foi absorvido aqui em 04/08: cinco das oito seções dele
-> eram duplicata literal deste documento). Revisado no fim de cada sessão.
->
-> Fases 1 a 8 arquivadas em [Fases/](./Fases/). Estado atual do sistema e
-> medições que não devem ser refeitas: bloco **ESTADO DO MUNDO** no
-> [DEV_LOG](./DEV_LOG.md).
+> **Futuro, e só futuro.** Planos, backlog e dívida que atravessa fases.
 
-**A tese desta fase:** o backend ficou bom e o app não sabe disso. Eram **oito
-campos** já entregues que o Flutter descartava — todos consumidos desde 04/08.
-O briefing de entrada foi arquivado em
-[Fases/Fase 9/](./Fases/Fase%209/FRONTEND_BRIEFING.md) porque descreve um
-problema já resolvido.
+## Como este documento funciona
 
-> **Este documento é só o FUTURO.** Estado atual, medições e decisões fechadas
-> ficam no bloco **ESTADO DO MUNDO** do [DEV_LOG](./DEV_LOG.md) — um lugar só,
-> senão as cópias divergem.
+Três seções, e um item vive em **uma** delas:
+
+| seção | o que entra |
+|---|---|
+| 🔴 **AGORA** | decidido, com dono, na fila desta fase |
+| 🟡 **DEPOIS** | decidido que vale, sem data — pega quando abrir espaço |
+| 🔵 **IDEIAS** | não decidido; entra sem custo, sai sem culpa |
+
+🚨 **Item feito SAI daqui.** Não vira `✅` de troféu — a história dele já está no
+[DEV_LOG](./DEV_LOG.md), na data em que aconteceu. Em 27/08 este documento tinha
+**quatro seções `✅`**, incluindo a maior de todas, dentro de um arquivo que se
+declarava "só o futuro" na terceira linha.
+
+🚨 **Estado atual do sistema não mora aqui** — é a [ARQUITETURA](./ARQUITETURA.md).
+Antes de escrever "X está quebrado", **confirme na fonte**: em 27/08 este roadmap
+e o DEV_LOG carregavam pendências consertadas havia semanas.
 
 ---
 
-## ✅ O DEPLOY FINAL — FEITO em 16/08
+# 🔴 AGORA
 
-> **Esta seção era o maior item do documento e fechou.** `main ← staging`
-> (`ba0873a`, depois `e0d3fed`), migrations **025 → 031 → 032 → 033** aplicadas
-> e verificadas no banco, backend de produção no ar com o commit novo, AAB
-> `1.2.0+5` assinado e pronto para a Play Store.
->
-> Fica aqui como registro do que foi feito e do que **sobrou**; o relato longo,
-> com o que quase deu errado, está no DEV_LOG de 16/08.
-
-| item | estado |
-|---|---|
-| `main ← staging` | ✅ fast-forward, sem perder nenhum dos 11 commits que só a `main` tinha |
-| migration **025** (RLS) | ✅ RLS `true` nas 12 tabelas — o banco fechou para a chave anon |
-| migration **031** (`DROP user_favorites`) | ✅ tabela não existe mais |
-| migration **032** (preferências de alerta) | ✅ `user_notification_prefs` criada |
-| migration **033** (relatório sem prazo) | ✅ 20 de 20 sem prazo, **0 vencidos** — 4 relatórios mortos voltaram |
-| backend de produção | ✅ `commit: ba0873a` no `/health`, uptime zerado |
-| AAB de produção | ✅ 57,3 MB, assinado, `com.progestao.simeops` |
-
-### O que sobrou, e é pequeno
+### Fechar o ciclo de release
 
 - ⬜ **Subir o AAB** no Play Console — testa, de quebra, se o Google aprovou a
   redefinição da chave de upload pedida em 06/08.
@@ -55,60 +40,39 @@ problema já resolvido.
 - ⬜ **Migration 024** (opcional, agora só limpeza) — apaga 7 configs mortas.
   Deixou de ter risco quando a `main` subiu: não há mais dois códigos lendo
   `manual_search_max_results_30d` com significados diferentes.
-- ⬜ **Banco separado para staging.** Criado pelo João em 16/08, ainda vazio e
-  não apontado. É o que transformaria a próxima migration destrutiva em ensaio
-  em vez de estreia.
 - ⬜ **`applicationIdSuffix` por variante.** Staging e produção viraram o mesmo
   app no aparelho; separar exige o sufixo **mais** um cliente Firebase para ele.
 
-## 🗄️ PRÓXIMA TAREFA — separar o banco do staging (pedido do João, 26/08)
 
-Ele criou o projeto novo no Supabase em 16/08; segue **vazio e não apontado**.
+---
 
-**Por que é a tarefa certa agora:** hoje staging, produção e dev usam o **mesmo
-Supabase**. Isso significa que *toda* mudança de dedup, migration ou pipeline
-**estreia em produção** — não existe ensaio. O dedup de 24-26/08 teve que ser
-validado por simulação read-only justamente porque não havia onde rodar de
-verdade. E o `system_config` compartilhado faz o painel admin atingir produção
-sem deploy nenhum.
+### Verificações em aberto — medições que faltam
 
-**O que a separação mata na raiz:** a disputa pelo `last_check` de
-`monitored_locations` — que é o motivo de o `AUTO_SCAN_ENABLED` existir
-([config/index.ts](../backend/src/config/index.ts)). O prefixo de fila matou o
-roubo de jobs em 04/08, mas a contenção migrou para uma coluna de banco.
+- **`api_rate_limits.brightdata.max_concurrent` nunca foi revisado** — está em
+  10, e a doc da Bright Data diz que o limite real é **100 QPS** (uma busca faz
+  ~0,07 QPS). Pode subir; só não foi medido.
+- **Ramo web: 1 de ~4 medições feitas.** Critério já combinado com o João: se
+  seguir entregando ~1 de 23, desligar pelo painel.
+- **Período de 180 dias ponta a ponta** — 90 dias foi medido em 02/08 (São
+  Paulo, alcance de 90 dias exatos); falta repetir com 180.
+- **Tempo da busca depois da migration 028** — o ~11 min medido é anterior a
+  ela. É o número que recalibra `_segundosPorAssunto` em `assuntos_field.dart`.
 
-⚠️ **Redis NÃO precisa separar, e separar seria contraproducente** (levantado em
-24/08). São três coisas diferentes morando nele:
+### Bugs conhecidos / suspeitas
 
-| | situação |
-|---|---|
-| **filas** | já isoladas por [`queueName()`](../backend/src/jobs/queueNames.ts) — produção com nome puro, outros ambientes com sufixo do `NODE_ENV` |
-| **caches** (embedding, Jina, nominatim, metroRegion) | função pura da entrada. **Compartilhar é vantagem**: staging reaproveita o que produção já pagou. Separar dobraria a conta de Jina + embedding + geocoding |
-| **lock do scan** | 🚨 `scan-lock:${locationId}` **não tem ambiente na chave**. Com `AUTO_SCAN_ENABLED=true` em staging, os dois disputam o mesmo lock. Conserto: passar pelo `queueName()` — **uma linha** |
+- **Página vazia da Bright Data** (HTTP 200, 0 bytes, sem `x-brd-err-code`):
+  observada em 01/08, causa **desconhecida**. Mitigada com 1 retry desde a 8.1.
+- **Filter0 com keywords amplas** (`jogo`, `tempo`, `música`, `esporte`): geram
+  falso negativo. Estratégia em aberto.
+- **Sem `parent_id` não há pós-filtro nenhum** (`locationPostFilter = undefined`)
+  — a cidade aceitaria notícia de qualquer lugar. Hoje as 4 cidades têm pai; é
+  latente.
 
-**O que a tarefa envolve** (não levantado em detalhe ainda):
-- replicar o schema no projeto novo — 34 migrations, ou um dump da estrutura
-- apontar as env vars do serviço de staging no Render (`SUPABASE_URL`,
-  `SUPABASE_SERVICE_KEY`, `SUPABASE_ANON_KEY`)
-- semear o mínimo: `monitored_locations`, `system_config`, um usuário admin
-- ⚠️ o app mobile de staging e o admin de staging também apontam pra lá
+---
 
-## 🎨 Redesign "fio de agência" — o que falta (11/08)
+---
 
-> Contexto que muda a leitura deste roadmap: **o produto está em beta e os
-> clientes sabem disso** (João, 11/08). A `main` desatualizada é dívida
-> registrada, não incêndio — o plano é acumular tudo e promover **de uma vez
-> só**, no fim desta lista.
-
-### ✅ Fase D — as remoções (FEITA em 11/08)
-
-Favoritos (código nas três pontas + migration 031 escrita), o gesto de arrastar
-e o `flutter_slidable`, o checkbox "manter conectado", senha mínima 6→8, e a
-pista `SEGURE PARA SELECIONAR` de volta ao cabeçalho. Ver DEV_LOG.
-
-Na mesma leva, fora do plano: o `TUDO` do relatório (voltava 400), o balde
-adaptativo do gráfico, as silhuetas de carregamento, as pastas de mês e a ordem
-cronológica dos três baldes da consulta.
+# 🟡 DEPOIS
 
 ### ⬜ Anatomia comum de `CityCard` e `HistoryCard` — PLANEJADA, NÃO FEITA
 
@@ -162,33 +126,8 @@ do plano velho para cá sem conferir, e a corrigi cinco minutos depois: é
 exatamente o apodrecimento silencioso que a regra zero da workdesk descreve, e
 consegui cometê-lo **dentro do documento que registra a regra**.
 
-### ✅ Fase E2 — o relatório vira documento (12/08)
 
-Feita, e maior que o previsto. O plano dizia "export em HTML A4 autocontido"; o
-que saiu foi **um renderizador só, no backend**, servindo o documento em
-`GET /public/report/:id` — e a página Next.js do painel morreu junto com quatro
-componentes que ficaram órfãos nela. Ver DEV_LOG de 12/08.
-
-**A ideia do arquivo `.html` foi descartada, e não deve voltar:** Google Drive
-mostra o código-fonte em vez da página, e filtro de e-mail corporativo trata
-anexo `.html` como phishing. HTML é o projeto e o link é a entrega; o **PDF** é o
-artefato que viaja, e sai do botão de imprimir dentro da própria página.
-
-### ✅ Fase F — notificações (11/08)
-
-Migration **032** (a 031 é o DROP dos favoritos), dois canais Android e
-preferência por cidade/assunto/estatística. **O digest foi descartado com
-medição:** 30 notícias em 21 dias, média 2,0/dia, pico 5, 4 aparelhos — não há
-problema de volume, há problema de relevância.
-
-🚨 **O gatilho disparou em 17/08.** A frase acima dizia *"acima de ~10/dia ele
-volta à mesa com número"* — e o dia deu **31**. O agrupamento por rodada foi
-feito (ver DEV_LOG de 17/08): 31 pushes viraram 15. O documento funcionou: a
-regra estava escrita e disparou sozinha.
-
-⬜ Falta o teste real de push no A57. Existe agora `sendPushForBatch(…, {
-dryRun: true })`, que monta tudo e para antes do FCM — dá para conferir o texto
-sem incomodar ninguém, mas **não** prova canal, som nem toque.
+---
 
 ### ⬜ Revisão de copy, tela por tela — POR ÚLTIMO
 
@@ -205,96 +144,19 @@ três situações diferentes —
 A terceira depende de separar "respondeu vazio" de "não respondeu" (ver dívida
 técnica).
 
-## 📱 Fase 9 — O app
-
-> **02/08: 9.1 a 9.7 IMPLEMENTADOS** (11 commits em `develop`, um por etapa —
-> ver DEV_LOG). Além do planejado: linguagem visual (tokens/botões/tipografia),
-> NewsCard e CityCard redesenhados, recorte único com grupos colapsáveis +
-> filtros no feed e na busca, mapa com tap/legenda/fit-to-bounds, e o mapa
-> dentro do PDF do relatório web.
->
-> **Falta para fechar a fase:**
-> - ✅→📱 **Testar no device físico contra staging** (`run-dev.bat`, `flutter
->   clean` antes) — nada foi validado visualmente ainda, só analyzer/tsc.
-> - **Deploy coordenado backend+APK** para destravar 365 dias / 10 cidades
->   (`validation.ts`) — requer aval do João.
-> - Acabamento de cores nas telas fora do escopo (login, settings,
->   history_card, risk/credibility widgets) — `Colors.*` cru ainda vive lá.
-> - Gap multi-cidade do relatório: `_loadMapPoints`/`_loadExecutive` usam
->   `cidades.first`; resolver quando multi-cidade destravar.
-
-Ordem original, do que destrava mais para o que é acabamento. Detalhe de cada
-item, com pontos de encaixe e armadilhas, no briefing arquivado em
-[Fases/Fase 9/](./Fases/Fase%209/FRONTEND_BRIEFING.md).
-
-### 9.1 — `getManualSearchResults` devolve os três baldes
-
-[api_service.dart:226-235](../mobile-app/lib/core/services/api_service.dart#L226)
-faz `return body['results']` e **descarta `extras` inteiro**. Enquanto essa função
-devolver `List<Map>`, região metropolitana e "fora do período" não existem para o
-app.
-
-**É o passo que destrava 9.4 e 9.6.** Sem ele, os outros não têm o que mostrar.
-
-### 9.2 — Contador real na tela de carregamento
-
-`progress.feitos` / `progress.total` já chegam e avançam a cada ~2s dentro dos
-estágios 4 e 5 — que são **85% do tempo** de uma busca. Hoje a tela mostra "passo
-4 de 7" parado por três minutos, e o próprio João achou que tinha travado quando
-estava andando normal.
-
-**Maior ganho percebido pelo menor esforço da lista.**
-
-### 9.3 — Desistir por estagnação, não por relógio
-
-`_maxPolls = 200` × 3s = desiste em 10 min, mesmo com a busca andando. Esse número
-mágico é o que trava, **do lado do backend**, duas coisas:
-
-| trava | volta para | onde |
-|---|---|---|
-| `periodo_dias` ≤ 180 | 365 | `validation.ts` |
-| 1 cidade por busca | 10 | `validation.ts` + `multi_city_search_field.dart` |
-
-Regra nova: enquanto `feitos` ou `atualizado_em` avançarem, seguir esperando;
-parado há ~2 min, aí é falha.
-
-⚠️ **Backend e APK sobem juntos** quando esses limites mudarem.
-
-### 9.4 — Seção expansível no fim da lista
-
-Região metropolitana + "mais ocorrências", no padrão `Divider — LABEL — Divider`
-que o feed já usa, em cor destacada. Um `bool` + itens condicionais resolve —
-**não existe accordion em todo o `mobile-app/lib`**, não precisa trazer
-dependência.
-
-### 9.5 — Achados ao vivo
-
-`progress.achados` traz os 5 mais recentes (`tipo_crime`, `bairro`,
-`data_ocorrencia`). Custo zero no servidor, e é o que transforma a espera de
-5 minutos em algo que dá vontade de olhar.
-
-### 9.6 — Calendário e re-fatiar client-side
-
-O maior dos seis, e o único que muda o `report_screen`. **Depende do 9.1.**
-
-A restrição que define o desenho: o Google só pagina de hoje para trás, então
-buscar março custa o mesmo que buscar os últimos cinco meses. O lado bom é que a
-busca **já coletou tudo no caminho** — é o balde `fora_do_periodo`.
-
-`_computeAnalytics` roda uma vez no `initState` e varre tudo sem filtro; precisa
-virar função de um subconjunto. É a mesma mecânica dos toggles de região e
-período: **lista e relatório viram função de um recorte.** Fazendo um, os outros
-saem quase de graça.
-
-### 9.7 — Deep link do push
-
-O push de conclusão **já manda o `search_id`**. Falta abrir o resultado direto —
-hoje o usuário navega até o histórico na mão. A tela já sabe retomar por
-`resumeSearchId`.
 
 ---
 
-## 🗺️ Onde buscar — a alavanca que o funil revelou (03/08)
+### Acabamento de cor nas telas fora do redesign
+
+Verificado em 27/08: `Colors.*` cru ainda vive em `login`, `settings` e
+`history_card` — telas que ficaram fora do escopo da Fase 10. Não é bug, é
+inconsistência: essas três não passam pela escala de tinta do
+[DESIGN_CONTRATO](./DESIGN_CONTRATO.md).
+
+---
+
+### 🗺️ Onde buscar — a alavanca que o funil revelou (03/08)
 
 O baseline de Goiás mostrou que **57% das rejeições são de cidade** (55 de 96), e
 que **32 delas são cidades do próprio Goiás** — Goiatuba 14, Luziânia 4,
@@ -355,7 +217,14 @@ tinham 19. Falta: indicativo no próprio card, contagem no sumário
 
 ---
 
-## ⚡ Fase 10 — Acelerar o estágio 4 (backend, decidido em 02/08)
+
+---
+
+### ⚡ Fase 12 — Acelerar o estágio 4 (backend, decidido em 02/08)
+
+> ⚠️ **Renumerada de "Fase 10" para "Fase 12" em 27/08.** As fases 10 e 11 foram
+> criadas retroativamente no recorte da workdesk (a antiga "Fase 9" era seis
+> trabalhos num documento só). Este item nunca começou — só o número mudou.
 
 Ideia levantada pelo João logo depois do primeiro teste real: *"não tem jeito de
 fazer isso mais rápido?"*. **Adiada para depois do app**, por decisão dele.
@@ -393,7 +262,23 @@ passo 1 feito, um 429 custa só um segundo a mais.
 
 ---
 
-## 🆕 Saiu de 17/08 — decidir
+
+---
+
+### 🔧 Dívida técnica
+
+- **Migration 024** — 7 configs mortas, pronta e não rodada. Neutra.
+- `openai` ^4.24.1 → v6.
+- Flutter: `fl_chart` 0.70→1.x, `share_plus` 10→12, `flutter_map` 7→8,
+  `sentry_flutter` 8→9.
+- **Renomear "Netrios News" → "SIMEops"** (diretório e repo).
+
+
+---
+
+# 🔵 IDEIAS
+
+### 🆕 Saiu de 17/08 — decidir
 
 - 🚨 **O balde `outros` tem ocorrência legítima sem tipo.** Ele não está na
   taxonomia (é tipo, nunca vira pergunta), mas hoje guarda **desaparecimento de
@@ -414,7 +299,7 @@ passo 1 feito, um 429 custa só um segundo a mais.
   (`cortarNaPalavra`) vale só para linha nova. Regravar as antigas exigiria
   passar GPT de novo — provavelmente não vale.
 
-## 💡 Em aberto (não decidido)
+### 💡 Em aberto (não decidido)
 
 - **Fontes oficiais por estado** (SSP/Polícia Civil): 27 fontes, não 5.570
   cidades — encaixa no `type='state'` que já existe. O RSS grátis enxerga matéria
@@ -429,39 +314,10 @@ passo 1 feito, um 429 custa só um segundo a mais.
   location".
 - Subir `filter2` de 5 para mais concorrência (o limite da OpenAI é bem maior).
 
-## 🔧 Dívida técnica
-
-- **Migration 024** — 7 configs mortas, pronta e não rodada. Neutra.
-- `openai` ^4.24.1 → v6.
-- Flutter: `fl_chart` 0.70→1.x, `share_plus` 10→12, `flutter_map` 7→8,
-  `sentry_flutter` 8→9.
-- **Renomear "Netrios News" → "SIMEops"** (diretório e repo).
-
-## 📏 Verificações em aberto
-
-- **`api_rate_limits.brightdata.max_concurrent` nunca foi revisado** — está em
-  10, e a doc da Bright Data diz que o limite real é **100 QPS** (uma busca faz
-  ~0,07 QPS). Pode subir; só não foi medido.
-- **Ramo web: 1 de ~4 medições feitas.** Critério já combinado com o João: se
-  seguir entregando ~1 de 23, desligar pelo painel.
-- **Período de 180 dias ponta a ponta** — 90 dias foi medido em 02/08 (São
-  Paulo, alcance de 90 dias exatos); falta repetir com 180.
-- **Tempo da busca depois da migration 028** — o ~11 min medido é anterior a
-  ela. É o número que recalibra `_segundosPorAssunto` em `assuntos_field.dart`.
-
-## 🐛 Bugs conhecidos / suspeitas
-
-- **Página vazia da Bright Data** (HTTP 200, 0 bytes, sem `x-brd-err-code`):
-  observada em 01/08, causa **desconhecida**. Mitigada com 1 retry desde a 8.1.
-- **Filter0 com keywords amplas** (`jogo`, `tempo`, `música`, `esporte`): geram
-  falso negativo. Estratégia em aberto.
-- **Sem `parent_id` não há pós-filtro nenhum** (`locationPostFilter = undefined`)
-  — a cidade aceitaria notícia de qualquer lugar. Hoje as 4 cidades têm pai; é
-  latente.
 
 ---
 
-## 🌐 Domínio próprio do relatório — feature futura (12/08)
+### 🌐 Domínio próprio do relatório (12/08)
 
 O link que vai pro cliente é
 `sistemaprogestao-7fzs.onrender.com/public/report/<uuid>`. Funciona, e **não

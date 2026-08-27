@@ -1,44 +1,11 @@
+
 # SIMEops / PROGESTAO — ARQUITETURA DO SISTEMA
-## Documento tecnico — revisado em 2026-08-27
+## Documento tecnico — revisado em 2026-08-04
 
 > 📌 **Documento vivo** — descreve o **presente**: como o sistema funciona hoje.
 > Editado in-place quando algo estrutural muda, nunca arquivado com a fase.
 > O historico de *como se chegou aqui* e o [DEV_LOG](./DEV_LOG.md).
 > Ver [CLAUDE.md](../CLAUDE.md), secao 2.
-
----
-
-## 🚪 COMECE POR AQUI — onboarding de sessao nova
-
-**Este e o unico documento de estado do sistema.** Se voce e uma instancia nova
-do Claude, ou o Joao depois de um tempo longe: leia este arquivo inteiro antes de
-tocar em codigo. Ele e curto de proposito.
-
-Ate 27/08 existia um **segundo** documento de estado — o bloco "ESTADO DO MUNDO"
-no topo do DEV_LOG. Ele cresceu para **376 linhas** e passou a mentir: listava
-como "ACHADO NAO CORRIGIDO" um bug consertado 18 dias antes, e respondia
-**tres coisas diferentes** para "a migration 025 rodou?" no mesmo bloco. Foi
-dissolvido. Se voce sentir vontade de escrever o estado atual do sistema em
-qualquer outro arquivo, e aqui que ele vai.
-
-**A ordem de leitura, por tipo de trabalho:**
-
-| voce vai mexer em | leia, nesta ordem |
-|---|---|
-| qualquer coisa | este arquivo (o [CLAUDE.md](../CLAUDE.md) ja carrega sozinho) |
-| rota, contrato, shape | + [API_CONTRATO.md](./API_CONTRATO.md) |
-| pipeline, filtros, custo | + [FUNIL.md](./FUNIL.md) |
-| app, tela, cor, tipografia | + [DESIGN_CONTRATO.md](./DESIGN_CONTRATO.md) |
-| schema, migration | + [SQL/MIGRATIONS_LOG.md](./SQL/MIGRATIONS_LOG.md), e **rodar** `scripts/diagnostico-banco.ts` |
-
-**O que NAO ler para se orientar:** o [DEV_LOG](./DEV_LOG.md) e historico
-(append-only, cronologico) e o [ROADMAP](./ROADMAP.md) e futuro. Nenhum dos dois
-diz como o sistema esta. A unica excecao e o bloco **ONDE PARAMOS** no topo do
-DEV_LOG: ~25 linhas sobre a sessao em curso, sobrescritas a cada vez.
-
-**Estado real, quando a duvida for factual:** nao deduza de documento nenhum,
-nem deste. `GET /health` diz o commit no ar; `scripts/diagnostico-banco.ts` diz
-o schema; `git log` diz o codigo. Documento e para **porque**, nao para **o que**.
 
 ---
 
@@ -151,12 +118,6 @@ embedding. Os TTLs estao no codigo.
 
 ## Pipeline core — o funil
 
-> 📍 **Este bloco responde "POR QUE cada regra existe".** Onde cada item morre,
-> com numeros medidos e custo por estagio, e o [FUNIL.md](./FUNIL.md) — os dois
-> se completam e nao se repetem: se voce for escrever aqui um numero de
-> mortalidade, ele vai no FUNIL; se for escrever la a razao de uma regra, ela
-> vem para ca.
-
 Este desenho e o **modelo mental** do sistema: onde cada item morre. Os valores
 de corte sao config e mudam; a **ordem** e a **razao de cada estagio** nao.
 
@@ -194,8 +155,7 @@ de corte sao config e mudam; a **ordem** e a **razao de cada estagio** nao.
    +----+----------------------------+
    |                                 |
   AUTO-SCAN                     BUSCA MANUAL
-  (+ dedup contra DB,           (salva em search_results)
-   + push da RODADA)
+  (+ dedup contra DB, + push)   (salva em search_results)
 ```
 
 ### Por que cada regra do funil existe
@@ -209,13 +169,6 @@ o orcamento inteiro.
 **O Filter2 SEMPRE exige cidade + estado juntos.** Sem o estado, Sao Jose (SC)
 vira Sao Jose (SP). Nao relaxar isso.
 
-**A regra 1 do Filter2 exige EVENTO, e a regra 2 tem lista negativa** (17/08).
-Antes bastava ser "public safety content", e por isso campanha de conscientizacao,
-forum, palestra, aviso de votacao e alerta de tempestade entravam no feed — e
-caiam em `manifestacao`, que virou balde de qualquer ajuntamento e por isso foi
-congelada. Quem herdou o que interessa: `bloqueio_via` (protesto que fecha via) e
-`greve`, agora tipo proprio.
-
 **Os assuntos escolhidos pelo usuario entram como contexto nos prompts do Filter1
 e do Filter2** (03/08). Sem isso o Filter1 matava `greve` e `bloqueio` pacifico
 **antes do Jina**, em silencio: sao assuntos que o modelo nao considera
@@ -224,23 +177,6 @@ e do Filter2** (03/08). Sem isso o Filter1 matava `greve` e `bloqueio` pacifico
 **Dedup contra DB tem 3 camadas por custo, nao por precisao:** geo-temporal em
 SQL ($0) elimina a maioria, cosine ($0) resolve quase todo o resto, e o GPT so
 ve os ~5% duvidosos.
-
-⚠️ **A camada 1 e um PORTAO, nao um veredito** — quem ela nao devolve, ninguem
-mais examina. Por isso a janela de data e de **3 dias** (`DEDUP_JANELA_DIAS`) e
-nao de 1: `data_ocorrencia` da MESMA materia pode divergir entre scans, porque a
-regra 4 do Filter2 manda usar a data de hoje quando nao acha a de publicacao.
-Em 17/08 isso deixou uma duplicata entrar sem que as camadas 2 e 3 fossem
-sequer consultadas.
-
-🚨 **O limiar da camada 2 vem do BANCO** (`dedup_similarity_threshold` = 0.70),
-nao do `DEFAULT_SIMILARITY_THRESHOLD = 0.85` que esta no codigo. O default tem
-nome de verdade e nao e a verdade — conferir no painel antes de raciocinar com
-ele.
-
-🚨 **A camada 3 so pergunta pelo TOP match**, e a pergunta e SIMETRICA por
-construcao do prompt desde 17/08. Ate entao ela nao era: `(A,B)` dava YES e
-`(B,A)` dava NO para o mesmo par, deterministicamente. Quem mexer no prompt tem
-que testar **nas duas ordens**.
 
 ### Trocas de prompt testadas e DESCARTADAS
 
@@ -276,21 +212,6 @@ noticia. As metricas vao em `budget_tracking.details`.
 que cada estagio grava em `budget_tracking`. A antiga `calculateCost()`, que
 recalculava por formula com taxas fixas na mao, foi **removida** — os dois
 numeros discordavam por construcao.
-
-**O push sai UMA VEZ POR RODADA, depois do laco que grava** (17/08). Era um por
-noticia, de dentro do laco: com media de 2,0/dia isso era invisivel, e no dia em
-que entraram 31 virou 31 vibracoes onde cabiam 15.
-
-🚨 **O agrupamento acontece POR USUARIO, nunca por lote.** O recorte de
-`querReceber` (cidade, assunto, estatistica) e individual, entao "quantas
-chegaram" e pergunta diferente para cada pessoa — agrupar antes de filtrar
-mandaria "5 noticias" para quem pediu 1. Aparelhos com o MESMO recorte dividem
-uma chamada ao FCM.
-
-⚠️ **Push e a unica parte do sistema que nao da para conferir sem incomodar o
-cliente** — o caminho real termina no bolso de quem esta trabalhando. Por isso
-`sendPushForBatch(…, { dryRun: true })`: monta titulo, corpo, canal e alvos, loga
-e para antes do FCM. Nao prova canal nem som; prova o texto.
 
 ---
 
@@ -380,11 +301,10 @@ O que **nao** da pra deduzir lendo aquele arquivo:
 chaves que so existem em codigo. Antes elas sumiam da tela — e um toggle vazio
 lia como DESLIGADO enquanto o backend o usava LIGADO.
 
-**`manual_search_max_results_30d/60d/90d` podem ser apagadas desde 16/08.** Elas
-sobreviviam porque a `main` (producao) lia a `_30d` como teto de **COLETA** —
-significado diferente, mesmo banco. A `main` foi promovida em 16/08 (`ba0873a`),
-entao nao ha mais dois codigos discordando sobre a mesma chave. Quem apaga e o
-bloco 2 da migration **024**, que continua **pendente** e agora e so limpeza.
+**`manual_search_max_results_30d/60d/90d` nao sao mais lidas por este codigo, mas
+nao podem ser apagadas:** a `main` (producao) le a `_30d` como teto de **COLETA**
+— significado diferente, mesmo banco. Elas so somem quando a `main` for
+promovida.
 
 **As configs de rate limit vivem na tabela `api_rate_limits`**, por provider
 (`max_concurrent`, `min_time_ms`), e alimentam um Bottleneck cuja instancia e
@@ -395,54 +315,15 @@ caminhos ao mesmo tempo.
 
 ## Armadilhas que ja custaram tempo
 
-**Infra compartilhada — resolvida pela metade em 26/08.**
-
-O **Supabase deixou de ser compartilhado**: producao usa `uywvrkiujzcmfmoxbwna`
-e staging usa `amrpitduoogfzhonfugu`, projetos separados. O `backend/.env` local
-aponta para **staging** — mexer em config no dev local nao atinge mais o cliente.
-Producao so e alcancada pelas variaveis `PROD_*` de `backend/.env.production`,
-que sao lidas por scripts e nunca pelo servidor.
-
-O **Redis segue compartilhado, de proposito.** As chaves sao endereçadas por
-conteudo (`content:<urlHash>`, `embedding:<textHash>`, `geo:<chave>`), entao
-compartilhar reaproveita fetch da Jina e embedding da OpenAI ja pagos. O roubo
-de JOBS, que era o problema real, esta resolvido pelo `queueNames.ts`.
-
-⚠️ **O que ainda divide banco: dev local e o Render de staging.** Os dois falam
-com o banco de staging, entao a disputa pela coluna `last_check` continua entre
-esses dois — mas o estrago ficou em staging, fora do feed do cliente.
+**Infra compartilhada — a numero 1.** Staging, producao e dev usam o **mesmo**
+Redis e o **mesmo** Supabase. Mudar config atinge producao **na hora, sem
+deploy**. Producao chegou a roubar jobs de staging, ate o prefixo de fila.
 
 **Nao deduzir qual codigo esta rodando.** `/health` devolve o commit;
 `budget_tracking.details.commit` diz qual processo processou o job.
 
-🚨 **O auto-deploy do backend de PRODUCAO esta DESLIGADO no Render.** Descoberto
-em 16/08: o `git push` para `main` foi aceito e nada aconteceu — o servico
-`simeops-backend-production` seguiu `Live` no commit `8fcda24`, de **3 de
-julho**. Nem o `faa38b7` (o bump 1.1.1+4, que tres documentos chamavam de "a
-branch de lancamento") tinha chegado a rodar. **O painel admin faz auto-deploy
-normal; so o backend nao.** Depois de empurrar para `main`, ir no dashboard e
-clicar `Manual Deploy -> Deploy latest commit`, e conferir pelo `/health`: o
-`uptime_seconds` tem que zerar e o `commit` tem que ser o novo. Empurrar e ir
-dormir achando que subiu e exatamente o erro que este paragrafo existe para
-impedir.
-
 **O `MIGRATIONS_LOG.md` ja mentiu.** Antes de assumir schema, rodar
 `scripts/diagnostico-banco.ts`.
-
-🚨 **E o script de diagnostico tambem ja mentiu, em 26/08.** Duas armadilhas
-empilhadas, as duas no PostgREST:
-
-- **`select("*", { head: true })` NAO popula `error` quando a tabela nao existe.**
-  A sondagem volta limpa e a tabela ausente aparece como existente —
-  `user_favorites`, dropada pela 031, foi dada como viva. Checagem de tabela
-  precisa de `select` de verdade, com linha.
-- **O codigo de "tabela nao encontrada" e `PGRST205`, nao `42P01`.** O `42P01` e
-  do Postgres; o PostgREST tem os seus. Quem checa o codigo errado le "existe".
-
-**Todo script que fala com o Redis precisa terminar em `process.exit(0)`.** O
-`main();` solto deixa o processo pendurado na conexao — ja custou dois timeouts,
-e a segunda vez foi justamente no `simular-dedup.ts`, que era o portao de
-verificacao da fase.
 
 **`gpt-5-nano` nao funciona** (reasoning tokens) — manter `gpt-4o-mini`.
 
@@ -456,26 +337,7 @@ parseia como local — dava 3h adiantado no app. Resolvido em
 **`--dart-define-from-file` e resolvido em tempo de COMPILACAO.** `flutter run`
 deixa instalado um APK apontando pro IP da LAN que **abre e loga normal** (o
 Supabase tem defaultValue) e so morre nas chamadas ao backend. Conferir com
-`adb shell dumpsys package com.progestao.simeops`.
-
-🚨 **Desde 26/08 isso ficou mais grave.** O defaultValue de `SUPABASE_URL` e
-`SUPABASE_ANON_KEY` e **producao** (escolha deliberada — ver o comentario em
-`env.dart`). Entao um build que esqueca o `--dart-define-from-file` nao autentica
-em staging: autentica no banco do CLIENTE, e abre normal, sem sinal nenhum de que
-esta no ambiente errado. Para staging, `env/staging.json` **precisa** ser passado.
-
-**O pacote e `com.progestao.simeops`** — nao `com.netriosnews.netrios_news`, que
-sobrevive so no `namespace` (pacote Kotlin da `MainActivity`). Desde 16/08 o
-`applicationId` vale para **todas** as variantes, entao staging e producao sao o
-**mesmo app** no aparelho: instalar um substitui o outro. Antes coexistiam.
-Separar de novo pede `applicationIdSuffix` por variante **mais** um cliente
-Firebase para o sufixo — sem os dois, o build morre em
-`processReleaseGoogleServices`.
-
-**`MainActivity` tem que ser `FlutterFragmentActivity`.** O `local_auth` usa
-`BiometricPrompt`, que so se hospeda numa `FragmentActivity`; com a
-`FlutterActivity` comum o plugin devolve `NOT_FRAGMENT_ACTIVITY` sem abrir
-dialogo, e o app le isso como "a pessoa cancelou".
+`adb shell dumpsys package com.netriosnews.netrios_news`.
 
 **Escrita direta no banco pelo Bash e bloqueada** pelo classificador de
 permissoes. Mudanca de schema vira migration em [SQL/migrations/](./SQL/migrations/)
