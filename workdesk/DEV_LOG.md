@@ -51,6 +51,35 @@ sessão. Se o onboarding não aparecer, abrir `/hooks` uma vez ou reiniciar.
 
 ---
 
+## 2026-08-28 — o hook de onboarding quebrou em menos de 24h, e avisou
+
+Ele nasceu ontem e falhou na primeira sessão seguinte. A causa é exatamente o
+que ele existe para combater: **dependia de um documento, e o documento mudou.**
+
+A primeira versão delimitava o bloco de onboarding entre **dois títulos fixos** —
+`## 🚪 COMECE POR AQUI` e `## Regra deste documento`. Na reescrita da ARQUITETURA
+como mapa, no mesmo dia, a segunda seção foi dissolvida dentro da primeira. O
+marcador de fim deixou de existir e o recorte falhou.
+
+**O que salvou foi o desenho, não a sorte:** o hook foi escrito para *avisar* em
+vez de calar. A sessão abriu com o aviso amarelo dizendo qual arquivo, qual
+marcador e qual arquivo consertar. Um hook que falhasse em silêncio teria
+entregue contexto vazio, e ninguém saberia — que é o modo de falha caro.
+
+**O conserto:** o fim do bloco passou a ser **"o próximo título de nível 2,
+qualquer que seja"**. Só o marcador de início continua acoplado ao texto. A regra
+que ficou, e vale para qualquer automação sobre documento: **dependa do mínimo
+possível dele, e grite quando esse mínimo sumir.**
+
+Os três caminhos foram testados: recorte normal (26 linhas, 1.395 chars),
+marcador ausente e arquivo ausente. Os três terminam em `exit 0` — o hook nunca
+derruba a sessão.
+
+E de quebra o output ficou mais limpo: o `---` que fecha a seção no documento
+vinha somado ao separador do próprio hook, saindo duplicado.
+
+---
+
 ## 2026-08-27 — a workdesk tinha dois documentos do presente, e o desatualizado era o que mandava ler primeiro
 
 O João abriu a sessão dizendo que a documentação saiu do controle: DEV_LOG imenso,
