@@ -80,6 +80,60 @@ vinha somado ao separador do próprio hook, saindo duplicado.
 
 ---
 
+### As três defesas: verificador, rotação por data, e a regra de rotação escrita
+
+O João fechou a discussão com a distinção que faltava: **DEV_LOG e ROADMAP
+rotacionam por fase; ARQUITETURA, contratos e FUNIL persistem e mudam
+organicamente com o código.** E fez a pergunta que derruba qualquer promessa:
+*"como saber se esse dicionário do app vai ser sempre atualizado, e que ele
+também não vai virar fonte de legado?"*
+
+A resposta honesta é que **nenhum documento se mantém por disciplina** — só em
+2026 apodreceram a ARQUITETURA, o ESTADO DO MUNDO e o MIGRATIONS_LOG, os três
+com regra escrita mandando atualizar. Então em vez de escrever mais uma regra,
+saíram três coisas.
+
+**1. `workdesk/scripts/verificar-workdesk.cjs`** — confere, nos documentos
+persistentes, se todo `identificador` em crase ainda existe no código e se todo
+link ainda resolve. Roda em **0,2s** e está plugado no hook `SessionStart`:
+**calado quando está limpo, e só isso o torna um aviso de verdade** — aviso que
+aparece sempre vira ruído que se ignora.
+
+Na primeira execução ele acusou **16 pontos**. A triagem deu **1 apodrecimento
+real** (a ARQUITETURA mandava rodar `scripts/diagnostico-banco.ts`, mas o script
+mora em `backend/scripts/` — 5 ocorrências corrigidas) e **15 falsos positivos**
+de cinco tipos: diretórios não indexados, URLs, expressões (`SEARCH_BACKEND=brave`),
+templates com placeholder (`content:<urlHash>`) e arquivo git-ignored. Refinado
+até zero, com allowlist onde **cada entrada carrega o motivo escrito** — allowlist
+sem motivo é tapete para sujeira.
+
+⚠️ **Ele não checa se o que está escrito é VERDADE.** Um identificador pode
+existir e a frase sobre ele estar errada. Cobre apodrecimento **estrutural**, não
+semântico — e essa fronteira precisa estar clara para ninguém confiar demais.
+
+🚨 **E ele achou uma lacuna nele mesmo:** o `CLAUDE.md` ficara de fora da lista, e
+lá dentro sobrevivia um link para o `WORKFLOW.md`, deletado na véspera. Foi
+incluído — junto do índice das fases. O documento mais lido de todos era o único
+sem verificação.
+
+**2. As pastas de fase agora carregam o período no nome:**
+`Fase 08 — 2026-07-30 a 2026-08-02`. Com **zero à esquerda**, a ordem alfabética
+virou a cronológica (antes `Fase 10` vinha entre `Fase 1` e `Fase 2`).
+
+As datas das fases 01 a 07 são **derivadas, não registradas** — ninguém anotou o
+período na época. Vieram das datas nos títulos das entradas e, para as fases 05 e
+06, do MIGRATIONS_LOG (migrations 017, 005 e 018). O git não ajudou: todas as
+pastas foram criadas no mesmo commit, em 30/07. A ressalva ficou escrita no
+índice, porque data inventada é pior que data ausente.
+
+**3. O gatilho da rotação mudou no CLAUDE.md.** Era "a fase fecha quando o
+trabalho que dá nome a ela termina" — vago, porque "o trabalho" é interpretável.
+Agora é o critério do João: **a fase fecha quando o ROADMAP fecha**, e o DEV_LOG
+vai junto porque são as duas metades do mesmo período. O tamanho do arquivo
+virou o que sempre foi — sintoma, não gatilho.
+
+---
+
 ## 2026-08-27 — a workdesk tinha dois documentos do presente, e o desatualizado era o que mandava ler primeiro
 
 O João abriu a sessão dizendo que a documentação saiu do controle: DEV_LOG imenso,
@@ -123,8 +177,8 @@ corrigida em 26/08, com a ressalva certa sobre dev local e staging.
 
 | fase | período | linhas |
 |---|---|---|
-| [Fase 9](./Fases/Fase%209/) — o app à altura do backend | 02–06/08 | 962 |
-| [Fase 10](./Fases/Fase%2010/) — o redesign "fio de agência" | 08–14/08 | 2.600 |
+| [Fase 09](./Fases/Fase%2009%20—%202026-08-02%20a%202026-08-06/) — o app à altura do backend | 02–06/08 | 962 |
+| [Fase 10](./Fases/Fase%2010%20—%202026-08-08%20a%202026-08-14/) — o redesign "fio de agência" | 08–14/08 | 2.600 |
 | **Fase 11** (viva, na raiz) — produção de verdade | 16/08 → hoje | 1.100 |
 
 Cada pasta ficou auto-contida: DEV_LOG e ROADMAP recortados, o retrato da

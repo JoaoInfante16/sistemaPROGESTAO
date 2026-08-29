@@ -24,7 +24,7 @@ falhou, e o que não se enxerga lendo o código. Número indispensável vem **co
 data da medição**.
 
 **Na dúvida factual, não deduza — meça.** `GET /health` diz o commit no ar,
-`scripts/diagnostico-banco.ts` diz o schema, `git log` diz o código. Ver
+`backend/scripts/diagnostico-banco.ts` diz o schema, `git log` diz o código. Ver
 [§11](#11-quando-der-ruim--o-que-rodar).
 
 ---
@@ -210,7 +210,7 @@ monitoradas têm pai — é latente, não ativo.
 As outras 13 tabelas (`budget_tracking`, `reports`, `user_notification_prefs`,
 `pipeline_rejected_urls`, `search_cache`, `executive_cache`…) estão em
 [SQL/schema_staging.sql](./SQL/schema_staging.sql). **Não deduza schema: rode
-`scripts/diagnostico-banco.ts`.**
+`backend/scripts/diagnostico-banco.ts`.**
 
 ---
 
@@ -522,7 +522,7 @@ As chaves e seus valores estão em
 
 | armadilha | o que fazer |
 |---|---|
-| **O `MIGRATIONS_LOG.md` já mentiu** | é preenchido à mão. Antes de assumir schema, rodar `scripts/diagnostico-banco.ts` |
+| **O `MIGRATIONS_LOG.md` já mentiu** | é preenchido à mão. Antes de assumir schema, rodar `backend/scripts/diagnostico-banco.ts` |
 | **O cabeçalho dentro do `.sql` também já mentiu** | quatro migrations diziam "NÃO RODADA" e tinham rodado. O log e o arquivo são pistas; o banco é a prova |
 | **`select("*", { head: true })` NÃO popula `error` quando a tabela não existe** | a sondagem volta limpa e a tabela ausente aparece como existente. Checagem de tabela precisa de `select` de verdade, com linha |
 | **O código de "tabela não encontrada" é `PGRST205`, não `42P01`** | `42P01` é do Postgres; o PostgREST tem os seus. Quem checa o código errado lê "existe" |
@@ -546,8 +546,9 @@ As chaves e seus valores estão em
 |---|---|
 | que código está no ar? | `GET /health` → `commit` e `uptime_seconds`. Identifica o **serviço web** |
 | que código processou este job? | `budget_tracking.details.commit`, gravado a cada busca manual **e** a cada scan. Pode não ser o mesmo do `/health` |
-| o schema tem a coluna X? | `npx tsx scripts/diagnostico-banco.ts` (só leitura) |
-| onde a busca perdeu os itens? | `npx tsx scripts/diagnostico-funil.ts` — funil com motivos de rejeição |
+| **este documento ainda bate com o código?** | `node workdesk/scripts/verificar-workdesk.cjs` — confere identificadores e links dos documentos persistentes. Roda sozinho a cada sessão |
+| o schema tem a coluna X? | `npx tsx backend/scripts/diagnostico-banco.ts` (só leitura) |
+| onde a busca perdeu os itens? | `npx tsx backend/scripts/diagnostico-funil.ts` — funil com motivos de rejeição |
 | quanto já gastamos este mês? | tabela `budget_tracking`; o Dev Panel (`localhost:3100`) mostra consolidado |
 | o push sairia certo? | `sendPushForBatch(…, { dryRun: true })` — prova o texto, não o canal |
 | o app está falando com qual banco? | `adb shell dumpsys package com.progestao.simeops` + conferir o env do build |

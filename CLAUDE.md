@@ -1,7 +1,7 @@
 # CLAUDE.md — SIMEops
 
 > Este arquivo é carregado automaticamente a cada sessão. Contém regras operacionais do projeto.
-> Filosofia e detalhes de colaboração: ver [workdesk/WORKFLOW.md](workdesk/WORKFLOW.md).
+> Estado do sistema: [workdesk/ARQUITETURA.md](workdesk/ARQUITETURA.md) — a porta de entrada de toda sessão.
 
 ---
 
@@ -55,16 +55,23 @@ Mais três vivos, por domínio: [API_CONTRATO](workdesk/API_CONTRATO.md) (decis�
 
 📍 **O único pedaço de "presente" que fica no DEV_LOG** é o bloco **ONDE PARAMOS**, no topo: **teto de ~25 linhas, sempre sobrescrito, nunca acumulado**. Passou disso, é porque virou arquitetura ou virou roadmap — mandar para o documento certo. Foi ignorar esse teto que criou o ESTADO DO MUNDO.
 
-### Quando a fase fecha
+### O que rotaciona e o que persiste
 
-Os documentos são de **dois tipos**, e cada um declara o seu no cabeçalho:
+Esta é a divisão que sustenta tudo:
 
-- 📌 **vivos** — descrevem o estado atual, editados in-place, **continuam na raiz**: `ARQUITETURA`, `API_CONTRATO`, `FUNIL`, `DESIGN_CONTRATO`, `SQL/`
-- 🗂️ **da fase** — **recortados** para `workdesk/Fases/Fase N/` no encerramento: `DEV_LOG`, `ROADMAP` e os briefings daquele trabalho
+| 🔄 **rotaciona por fase** | 📌 **persiste e muda com o código** |
+|---|---|
+| `DEV_LOG`, `ROADMAP` e os briefings daquele trabalho | `ARQUITETURA`, `API_CONTRATO`, `FUNIL`, `DESIGN_CONTRATO`, `SQL/` |
+| são **recortados** para `workdesk/Fases/` no encerramento | **nunca** são arquivados; editados in-place |
+| descrevem um período que acabou | descrevem o presente |
 
-🚨 **A fase fecha quando o TRABALHO que dá nome a ela termina** — não quando o mês vira, não quando o João pede. Se o DEV_LOG passar de **~1.500 linhas** ou começar a cobrir dois assuntos que não se conversam, a fase já devia ter fechado: propor o corte na hora. A antiga "Fase 9" acumulou **25 dias, seis trabalhos distintos e 5.053 linhas** antes de alguém notar.
+O DEV_LOG e o ROADMAP **andam juntos**: são as duas metades do mesmo período — o que se fez e o que se ia fazer.
 
-**Ao encerrar**, a pasta `Fases/Fase N/` tem que ficar **auto-contida**: recebe os 🗂️ recortados, uma **cópia** da `ARQUITETURA` (retrato do fim da fase — a viva continua na raiz) e um **README** com o que a fase resolveu, as descobertas que valem para sempre e os erros cometidos. Atualizar também o índice [Fases/README.md](workdesk/Fases/README.md). Só então a raiz recomeça com DEV_LOG e ROADMAP novos.
+🚨 **O gatilho da rotação é o ROADMAP fechar:** os itens de 🔴 AGORA acabaram e o que vem a seguir é outro assunto. **Não é o mês virando, nem o arquivo crescendo.** Se o DEV_LOG passar de ~1.500 linhas ou começar a cobrir dois assuntos que não se conversam, a fase provavelmente já devia ter fechado — propor o corte na hora. A antiga "Fase 9" acumulou **25 dias, seis trabalhos distintos e 5.053 linhas** antes de alguém notar.
+
+**Ao encerrar**, a pasta tem que ficar **auto-contida**: recebe os 🔄 recortados, uma **cópia** da `ARQUITETURA` (retrato do fim da fase — a viva continua na raiz) e um **README** com o que a fase resolveu, as descobertas que valem para sempre e os erros cometidos. Atualizar também o índice [Fases/README.md](workdesk/Fases/README.md). Só então a raiz recomeça com DEV_LOG e ROADMAP novos.
+
+📁 **O nome da pasta carrega o período:** `Fase 08 — 2026-07-30 a 2026-08-02`. Com o zero à esquerda, a ordem alfabética é a cronológica.
 
 **Arquivar 🗂️ na hora certa.** O `FRONTEND_BRIEFING` dizia "o app ignora oito campos" meses depois do app parar de ignorar, e seguia sendo apontado como "documento de entrada" em três lugares. Documento que descreve problema resolvido é pior que documento nenhum.
 
@@ -72,10 +79,25 @@ Os documentos são de **dois tipos**, e cada um declara o seu no cabeçalho:
 
 Estamos na **Fase 11** (produção de verdade: deploy, auth, dedup, infra); 1 a 10 estão arquivadas.
 
+### O verificador — a única defesa que não depende de memória
+
+```bash
+node workdesk/scripts/verificar-workdesk.cjs
+```
+
+Ele confere, nos documentos **persistentes**, se todo `identificador` citado ainda existe no código e se todo link ainda resolve. Roda em 0,2s e **já roda sozinho no início de cada sessão** (hook `SessionStart`), calado quando está tudo certo.
+
+Ele existe porque **regra escrita não é defesa**. Só em 2026 apodreceram a ARQUITETURA (quatro afirmações falsas dentro de uma caixa escrita "LEIA ANTES DE MEXER"), o ESTADO DO MUNDO e o MIGRATIONS_LOG — os três com regra mandando atualizar.
+
+⚠️ **O que ele não pega:** se o que está escrito é **verdade**. Um identificador pode existir e a frase sobre ele estar errada. Ele cobre apodrecimento estrutural, não semântico — o resto continua sendo conferir na fonte.
+
+Achou algo? Ou o documento ficou para trás (corrija o documento), ou o identificador é externo legítimo (adicione a `EXTERNOS` no script, **com o motivo escrito**).
+
 ### Obrigações que não dependem de pedido
 
 - Toda migration SQL em [workdesk/SQL/migrations/](workdesk/SQL/migrations/) **obriga** entrada em [MIGRATIONS_LOG.md](workdesk/SQL/MIGRATIONS_LOG.md) **no mesmo turno**.
 - Achou **duas respostas para a mesma pergunta** em documentos? Medir na fonte e **apagar a errada no mesmo turno**. Não deixar para depois: é assim que nasce a segunda verdade.
+- Mudou algo estrutural no código? A `ARQUITETURA` muda **no mesmo turno** — ela é a que acompanha o código, não a que se revisa depois.
 - **Fim de sessão:** revisar ROADMAP + ARQUITETURA + confirmar que a última entrada do DEV_LOG cobre a sessão inteira.
 
 ---

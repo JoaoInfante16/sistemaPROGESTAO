@@ -35,6 +35,48 @@ function emitir(texto) {
   }));
 }
 
+/**
+ * Roda o verificador da workdesk e devolve um aviso — ou string vazia se estiver
+ * tudo certo. Silencio quando limpo e o ponto: aviso que aparece sempre vira
+ * ruido que se ignora, e ai nao e mais aviso.
+ *
+ * Nunca lanca: se o verificador sumir ou quebrar, o onboarding segue.
+ */
+function avisoDeApodrecimento() {
+  try {
+    const script = path.join(raiz, 'workdesk', 'scripts', 'verificar-workdesk.cjs');
+    if (!fs.existsSync(script)) return '';
+    const { execFileSync } = require('child_process');
+    let saida;
+    try {
+      saida = execFileSync(process.execPath, [script, '--json'], {
+        encoding: 'utf8', timeout: 10000, cwd: raiz,
+      });
+    } catch (e) {
+      // exit 1 = achou problema; a saida vem no stdout mesmo assim.
+      saida = e.stdout;
+    }
+    if (!saida) return '';
+    const { problemas = [], ausentes = [] } = JSON.parse(saida);
+    if (!problemas.length && !ausentes.length) return '';
+
+    const linhas = problemas.slice(0, 12).map(
+      (p) => `- \`${p.alvo}\` em **${p.doc}** — ${p.tipo === 'link' ? 'link quebrado' : 'nao existe mais no codigo'}`
+    );
+    if (problemas.length > 12) linhas.push(`- …e mais ${problemas.length - 12}`);
+    for (const d of ausentes) linhas.push(`- **${d}** nao foi encontrado`);
+
+    return '\n\n---\n\n🚨 **A workdesk apodreceu em ' + (problemas.length + ausentes.length) +
+      ' ponto(s).** O verificador achou isto agora:\n\n' + linhas.join('\n') +
+      '\n\nCada item e: ou o documento ficou para tras do codigo (corrija o documento), ' +
+      'ou e um identificador externo legitimo (adicione a `EXTERNOS` em ' +
+      '`workdesk/scripts/verificar-workdesk.cjs`, **com motivo**). Detalhe completo: ' +
+      '`node workdesk/scripts/verificar-workdesk.cjs`.';
+  } catch {
+    return '';
+  }
+}
+
 try {
   const doc = fs.readFileSync(alvo, 'utf8');
   const inicio = doc.indexOf(MARCADOR);
@@ -61,7 +103,8 @@ try {
     '\n\n---\n\n🚨 **Leia `workdesk/ARQUITETURA.md` INTEIRO antes de tocar em ' +
     'codigo.** O trecho acima e so a porta de entrada; o resto do arquivo tem as ' +
     'armadilhas que ja custaram tempo e dinheiro. As regras de trabalho estao no ' +
-    'CLAUDE.md, que ja foi carregado.'
+    'CLAUDE.md, que ja foi carregado.' +
+    avisoDeApodrecimento()
   );
 } catch (erro) {
   emitir('⚠️ O hook de onboarding nao conseguiu ler workdesk/ARQUITETURA.md: ' + erro.message);
