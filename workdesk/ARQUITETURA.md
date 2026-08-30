@@ -124,6 +124,20 @@ não fazem o que parecem fazer.
 | `main` | `…-production` | **produção** `uywvrk…` | 🚨 **MANUAL** |
 | `main` | `admin-panel` | — | automático |
 
+🧊 **DURANTE A FASE 12, A `main` ESTÁ CONGELADA** (decidido pelo João em
+30/08). O trabalho de multi-plataforma e níveis de acesso vive em `develop` e
+`staging`; nada sobe para produção até ele terminar.
+
+O motivo é o tamanho da mudança: níveis de acesso mexem em quem enxerga o quê, e
+uma versão pela metade em produção mostraria dado errado para cliente pagante —
+que é o único erro deste sistema que não dá para desfazer com um deploy.
+
+**A exceção é conserto de produção.** Se quebrar o que está no ar, o conserto vai
+para a `main` na hora, sozinho, sem carregar o trabalho da fase junto. Foi
+exatamente o que se fez em 29/08 com o `/goto`.
+
+Quando a fase fechar, `main` volta ao fluxo normal e esta caixa sai daqui.
+
 | arquivo de env | aponta para | quem lê |
 |---|---|---|
 | `backend/.env` (local) | **staging** | o servidor local — mexer aqui não atinge o cliente |

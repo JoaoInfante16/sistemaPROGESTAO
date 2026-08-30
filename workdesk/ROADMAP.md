@@ -27,6 +27,10 @@ Antes de escrever "X está quebrado", **confirme na fonte**.
 
 ### 🚧 A fase nova — níveis de acesso e comportamento por usuário
 
+🧊 **A `main` fica congelada durante esta fase** — trabalho em `develop` e
+`staging`, produção só recebe conserto. A regra e o porquê moram na
+[ARQUITETURA](./ARQUITETURA.md), seção 3.2; não duplicar aqui.
+
 ⏳ **Esperando o briefing** (feito pelo João no Claude WEB, 29/08). Nada aqui é
 decisão ainda; a spec sai depois de discutir e refinar.
 
