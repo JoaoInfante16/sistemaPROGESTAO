@@ -1,6 +1,6 @@
-# ROADMAP — SIMEops (Fase 11)
+# ROADMAP — SIMEops (Fase 12)
 
-> 🗂️ **Documento da Fase 11** — arquivado em `Fases/Fase 11/` quando ela fechar.
+> 🗂️ **Documento da Fase 12** — arquivado em `Fases/Fase 12/` quando ela fechar.
 > Ver [CLAUDE.md](../CLAUDE.md), seção 2.
 >
 > **Futuro, e só futuro.** Planos, backlog e dívida que atravessa fases.
@@ -16,20 +16,69 @@ Três seções, e um item vive em **uma** delas:
 | 🔵 **IDEIAS** | não decidido; entra sem custo, sai sem culpa |
 
 🚨 **Item feito SAI daqui.** Não vira `✅` de troféu — a história dele já está no
-[DEV_LOG](./DEV_LOG.md), na data em que aconteceu. Em 27/08 este documento tinha
-**quatro seções `✅`**, incluindo a maior de todas, dentro de um arquivo que se
-declarava "só o futuro" na terceira linha.
+[DEV_LOG](./DEV_LOG.md), na data em que aconteceu.
 
 🚨 **Estado atual do sistema não mora aqui** — é a [ARQUITETURA](./ARQUITETURA.md).
-Antes de escrever "X está quebrado", **confirme na fonte**: em 27/08 este roadmap
-e o DEV_LOG carregavam pendências consertadas havia semanas.
+Antes de escrever "X está quebrado", **confirme na fonte**.
 
 ---
 
 # 🔴 AGORA
 
-### Fechar o ciclo de release
+### 🚧 A fase nova — níveis de acesso e comportamento por usuário
 
+⏳ **Esperando o briefing** (feito pelo João no Claude WEB, 29/08). Nada aqui é
+decisão ainda; a spec sai depois de discutir e refinar.
+
+O que já foi **medido no código** em 29/08, e que define o tamanho do buraco:
+
+- **Existe UM nível de acesso: `user_profiles.is_admin` (boolean).** Só isso.
+- **Fora do push, nada é escopado por usuário.** O feed e o analytics entregam a
+  lista de cidades **que o cliente mandar** (`resolverCidades`,
+  [analyticsRoutes.ts](../backend/src/routes/analyticsRoutes.ts)) sem conferir
+  direito nenhum; a busca manual é liberada por uma config **global**
+  (`search_permission`), sem teto de gasto individual.
+- **Não existe conceito de cliente/organização/tenant** — nem tabela, nem coluna,
+  nem FK. `news` nem tem chave para `monitored_locations`: a ligação é o **texto**
+  da coluna `cidade`, então o eixo natural de recorte é lista de cidades por
+  usuário, que encaixa no `.in('cidade', [...])` que o código já usa.
+- O único recorte individual que existe é `user_notification_prefs`, e ele decide
+  **o que vibra, não o que aparece**.
+
+🚨 **Dois achados que a fase nova transforma de inofensivos em graves:**
+
+- **`/manual-search/:id/results`, `/status` e `/cancel` não checam dono.** O
+  `DELETE` checa (`.eq('user_id', userId)`), os três não. Com dois clientes no
+  mesmo banco isso é vazamento — e o `searchId` viaja no payload do push.
+- **A RLS está fechada em 19/19, então o backend é a única barreira.** Bom para
+  centralizar autorização num lugar só; ruim porque um `where` esquecido vaza em
+  silêncio, sem segunda trava.
+
+### 🚨 O `/goto` do Google — remendo no ar, conserto de verdade pendente
+
+- ⬜ **Provar no Render.** O remendo foi medido de IP residencial (20/20). O
+  Google desconfia de IP de datacenter. A resposta está no log `goto: N/M
+  resolvidos` depois do deploy — **não deduzir, ler o log**.
+- ⬜ **Enviar o chamado à Bright Data.** Texto pronto (pt-BR e inglês). O
+  argumento: a doc deles documenta `news[].link` como *"the URL of the news
+  article"*, e devolver caminho relativo sem host é defeito independente.
+- ⬜ **Alerta de "N scans seguidos sem achar nada".** É o que faltou: três dias
+  de `news_found=0` de hora em hora, sem ninguém avisado. O log do `goto` cobre
+  esta causa; o alerta cobre **qualquer** causa futura.
+- 🔵 Cache do `goto` no Redis — o mesmo código se repete entre scans. Não foi
+  feito para manter o remendo pequeno; vale se o volume incomodar.
+- 🔵 Se o Google fechar a porta: **zone de Web Unlocker própria** (a atual é de
+  SERP e recusa `/goto` com `invalid_path`) ou trocar para a DataForSEO, que já
+  resolve 99,99%.
+- ⬜ **São Paulo entrou no monitoramento em 29/08** (cidade e estado) para o
+  teste do João. Se não é para monitorar de verdade, desativar — entra no rodízio
+  e soma custo.
+
+### Herdado da Fase 11 — o ciclo de release que não fechou
+
+- ⬜ **`Manual Deploy` no Render** (a `main` não tem auto-deploy) e conferir o
+  `commit` no `/health`. Pendente desde 26/08; em 29/08 a `main` estava em
+  `e1aa6ef`, oito commits atrás da `develop`.
 - ⬜ **Subir o AAB** no Play Console — testa, de quebra, se o Google aprovou a
   redefinição da chave de upload pedida em 06/08.
 - ⬜ **Segundo admin.** Existe **um só** (`joao.infante16@gmail.com`). Ele se
@@ -38,13 +87,11 @@ e o DEV_LOG carregavam pendências consertadas havia semanas.
 - ⬜ **Backup do `simeops-release.jks` fora da máquina.** É o mesmo arquivo que
   já se perdeu uma vez, e `.gitignore` não protege contra notebook quebrado.
 - ⬜ **Migration 024** (opcional, agora só limpeza) — apaga 7 configs mortas.
-  Deixou de ter risco quando a `main` subiu: não há mais dois códigos lendo
-  `manual_search_max_results_30d` com significados diferentes.
 - ⬜ **`applicationIdSuffix` por variante.** Staging e produção viraram o mesmo
   app no aparelho; separar exige o sufixo **mais** um cliente Firebase para ele.
+  ⚠️ Se a fase nova mexer em perfis, o desenho disto pode mudar — não começar
+  antes da spec.
 
-
----
 
 ### Verificações em aberto — medições que faltam
 
@@ -220,7 +267,7 @@ tinham 19. Falta: indicativo no próprio card, contagem no sumário
 
 ---
 
-### ⚡ Fase 12 — Acelerar o estágio 4 (backend, decidido em 02/08)
+### ⚡ Acelerar o estágio 4 (backend, decidido em 02/08)
 
 > ⚠️ **Renumerada de "Fase 10" para "Fase 12" em 27/08.** As fases 10 e 11 foram
 > criadas retroativamente no recorte da workdesk (a antiga "Fase 9" era seis

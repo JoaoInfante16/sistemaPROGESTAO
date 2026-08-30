@@ -26,6 +26,16 @@ const SYNC_API_URL = 'https://api.brightdata.com/request';
 // busca manual PARA SEMPRE — nao ha nada acima que corte.
 const SERP_TIMEOUT_MS = 60_000;
 
+// O `/goto` e relativo e resolve contra a pagina que o serviu — a SERP do
+// www.google.com. Ver `resolverGoto`.
+const GOTO_BASE = 'https://www.google.com';
+// Baixa de proposito: sao requisicoes ao Google, que esta justamente tentando
+// barrar quem faz isso. Vazao aqui e menos importante que nao ser bloqueado.
+const GOTO_CONCURRENCY = 6;
+// Um 302 volta em milissegundos. 8s ja e sinal de que nao vai voltar.
+const GOTO_TIMEOUT_MS = 8_000;
+const GOTO_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
+
 export class BrightDataSERPProvider implements SearchProvider {
   private apiKey: string;
   private zone: string;
@@ -159,13 +169,94 @@ export class BrightDataSERPProvider implements SearchProvider {
       logger.info(`${TAG} ${especulativas} pagina(s) especulativa(s) descartada(s) — custo da paginacao em lote`);
     }
 
-    const results = allResults.slice(0, totalWanted);
+    const results = await this.resolverGoto(allResults.slice(0, totalWanted), TAG);
     this.lastRequestCount = requestsMade;
     const loc = options.location ? `[${options.location.city || '?'}/${options.location.state || '?'}]` : '';
     logger.info(`${TAG} ${loc} "${query.substring(0, 50)}..." → ${results.length} results (${requestsMade} req${lote > 1 ? `, lote de ${lote}` : ''})`);
     return { results, requestCount: requestsMade };
   }
 
+
+  /**
+   * Desde 2026-08-26 o Google nao devolve mais o endereco do veiculo na SERP:
+   * `link` vem como `/goto?url=<codigo opaco>` — o passthrough dele, e ainda por
+   * cima RELATIVO, sem host. Foi anunciado no mesmo dia em que o nosso feed parou
+   * de gravar (ultima noticia: 26/08 15:01), e pegou o mercado inteiro de SERP.
+   *
+   * 🚨 **A URL do veiculo nao existe em NENHUM outro campo da resposta.** Foi
+   * medido: varredura recursiva de todos os campos de todos os itens atras de
+   * qualquer http(s) nao-Google devolveu zero. Vem titulo, description, source e
+   * date corretos — so o endereco sumiu. Decodificar o `CAES…` tambem nao e
+   * caminho: o Google fechou isso em 2024.
+   *
+   * O que funciona, e e o que este metodo faz: o link relativo resolve contra a
+   * pagina de onde veio (`www.google.com`), e pedindo esse endereco **sem seguir
+   * o redirecionamento** o Google entrega o destino no header `Location`.
+   * Medido em 29/08: 3 de 3 (R7, Estadao, Band).
+   *
+   * ⚠️ **Isto e remendo, nao conserto.** O certo e a Bright Data devolver o
+   * endereco, como a documentacao DELES promete (`news[].link` = "the URL of the
+   * news article"). Chamado aberto. Enquanto isso, cada resultado custa uma
+   * requisicao a mais — de graca, mas contra um Google que esta justamente
+   * tentando impedir isso. Por isso a concorrencia e baixa.
+   *
+   * Quem nao resolve **cai fora**: URL relativa nao e endereco, o Jina nao baixa
+   * e o item morreria adiante de qualquer forma, so que em silencio.
+   */
+  private async resolverGoto(results: SearchResult[], TAG: string): Promise<SearchResult[]> {
+    const precisam = results.filter((r) => r.url.startsWith('/goto'));
+    if (precisam.length === 0) return results;
+
+    const resolvido = new Map<string, string>();
+    const fila = [...precisam];
+
+    const trabalhador = async (): Promise<void> => {
+      for (;;) {
+        const item = fila.shift();
+        if (!item) return;
+        try {
+          const resposta = await fetch(GOTO_BASE + item.url, {
+            redirect: 'manual',
+            headers: { 'User-Agent': GOTO_UA, 'Accept-Language': 'pt-BR,pt;q=0.9' },
+            signal: AbortSignal.timeout(GOTO_TIMEOUT_MS),
+          });
+          const destino = resposta.headers.get('location') || '';
+          // So aceita endereco absoluto e de fora do Google. Qualquer outra coisa
+          // (captcha, consentimento, 200 sem Location) e falha — e falha some.
+          if (/^https?:\/\//i.test(destino) && !/^https?:\/\/(\w+\.)*google\./i.test(destino)) {
+            resolvido.set(item.url, destino);
+          }
+        } catch {
+          // Sem tratamento por item: o que importa e a TAXA, logada abaixo.
+        }
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(GOTO_CONCURRENCY, precisam.length) }, trabalhador)
+    );
+
+    const ok = resolvido.size;
+    const falhou = precisam.length - ok;
+
+    // 🚨 Este log e a defesa que faltou em 26/08. O sistema passou TRES DIAS
+    // gravando `news_found=0` de hora em hora, gastando dinheiro, sem uma linha
+    // que dissesse o porque. Aqui a taxa aparece sempre; e quando ela zera, o
+    // Sentry e acionado — porque zero de N e o sinal de que o Google fechou a
+    // porta de novo, e ninguem vai reparar sozinho.
+    logger.info(`${TAG} goto: ${ok}/${precisam.length} resolvidos${falhou > 0 ? `, ${falhou} descartados` : ''}`);
+    if (ok === 0) {
+      logger.error(`${TAG} goto: NENHUM dos ${precisam.length} redirects resolveu — coleta zerada`);
+      Sentry.captureException(new Error('[BrightData] goto: 0 redirects resolvidos'), {
+        tags: { provider: 'brightdata' },
+        extra: { candidatos: precisam.length, exemplo: precisam[0]?.url.substring(0, 80) },
+      });
+    }
+
+    return results
+      .filter((r) => !r.url.startsWith('/goto') || resolvido.has(r.url))
+      .map((r) => (resolvido.has(r.url) ? { ...r, url: resolvido.get(r.url)! } : r));
+  }
   /**
    * Uma pagina da SERP. Devolve o JSON parseado (ou `null` se o corpo nao for
    * JSON) e quantas requisicoes HTTP foram gastas — a contagem importa porque a
