@@ -15,32 +15,75 @@
 
 ---
 
-## 🚦 ONDE PARAMOS — 29/08
+## 🚦 ONDE PARAMOS — 30/08
 
 > Única seção deste arquivo que se **sobrescreve** em vez de acumular.
 > Teto: ~25 linhas.
 
-**O feed voltou a ter endereço — falta provar que volta no servidor.** O remendo
-do `/goto` está em `BrightDataSERPProvider.resolverGoto`: prefixa o link relativo
-com `https://www.google.com`, pede **sem seguir** o redirect e lê o `Location`.
-Medido pelo caminho real em 29/08: **20/20 resolvidos**, `tsc` limpo.
+✅ **O feed voltou, provado em produção.** Scan de São Paulo às 01:23 UTC:
+`urls=40 achou=2`, as 40 rejeições com endereço **absoluto**, duas notícias
+gravadas com cidade/estado/tipo/confiança corretos — e o **push chegou no celular
+do João**. Fim a fim, no aparelho.
 
-🚨 **A prova que importa ainda não foi feita: isso rodou da máquina do João, IP
-residencial.** O Google trata IP de datacenter (Render) com muito mais
-desconfiança. Depois do deploy, o que responde é o log `goto: N/M resolvidos` —
-se vier `0/M`, o Sentry dispara e o caminho vira Web Unlocker em zone própria (a
-zone atual é de SERP e recusa `/goto` com `invalid_path`).
+✅ **E o remendo funciona do Render**, que era a dúvida real: IP de datacenter não
+foi barrado pelo Google. `main` = `staging` = `develop` = `6e65e98`.
 
-⬜ **Enviar o chamado à Bright Data** (texto pronto, pt-BR e inglês). O argumento
-forte: a doc DELES documenta `news[].link` como *"the URL of the news article"* —
-é bug contra contrato, não pedido de feature. E devolver caminho **relativo, sem
-host** é defeito independente do `/goto`.
+✅ **De quebra, o `corpo` está sendo gravado** (655 e 498 chars) — o conserto de
+25/08 só agora chegou em produção. Tocar num card passa a entregar texto próprio.
 
-⬜ **Produção precisa do `Manual Deploy`** — a `main` não tem auto-deploy.
-Staging sobe sozinha.
+⚠️ **Isso não encerra o assunto — é remendo.** Cada resultado custa uma requisição
+a mais ao Google, que está justamente tentando impedir isso. Se ele fechar a
+porta, o log `goto: N/M resolvidos` avisa e o Sentry dispara no zero.
 
-⏳ **Fase 12 (níveis de acesso por usuário) espera o briefing** que o João fez no
-Claude WEB. Nada decidido; o levantamento do que existe hoje está no ROADMAP.
+⬜ **Enviar o chamado à Bright Data** (texto pronto, pt-BR e inglês).
+⬜ **Alerta de "N scans seguidos sem achar nada"** — cobre qualquer causa futura,
+não só esta.
+⬜ **Decidir São Paulo:** entrou em 29/08 só para o teste e já está no rodízio.
+⬜ **APK 1.2.1+6** — agora vale buildar: já existe notícia com `corpo` para provar.
+
+⏳ **Fase 12 (níveis de acesso) espera o briefing** do João. O levantamento do que
+existe hoje está no ROADMAP.
+
+---
+
+## 2026-08-30 — o remendo passou no único teste que valia
+
+Scan de São Paulo em produção, 01:23 UTC, com o código novo de verdade:
+
+```
+urls=40  achou=2  66s  US$0,0188
+rejeicoes: 25 com endereco ABSOLUTO  (o resolverGoto fez o trabalho)
+fontes gravadas: band.com.br, politizabrasil.com.br
+```
+
+E o push chegou no celular do João. **Fim a fim, no aparelho** — que é o único
+teste que a ARQUITETURA §6 diz não dar para fazer sem incomodar o cliente.
+
+**A dúvida que importava era o IP.** O remendo tinha sido medido de máquina
+residencial, e o Google trata datacenter com outra desconfiança. Passou: o Render
+resolve os redirects normalmente.
+
+### O tropeço no meio, que vale registrar
+
+O primeiro teste depois do deploy (01:14) voltou `achou=0` com rejeições ainda
+**relativas** — e por um instante pareceu que o remendo não tinha funcionado.
+Não era isso: **o Render faz deploy sem derrubar.** A instância antiga continua
+servindo, e consumindo a fila, até a nova ficar pronta. O scan das 01:14 rodou 30
+segundos depois de a nova subir — e foi a velha que o pegou.
+
+A lição: depois de um deploy, **esperar a instância antiga morrer antes de
+concluir qualquer coisa do primeiro teste.** `uptime_seconds` no `/health` diz
+quando a nova assumiu, mas não diz quando a velha parou.
+
+### O que este dia deixa em aberto
+
+O conserto é remendo e o assunto não se encerra: cada resultado custa uma
+requisição a mais ao Google. O chamado à Bright Data segue valendo — a doc DELES
+promete `news[].link` como a URL da matéria.
+
+E fica a defesa que faltava: o log `goto: N/M resolvidos` aparece sempre, e zero
+de N aciona o Sentry. Se o Google fechar essa porta, a gente descobre no mesmo
+dia — não em três.
 
 ---
 
