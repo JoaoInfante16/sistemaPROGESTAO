@@ -61,6 +61,50 @@ decidir São Paulo no rodízio · APK 1.2.1+6.
 
 ---
 
+## 2026-09-04 — a fronteira vira documento, e o §5 do CLAUDE.md morre
+
+Sessão de consultoria sobre como a workdesk e a memória se sustentam quando o
+sistema dobrar de tamanho. Três achados, dois consertados aqui.
+
+**1. O `Protótipo/` nunca esteve no git.** Zero commits o tocaram desde 30/08:
+36 KB de MUDANCAS, 29 KB de FORMULARIOS_SIC e 25 KB de REUNIAO_SIC sem histórico
+e sem backup — justamente os documentos que não se reconstroem, porque o motivo
+some com a sessão que o gerou. Commitado em `933d92c`, com `formularios/` e
+`Relatório/` barrados por `.gitignore` (dado pessoal real: planilha de
+atendimentos e capturas de formulário preenchido).
+
+**2. O §5 do CLAUDE.md estava 86% morto.** A árvore de `backend/src` que ele
+desenhava citava sete caminhos; **seis não existiam mais** — pipeline em `jobs/`,
+scheduler em `jobs/scheduler/`, push em `services/notifications/`. É o documento
+mais caro do projeto (entra em contexto em todo turno, ~4.000 tokens) e apodreceu
+calado porque o verificador não checa árvore, só identificador em crase. A árvore
+saiu; no lugar ficou o porquê de ela não voltar, mais o ponteiro para a fronteira.
+
+**3. Não existe papel no sistema.** Medido: a identidade que o backend carrega é
+`{ id, email }` e o único portão é `is_admin`. `requireSearchPermission` é
+interruptor global, não papel. Nada errado a desfazer — fundação ainda não
+construída.
+
+**O que entrou na ARQUITETURA:** o §3.5, com a ordem das camadas
+(`routes → services → database`, nada aponta para cima), a exceção acidental do
+logger em `middleware/logger.ts` — que faz `database` e `config` importarem de
+`middleware` sem precisar —, e a regra que separa módulo de papel: *módulo é
+capacidade e não sabe quem o usa; papel é linha no banco*. O teste que resume:
+**criar papel novo é inserir uma linha, não fazer deploy.** Mais a regra 11 do §2,
+que põe o recorte de quem-vê-o-quê numa camada só — com quatro frentes de leitura
+planejadas, filtro em tela é quatro chances de vazar dado sensível.
+
+📌 **Fica pendente, discutido e não feito:** a suíte do backend tem **10 de 17
+suítes quebradas** (25 testes de 176) e nada as roda — sem CI, sem hook. O `tsc`
+passa limpo, e a diferença entre os dois é que só o typecheck está na definição de
+pronto do §3. Uma falha foi investigada a fundo (`filter0Regex`): é teste velho, o
+código está certo e o porquê está no comentário colado nele. As outras nove não
+foram diagnosticadas. Também pendente: o workflow consolidado no CLAUDE.md e o
+verificador estendido (teto do ONDE PARAMOS — hoje em 44 linhas para um teto de
+25 —, teto do 🔴 AGORA, e a regra de fronteira).
+
+---
+
 ## 2026-08-30 — o remendo passou no único teste que valia
 
 Scan de São Paulo em produção, 01:23 UTC, com o código novo de verdade:

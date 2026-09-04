@@ -82,6 +82,7 @@ uma tem a razão colada; a história está no [DEV_LOG](./DEV_LOG.md).
 | 8 | **Filter1 nunca faz fallback "aprova tudo"** | aprovar tudo por segurança explode o orçamento nos estágios caros que vêm depois |
 | 9 | **Todo script que fala com Redis termina em `process.exit(0)`** | `main();` solto pendura o processo — já custou dois timeouts |
 | 10 | **Mudança de schema vira migration + entrada no log, no mesmo turno** | escrita direta pelo Bash é bloqueada, e o log é o que a próxima instância lê |
+| 11 | **Recorte de quem-vê-o-quê mora numa camada só, nunca na tela** | filtro na tela é filtro que uma tela esquece. Com dado sensível de pessoa atendida, tela esquecida não é bug — é incidente, e é o erro que nenhum deploy desfaz (§3.5) |
 
 ⚠️ **Antes de "otimizar" qualquer coisa aqui, leia o [FUNIL](./FUNIL.md).** As
 alavancas que parecem óbvias (mais páginas, teto menor, retry) já foram medidas e
@@ -225,6 +226,58 @@ As outras 13 tabelas (`budget_tracking`, `reports`, `user_notification_prefs`,
 `pipeline_rejected_urls`, `search_cache`, `executive_cache`…) estão em
 [SQL/schema_staging.sql](./SQL/schema_staging.sql). **Não deduza schema: rode
 `backend/scripts/diagnostico-banco.ts`.**
+
+---
+
+### 3.5 A fronteira — o que pode depender de quê
+
+Um sistema que serve públicos diferentes apodrece de um jeito conhecido: `se for
+consultor… senão se for gerente…` espalhado por dentro de cada tela e cada
+endpoint. A conta é cruel — cada papel novo multiplica **todas** as telas que já
+existem, e chega o dia em que ninguém consegue mais responder quem enxerga o quê.
+Esta seção é o antídoto. *Quais* públicos existem e onde cada um mora é decisão de
+produto, e mora no [ROADMAP](./ROADMAP.md).
+
+**A ordem das camadas no backend:**
+
+```
+routes  →  services  →  database
+jobs entra pelo lado: usa services e database, nunca routes
+```
+
+**Nada aponta para cima.** `database` não conhece rota; serviço não conhece rota.
+
+⚠️ **A exceção de hoje é acidental — não é dependência de verdade.** O logger mora
+em `middleware/logger.ts`, e por isso `database/queries.ts`,
+`database/analyticsQueries.ts` e `config/redis.ts` importam de `middleware`. É
+arquivo na gaveta errada: o lugar dele é `utils/`. Quem for mexer nesses três,
+mova junto.
+
+#### Módulo é capacidade. Papel é dado.
+
+- **Módulo** = uma capacidade do sistema — notícias, formulário, relatório,
+  indicador. Pasta própria, tabelas próprias, endpoints próprios. 🚨 **Um módulo
+  não sabe quem está usando ele.** Essa é a regra inteira.
+- **Papel** = uma linha no banco dizendo quais módulos a pessoa recebe e **qual
+  fatia do dado** ela enxerga.
+
+🚨 **O teste de que a fronteira está viva: criar um papel novo é inserir uma
+linha, não fazer um deploy.** No dia em que "adicionar supervisor regional" exigir
+editar código de tela, ela já foi rompida.
+
+E as duas metades não têm o mesmo peso. *Quais módulos eu vejo* é navegação — erro
+ali é constrangimento. *Quais linhas eu vejo dentro do módulo* é a regra 11 do §2
+— erro ali é vazamento, e é por isso que o recorte mora numa camada só.
+
+#### Onde isso está hoje
+
+**Papel não existe.** A identidade que o backend carrega é `{ id, email }`
+(`middleware/auth.ts`) e o único portão é `is_admin`, em `user_profiles`.
+`requireSearchPermission` não é papel: é um interruptor global
+(`search_permission`), igual para todo mundo.
+
+Isso não é dívida a pagar — é fundação que ainda não foi construída, e é a
+primeira coisa que entra no banco quando for.
 
 ---
 

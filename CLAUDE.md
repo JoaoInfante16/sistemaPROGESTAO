@@ -163,21 +163,23 @@ do Flutter em device físico — ali o Claude continua cego.
 ## 5. Estrutura — onde mora o quê
 
 ```
-backend/src/
-├── services/
-│   ├── filters/            → Filter0 regex, Filter1/2 GPT
-│   ├── pipelineCore.ts     → stages compartilhados + post-filter cidade/estado
-│   ├── scanPipeline.ts     → auto-scan CRON (periodoDias=2)
-│   ├── manualSearchWorker.ts → busca manual BullMQ
-│   ├── pushService.ts      → Firebase FCM por categoria
-│   └── filter2GPT.ts       → extrai cidade+estado+tipo_crime
-├── routes/newsRoutes.ts    → feed (aceita cidades=A,B,C)
-└── cron/cronScheduler.ts   → filtra type='city' (NÃO state)
-
-admin-panel/                → configuração do sistema
-mobile-app/                 → Flutter (Android)
-workdesk/                   → diário de bordo (DEV_LOG, ROADMAP, ARQUITETURA, SQL)
+backend/       → Node + TypeScript + Express + BullMQ
+admin-panel/   → Next.js — o painel dos DEVS (config, custo, saúde), não do cliente
+mobile-app/    → Flutter (Android)
+workdesk/      → a mesa de trabalho (ARQUITETURA, DEV_LOG, ROADMAP, SQL)
 ```
+
+🚨 **Árvore de arquivo não mora em documento — nem aqui.** Esta seção já teve o
+desenho de `backend/src` inteiro, uma linha por arquivo. Em 03/09 **seis dos sete
+caminhos que ela citava não existiam mais**: o pipeline tinha ido para `jobs/`, o
+scheduler para `jobs/scheduler/`, o push para `services/notifications/`. Apodreceu
+calada porque ninguém abre documento para conferir o que uma busca responde em
+dois segundos — e mesmo assim era isto que toda sessão lia primeiro, e acreditava.
+
+**Onde algo mora, procure.** O que a busca *não* responde é **o que pode depender
+de quê** — e isso está em [ARQUITETURA §3.5](workdesk/ARQUITETURA.md):
+`routes → services → database`, nada aponta para cima, módulo não sabe quem está
+usando ele, e papel é linha no banco, não `if` em tela.
 
 ---
 
