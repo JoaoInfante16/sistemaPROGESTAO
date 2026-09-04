@@ -156,18 +156,42 @@ Os nomes dos testes passaram a ser escritos em **comportamento e em português**
 a lista que o Jest imprime vira uma lista legível do que o sistema promete, que é
 como o João revisa sem ler código.
 
-⚠️ **ACHADO NÃO CONSERTADO — decisão do João.** O `filter1` trata erro de forma
-diferente conforme o tamanho do lote. Com 2+ trechos: 2 tentativas, Sentry,
-`throw` (o BullMQ re-enfileira). Com **1 trecho**: 1 tentativa, devolve `false`,
-**sem Sentry** — a notícia some e ninguém fica sabendo. Não viola a regra 8 (não
-aprova nada indevidamente), mas é falha invisível. Está fixado num teste que diz
-explicitamente descrever o comportamento atual, não o desejado.
+✅ **A assimetria do `filter1` foi corrigida** (decidida pelo João no mesmo dia).
+O caminho de **um trecho só** tinha 1 tentativa e devolvia `false` no `catch`: a
+notícia sumia sem alerta e sem retry, e um scan que achou um item só perdia
+justamente esse. Não era o erro caro da regra 8 — era pior de outro jeito, porque
+invisível. Agora é idêntico ao lote: 2 tentativas, Sentry, `throw`. O
+endurecimento do lote simplesmente nunca tinha chegado ali.
 
-📌 **Ainda pendente:** o CI (`tsc` + `npm test` em todo push) — sem ele a suíte
-volta a apodrecer, e agora ela é a única coisa que impede a regressão do
-`filter1`. Mais: `npm test` na definição de pronto do §3, o workflow consolidado
-no CLAUDE.md, e o verificador estendido (teto do ONDE PARAMOS — hoje 44 linhas
-para um teto de 25 —, teto do 🔴 AGORA, regra de fronteira).
+### E a máquina que impede tudo isso de acontecer de novo
+
+**O CI existe** ([.github/workflows/ci.yml](../.github/workflows/ci.yml)):
+`tsc --noEmit` + `jest --verbose` + o verificador da workdesk, em todo push e PR
+para `develop`, `staging` e `main`. Só o backend, de propósito — o `admin-panel`
+só tem `next build`, que precisa de env e falharia por motivo errado. **CI que
+falha à toa vira ruído que se ignora, e aí não é mais defesa.**
+
+**`npm test` entrou na definição de pronto** (CLAUDE.md §3), com a regra que
+faltava existir: teste vermelho se conserta antes de tudo, e **a suspeita começa
+no teste, não no código**. Mais a regra de nomear teste em comportamento e em
+português — a saída do Jest é a lista do que o sistema promete.
+
+**O verificador ganhou tetos de tamanho**, e o hook passou a mostrá-los. Nenhum
+número inventado: as 25 linhas do `ONDE PARAMOS` estão escritas no próprio bloco,
+as 1.500 do DEV_LOG estão no CLAUDE.md §2, e "seis trabalhos distintos" foi o que
+a Fase 9 acumulou antes de alguém notar. 🚨 **Aviso de tamanho não derruba o
+CI** — rotacionar fase leva dias, e CI vermelho enquanto isso viraria exatamente
+o ruído que o script combate. Ele avisa; quem decide é o João.
+
+📏 **Ele já aponta dois, hoje:** `ONDE PARAMOS` com **44 linhas** (teto 25) e o
+🔴 AGORA carregando **27 assuntos** (a Fase 9 travou com 6). O gatilho de rotação
+da Fase 12 já passou — falta propor o corte.
+
+📌 **Aberto, e é decisão do João:** o §8 do CLAUDE.md (URLs, custos, Sentry) é
+consulta, não comportamento, e está **duplicado** com a memória automática
+`reference-infra-producao`. Pela tabela de camadas que entrou hoje, o lugar dele
+é a ARQUITETURA — e sairia da camada paga em todo turno. Não foi movido porque
+tirar informação de onde o João espera encontrá-la é escolha dele.
 
 ---
 
