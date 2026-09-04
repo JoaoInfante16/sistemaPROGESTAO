@@ -67,6 +67,19 @@ Isso já falhou uma vez, e caro: até 27/08 existia um bloco "ESTADO DO MUNDO" n
 
 Entra na workdesk só o que **custa dinheiro ou tempo para redescobrir**: medições, o porquê das decisões, o que foi tentado e falhou, e o estado do que não se enxerga do código. **O porquê de uma linha específica mora num comentário colado nela, não aqui.**
 
+### Onde cada coisa mora — o critério é *quando* ela precisa estar na frente
+
+Antes de escrever qualquer coisa em qualquer lugar, decidir a camada. Elas têm **custos muito diferentes**, e escrever na errada é o que apodreceu o §5 (uma árvore de pastas na camada mais cara do projeto, 86% falsa, lida em toda sessão por semanas).
+
+| camada | o que entra | custo |
+|---|---|---|
+| **`CLAUDE.md`** | só o que muda o comportamento do Claude **antes de ele perguntar** — regra, proibição, comando | pago em **todo turno** |
+| **memória automática** | só o que **não está no repositório** — quem é o João, o que ele já rejeitou e por quê | pago quando o assunto puxa |
+| **workdesk** | medição, decisão e o porquê dela, o que falhou, o que não se enxerga do código | **grátis** até alguém abrir |
+| **comentário no código** | o porquê de **uma linha** específica | vem junto com o código |
+
+🚨 **Nunca escrever a mesma coisa em duas camadas.** É a segunda verdade nascendo — e a de cima sempre ganha por ser lida primeiro, mesmo quando está errada. Se algo já está no CLAUDE.md, não vai para a memória; se está no código, não vai para documento nenhum.
+
 ### Os documentos, e o papel de cada um
 
 Três tempos, e um item vive em **um** deles:
