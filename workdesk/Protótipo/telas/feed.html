@@ -1,0 +1,156 @@
+<!doctype html><meta charset="utf-8">
+<title>Feed — SIMEops</title>
+<style>
+  :root{
+    --papel:#FAF8F5; --branco:#FFFFFF;
+    --tinta:#1C1A17;      /* 16.4:1 */
+    --tinta2:#5F5950;     /*  6.5:1 */
+    --tinta3:#78716A;     /*  4.6:1 — passa AA */
+    --linha:#E6E0D6; --linha-forte:#D3CBBE;
+    --seguranca:#C13246;    /* 5.2 */
+    --patrimonial:#7A5D10;  /* 5.8 */
+    --operacional:#146B77;  /* 5.8 */
+    --fraude:#6E479F;       /* 6.5 */
+    --institucional:#3D7036;/* 5.6 */
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  body{margin:0;background:var(--papel);color:var(--tinta);
+       font:400 18px/1.55 "Segoe UI",system-ui,-apple-system,sans-serif;
+       max-width:420px;padding-bottom:100px}
+  svg{display:block}
+
+  /* ---------- cabeçalho ---------- */
+  header{padding:20px 20px 15px;border-bottom:1px solid var(--linha)}
+  .cidade{display:inline-flex;align-items:center;gap:8px;
+          padding:4px 10px 4px 12px;margin-left:-12px;border-radius:10px;
+          background:#F1ECE4}
+  .cidade h1{margin:0;font-size:28px;font-weight:600;letter-spacing:-.02em}
+  .atualizado{margin-top:11px;font-size:16px;color:var(--tinta2);
+              display:flex;align-items:center;gap:7px}
+  .ponto{width:9px;height:9px;border-radius:50%;background:#3D7036}
+
+  /* ---------- faixa de indicador ---------- */
+  .painel{margin:0;padding:18px 20px 20px;background:var(--branco);
+          border-bottom:1px solid var(--linha)}
+  .painel .rot{font-size:15px;font-weight:600;letter-spacing:.07em;
+               text-transform:uppercase;color:var(--tinta3)}
+  .painel .linha{display:flex;align-items:baseline;gap:12px;margin-top:6px}
+  .painel .n{font-size:42px;font-weight:600;letter-spacing:-.025em;line-height:1}
+  .delta{font-size:17px;font-weight:600;color:var(--seguranca)}
+  .painel .sub{margin-top:5px;font-size:16px;color:var(--tinta2)}
+
+  /* ---------- agrupador de dia ---------- */
+  .dia{padding:24px 20px 8px;font-size:15px;font-weight:600;
+       letter-spacing:.09em;text-transform:uppercase;color:var(--tinta3)}
+
+  /* ---------- item ---------- */
+  article{padding:19px 20px 21px;border-bottom:1px solid var(--linha);
+          position:relative}
+  article.urgente{background:#FDF3F1}
+  article.urgente::before{content:"";position:absolute;left:0;top:0;bottom:0;
+                          width:4px;background:var(--seguranca)}
+  .slug{display:flex;align-items:center;gap:9px;flex-wrap:wrap;
+        font-size:15px;font-weight:600;letter-spacing:.05em;
+        text-transform:uppercase;margin-bottom:9px}
+  .cat.seguranca{color:var(--seguranca)}
+  .cat.patrimonial{color:var(--patrimonial)}
+  .cat.operacional{color:var(--operacional)}
+  .sep{color:var(--linha-forte)}
+  .hora{color:var(--tinta2);font-weight:500;letter-spacing:.03em}
+  .fora{color:var(--tinta2);font-weight:500;letter-spacing:.03em}
+  .urg{background:var(--seguranca);color:#fff;padding:3px 8px;border-radius:4px;
+       letter-spacing:.06em}
+  h2{margin:0;font-size:23px;line-height:1.28;font-weight:600;
+     letter-spacing:-.015em}
+  .resumo{margin:10px 0 0;font-size:18px;color:var(--tinta2);line-height:1.55}
+  .fontes{margin-top:13px;font-size:16px;color:var(--tinta3)}
+  .oficial{color:var(--institucional);font-weight:600}
+  .lida h2,.lida .resumo{color:var(--tinta3)}
+
+  /* ---------- barra inferior ---------- */
+  nav{position:fixed;bottom:0;left:0;width:420px;display:flex;
+      background:var(--branco);border-top:1px solid var(--linha-forte)}
+  nav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;
+        padding:12px 6px 16px;text-decoration:none;color:var(--tinta3);
+        font-size:16px;font-weight:500}
+  nav a.on{color:var(--tinta);font-weight:600}
+  nav a.on svg{stroke:var(--tinta)}
+  nav svg{stroke:var(--tinta3);stroke-width:1.7;fill:none;
+          stroke-linecap:round;stroke-linejoin:round}
+</style>
+
+<header>
+  <div class="cidade">
+    <h1>Porto Alegre</h1>
+    <svg width="20" height="20" viewBox="0 0 24 24" stroke="#1C1A17"
+         stroke-width="2.2" fill="none" stroke-linecap="round"
+         stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+  </div>
+  <div class="atualizado"><span class="ponto"></span> Atualizado há 4 minutos</div>
+</header>
+
+<section class="painel">
+  <div class="rot">Esta semana na sua cidade</div>
+  <div class="linha">
+    <span class="n">12</span>
+    <span class="delta">▲ 40% vs. a semana passada</span>
+  </div>
+  <div class="sub">ocorrências noticiadas · 8 de furto, 3 de roubo, 1 de dano</div>
+</section>
+
+<div class="dia">Hoje · 4 de setembro</div>
+
+<article class="urgente">
+  <div class="slug">
+    <span class="urg">Urgente</span>
+    <span class="cat seguranca">Segurança</span>
+    <span class="sep">·</span>
+    <span class="hora">11h20</span>
+  </div>
+  <h2>Dupla é presa após tentativa de furto em supermercado da zona norte</h2>
+  <p class="resumo">Homens foram detidos por seguranças ao tentar sair com produtos
+    escondidos em mochilas. A Brigada Militar foi acionada e ambos foram levados
+    à delegacia.</p>
+  <div class="fontes">3 fontes · <span class="oficial">uma delas oficial</span></div>
+</article>
+
+<article>
+  <div class="slug">
+    <span class="cat patrimonial">Patrimonial</span>
+    <span class="sep">·</span>
+    <span class="hora">09h05</span>
+  </div>
+  <h2>Comércio da Cavalhada registra aumento de furtos no primeiro semestre</h2>
+  <p class="resumo">Levantamento da associação de lojistas aponta crescimento de
+    18% nas ocorrências em relação ao mesmo período do ano passado.</p>
+  <div class="fontes">2 fontes</div>
+</article>
+
+<div class="dia">Ontem · 3 de setembro</div>
+
+<article class="lida">
+  <div class="slug">
+    <span class="cat operacional">Operacional</span>
+    <span class="sep">·</span>
+    <span class="fora">Canoas</span>
+    <span class="sep">·</span>
+    <span class="hora">16h40</span>
+  </div>
+  <h2>Prefeitura anuncia reforço da iluminação pública em avenidas comerciais</h2>
+  <p class="resumo">Obra prevê a substituição de 1.200 pontos de luz até dezembro.</p>
+  <div class="fontes">1 fonte</div>
+</article>
+
+<nav>
+  <a class="on">
+    <svg width="26" height="26" viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/>
+      <path d="M7 9h6M7 12.5h6M7 16h10"/></svg>Notícias</a>
+  <a>
+    <svg width="26" height="26" viewBox="0 0 24 24">
+      <path d="M8 4h8a1 1 0 0 1 1 1v15l-5-3-5 3V5a1 1 0 0 1 1-1z"/>
+      <path d="M9.5 9h5"/></svg>Minha visita</a>
+  <a>
+    <svg width="26" height="26" viewBox="0 0 24 24">
+      <path d="M4 9l1.5-4h13L20 9"/><path d="M5 9v11h14V9"/>
+      <path d="M4 9h16"/><path d="M10 20v-6h4v6"/></svg>Minhas lojas</a>
+</nav>

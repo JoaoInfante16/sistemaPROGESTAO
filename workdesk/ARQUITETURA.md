@@ -579,6 +579,8 @@ inteiras.** São dois minutos de comando contra horas de raciocínio errado.
 | o que cada rota recebe e devolve, e as decisões que não se desfazem | [API_CONTRATO.md](./API_CONTRATO.md) |
 | onde cada item do funil morre, com números e custo | [FUNIL.md](./FUNIL.md) |
 | cor, tipografia, o que a tela pode e não pode fazer | [DESIGN_CONTRATO.md](./DESIGN_CONTRATO.md) |
+| as três coletas de campo da SIC, as perguntas e o que as bases medem | [FORMULARIOS_SIC.md](./Protótipo/FORMULARIOS_SIC.md) |
+| onde o app sai do instrumento da SIC, e o porquê de cada diferença | [MUDANCAS.md](./Protótipo/MUDANCAS.md) |
 | o que falta fazer, e o risco de cada item | [ROADMAP.md](./ROADMAP.md) |
 | **como** se chegou a cada decisão, com a data | [DEV_LOG.md](./DEV_LOG.md) |
 | a sessão em curso, em ~25 linhas | bloco **ONDE PARAMOS**, topo do [DEV_LOG](./DEV_LOG.md) |

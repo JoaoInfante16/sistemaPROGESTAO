@@ -97,6 +97,7 @@ Achou algo? Ou o documento ficou para trás (corrija o documento), ou o identifi
 
 - Toda migration SQL em [workdesk/SQL/migrations/](workdesk/SQL/migrations/) **obriga** entrada em [MIGRATIONS_LOG.md](workdesk/SQL/MIGRATIONS_LOG.md) **no mesmo turno**.
 - Achou **duas respostas para a mesma pergunta** em documentos? Medir na fonte e **apagar a errada no mesmo turno**. Não deixar para depois: é assim que nasce a segunda verdade.
+- 🚨 **Achou defeito no material da SIC, propôs melhoria, desviou do formulário deles ou recusou uma ideia?** Entrada em [MUDANCAS.md](workdesk/Prot%C3%B3tipo/MUDANCAS.md) **no mesmo turno**, com os quatro campos (Forms hoje · App · Por quê, com medição · Status). **É o documento da apresentação:** o João vai ter que demonstrar cada diferença na frente do cliente, meses depois, e o motivo não se reconstrói. Nunca deixar para o fim da sessão.
 - Mudou algo estrutural no código? A `ARQUITETURA` muda **no mesmo turno** — ela é a que acompanha o código, não a que se revisa depois.
 - **Fim de sessão:** revisar ROADMAP + ARQUITETURA + confirmar que a última entrada do DEV_LOG cobre a sessão inteira.
 
@@ -137,6 +138,19 @@ run-dev.bat              # dev local (ajustar IP em env/dev.json)
 build-staging.bat        # APK staging (Sentry OFF)
 build-prod.bat           # APK producao (Sentry ON via env/prod.json — git-ignored)
 ```
+
+**Ver a tela que acabou de escrever** (descoberto em 04/09) — fecha o ciclo de
+desenho sem depender do João abrir nada:
+
+```powershell
+& 'C:Program FilesGoogleChromeApplicationchrome.exe' --headless=new --disable-gpu `
+  "--screenshot=<saida>.png" --window-size=1280,900 "file:///<caminho>.html"
+```
+
+Depois **ler o PNG** e criticar o próprio resultado. Só entregar ao João depois de
+algumas voltas. ⚠️ Rodar pelo PowerShell — pelo Bash o Edge não gera arquivo.
+⚠️ **Vale para HTML** (dashboard, relatório, protótipo). **Não** substitui o teste
+do Flutter em device físico — ali o Claude continua cego.
 
 - `env/prod.json` NÃO é versionado (contém SENTRY_DSN). Use `env/prod.json.example` como template.
 - Sentry só ativa se `SENTRY_DSN` não-vazia — dev/staging ficam sem envio (zero quota).

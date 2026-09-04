@@ -15,34 +15,49 @@
 
 ---
 
-## 🚦 ONDE PARAMOS — 30/08
+## 🚦 ONDE PARAMOS — 04/09
 
 > Única seção deste arquivo que se **sobrescreve** em vez de acumular.
 > Teto: ~25 linhas.
 
-✅ **O feed voltou, provado em produção.** Scan de São Paulo às 01:23 UTC:
-`urls=40 achou=2`, as 40 rejeições com endereço **absoluto**, duas notícias
-gravadas com cidade/estado/tipo/confiança corretos — e o **push chegou no celular
-do João**. Fim a fim, no aparelho.
+✅ **O PLANEJAMENTO DA FASE 12 FECHOU.** Reunião com a SIC (Major e Sargento da
+PM, donos) confirmou quase tudo e mudou três premissas. **Nada em conflito com o
+que foi decidido em 03 e 04/09 vale mais** — os documentos já foram varridos.
 
-✅ **E o remendo funciona do Render**, que era a dúvida real: IP de datacenter não
-foi barrado pelo Google. `main` = `staging` = `develop` = `6e65e98`.
+🚨 **O SIMEops virou sistema corporativo de campo.** A notícia **deixa de ser feed
+e vira matéria-prima de indicador**; entram formulários de três frentes, cadastro
+de pessoa com **prontuário**, e dois dashboards ao vivo. Moldura no
+[ROADMAP](./ROADMAP.md), medições em
+[FORMULARIOS_SIC](./Protótipo/FORMULARIOS_SIC.md), cada diferença e o argumento de
+venda em [MUDANCAS](./Protótipo/MUDANCAS.md), a reunião em
+[REUNIAO_SIC](./Protótipo/REUNIAO_SIC.md).
 
-✅ **De quebra, o `corpo` está sendo gravado** (655 e 498 chars) — o conserto de
-25/08 só agora chegou em produção. Tocar num card passa a entregar texto próprio.
+📌 **Nenhuma linha de código do produto mudou em toda a fase de planejamento.**
 
-⚠️ **Isso não encerra o assunto — é remendo.** Cada resultado custa uma requisição
-a mais ao Google, que está justamente tentando impedir isso. Se ele fechar a
-porta, o log `goto: N/M resolvidos` avisa e o Sentry dispara no zero.
+🔥 **Prazo: protótipo de dashboard até o fim de setembro** — o cliente final está
+brigando com a SIC porque *"não atualiza sozinho"*. **O que mata a dor é o cano,
+não a tela.**
 
-⬜ **Enviar o chamado à Bright Data** (texto pronto, pt-BR e inglês).
-⬜ **Alerta de "N scans seguidos sem achar nada"** — cobre qualquer causa futura,
-não só esta.
-⬜ **Decidir São Paulo:** entrou em 29/08 só para o teste e já está no rodízio.
-⬜ **APK 1.2.1+6** — agora vale buildar: já existe notícia com `corpo` para provar.
+✅ **Fechado:** tema claro e tipografia grande (18px piso — o dono não consegue
+ler) · a coluna vertebral deles é intocável, a gente só arruma · papel é N:N e é
+regra de **produto**, não só de acesso · a loja registra ocorrência e a divergência
+vira indicador · reconhecimento facial descartado, biometria vem do aparelho ·
+unidade guarda bandeira **com vigência** · CPF e RG não entram · dado de terceiro
+entra por exportação em mão única.
 
-⏳ **Fase 12 (níveis de acesso) espera o briefing** do João. O levantamento do que
-existe hoje está no ROADMAP.
+🆕 **O Claude passa a ver a própria tela** — Chrome headless + leitura do PNG. Ver
+[CLAUDE.md](../CLAUDE.md) §4. Primeira prova em
+[Protótipo/telas/feed.png](./Protótipo/telas/feed.png).
+
+⬜ **12 dúvidas em aberto**, listadas no [ROADMAP](./ROADMAP.md). As duas que mais
+travam: **a parceria pública é formalizada?** (sustenta o prontuário) e **tem sinal
+dentro da loja?** (decide se o app é local-first).
+
+⬜ **Próximo, sem depender de ninguém:** normalizar lojas e pessoas da base para
+calcular os indicadores da demo — é também o importador que o produto vai precisar.
+
+⬜ **Herdado:** chamado à Bright Data · alerta de "N scans sem achar nada" ·
+decidir São Paulo no rodízio · APK 1.2.1+6.
 
 ---
 

@@ -41,6 +41,10 @@ const PERSISTENTES = [
   'workdesk/API_CONTRATO.md',
   'workdesk/FUNIL.md',
   'workdesk/DESIGN_CONTRATO.md',
+  'workdesk/Protótipo/FORMULARIOS_SIC.md',
+  'workdesk/Protótipo/MUDANCAS.md',
+  'workdesk/Protótipo/REUNIAO_SIC.md',
+  'workdesk/Protótipo/PERGUNTAS_X_RELATORIO.md',
   'workdesk/Fases/README.md',
 ];
 
@@ -90,6 +94,41 @@ const EXTERNOS = {
   TRUNCATE: 'palavra reservada do SQL',
   'c:/Projetos/dev-panel/': 'projeto separado, fora deste repositorio',
   'BACKEND_PENDENTE.md': 'documento extinto em 04/08; citado no indice das fases como historico',
+
+  // ── Protótipo/FORMULARIOS_SIC.md e Protótipo/MUDANCAS.md ──────────────
+  // Valores literais das bases da SIC. Sao DADO do cliente, nao identificador
+  // nosso — nunca vao existir no codigo, e a grafia torta e justamente o que o
+  // documento esta registrando.
+  'Diadems.': 'valor digitado por consultor na base da SIC; exemplo de grafia suja',
+  'Protótipo/Relatório/': 'pasta de capturas do Power BI da SIC; nao versionada (dado de cliente)',
+  DIADEMA: 'grafia da loja na base da SIC (31/08); exemplo de de-para de unidade',
+  DIADEMS: 'grafia da loja na base da SIC (31/08); exemplo de de-para de unidade',
+  'Estacionamento.': 'valor digitado na base da SIC; exemplo de grafia divergente',
+  'Mendicância.': 'valor digitado na base da SIC; exemplo de grafia divergente',
+  'Mendicância/Perturbação': 'valor digitado na base da SIC; exemplo de grafia divergente',
+  'Cor/raça': 'nome de coluna do Microsoft Forms da SIC',
+  BLOCKS: 'array dentro de Protótipo/prototipo.html, que nao e codigo do app',
+
+  // Pastas do material que a SIC mandou. Ficam fora das FONTES de proposito:
+  // contem dado pessoal real e nao deve ser varrido por script nenhum.
+  'formularios/consultor/': 'pasta de material da SIC, fora das FONTES',
+  'formularios/Mediador/': 'pasta de material da SIC, fora das FONTES',
+  'formularios/Apoio/': 'pasta de material da SIC, fora das FONTES',
+
+  // 🚦 NOMES PROPOSTOS DAS PERGUNTAS — exencao TEMPORARIA, criada em 30/08.
+  // Ainda nao existem no codigo porque o formulario ainda nao foi implementado.
+  // **Quando a tabela do formulario existir, apagar daqui**: e justamente
+  // nesse dia que a verificacao passa a valer, e manter a exencao esconderia o
+  // renome que este documento existe para tornar seguro (ver MUDANCAS.md).
+  ...Object.fromEntries([
+    'uf_unidade', 'data_registro', 'mov_atipica', 'risco_entorno', 'risco_externo',
+    'falha_estrutural', 'falha_tipo', 'falha_descricao', 'contato_forcas',
+    'acao_conjunta', 'acao_conjunta_explicacao', 'processo_vulneravel',
+    'processo_qual', 'processo_motivo', 'colaborador_negligente',
+    'escala_risco_processos', 'quem_identificou', 'classificacao_ameaca',
+    'tentativa_consumacao', 'valor_prevenido', 'nao_formalizada_motivo',
+    'quem_conduziu', 'tipo_resposta', 'forcas_externas', 'grau_sucesso',
+  ].map((s) => [s, 'nome proposto de pergunta (30/08); APAGAR daqui quando a tabela existir'])),
 };
 
 const CURTOS_OK = new Set(['news', 'city', 'state', 'main', 'geo']);

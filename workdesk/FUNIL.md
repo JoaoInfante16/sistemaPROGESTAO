@@ -103,6 +103,27 @@ entregou 19 e não 11.
 
 ---
 
+## 3b. Cidade é a menor unidade útil — bairro e loja não rendem
+
+📌 Confirmado pelo João em 01/09/2026, sobre a experiência de uso: **buscar por
+bairro ou por nome de loja rende "mixaria".** Existe resultado, mas em volume que
+não sustenta indicador nenhum. Cidade é o piso.
+
+Isso não é limitação do pipeline — é do que a imprensa publica. Matéria de
+segurança nomeia a cidade e, às vezes, a região; raramente o estabelecimento.
+
+⚠️ **Consequência para qualquer promessa comercial:** a frase que se sustenta é
+*"a cidade onde sua loja está teve N ocorrências noticiadas esta semana"*. A frase
+que **não** se sustenta é *"esta notícia é sobre a sua loja"*. Confundir as duas é
+prometer um produto que o dado não entrega — e a diferença é justamente a que
+vende.
+
+📍 E lembrar do teto por query (seção 3): cada assunto novo é um teto novo de
+~60-70 itens no índice do Google. **Mais assuntos é a única alavanca de alcance
+que existe** — recortar geografia mais fina só divide o mesmo bolo.
+
+---
+
 ## 4. Por que um item morre, estágio por estágio
 
 ### Estágio 2 — Filter0 (regex, grátis)

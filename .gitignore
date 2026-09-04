@@ -98,3 +98,13 @@ mobile-app/android/key.properties
 # Certificado de upload baixado do Play Console. Ficava so "untracked de
 # proposito", o que quer dizer que todo `git add -A` tentava leva-lo junto.
 *.pem
+
+# Material da SIC com dado pessoal REAL — nunca versionar.
+# A planilha de atendimentos (761 linhas) e as capturas de formulario ja
+# preenchido carregam nome, documento e dado sensivel de pessoa atendida; as
+# capturas do Power BI deles sao painel de cliente. Nada disso e nosso para
+# publicar, e uma vez no historico do git nao sai mais.
+# O que interessa — as perguntas, as medicoes e o porque de cada decisao —
+# vive nos .md desta mesma pasta, que SAO versionados.
+workdesk/Protótipo/formularios/
+workdesk/Protótipo/Relatório/

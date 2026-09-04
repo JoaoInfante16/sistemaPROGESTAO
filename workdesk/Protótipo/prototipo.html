@@ -1,0 +1,1560 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SIMEops — Protótipo completo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============ TOKENS ============ */
+.thm[data-t="claro"]{
+  --bg:#FFFFFF; --surf:#F4F6F7; --ink:#0A0F16; --body:#4A5560; --mute:#7C8792;
+  --hair:#E2E7EB; --track:#D8DEE3; --rule:#0A0F16;
+  --teal:#3D7A87; --green:#A3D65C; --onGreen:#0A0F16;
+  --red:#C9525E; --gold:#B8942F; --purple:#9B7BD8; --leaf:#5C8C4A;
+  --field:#B4BEC6;
+}
+.thm[data-t="escuro"]{
+  --bg:#0A0F16; --surf:#121821; --ink:#FFFFFF; --body:#8A96A3; --mute:#6B7885;
+  --hair:#1A222C; --track:#1A222C; --rule:#FFFFFF;
+  --teal:#4E9A93; --green:#A3D65C; --onGreen:#0A0F16;
+  --red:#E0655C; --gold:#C9A227; --purple:#8B7BD8; --leaf:#5CA35C;
+  --field:#3A454F;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{background:#05080C;}
+body{font-family:'IBM Plex Mono',monospace;padding:10px 6px 40px;
+  display:flex;flex-direction:column;align-items:center;}
+h1,h2,h3,h4{font-family:'Archivo',sans-serif;font-weight:700;letter-spacing:-.025em;}
+.sans{font-family:'Archivo',sans-serif;font-weight:400;letter-spacing:0;}
+
+/* seletor do protótipo */
+.roles{width:100%;max-width:392px;display:flex;gap:5px;margin-bottom:8px;}
+.roles button{flex:1;background:transparent;color:#6B7885;border:1px solid #1A222C;
+  font-family:'IBM Plex Mono',monospace;font-size:.52rem;letter-spacing:.12em;
+  text-transform:uppercase;padding:9px 2px;cursor:pointer;}
+.roles button.on{background:#A3D65C;color:#0A0F16;border-color:#A3D65C;font-weight:600;}
+
+.thm{position:relative;width:100%;max-width:392px;background:var(--bg);color:var(--ink);
+  border:1px solid #1A222C;display:flex;flex-direction:column;height:780px;overflow:hidden;}
+.vp{flex:1;overflow-y:auto;overflow-x:hidden;}
+.vp::-webkit-scrollbar{width:0;}
+
+/* ============ CHROME DO APP ============ */
+.hd{padding:20px 20px 0;}
+.logo{font-family:'Archivo',sans-serif;font-weight:700;font-size:1.05rem;letter-spacing:.16em;}
+.logo em{font-style:normal;color:var(--teal);}
+.hd h1{font-size:2rem;line-height:1.02;}
+.hd h1.s{font-size:1.7rem;}
+.hdm{display:flex;justify-content:space-between;gap:10px;font-size:.6rem;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--mute);margin:8px 0 13px;}
+.hdm .lv::before{content:"●";color:var(--green);margin-right:6px;}
+.top{display:flex;align-items:center;gap:14px;margin-bottom:6px;}
+.bk{background:none;border:none;color:var(--ink);font-size:1.5rem;cursor:pointer;line-height:1;
+  font-family:'Archivo',sans-serif;font-weight:400;}
+.brief{font-family:'Archivo',sans-serif;font-weight:400;font-size:1.02rem;line-height:1.5;
+  color:var(--body);letter-spacing:0;}
+.brief b{color:var(--ink);font-weight:600;}
+/* FAB novo formulário */
+.fab{position:absolute;right:16px;bottom:74px;z-index:20;background:var(--green);color:var(--onGreen);
+  border:0;cursor:pointer;padding:15px 18px;display:flex;align-items:center;gap:9px;
+  font-family:'IBM Plex Mono',monospace;font-size:.66rem;font-weight:600;letter-spacing:.14em;
+  text-transform:uppercase;box-shadow:0 6px 20px rgba(0,0,0,.22);}
+.fab i{font-style:normal;font-size:1.05rem;line-height:1;font-weight:400;}
+
+/* barra de retomada */
+.resume{position:absolute;left:0;right:0;bottom:56px;z-index:19;background:var(--ink);color:var(--bg);
+  display:flex;align-items:center;gap:12px;padding:11px 16px;cursor:pointer;}
+.resume .ic{width:7px;height:7px;background:var(--green);flex:none;}
+.resume .x{flex:1;min-width:0;}
+.resume .t1{font-size:.58rem;letter-spacing:.15em;text-transform:uppercase;opacity:.6;}
+.resume .t2{font-family:'Archivo',sans-serif;font-size:.9rem;letter-spacing:0;margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.resume .go{font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--green);flex:none;}
+
+/* estado de sincronização */
+.sync{display:flex;align-items:center;gap:9px;border:1px solid var(--hair);padding:11px 13px;
+  margin-bottom:18px;font-size:.6rem;letter-spacing:.11em;text-transform:uppercase;color:var(--mute);}
+.sync .d{width:8px;height:8px;border-radius:50%;background:var(--leaf);flex:none;}
+.sync.off .d{background:var(--gold);}
+.sync .n{margin-left:auto;color:var(--ink);}
+.syncline{display:flex;align-items:center;gap:8px;font-size:.58rem;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--mute);margin-top:14px;}
+.syncline .d{width:7px;height:7px;border-radius:50%;background:var(--leaf);flex:none;}
+.syncline.off .d{background:var(--gold);}
+/* resumo do dia */
+.digest{border-left:3px solid var(--teal);padding:2px 0 2px 15px;margin-bottom:8px;}
+.digest .k{font-size:.58rem;letter-spacing:.16em;text-transform:uppercase;color:var(--teal);margin-bottom:6px;}
+.digest p{font-family:'Archivo',sans-serif;font-weight:400;font-size:.98rem;line-height:1.45;
+  letter-spacing:0;color:var(--body);}
+.digest p b{color:var(--ink);font-weight:600;}
+
+/* notícia relevante */
+.nw.key{border-left:3px solid var(--red);padding-left:14px;}
+.prox{display:inline-flex;align-items:center;gap:7px;font-size:.56rem;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--red);border:1px solid var(--red);padding:5px 9px;margin-bottom:11px;}
+
+/* linha de contexto */
+.ctx{display:flex;align-items:flex-start;gap:11px;padding:13px 0;border-bottom:1px solid var(--hair);cursor:pointer;}
+.ctx .sq{margin-top:5px;}
+.ctx .x{flex:1;min-width:0;}
+.ctx .t{font-family:'Archivo',sans-serif;font-weight:400;font-size:.92rem;line-height:1.35;
+  letter-spacing:0;color:var(--body);}
+.ctx .h{font-size:.58rem;color:var(--mute);flex:none;padding-top:3px;}
+.ctx.open .t{color:var(--ink);}
+.ctx .ex{font-family:'Archivo',sans-serif;font-weight:400;font-size:.85rem;line-height:1.45;
+  color:var(--mute);letter-spacing:0;margin-top:8px;}
+.subhead{display:flex;align-items:baseline;gap:10px;margin:26px 0 10px;}
+.subhead .n{font-family:'Archivo',sans-serif;font-weight:700;font-size:1.15rem;letter-spacing:-.02em;}
+.subhead .c{font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);}
+.steps{display:flex;gap:5px;margin-top:14px;}
+.steps .st{flex:1;height:4px;background:var(--track);cursor:pointer;}
+.steps .st.done{background:var(--teal);}
+.steps .st.now{background:var(--green);}
+.gear{margin-left:auto;width:34px;height:34px;background:transparent;border:0;padding:0;
+  color:var(--mute);display:flex;align-items:center;justify-content:center;cursor:pointer;}
+.hlp{margin-left:auto;width:32px;height:32px;border:1.5px solid var(--teal);border-radius:50%;
+  color:var(--teal);display:flex;align-items:center;justify-content:center;font-size:.9rem;}
+.rule{height:2px;background:var(--rule);}
+.hair{height:1px;background:var(--hair);}
+.bd{padding:18px 20px 30px;}
+
+.sec{display:flex;align-items:center;gap:13px;font-size:.6rem;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--mute);margin:26px 0 14px;}
+.sec::after{content:"";flex:1;height:1px;background:var(--hair);}
+.sec:first-child{margin-top:0;}
+
+/* cidade */
+.city{padding:20px 0;border-bottom:1px solid var(--hair);cursor:pointer;}
+.city .t{display:flex;justify-content:space-between;font-size:.62rem;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--mute);}
+.city .t b{color:var(--leaf);font-weight:500;}
+.city h2{font-size:2.05rem;line-height:1.05;margin:8px 0 0;}
+.city .sub{font-family:'Archivo',sans-serif;font-weight:400;font-size:.95rem;color:var(--body);
+  margin-top:4px;letter-spacing:0;}
+.cats{display:flex;gap:11px;margin-top:16px;}
+.cat{flex:1;min-width:0;}
+.cat .n{font-family:'Archivo',sans-serif;font-weight:600;font-size:1.5rem;line-height:1;letter-spacing:-.03em;}
+.cat .l{font-size:.48rem;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);
+  margin-top:7px;display:flex;align-items:center;gap:4px;}
+.sq{width:8px;height:8px;flex:none;display:inline-block;}
+.seg{background:var(--red);} .pat{background:var(--gold);} .ope{background:var(--teal);}
+.ins{background:var(--leaf);} .fra{background:var(--purple);}
+
+/* abas */
+.tabs{display:flex;gap:22px;overflow-x:auto;padding:16px 20px 0;}
+.tabs::-webkit-scrollbar{height:0;}
+.tb{background:none;border:0;border-bottom:2px solid transparent;padding:0 0 9px;cursor:pointer;
+  font-family:'IBM Plex Mono',monospace;font-size:.66rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--mute);white-space:nowrap;}
+.tb b{color:var(--leaf);font-weight:500;}
+.tb.on{color:var(--ink);border-bottom-color:var(--green);}
+.tabs2{display:flex;align-items:flex-end;gap:24px;padding:14px 20px 0;border-bottom:1px solid var(--hair);}
+.tb2{background:none;border:0;border-bottom:2px solid transparent;padding:0 0 9px;cursor:pointer;
+  font-family:'Archivo',sans-serif;font-weight:700;font-size:1.3rem;letter-spacing:-.025em;color:var(--mute);}
+.tb2.on{color:var(--ink);border-bottom-color:var(--green);}
+.flt{margin-left:auto;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--teal);padding-bottom:11px;}
+
+/* dias / notícias */
+.day{display:flex;align-items:center;gap:14px;padding:20px 0 18px;cursor:pointer;
+  font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--mute);}
+.day::after{content:"";flex:1;height:1px;background:var(--hair);order:1;}
+.day .c{order:2;color:var(--body);} .day .a{order:3;color:var(--body);font-size:.8rem;}
+.nw{padding:4px 0 22px;border-bottom:1px solid var(--hair);}
+.nw .m{display:flex;align-items:center;gap:9px;font-size:.6rem;letter-spacing:.1em;
+  text-transform:uppercase;margin-bottom:12px;}
+.nw .m .k{color:var(--ink);}
+.nw .m .c{color:var(--mute);text-transform:none;letter-spacing:.02em;font-size:.62rem;}
+.nw .m .h{margin-left:auto;color:var(--mute);}
+.nw h3{font-size:1.4rem;line-height:1.15;margin-bottom:12px;}
+.nw p{font-family:'Archivo',sans-serif;font-weight:400;font-size:.93rem;line-height:1.45;
+  color:var(--body);letter-spacing:0;}
+.nw .src{font-size:.66rem;color:var(--mute);margin-top:12px;}
+
+/* consultas */
+.cons{padding:18px 0;border-bottom:1px solid var(--hair);}
+.cons .t{display:flex;justify-content:space-between;font-size:.62rem;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--mute);}
+.cons h3{font-size:1.6rem;margin:8px 0 4px;}
+.cons .m{font-size:.62rem;letter-spacing:.13em;text-transform:uppercase;color:var(--mute);}
+.cons .r{margin-top:16px;display:flex;align-items:baseline;gap:10px;}
+.cons .r .n{font-family:'Archivo',sans-serif;font-weight:600;font-size:2rem;letter-spacing:-.03em;}
+.cons .r .l{font-size:.62rem;letter-spacing:.13em;text-transform:uppercase;color:var(--mute);}
+.newq{display:flex;align-items:center;gap:12px;padding:14px 0 20px;font-size:.66rem;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--teal);cursor:pointer;}
+.newq .b{width:11px;height:11px;background:var(--green);}
+
+/* registros */
+.reg{padding:18px 0;border-bottom:1px solid var(--hair);cursor:pointer;}
+.reg .t{display:flex;justify-content:space-between;gap:10px;font-size:.58rem;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--mute);}
+.reg h3{font-size:1.4rem;margin:7px 0 4px;}
+.reg .m{font-size:.62rem;letter-spacing:.06em;color:var(--mute);}
+.env{color:var(--leaf);} .ras{color:var(--gold);} .pen{color:var(--mute);}
+.ix{display:flex;align-items:baseline;gap:10px;margin-top:12px;}
+.ix .v{font-family:'Archivo',sans-serif;font-weight:700;font-size:1.7rem;letter-spacing:-.04em;color:var(--red);}
+.ix .v.am{color:var(--gold);}
+.ix .l{font-size:.56rem;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);}
+
+/* flags / kv */
+.flags{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:22px;}
+.fg{font-size:.55rem;letter-spacing:.11em;text-transform:uppercase;padding:6px 10px;
+  border:1px solid var(--hair);color:var(--body);}
+.fg.r{border-color:var(--red);color:var(--red);}
+.fg.g{border-color:var(--leaf);color:var(--leaf);}
+.fg.a{border-color:var(--gold);color:var(--gold);}
+.kv{margin-bottom:18px;}
+.kv .k{font-size:.58rem;letter-spacing:.16em;text-transform:uppercase;color:var(--mute);margin-bottom:5px;}
+.kv .v{font-family:'Archivo',sans-serif;font-weight:400;font-size:1.05rem;letter-spacing:0;}
+.kv .v.b{font-weight:700;font-size:1.7rem;letter-spacing:-.03em;}
+
+/* botões */
+.btn{display:block;width:100%;text-align:center;padding:16px;margin-top:12px;cursor:pointer;
+  border:1px solid var(--hair);background:transparent;color:var(--ink);
+  font-family:'IBM Plex Mono',monospace;font-size:.68rem;letter-spacing:.18em;text-transform:uppercase;}
+.btn.p{background:var(--green);border-color:var(--green);color:var(--onGreen);font-weight:600;}
+.btn.t{border-color:var(--teal);color:var(--teal);}
+
+/* wizard */
+.prog{display:flex;align-items:center;gap:12px;font-size:.58rem;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--mute);}
+.ptr{flex:1;height:2px;background:var(--track);}
+.pfl{height:2px;background:var(--green);transition:width .2s;}
+.blkd{font-family:'Archivo',sans-serif;font-weight:400;font-size:.88rem;line-height:1.5;
+  color:var(--body);letter-spacing:0;margin:16px 0 8px;}
+.q{margin-top:30px;}
+.q .qn{font-size:.58rem;letter-spacing:.16em;color:var(--teal);margin-bottom:7px;}
+.q .qt{font-family:'Archivo',sans-serif;font-weight:600;font-size:1.08rem;line-height:1.3;
+  letter-spacing:-.01em;margin-bottom:6px;}
+.q .qh{font-family:'Archivo',sans-serif;font-weight:400;font-size:.8rem;color:var(--mute);
+  letter-spacing:0;margin-bottom:12px;}
+.opt{display:flex;align-items:center;gap:14px;padding:13px 0;border-bottom:1px solid var(--hair);
+  cursor:pointer;font-family:'Archivo',sans-serif;font-weight:400;font-size:.98rem;letter-spacing:0;}
+.mk{width:17px;height:17px;border:1.5px solid var(--field);flex:none;}
+.mk.rd{border-radius:50%;}
+.opt.on .mk{background:var(--green);border-color:var(--green);}
+.txin{border-bottom:1px solid var(--field);padding:12px 0;font-family:'Archivo',sans-serif;
+  font-weight:400;font-size:1rem;color:var(--mute);letter-spacing:0;}
+.scale{display:flex;gap:8px;margin-top:6px;}
+.sc{flex:1;border:1px solid var(--hair);padding:14px 0;text-align:center;cursor:pointer;
+  font-family:'Archivo',sans-serif;font-weight:600;font-size:1.1rem;color:var(--body);}
+.sc.on{background:var(--green);border-color:var(--green);color:var(--onGreen);}
+.navb{display:flex;gap:10px;margin-top:32px;}
+.navb .btn{margin-top:0;}
+
+/* toggles / tema */
+.tgr{display:flex;align-items:flex-start;gap:16px;padding:16px 0;}
+.tgr .x{flex:1;}
+.tgr h4{font-family:'Archivo',sans-serif;font-weight:400;font-size:1.15rem;letter-spacing:0;}
+.tgr p{font-family:'Archivo',sans-serif;font-weight:400;font-size:.85rem;color:var(--mute);
+  line-height:1.4;margin-top:3px;letter-spacing:0;}
+.tg{width:48px;height:26px;border:1.5px solid var(--green);flex:none;display:flex;padding:3px;
+  background:rgba(163,214,92,.16);cursor:pointer;margin-top:4px;}
+.tg i{width:19px;height:18px;background:var(--green);margin-left:auto;display:block;}
+.tg.off{border-color:var(--field);background:transparent;}
+.tg.off i{background:var(--field);margin-left:0;}
+.themepick{display:flex;gap:10px;margin-top:4px;}
+.tp{flex:1;border:1px solid var(--hair);padding:16px 10px;text-align:center;cursor:pointer;}
+.tp .sw{height:34px;border:1px solid var(--hair);margin-bottom:12px;display:flex;}
+.tp .sw i{flex:1;display:block;}
+.tp.on{border-color:var(--green);border-width:2px;padding:15px 9px;}
+.tp .nm{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);}
+.tp.on .nm{color:var(--ink);}
+
+/* dashboard */
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--hair);
+  border:1px solid var(--hair);}
+.kpi{background:var(--bg);padding:16px;}
+.kpi .n{font-family:'Archivo',sans-serif;font-weight:700;font-size:2.1rem;line-height:1;
+  letter-spacing:-.04em;color:var(--leaf);}
+.kpi .n.w{color:var(--ink);} .kpi .n.r{color:var(--red);} .kpi .n.a{color:var(--gold);}
+.kpi .l{font-size:.54rem;letter-spacing:.11em;text-transform:uppercase;color:var(--mute);
+  margin-top:8px;line-height:1.35;}
+.kpi .d{font-size:.54rem;color:var(--body);margin-top:5px;}
+.tr{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;
+  padding:14px 0;border-bottom:1px solid var(--hair);}
+.tr .nm{font-family:'Archivo',sans-serif;font-weight:400;font-size:1rem;letter-spacing:0;}
+.tr .sb{font-size:.55rem;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);margin-top:3px;}
+.tr .n{font-family:'Archivo',sans-serif;font-weight:600;font-size:1.35rem;letter-spacing:-.03em;color:var(--leaf);}
+.tr .n.t{color:var(--teal);} .tr .n.r{color:var(--red);} .tr .n.a{color:var(--gold);} .tr .n.w{color:var(--ink);}
+.tr .ag{font-size:.55rem;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);
+  text-align:right;min-width:50px;}
+.bar{margin-bottom:17px;}
+.bar .lb{display:flex;justify-content:space-between;gap:12px;font-size:.63rem;color:var(--mute);
+  margin-bottom:7px;}
+.bar .lb b{color:var(--ink);font-weight:400;}
+.trk{height:7px;background:var(--track);}
+.fl{height:7px;background:var(--teal);}
+.fl.g{background:var(--leaf);} .fl.r{background:var(--red);} .fl.a{background:var(--gold);}
+.cmpb{margin-bottom:22px;}
+.cmpb .h{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:10px;}
+.cmpb .h b{font-family:'Archivo',sans-serif;font-weight:600;font-size:1.02rem;letter-spacing:-.01em;}
+.cmpb .h span{font-size:.55rem;letter-spacing:.12em;text-transform:uppercase;}
+.dl{display:grid;grid-template-columns:60px 1fr 32px;gap:9px;align-items:center;
+  font-size:.53rem;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);margin-bottom:7px;}
+.dl .trk{height:8px;}
+.al{border:1px solid var(--red);padding:14px;margin-bottom:10px;}
+.al.am{border-color:var(--gold);}
+.al .k{font-size:.53rem;letter-spacing:.13em;text-transform:uppercase;color:var(--red);margin-bottom:7px;font-weight:600;}
+.al.am .k{color:var(--gold);}
+.al p{font-family:'Archivo',sans-serif;font-weight:400;font-size:.88rem;line-height:1.45;letter-spacing:0;}
+.al .sub{font-size:.58rem;color:var(--mute);margin-top:8px;}
+.fn{margin-bottom:3px;}
+.fn .row{display:flex;justify-content:space-between;font-size:.62rem;color:var(--mute);margin-bottom:6px;}
+.fn .row b{color:var(--ink);font-weight:400;}
+.fn .bx{height:30px;background:var(--teal);display:flex;align-items:center;padding-left:11px;
+  font-family:'Archivo',sans-serif;font-weight:600;font-size:.95rem;color:#fff;}
+.fn .drop{font-size:.55rem;letter-spacing:.11em;text-transform:uppercase;color:var(--red);
+  padding:6px 0 10px;text-align:right;}
+.note{font-family:'Archivo',sans-serif;font-weight:400;font-size:.8rem;line-height:1.45;
+  color:var(--mute);letter-spacing:0;margin-top:10px;}
+.note b{color:var(--body);font-weight:600;}
+.lead{font-family:'Archivo',sans-serif;font-weight:400;font-size:.9rem;line-height:1.5;
+  color:var(--body);letter-spacing:0;}
+.cols{display:flex;align-items:flex-end;gap:8px;height:150px;margin-top:6px;}
+.cl{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;}
+.cl .v{font-size:.66rem;color:var(--mute);margin-bottom:7px;}
+.cl .b{width:100%;background:var(--teal);}
+.cl.hi .b{background:var(--red);}
+.xax{display:flex;gap:8px;margin-top:9px;}
+.xax div{flex:1;text-align:center;font-size:.58rem;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--mute);}
+
+/* nav */
+.nav{display:flex;border-top:1px solid var(--hair);background:var(--bg);}
+.ni{flex:1;text-align:center;padding:15px 2px 17px;cursor:pointer;margin-top:-1px;
+  font-size:.55rem;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);
+  border-top:2px solid transparent;}
+.ni.on{color:var(--ink);border-top-color:var(--green);}
+.ni b{color:var(--leaf);font-weight:500;}
+
+.scr{display:none;} .scr.on{display:block;}
+.hide{display:none !important;}
+
+/* ============ RELATÓRIO EXPORTÁVEL ============ */
+.rtop{position:sticky;top:0;z-index:9;background:#0A0F16;display:flex;align-items:center;
+  justify-content:space-between;padding-left:16px;}
+.rtop .t{font-size:.58rem;letter-spacing:.16em;text-transform:uppercase;color:#8A96A3;}
+.rtop .pdf{background:var(--green);color:#0A0F16;border:0;cursor:pointer;
+  font-family:'IBM Plex Mono',monospace;font-size:.62rem;font-weight:600;letter-spacing:.16em;
+  text-transform:uppercase;padding:18px 16px;}
+.rwrap{padding:20px 20px 50px;}
+.mast{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding-bottom:12px;}
+.mast .lg{font-size:1.35rem;font-weight:700;letter-spacing:.15em;font-family:'Archivo',sans-serif;}
+.mast .lg em{font-style:normal;color:var(--teal);font-weight:600;}
+.mast .who{font-size:.55rem;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);
+  text-align:right;line-height:1.8;}
+.hr3{height:3px;background:var(--rule);}
+.kick{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--teal);margin:28px 0 6px;}
+.rwrap h1{font-size:2.1rem;line-height:1.02;}
+.rsub{font-family:'Archivo',sans-serif;font-weight:400;font-size:1rem;color:var(--body);
+  margin-top:10px;letter-spacing:0;}
+.meta{border-left:3px solid var(--teal);padding:2px 0 2px 16px;margin-top:24px;}
+.meta .r{margin-bottom:13px;} .meta .r:last-child{margin-bottom:0;}
+.meta .k{font-size:.58rem;letter-spacing:.15em;text-transform:uppercase;color:var(--mute);margin-bottom:3px;}
+.meta .v{font-family:'Archivo',sans-serif;font-weight:400;font-size:.95rem;letter-spacing:0;}
+
+.verd{margin-top:32px;border:3px solid var(--red);}
+.verd .band{background:var(--red);color:#fff;padding:12px 16px;font-size:.66rem;font-weight:600;
+  letter-spacing:.2em;text-transform:uppercase;}
+.verd .in{padding:22px 16px 20px;}
+.verd .n{font-family:'Archivo',sans-serif;font-weight:700;font-size:4.4rem;line-height:.85;
+  letter-spacing:-.05em;color:var(--red);}
+.verd .l{font-size:.58rem;letter-spacing:.17em;text-transform:uppercase;color:var(--mute);margin-top:10px;}
+.verd p{font-family:'Archivo',sans-serif;font-weight:500;font-size:1.08rem;line-height:1.4;
+  letter-spacing:-.01em;margin-top:20px;}
+.verd .cmp{font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);
+  margin-top:14px;line-height:1.9;}
+.verd .cmp b{color:var(--red);font-weight:600;}
+
+.act{display:flex;gap:13px;padding:20px 0;border-bottom:1px solid var(--hair);}
+.act .num{font-size:.72rem;color:var(--mute);padding-top:5px;flex:none;width:22px;}
+.act .c{flex:1;min-width:0;}
+.act .tag{display:inline-block;font-size:.54rem;font-weight:600;letter-spacing:.15em;
+  text-transform:uppercase;padding:5px 8px;margin-bottom:9px;color:#fff;}
+.act .tag.now{background:var(--red);} .act .tag.soon{background:var(--gold);}
+.act .tag.done{background:var(--leaf);}
+.act h3{font-size:1.22rem;line-height:1.2;margin-bottom:8px;}
+.act p{font-family:'Archivo',sans-serif;font-weight:400;font-size:.92rem;line-height:1.5;
+  color:var(--body);letter-spacing:0;}
+.act .why{font-size:.6rem;letter-spacing:.07em;color:var(--mute);margin-top:10px;}
+
+.rsect{margin-top:42px;}
+.rsect > .hr3{margin-bottom:18px;}
+.shd{display:flex;align-items:baseline;gap:11px;flex-wrap:wrap;margin-bottom:20px;}
+.shd h2{font-size:1.5rem;line-height:1.05;}
+.shd .kk{font-size:.6rem;letter-spacing:.18em;text-transform:uppercase;color:var(--teal);}
+.shd .rt{margin-left:auto;font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);}
+.bignum{font-family:'Archivo',sans-serif;font-weight:700;font-size:3.4rem;line-height:.9;letter-spacing:-.05em;}
+.bignum.g{color:var(--leaf);} .bignum.r{color:var(--red);}
+.bigu{font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;color:var(--mute);margin-top:11px;}
+.rlead{font-family:'Archivo',sans-serif;font-weight:400;font-size:1rem;line-height:1.5;
+  color:var(--body);margin-top:16px;letter-spacing:0;}
+.rlead b{color:var(--ink);font-weight:600;}
+.rfine{font-family:'Archivo',sans-serif;font-weight:400;font-size:.83rem;line-height:1.55;
+  color:var(--mute);margin-top:14px;letter-spacing:0;}
+.rfine b{color:var(--body);font-weight:600;}
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--hair);
+  border:1px solid var(--hair);margin-top:20px;}
+.trio > div{background:var(--bg);padding:16px 11px;}
+.trio .n{font-family:'Archivo',sans-serif;font-weight:700;font-size:1.6rem;letter-spacing:-.04em;line-height:1;}
+.trio .n.r{color:var(--red);} .trio .n.g{color:var(--leaf);} .trio .n.a{color:var(--gold);}
+.trio .l{font-size:.54rem;letter-spacing:.11em;text-transform:uppercase;color:var(--mute);
+  margin-top:9px;line-height:1.45;}
+.rtbl{width:100%;border-collapse:collapse;}
+.rtbl th{font-size:.56rem;letter-spacing:.15em;text-transform:uppercase;color:var(--mute);
+  font-weight:400;text-align:right;padding:0 0 9px;border-bottom:1px solid var(--hair);}
+.rtbl th:first-child{text-align:left;}
+.rtbl td{padding:11px 0;border-bottom:1px solid var(--hair);font-size:.92rem;text-align:right;
+  font-family:'IBM Plex Mono',monospace;color:var(--mute);}
+.rtbl td:first-child{text-align:left;display:flex;align-items:center;gap:10px;
+  font-family:'Archivo',sans-serif;color:var(--ink);font-size:.97rem;letter-spacing:0;}
+.dot{width:11px;height:11px;border-radius:50%;flex:none;}
+.d-seg{background:var(--red);} .d-pat{background:var(--gold);} .d-ope{background:var(--teal);}
+.d-ins{background:var(--leaf);} .d-fra{background:var(--purple);}
+.rk{display:flex;gap:13px;align-items:flex-start;padding:15px 0;border-bottom:1px solid var(--hair);}
+.rk .i{font-size:.7rem;color:var(--mute);flex:none;width:22px;padding-top:4px;}
+.rk .c{flex:1;min-width:0;}
+.rk .r1{display:flex;justify-content:space-between;align-items:baseline;gap:12px;}
+.rk .nm{font-family:'Archivo',sans-serif;font-size:1rem;letter-spacing:0;}
+.rk .qt{font-family:'Archivo',sans-serif;font-size:1.1rem;font-weight:600;flex:none;letter-spacing:-.02em;}
+.rk .tk{height:5px;background:var(--track);margin-top:9px;}
+.rk .fl{height:5px;background:var(--rule);}
+.rk .fl.r{background:var(--red);} .rk .fl.t{background:var(--teal);}
+.rk.self{background:var(--surf);margin:0 -10px;padding:15px 10px;}
+.rk .sb{font-size:.56rem;letter-spacing:.12em;text-transform:uppercase;color:var(--teal);margin-top:5px;}
+.bs{margin-bottom:18px;}
+.bs .h{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:8px;}
+.bs .h b{font-family:'Archivo',sans-serif;font-size:.98rem;font-weight:500;letter-spacing:0;}
+.bs .h span{font-size:.66rem;color:var(--mute);}
+.grp{font-family:'Archivo',sans-serif;font-size:1rem;font-weight:600;margin:20px 0 4px;letter-spacing:0;}
+.grp span{font-family:'IBM Plex Mono',monospace;font-size:.68rem;color:var(--mute);font-weight:400;}
+.srow{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--hair);
+  font-size:.85rem;color:var(--body);}
+.srow span{color:var(--mute);}
+.rfoot{margin-top:46px;}
+.rfoot .hr3{margin-bottom:16px;}
+.rfoot .t{font-size:.6rem;letter-spacing:.13em;text-transform:uppercase;color:var(--mute);line-height:2.1;}
+
+.cap{width:100%;max-width:392px;margin-top:14px;font-size:.66rem;color:#6B7885;
+  line-height:1.6;border-left:2px solid #A3D65C;padding-left:12px;}
+.cap b{color:#E2E7EB;font-weight:500;}
+</style>
+</head>
+<body>
+
+<div class="roles">
+  <button id="rc" class="on" onclick="setRole('c')">Colaborador</button>
+  <button id="rl" onclick="setRole('l')">Liderança</button>
+  <button id="rr" onclick="setRole('r')">Relatório</button>
+</div>
+
+<div class="thm" id="thm" data-t="claro">
+<div class="vp" id="vp">
+
+<!-- ================= HOJE (consultor) ================= -->
+<section class="scr on" id="s-inicio">
+  <div class="hd">
+    <div class="top">
+      <div class="logo">SIME<em>ops</em></div>
+      <button class="gear" onclick="go('s-config')" aria-label="Configurações"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+    </div>
+    <h1 class="s">Bom dia, João</h1>
+    <div class="hdm"><span>Quinta, 27 de agosto</span><span class="lv">Tudo sincronizado</span></div>
+  </div>
+  <div class="rule"></div>
+  <div class="bd" style="padding-top:20px;">
+
+    <div class="sync off">
+      <i class="d"></i>Sem conexão · 3 registros aguardando envio
+      <span class="n">Salvos no aparelho</span>
+    </div>
+    <div class="brief">
+      Você tem <b>2 visitas</b> hoje e <b>1 rascunho</b> de ontem parado no bloco 4.
+      Goiânia registrou <b>3 ocorrências novas</b> desde ontem.
+    </div>
+
+    <div class="sec">Suas visitas de hoje</div>
+    <div class="reg" onclick="startWiz()">
+      <div class="t"><span>Manhã · Goiânia GO</span><span class="pen">A fazer</span></div>
+      <h3>Atacadão Flamboyant 701</h3>
+      <div class="m">Última visita há 6 dias · índice 68</div>
+    </div>
+    <div class="reg" onclick="startWiz()">
+      <div class="t"><span>Tarde · Goiânia GO</span><span class="pen">A fazer</span></div>
+      <h3>Atacadão Buriti 812</h3>
+      <div class="m">Última visita há 12 dias · índice 61</div>
+    </div>
+
+    <div class="sec">Pendências</div>
+    <div class="al am">
+      <div class="k">Rascunho parado</div>
+      <p>Carrefour Bairro Centro — 11 de 28 respondidas, iniciado ontem.</p>
+      <div class="sub">Toque para continuar de onde parou</div>
+    </div>
+    <div class="al am">
+      <div class="k">Relatório aguardando revisão</div>
+      <p>Carrefour Hiper Kobrasol — período fechado, pronto para envio ao cliente.</p>
+      <div class="sub">Índice 54 · ↓3 vs. julho</div>
+    </div>
+
+    <div class="sec">Sua região desde ontem</div>
+    <div class="nw" onclick="go('s-cidade')">
+      <div class="m"><i class="sq seg"></i><span class="k">Segurança</span><span class="c">Goiânia</span><span class="h">há 3h</span></div>
+      <h3>Dupla é detida após furto em setor de perfumaria no Setor Bueno</h3>
+      <p>Seguranças de um atacadista acionaram a PM após identificarem a subtração de itens.</p>
+      <div class="src">ondegoias.com.br</div>
+    </div>
+    <div class="nw" onclick="go('s-cidade')">
+      <div class="m"><i class="sq pat"></i><span class="k">Patrimonial</span><span class="c">Goiânia</span><span class="h">ontem</span></div>
+      <h3>Comerciantes do Setor Central relatam aumento de furtos no fim de tarde</h3>
+      <p>Relatos concentram-se no intervalo entre 15h e 18h, segundo associação de lojistas.</p>
+      <div class="src">jornaldegoias.com.br</div>
+    </div>
+    <div class="btn t" onclick="go('s-mon')">Ver todas as notícias</div>
+  </div>
+</section>
+
+<!-- ================= MONITORAMENTO ================= -->
+<section class="scr" id="s-mon">
+  <div class="hd">
+    <h1 class="s">Notícias</h1>
+    <div class="hdm"><span class="lv">Última há 17h</span><span>4 cidades · 38 novas</span></div>
+  </div>
+  <div class="rule"></div>
+  <div class="tabs2">
+    <button class="tb2 on" onclick="npane(this,'n-mon')">Monitorando</button>
+    <button class="tb2" onclick="npane(this,'n-con')">Consultas</button>
+    <span class="flt">Filtrar</span>
+  </div>
+  <div class="bd npane" id="n-mon" style="padding-top:8px;">
+    <div class="city" onclick="go('s-cidade')">
+      <div class="t"><span>SC · <b>26 NOVAS</b></span><span>74 em 30d</span></div>
+      <h2>Grande Florianópolis</h2>
+      <div class="sub">Reúne Florianópolis, Palhoça e São José.</div>
+      <div class="cats">
+        <div class="cat"><div class="n">19</div><div class="l"><i class="sq seg"></i>Segur.</div></div>
+        <div class="cat"><div class="n">19</div><div class="l"><i class="sq pat"></i>Patrim.</div></div>
+        <div class="cat"><div class="n">18</div><div class="l"><i class="sq ope"></i>Operac.</div></div>
+        <div class="cat"><div class="n">16</div><div class="l"><i class="sq ins"></i>Instit.</div></div>
+        <div class="cat"><div class="n">2</div><div class="l"><i class="sq fra"></i>Fraude</div></div>
+      </div>
+    </div>
+    <div class="city">
+      <div class="t"><span>RS · <b>12 NOVAS</b></span><span>56 em 30d</span></div>
+      <h2>Porto Alegre</h2>
+      <div class="cats">
+        <div class="cat"><div class="n">32</div><div class="l"><i class="sq seg"></i>Segur.</div></div>
+        <div class="cat"><div class="n">8</div><div class="l"><i class="sq ope"></i>Operac.</div></div>
+        <div class="cat"><div class="n">7</div><div class="l"><i class="sq fra"></i>Fraude</div></div>
+        <div class="cat"><div class="n">7</div><div class="l"><i class="sq pat"></i>Patrim.</div></div>
+        <div class="cat"><div class="n">2</div><div class="l"><i class="sq ins"></i>Instit.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bd npane hide" id="n-con" style="padding-top:8px;">
+    <div class="newq"><i class="b"></i>Nova consulta</div>
+    <div class="lead" style="margin-bottom:6px;">
+      Busca pontual num período e conjunto de assuntos, fora do monitoramento contínuo.
+    </div>
+    <div class="sec">17 ago</div>
+    <div class="cons">
+      <div class="t"><span>SC</span><span>17:29</span></div>
+      <h3>Florianópolis</h3>
+      <div class="m">30 dias · 17 assuntos</div>
+      <div class="r"><span class="n">56</span><span class="l">Resultados</span></div>
+    </div>
+    <div class="sec">02 ago</div>
+    <div class="cons">
+      <div class="t"><span>GO</span><span>09:14</span></div>
+      <h3>Goiânia · Setor Bueno</h3>
+      <div class="m">90 dias · 8 assuntos</div>
+      <div class="r"><span class="n">31</span><span class="l">Resultados</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CIDADE ================= -->
+<section class="scr" id="s-cidade">
+  <div class="hd">
+    <div class="top"><button class="bk" onclick="go('s-mon')">‹</button><div class="logo">SIME<em>ops</em></div></div>
+    <h1>Grande Florianópolis</h1>
+    <div class="hdm"><span class="lv">Última há 20h</span><span>SC · 173 · 26 novas</span></div>
+  </div>
+  <div class="rule"></div>
+  <div class="tabs">
+    <button class="tb on" onclick="pk(this)">Todas</button>
+    <button class="tb" onclick="pk(this)">Florianópolis <b>15</b></button>
+    <button class="tb" onclick="pk(this)">Palhoça <b>10</b></button>
+    <button class="tb" onclick="pk(this)">São José <b>1</b></button>
+  </div>
+  <div class="tabs2">
+    <button class="tb2 on" onclick="pk2(this)">Notícias</button>
+    <button class="tb2" onclick="pk2(this)">Relatório</button>
+    <span class="flt">Filtrar</span>
+  </div>
+  <div class="bd" style="padding-top:0;">
+    <div class="digest">
+      <div class="k">Terça, 26 de agosto</div>
+      <p><b>3 ocorrências de furto em varejo</b> na Grande Florianópolis, sendo
+      <b>2 a menos de 2 km</b> de unidades da sua carteira. O restante é contexto da região.</p>
+    </div>
+
+    <div class="subhead"><span class="n">Perto de você</span><span class="c">2 ocorrências</span></div>
+
+    <div class="nw key">
+      <div class="prox"><i class="sq seg"></i>A 1,2 km · Carrefour Hiper Kobrasol</div>
+      <div class="m"><span class="k">Segurança</span><span class="c">Florianópolis</span><span class="h">14:20</span></div>
+      <h3>Dupla é detida após furto em setor de perfumaria no Estreito</h3>
+      <p>Seguranças de um atacadista acionaram a PM após identificarem a subtração de itens. Os produtos foram recuperados no local.</p>
+      <div class="src">portalregional.com.br</div>
+    </div>
+
+    <div class="nw key">
+      <div class="prox"><i class="sq seg"></i>A 1,8 km · Carrefour Bairro Centro</div>
+      <div class="m"><span class="k">Segurança</span><span class="c">Palhoça</span><span class="h">19:40</span></div>
+      <h3>Tentativa de furto é contida por equipe de prevenção em loja de bairro</h3>
+      <p>A abordagem ocorreu ainda dentro do estabelecimento e não houve necessidade de acionamento policial.</p>
+      <div class="src">portalregional.com.br</div>
+    </div>
+
+    <div class="subhead"><span class="n">Contexto da região</span><span class="c">24 ocorrências</span></div>
+
+    <div class="ctx" onclick="ex(this)">
+      <i class="sq ope"></i>
+      <div class="x">
+        <div class="t">Engavetamento bloqueia BR-101 no Morro dos Cavalos</div>
+        <div class="ex hide">Bloqueio total no sentido Sul. Motoristas orientados a evitar a região.<br><span style="color:var(--mute)">visornoticias.com.br · Palhoça</span></div>
+      </div>
+      <span class="h">20:00</span>
+    </div>
+    <div class="ctx" onclick="ex(this)">
+      <i class="sq pat"></i>
+      <div class="x">
+        <div class="t">Jovem é detido pilotando moto roubada em Florianópolis</div>
+        <div class="ex hide">Preso pela Guarda Municipal após abordagem da ROMU.<br><span style="color:var(--mute)">ndmais.com.br · Florianópolis</span></div>
+      </div>
+      <span class="h">08:00</span>
+    </div>
+    <div class="ctx" onclick="ex(this)">
+      <i class="sq ins"></i>
+      <div class="x">
+        <div class="t">Prefeitura anuncia reforço da guarda municipal em área comercial</div>
+        <div class="ex hide">Rondas adicionais no entorno de centros de compras nos horários de pico.<br><span style="color:var(--mute)">saojose.sc.gov.br · São José</span></div>
+      </div>
+      <span class="h">08:12</span>
+    </div>
+    <div class="ctx" onclick="ex(this)">
+      <i class="sq fra"></i>
+      <div class="x">
+        <div class="t">Operação apura uso de cartões clonados em redes varejistas</div>
+        <div class="ex hide">Polícia Civil cumpriu mandados em esquema de clonagem usado em compras de alto valor.<br><span style="color:var(--mute)">pc.sc.gov.br · Florianópolis</span></div>
+      </div>
+      <span class="h">07:30</span>
+    </div>
+    <div class="ctx" onclick="ex(this)">
+      <i class="sq pat"></i>
+      <div class="x">
+        <div class="t">Veículos são arrombados em estacionamento de centro comercial</div>
+        <div class="ex hide">Ao menos três carros tiveram vidros quebrados durante a tarde.<br><span style="color:var(--mute)">ndmais.com.br · Florianópolis</span></div>
+      </div>
+      <span class="h">16:15</span>
+    </div>
+    <div class="ctx" onclick="ex(this)">
+      <i class="sq ope"></i>
+      <div class="x">
+        <div class="t">Falta de energia afeta operação de refrigerados no centro</div>
+        <div class="ex hide">Interrupção de quatro horas obrigou lojas a acionarem geradores.<br><span style="color:var(--mute)">celesc.com.br · Florianópolis</span></div>
+      </div>
+      <span class="h">13:22</span>
+    </div>
+    <div class="ctx" onclick="ex(this)">
+      <i class="sq seg"></i>
+      <div class="x">
+        <div class="t">Grupo é abordado após ocorrência em área de docas de atacadista</div>
+        <div class="ex hide">PM acionada por controladores de acesso. Sem prisões.<br><span style="color:var(--mute)">visornoticias.com.br · São José</span></div>
+      </div>
+      <span class="h">21:02</span>
+    </div>
+
+    <div class="btn" style="margin-top:18px;">Ver mais 17 do dia</div>
+
+    <div class="btn t" style="margin-top:20px;">Marcar todas lidas</div>
+  </div>
+</section>
+
+<!-- ================= CAMPO ================= -->
+<section class="scr" id="s-forms">
+  <div class="hd">
+    <h1 class="s">Campo</h1>
+    <div class="hdm"><span>Report diário · consultor</span><span>28 perguntas</span></div>
+  </div>
+  <div class="rule"></div>
+  <div class="tabs2">
+    <button class="tb2 on" onclick="fpane(this,'f-reg')">Registros</button>
+    <button class="tb2" onclick="fpane(this,'f-rel')">Relatórios</button>
+  </div>
+
+  <div class="bd fpane" id="f-reg" style="padding-top:14px;">
+    <div class="sync off">
+      <i class="d"></i>3 aguardando envio
+      <span class="n">Tentando a cada 2 min</span>
+    </div>
+    <div class="sec">Hoje</div>
+    <div class="reg" onclick="startWiz()">
+      <div class="t"><span>Carrefour Bairro Centro</span><span class="ras">Rascunho</span></div>
+      <h3>Report diário</h3>
+      <div class="m">Bloco 4 de 7 · 11 de 28 respondidas</div>
+    </div>
+    <div class="sec">17 ago</div>
+    <div class="reg" onclick="go('s-resumo')">
+      <div class="t"><span>Atacadão Flamboyant 701</span><span class="env">Enviado</span></div>
+      <h3>Report diário</h3>
+      <div class="m">07/08/2026 · Manhã · 28 respostas</div>
+    </div>
+    <div class="reg">
+      <div class="t"><span>Sam's Club Alvorada 854</span><span class="env">Enviado</span></div>
+      <h3>Report diário</h3>
+      <div class="m">05/08/2026 · Tarde · 28 respostas</div>
+    </div>
+  </div>
+
+  <div class="bd fpane hide" id="f-rel" style="padding-top:14px;">
+    <div class="newq" onclick="go('s-novorel')"><i class="b"></i>Novo relatório</div>
+    <div class="sec">Agosto 2026</div>
+    <div class="reg" onclick="setRole('r')">
+      <div class="t"><span>Atacadão Flamboyant 701</span><span class="env">Enviado</span></div>
+      <h3>Panorama de risco</h3>
+      <div class="m">18/08 · PDF · aberto pelo cliente em 21/08</div>
+      <div class="ix"><span class="v">68</span><span class="l">Índice · ↑12 vs. julho</span></div>
+    </div>
+    <div class="reg" onclick="setRole('r')">
+      <div class="t"><span>Carrefour Hiper Kobrasol</span><span class="ras">Rascunho</span></div>
+      <h3>Panorama de risco</h3>
+      <div class="m">Aguardando revisão · 6 registros no período</div>
+      <div class="ix"><span class="v am">54</span><span class="l">Índice · ↓3 vs. julho</span></div>
+    </div>
+    <div class="reg">
+      <div class="t"><span>Sam's Club Alvorada 854</span><span class="pen">Pendente</span></div>
+      <h3>Panorama de risco</h3>
+      <div class="m">Período fecha em 31/08 · 5 registros</div>
+    </div>
+    <div class="sec">Julho 2026</div>
+    <div class="reg">
+      <div class="t"><span>Atacadão Rio Verde 935</span><span class="env">Enviado</span></div>
+      <h3>Panorama de risco</h3>
+      <div class="m">19/07 · PDF · não aberto</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= NOVO RELATÓRIO ================= -->
+<section class="scr" id="s-novorel">
+  <div class="hd">
+    <div class="top"><button class="bk" onclick="go('s-forms')">‹</button><div class="logo">SIME<em>ops</em></div></div>
+    <h1 class="s">Novo relatório</h1>
+    <div class="hdm"><span>Exportação para o cliente</span><span>4 etapas</span></div>
+  </div>
+  <div class="rule"></div>
+  <div class="bd">
+    <div class="q" style="margin-top:6px;">
+      <div class="qn">01 · Destino</div><div class="qt">Unidade</div>
+      <div class="opt on" onclick="pk3(this)"><span class="mk rd"></span>Atacadão Flamboyant 701</div>
+      <div class="opt" onclick="pk3(this)"><span class="mk rd"></span>Carrefour Hiper Kobrasol</div>
+      <div class="opt" onclick="pk3(this)"><span class="mk rd"></span>Consolidado da bandeira</div>
+    </div>
+    <div class="q">
+      <div class="qn">02 · Período</div><div class="qt">Intervalo dos dados</div>
+      <div class="opt on" onclick="pk3(this)"><span class="mk rd"></span>Mês fechado — agosto/2026</div>
+      <div class="opt" onclick="pk3(this)"><span class="mk rd"></span>Últimos 30 dias</div>
+      <div class="opt" onclick="pk3(this)"><span class="mk rd"></span>Personalizado</div>
+    </div>
+    <div class="q">
+      <div class="qn">03 · Conteúdo</div><div class="qt">O que incluir</div>
+      <div class="qh">Notícias vêm do monitoramento; ocorrências vêm dos formulários de campo.</div>
+      <div class="opt on" onclick="pk4(this)"><span class="mk"></span>Índice de exposição</div>
+      <div class="opt on" onclick="pk4(this)"><span class="mk"></span>Ações recomendadas</div>
+      <div class="opt on" onclick="pk4(this)"><span class="mk"></span>Monitoramento de imprensa</div>
+      <div class="opt on" onclick="pk4(this)"><span class="mk"></span>Ocorrências de campo</div>
+      <div class="opt" onclick="pk4(this)"><span class="mk"></span>Comparativo com a bandeira</div>
+      <div class="opt" onclick="pk4(this)"><span class="mk"></span>Anexos fotográficos</div>
+    </div>
+    <div class="q">
+      <div class="qn">04 · Entrega</div><div class="qt">Formato e destinatário</div>
+      <div class="opt on" onclick="pk3(this)"><span class="mk rd"></span>PDF anexo</div>
+      <div class="opt" onclick="pk3(this)"><span class="mk rd"></span>Link protegido por senha</div>
+      <div class="txin" style="margin-top:14px;">gerente701@atacadao.com.br</div>
+    </div>
+    <div class="btn p" onclick="setRole('r')">Gerar pré-visualização</div>
+    <div class="btn" onclick="go('s-forms')">Cancelar</div>
+  </div>
+</section>
+
+<!-- ================= WIZARD ================= -->
+<section class="scr" id="s-wiz">
+  <div class="hd">
+    <div class="top"><button class="bk" onclick="go('s-forms')">‹</button><div class="logo">SIME<em>ops</em></div></div>
+    <h1 class="s" id="wz-title">Bloco</h1>
+    <div class="hdm"><span id="wz-unit">Novo registro</span><span id="wz-step">Bloco 1 de 7</span></div>
+  </div>
+  <div class="rule"></div>
+  <div class="bd">
+    <div class="prog"><span>Progresso</span><div class="ptr"><div class="pfl" id="wz-fill" style="width:0"></div></div><span id="wz-count">0/28</span></div>
+    <div class="steps" id="wz-steps"></div>
+    <div class="syncline off"><i class="d"></i><span id="wz-sync">Salvo no aparelho às 09:41 · envio pendente</span></div>
+    <div class="blkd" id="wz-desc"></div>
+    <div id="wz-body"></div>
+    <div class="navb">
+      <div class="btn" onclick="wizPrev()">Voltar</div>
+      <div class="btn p" id="wz-next" onclick="wizNext()">Avançar</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= RESUMO ================= -->
+<section class="scr" id="s-resumo">
+  <div class="hd">
+    <div class="top"><button class="bk" onclick="go('s-forms')">‹</button><div class="logo">SIME<em>ops</em></div></div>
+    <h1 class="s">Atacadão Flamboyant 701</h1>
+    <div class="hdm"><span class="lv">Enviado</span><span>07/08/2026 · Manhã</span></div>
+  </div>
+  <div class="rule"></div>
+  <div class="bd">
+    <div class="flags">
+      <span class="fg r">Risco no entorno</span><span class="fg a">Movimentação atípica</span>
+      <span class="fg g">Sem falha estrutural</span><span class="fg r">Não formalizada</span>
+    </div>
+    <div class="sec">Território</div>
+    <div class="kv"><div class="k">Risco externo · Q9</div><div class="v">Indivíduos em situação vulnerável, Pedintes</div></div>
+    <div class="kv"><div class="k">Policiamento · Q10</div><div class="v">GCM</div></div>
+    <div class="sec">Ocorrência</div>
+    <div class="kv"><div class="k">Identificação · Q15</div><div class="v">Consultor SIC</div></div>
+    <div class="kv"><div class="k">Classificação · Q16</div><div class="v">Externa</div></div>
+    <div class="kv"><div class="k">Tipificação · Q17</div><div class="v">Ameaça</div></div>
+    <div class="kv"><div class="k">Setor · Q18</div><div class="v">Bazar</div></div>
+    <div class="kv"><div class="k">Desfecho · Q20</div><div class="v">Tentativa por abordagem</div></div>
+    <div class="kv"><div class="k">Valor prevenido · Q21</div><div class="v b">R$ 1.240</div></div>
+    <div class="sec">Resposta</div>
+    <div class="kv"><div class="k">Tipo · Q26</div><div class="v">Mediação</div></div>
+    <div class="kv"><div class="k">Grau de sucesso · Q28</div><div class="v b">4 / 5</div></div>
+    <div class="btn p" onclick="setRole('r')">Gerar relatório do cliente</div>
+    <div class="btn">Editar registro</div>
+  </div>
+</section>
+
+<!-- ================= PAINEL ================= -->
+<section class="scr" id="s-painel">
+  <div class="hd">
+    <div class="top"><div class="logo">SIME<em>ops</em></div><button class="gear" onclick="go('s-config')" aria-label="Configurações"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div>
+    <h1 class="s">Bom dia, Marina</h1>
+    <div class="hdm"><span>Quinta, 27 de agosto</span><span>38 de 44 unidades</span></div>
+  </div>
+  <div class="rule"></div>
+  <div class="tabs">
+    <button class="tb on" onclick="dt(this,'p-al')">Atenção</button>
+    <button class="tb" onclick="dt(this,'p-op')">Operação</button>
+    <button class="tb" onclick="dt(this,'p-ri')">Risco</button>
+    <button class="tb" onclick="dt(this,'p-cz')">Cruzamento</button>
+  </div>
+  <div class="hair"></div>
+
+  <div class="bd pane" id="p-al" style="padding-top:20px;">
+    <div class="brief" style="margin-bottom:22px;">
+      <b>4 situações</b> pedem decisão hoje. A equipe fechou <b>142 registros</b> no mês
+      e <b>R$ 312 mil</b> em perdas evitadas.
+    </div>
+    <div class="al">
+      <div class="k">Ponto cego</div>
+      <p>Carrefour Hiper Kobrasol: imprensa em alta há 3 semanas, últimos 4 formulários marcaram "sem risco no entorno".</p>
+      <div class="sub">Marina Costa · última visita há 2 dias</div>
+    </div>
+    <div class="al">
+      <div class="k">Sem articulação</div>
+      <p>Sam's Club Alvorada: 5 registros de risco alto e nenhum contato com forças de segurança (Q12 = Não em todos).</p>
+      <div class="sub">Rafael Souza · índice 74</div>
+    </div>
+    <div class="al am">
+      <div class="k">Preenchimento suspeito</div>
+      <p>Diego Almeida: 6 formulários enviados entre 22h40 e 23h10 do mesmo dia, referentes a visitas de 4 dias distintos.</p>
+      <div class="sub">Tempo médio 2min14s · média da equipe 11min</div>
+    </div>
+    <div class="al am">
+      <div class="k">Risco de churn</div>
+      <p>Atacadão Rio Verde 935: dois últimos relatórios não abertos pelo cliente e índice em queda há 3 meses.</p>
+      <div class="sub">Contrato renova em 60 dias</div>
+    </div>
+    <div class="sec">Reincidência</div>
+    <div class="tr"><div><div class="nm">Atacadão Goiás Norte 929</div><div class="sb">Furto · bazar · 4 meses seguidos</div></div><div class="n r">4×</div><div class="ag">Crítico</div></div>
+    <div class="tr"><div><div class="nm">Carrefour Bairro Centro</div><div class="sb">Dano · estacionamento · 3 meses</div></div><div class="n a">3×</div><div class="ag">Atenção</div></div>
+    <div class="tr"><div><div class="nm">Sam's Club Alvorada 854</div><div class="sb">Ameaça · frente de caixa · 2 meses</div></div><div class="n a">2×</div><div class="ag">Atenção</div></div>
+  </div>
+
+  <div class="bd pane hide" id="p-op" style="padding-top:20px;">
+    <div class="kpis">
+      <div class="kpi"><div class="n">142</div><div class="l">Formulários enviados</div><div class="d">+18% vs. mês anterior</div></div>
+      <div class="kpi"><div class="n w">38</div><div class="l">Unidades atendidas</div><div class="d">de 44 na carteira</div></div>
+      <div class="kpi"><div class="n">R$ 312k</div><div class="l">Prevenido no mês</div><div class="d">R$ 2,2k por visita</div></div>
+      <div class="kpi"><div class="n a">3,7</div><div class="l">Sucesso médio · Q28</div><div class="d">escala 0 a 5</div></div>
+    </div>
+
+    <div class="sec">Funil de risco</div>
+    <div class="fn"><div class="row"><b>Visitas realizadas</b><span>142</span></div><div class="bx" style="width:100%;">142</div></div>
+    <div class="fn"><div class="drop">−39% não identificam risco</div>
+      <div class="row"><b>Risco identificado · Q8</b><span>87</span></div><div class="bx" style="width:61%;">87</div></div>
+    <div class="fn"><div class="drop">−47% não viram ocorrência</div>
+      <div class="row"><b>Ocorrência registrada · Q15</b><span>46</span></div><div class="bx" style="width:32%;">46</div></div>
+    <div class="fn"><div class="drop">−28% não formalizadas</div>
+      <div class="row"><b>Formalizada · Q22</b><span>33</span></div><div class="bx" style="width:23%;">33</div></div>
+    <div class="fn"><div class="drop">−33% sem resolução</div>
+      <div class="row"><b>Resolvida com sucesso ≥4</b><span>22</span></div><div class="bx" style="width:15%;">22</div></div>
+    <div class="note">A maior perda está entre formalizar e resolver. Vale investigar se é limitação de resposta ou de acompanhamento posterior.</div>
+
+    <div class="sec">Produção por consultor</div>
+    <div class="tr"><div><div class="nm">Marina Costa</div><div class="sb">SC · 9 unidades</div></div><div class="n">22</div><div class="ag">R$ 58k</div></div>
+    <div class="tr"><div><div class="nm">Priscila Nunes</div><div class="sb">GO · 7 unidades</div></div><div class="n">19</div><div class="ag">R$ 71k</div></div>
+    <div class="tr"><div><div class="nm">João Infante</div><div class="sb">GO · 6 unidades</div></div><div class="n">18</div><div class="ag">R$ 47k</div></div>
+    <div class="tr"><div><div class="nm">Rafael Souza</div><div class="sb">RS · 5 unidades</div></div><div class="n">15</div><div class="ag">R$ 33k</div></div>
+    <div class="tr"><div><div class="nm">Diego Almeida</div><div class="sb">RS · 4 unidades</div></div><div class="n a">6</div><div class="ag">R$ 4k</div></div>
+    <div class="note">Priscila tem menos registros que Marina, mas o maior valor prevenido — volume e impacto não andam juntos.</div>
+
+    <div class="sec">Qualidade do preenchimento</div>
+    <div class="bar"><div class="lb"><b>Priscila Nunes</b><span>11min · 4% "Outra"</span></div><div class="trk"><div class="fl g" style="width:94%"></div></div></div>
+    <div class="bar"><div class="lb"><b>João Infante</b><span>13min · 7% "Outra"</span></div><div class="trk"><div class="fl g" style="width:88%"></div></div></div>
+    <div class="bar"><div class="lb"><b>Marina Costa</b><span>9min · 12% "Outra"</span></div><div class="trk"><div class="fl a" style="width:71%"></div></div></div>
+    <div class="bar"><div class="lb"><b>Rafael Souza</b><span>7min · 19% "Outra"</span></div><div class="trk"><div class="fl a" style="width:58%"></div></div></div>
+    <div class="bar"><div class="lb"><b>Diego Almeida</b><span>2min · 31% "Outra"</span></div><div class="trk"><div class="fl r" style="width:24%"></div></div></div>
+
+    <div class="sec">Projeção · setembro</div>
+    <div class="cols">
+      <div class="cl"><span class="v">96</span><div class="b" style="height:38%"></div></div>
+      <div class="cl"><span class="v">118</span><div class="b" style="height:47%"></div></div>
+      <div class="cl"><span class="v">124</span><div class="b" style="height:50%"></div></div>
+      <div class="cl"><span class="v">142</span><div class="b" style="height:57%"></div></div>
+      <div class="cl hi"><span class="v">~171</span><div class="b" style="height:69%;opacity:.5"></div></div>
+    </div>
+    <div class="xax"><div>Mai</div><div>Jun</div><div>Jul</div><div>Ago</div><div>Set</div></div>
+    <div class="note">Com a equipe atual, setembro exigiria 14,3 registros por consultor — <b>21% acima da média praticada</b>.</div>
+  </div>
+
+  <div class="bd pane hide" id="p-ri" style="padding-top:20px;">
+    <div class="sec">Sinais agregados</div>
+    <div class="bar"><div class="lb"><b>Risco no entorno · Q8</b><span>61% sim</span></div><div class="trk"><div class="fl r" style="width:61%"></div></div></div>
+    <div class="bar"><div class="lb"><b>Movimentação atípica · Q7</b><span>44% sim</span></div><div class="trk"><div class="fl a" style="width:44%"></div></div></div>
+    <div class="bar"><div class="lb"><b>Falhas estruturais · Q11</b><span>19% sim</span></div><div class="trk"><div class="fl" style="width:19%"></div></div></div>
+    <div class="bar"><div class="lb"><b>Contato c/ forças · Q12</b><span>34% sim</span></div><div class="trk"><div class="fl" style="width:34%"></div></div></div>
+    <div class="bar"><div class="lb"><b>Vulnerabilidade de processo · Q14</b><span>27% sim</span></div><div class="trk"><div class="fl a" style="width:27%"></div></div></div>
+    <div class="bar"><div class="lb"><b>Ocorrência formalizada · Q22</b><span>72% sim</span></div><div class="trk"><div class="fl g" style="width:72%"></div></div></div>
+
+    <div class="sec">Risco externo · Q9</div>
+    <div class="tr"><div><div class="nm">Indivíduos em situação vulnerável</div></div><div class="n">54</div><div class="ag">38%</div></div>
+    <div class="tr"><div><div class="nm">Furto</div></div><div class="n">47</div><div class="ag">33%</div></div>
+    <div class="tr"><div><div class="nm">Vendedores ambulantes</div></div><div class="n">31</div><div class="ag">22%</div></div>
+    <div class="tr"><div><div class="nm">Usuários de drogas</div></div><div class="n t">28</div><div class="ag">20%</div></div>
+
+    <div class="sec">Tipificação · Q17</div>
+    <div class="bar"><div class="lb"><b>Furto</b><span>52 casos</span></div><div class="trk"><div class="fl r" style="width:76%"></div></div></div>
+    <div class="bar"><div class="lb"><b>Dano</b><span>23 casos</span></div><div class="trk"><div class="fl a" style="width:34%"></div></div></div>
+    <div class="bar"><div class="lb"><b>Ameaça</b><span>17 casos</span></div><div class="trk"><div class="fl a" style="width:25%"></div></div></div>
+    <div class="bar"><div class="lb"><b>Desacato</b><span>12 casos</span></div><div class="trk"><div class="fl" style="width:18%"></div></div></div>
+
+    <div class="sec">Quem detecta primeiro · Q15</div>
+    <div class="bar"><div class="lb"><b>Consultor SIC</b><span>79%</span></div><div class="trk"><div class="fl g" style="width:79%"></div></div></div>
+    <div class="bar"><div class="lb"><b>Time de prevenção da loja</b><span>14%</span></div><div class="trk"><div class="fl a" style="width:14%"></div></div></div>
+    <div class="bar"><div class="lb"><b>Gerência</b><span>7%</span></div><div class="trk"><div class="fl" style="width:7%"></div></div></div>
+    <div class="note">A detecção está concentrada na consultoria. Argumento direto para proposta de <b>treinamento da equipe interna</b>.</div>
+
+    <div class="sec">Setor mais atingido · Q18</div>
+    <div class="tr"><div><div class="nm">Bazar</div><div class="sb">furto predominante</div></div><div class="n">29</div><div class="ag">R$ 41k</div></div>
+    <div class="tr"><div><div class="nm">Perfumaria</div><div class="sb">furto predominante</div></div><div class="n">24</div><div class="ag">R$ 38k</div></div>
+    <div class="tr"><div><div class="nm">Bebidas</div><div class="sb">furto / dano</div></div><div class="n">21</div><div class="ag">R$ 27k</div></div>
+    <div class="tr"><div><div class="nm">Eletro</div><div class="sb">furto qualificado</div></div><div class="n t">9</div><div class="ag">R$ 52k</div></div>
+  </div>
+
+  <div class="bd pane hide" id="p-cz" style="padding-top:20px;">
+    <div class="lead" style="margin-bottom:20px;">
+      Compara o volume da imprensa com o risco relatado em campo. A divergência é o que interessa.
+    </div>
+    <div class="cmpb">
+      <div class="h"><b>Atacadão Flamboyant 701</b><span style="color:var(--leaf)">Convergente</span></div>
+      <div class="dl"><span>Imprensa</span><div class="trk"><div class="fl r" style="width:78%"></div></div><span>78</span></div>
+      <div class="dl"><span>Campo</span><div class="trk"><div class="fl r" style="width:71%"></div></div><span>71</span></div>
+    </div>
+    <div class="cmpb">
+      <div class="h"><b>Carrefour Hiper Kobrasol</b><span style="color:var(--red)">Ponto cego</span></div>
+      <div class="dl"><span>Imprensa</span><div class="trk"><div class="fl r" style="width:69%"></div></div><span>69</span></div>
+      <div class="dl"><span>Campo</span><div class="trk"><div class="fl" style="width:18%"></div></div><span>18</span></div>
+    </div>
+    <div class="cmpb">
+      <div class="h"><b>Sam's Club Alvorada 854</b><span style="color:var(--red)">Subnotificação</span></div>
+      <div class="dl"><span>Imprensa</span><div class="trk"><div class="fl" style="width:22%"></div></div><span>22</span></div>
+      <div class="dl"><span>Campo</span><div class="trk"><div class="fl r" style="width:74%"></div></div><span>74</span></div>
+    </div>
+    <div class="cmpb">
+      <div class="h"><b>Carrefour Bairro Centro</b><span style="color:var(--teal)">Estável</span></div>
+      <div class="dl"><span>Imprensa</span><div class="trk"><div class="fl" style="width:16%"></div></div><span>16</span></div>
+      <div class="dl"><span>Campo</span><div class="trk"><div class="fl" style="width:12%"></div></div><span>12</span></div>
+    </div>
+
+    <div class="sec">Antecipação por cidade</div>
+    <div class="tr"><div><div class="nm">Goiânia</div><div class="sb">campo antes da imprensa</div></div><div class="n">14d</div><div class="ag">Média</div></div>
+    <div class="tr"><div><div class="nm">Florianópolis</div><div class="sb">campo antes da imprensa</div></div><div class="n">11d</div><div class="ag">Média</div></div>
+    <div class="tr"><div><div class="nm">Porto Alegre</div><div class="sb">campo antes da imprensa</div></div><div class="n t">6d</div><div class="ag">Média</div></div>
+    <div class="tr"><div><div class="nm">São José</div><div class="sb">imprensa antes do campo</div></div><div class="n r">−3d</div><div class="ag">Média</div></div>
+  </div>
+</section>
+
+<!-- ================= CONFIG ================= -->
+<section class="scr" id="s-config">
+  <div class="hd">
+    <div class="top"><button class="bk" onclick="goHome()">‹</button><div class="logo">SIME<em>ops</em></div></div>
+    <h1 class="s">Configurações</h1>
+    <div class="hdm"><span></span><span></span></div>
+  </div>
+  <div class="rule"></div>
+  <div class="bd" style="padding-top:0;">
+    <div class="sec">Conta</div>
+    <div class="sans" style="font-size:1.35rem;">joao.infante16@gmail.com</div>
+    <div style="font-size:.62rem;letter-spacing:.13em;text-transform:uppercase;color:var(--leaf);margin-top:8px;" id="perfil">Sessão ativa · perfil consultor</div>
+
+    <div class="sec">Aparência</div>
+    <div class="themepick">
+      <div class="tp on" id="tp-claro" onclick="setTheme('claro')">
+        <div class="sw" style="background:#FFF;"><i style="background:#0A0F16;max-width:8px;"></i><i style="background:#A3D65C;max-width:8px;"></i><i></i></div>
+        <div class="nm">Claro</div>
+      </div>
+      <div class="tp" id="tp-escuro" onclick="setTheme('escuro')">
+        <div class="sw" style="background:#0A0F16;"><i style="background:#FFF;max-width:8px;"></i><i style="background:#A3D65C;max-width:8px;"></i><i></i></div>
+        <div class="nm">Escuro</div>
+      </div>
+    </div>
+
+    <div class="sec">Alertas</div>
+    <div class="tgr">
+      <div class="x"><h4>Notificações</h4><p>Avisa quando chega ocorrência nova e quando uma consulta termina</p></div>
+      <div class="tg" onclick="tg(this)"><i></i></div>
+    </div>
+    <div class="tgr">
+      <div class="x"><h4>Formulário pendente</h4><p>Lembra de rascunhos não enviados no fim do turno</p></div>
+      <div class="tg" onclick="tg(this)"><i></i></div>
+    </div>
+    <div class="tgr">
+      <div class="x"><h4>Grande Florianópolis</h4><p>3 cidades</p></div>
+      <div class="tg" onclick="tg(this)"><i></i></div>
+    </div>
+    <div class="tgr">
+      <div class="x"><h4>Porto Alegre</h4><p>RS</p></div>
+      <div class="tg" onclick="tg(this)"><i></i></div>
+    </div>
+
+    <div class="sec">Ajuda</div>
+    <div class="tgr" onclick="alert('Abre o guia do app')" style="cursor:pointer;">
+      <div class="hlp" style="margin-left:0;">?</div>
+      <div class="x"><h4>Como funciona o SIMEops</h4><p>Categorias, índice de exposição e origem dos dados</p></div>
+      <div style="color:var(--mute);font-size:1.1rem;font-family:'Archivo',sans-serif;">›</div>
+    </div>
+    <div class="tgr" style="cursor:pointer;">
+      <div class="hlp" style="margin-left:0;border-color:var(--mute);color:var(--mute);">✉</div>
+      <div class="x"><h4>Falar com o suporte</h4><p>suporte@sic.com.br</p></div>
+      <div style="color:var(--mute);font-size:1.1rem;font-family:'Archivo',sans-serif;">›</div>
+    </div>
+
+    <div class="hair" style="margin:20px 0;"></div>
+    <div class="sans" style="font-size:1.25rem;padding:14px 0;">Mudar senha</div>
+    <div class="hair"></div>
+    <div class="sans" style="font-size:1.25rem;padding:18px 0;color:var(--red);">Sair da conta</div>
+    <div class="hair"></div>
+    <div style="font-size:.6rem;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);line-height:1.9;margin-top:20px;">
+      SIMEops 1.3.0 (7) · SIC<br>Monitoramento e inteligência de risco
+    </div>
+  </div>
+</section>
+
+<!-- ================= RELATÓRIO EXPORTÁVEL ================= -->
+<section class="scr" id="s-rel">
+  <div class="rtop">
+    <div class="t">SIMEOPS · Relatório de risco</div>
+    <button class="pdf">Baixar PDF</button>
+  </div>
+  <div class="rwrap">
+
+    <div class="mast">
+      <div class="lg">SIME<em>ops</em></div>
+      <div class="who">SIC<br>Inteligência de risco<br>no varejo</div>
+    </div>
+    <div class="hr3"></div>
+
+    <div class="kick">Análise de risco · unidade</div>
+    <h1>Atacadão Flamboyant 701</h1>
+    <div class="rsub">Goiânia, Goiás · 1º de junho a 27 de agosto de 2026</div>
+
+    <div class="meta">
+      <div class="r"><div class="k">Origem</div><div class="v">Monitoramento de imprensa + 6 visitas técnicas</div></div>
+      <div class="r"><div class="k">Consultor responsável</div><div class="v">João Infante</div></div>
+      <div class="r"><div class="k">Gerado em</div><div class="v">27/08/2026 às 06:11</div></div>
+    </div>
+
+    <div class="verd">
+      <div class="band">Atenção elevada</div>
+      <div class="in">
+        <div class="n">68</div>
+        <div class="l">Índice de exposição</div>
+        <p>A pressão sobre esta unidade subiu 12 pontos em relação a julho e está acima da média da bandeira em Goiás.</p>
+        <div class="cmp">
+          Média da bandeira em GO · 54<br>
+          Posição entre as 14 unidades · <b>3ª mais exposta</b>
+        </div>
+      </div>
+    </div>
+
+    <div class="rsect" style="margin-top:36px;">
+      <div class="hr3"></div>
+      <div class="shd"><h2>O que fazer agora</h2><span class="kk">Ação</span><span class="rt">4 pendências</span></div>
+      <div class="act"><div class="num">01</div><div class="c">
+        <span class="tag now">Urgente · 3º mês</span>
+        <h3>Instalar trava e lacre no setor eletro</h3>
+        <p>A mesma falha estrutural foi registrada em junho, julho e agosto sem tratamento. O setor responde por 34% do prejuízo com apenas 6% dos casos.</p>
+        <div class="why">Base: Q11 falhas estruturais · Q18 setor · Q21 valor</div>
+      </div></div>
+      <div class="act"><div class="num">02</div><div class="c">
+        <span class="tag now">Urgente</span>
+        <h3>Reforçar a escala entre 14h e 18h</h3>
+        <p>A janela concentra 64% das ocorrências e é onde a cobertura de prevenção está reduzida hoje. Sexta e sábado somam 58% do total.</p>
+        <div class="why">Base: Q6 turno · Q17 tipificação</div>
+      </div></div>
+      <div class="act"><div class="num">03</div><div class="c">
+        <span class="tag soon">Este mês</span>
+        <h3>Criar rotina de formalização no fim do turno</h3>
+        <p>Documentamos 14 ocorrências; 8 chegaram ao registro interno. As 6 restantes não geraram histórico nem base para ação futura.</p>
+        <div class="why">Base: Q22 formalização · Q23 motivo</div>
+      </div></div>
+      <div class="act"><div class="num">04</div><div class="c">
+        <span class="tag done">Concluída · julho</span>
+        <h3>Articulação com a Guarda Municipal</h3>
+        <p>Ronda estabelecida no acesso principal. Ocorrências no estacionamento caíram de 6 para 1 no mês seguinte.</p>
+        <div class="why">Base: Q12 contato · Q13 ação conjunta</div>
+      </div></div>
+    </div>
+
+    <div class="rsect">
+      <div class="hr3"></div>
+      <div class="shd"><h2>Perdas evitadas</h2><span class="kk">Resultado</span><span class="rt">No trimestre</span></div>
+      <div class="bignum g">R$ 47.800</div>
+      <div class="bigu">Em perdas prevenidas</div>
+      <div class="rlead">Valor acumulado de <b>11 ocorrências interrompidas antes da consumação</b> — tentativas contidas por abordagem, mediação ou monitoramento durante as visitas técnicas.</div>
+      <div class="trio">
+        <div><div class="n g">R$ 18,2k</div><div class="l">Agosto</div></div>
+        <div><div class="n">R$ 15,9k</div><div class="l">Julho</div></div>
+        <div><div class="n">R$ 13,7k</div><div class="l">Junho</div></div>
+      </div>
+    </div>
+
+    <div class="rsect">
+      <div class="hr3"></div>
+      <div class="shd"><h2>Quanto tempo antes</h2><span class="kk">Antecipação</span></div>
+      <div class="bignum">11 dias</div>
+      <div class="bigu">De vantagem média</div>
+      <div class="rlead">É o intervalo entre o momento em que a equipe sinalizou risco no entorno e a <b>primeira notícia publicada</b> sobre o mesmo bairro.</div>
+      <div style="margin-top:28px;">
+        <div class="cmpb">
+          <div class="h"><b>Caminho Novo</b><span style="color:var(--mute)">17 dias antes</span></div>
+          <div class="dl"><span>Campo</span><div class="trk"><div class="fl g" style="width:26%"></div></div><span>02/08</span></div>
+          <div class="dl"><span>Imprensa</span><div class="trk"><div class="fl r" style="width:74%"></div></div><span>19/08</span></div>
+        </div>
+        <div class="cmpb">
+          <div class="h"><b>Setor Central</b><span style="color:var(--mute)">9 dias antes</span></div>
+          <div class="dl"><span>Campo</span><div class="trk"><div class="fl g" style="width:38%"></div></div><span>08/08</span></div>
+          <div class="dl"><span>Imprensa</span><div class="trk"><div class="fl r" style="width:66%"></div></div><span>17/08</span></div>
+        </div>
+      </div>
+      <div class="rfine">Em <b>7 das 12 unidades</b> acompanhadas em Goiás, o sinal de campo chegou antes da cobertura da imprensa.</div>
+    </div>
+
+    <div class="rsect">
+      <div class="hr3"></div>
+      <div class="shd"><h2>O que não foi registrado</h2><span class="kk">Lacuna</span></div>
+      <div class="bignum r">43%</div>
+      <div class="bigu">Das ocorrências sem formalização</div>
+      <div class="rlead">Documentamos <b>14 ocorrências</b> nesta unidade no período. Apenas 8 constam no registro interno da loja.</div>
+      <div class="trio">
+        <div><div class="n">14</div><div class="l">Documentadas em campo</div></div>
+        <div><div class="n a">8</div><div class="l">Registradas pela loja</div></div>
+        <div><div class="n r">6</div><div class="l">Sem formalização</div></div>
+      </div>
+      <div class="rfine">Motivos declarados: ausência do gerente no momento <b>(3)</b>, avaliação de baixo valor <b>(2)</b>, abordagem resolvida sem registro <b>(1)</b>.</div>
+    </div>
+
+    <div class="rsect">
+      <div class="hr3"></div>
+      <div class="shd"><h2>Distribuição por categoria</h2><span class="kk">O quê</span><span class="rt">Raio de 2 km</span></div>
+      <div style="display:flex;justify-content:center;margin-bottom:20px;">
+        <svg width="190" height="190" viewBox="0 0 200 200">
+          <circle cx="100" cy="100" r="70" fill="none" stroke="var(--hair)" stroke-width="32"/>
+          <circle cx="100" cy="100" r="70" fill="none" stroke="var(--red)" stroke-width="32"
+            stroke-dasharray="167.1 272.7" stroke-dashoffset="0" transform="rotate(-90 100 100)"/>
+          <circle cx="100" cy="100" r="70" fill="none" stroke="var(--gold)" stroke-width="32"
+            stroke-dasharray="118.8 321.0" stroke-dashoffset="-167.1" transform="rotate(-90 100 100)"/>
+          <circle cx="100" cy="100" r="70" fill="none" stroke="var(--teal)" stroke-width="32"
+            stroke-dasharray="92.4 347.4" stroke-dashoffset="-285.9" transform="rotate(-90 100 100)"/>
+          <circle cx="100" cy="100" r="70" fill="none" stroke="var(--leaf)" stroke-width="32"
+            stroke-dasharray="44.0 395.8" stroke-dashoffset="-378.3" transform="rotate(-90 100 100)"/>
+          <circle cx="100" cy="100" r="70" fill="none" stroke="var(--purple)" stroke-width="32"
+            stroke-dasharray="17.6 422.2" stroke-dashoffset="-422.3" transform="rotate(-90 100 100)"/>
+          <text x="100" y="96" text-anchor="middle" fill="currentColor"
+            style="font-family:Archivo;font-weight:700;font-size:36px;letter-spacing:-1.5px;">28</text>
+          <text x="100" y="118" text-anchor="middle" fill="var(--mute)"
+            style="font-family:'IBM Plex Mono';font-size:9px;letter-spacing:2.5px;">OCORRÊNCIAS</text>
+        </svg>
+      </div>
+      <table class="rtbl">
+        <tr><th>Categoria</th><th>N°</th><th>%</th></tr>
+        <tr><td><i class="dot d-seg"></i>Segurança</td><td>11</td><td>38%</td></tr>
+        <tr><td><i class="dot d-pat"></i>Patrimonial</td><td>8</td><td>27%</td></tr>
+        <tr><td><i class="dot d-ope"></i>Operacional</td><td>6</td><td>21%</td></tr>
+        <tr><td><i class="dot d-ins"></i>Institucional</td><td>2</td><td>10%</td></tr>
+        <tr><td><i class="dot d-fra"></i>Fraude</td><td>1</td><td>4%</td></tr>
+      </table>
+    </div>
+
+    <div class="rsect">
+      <div class="hr3"></div>
+      <div class="shd"><h2>Volume no tempo</h2><span class="kk">Quando</span><span class="rt">Um mês por barra</span></div>
+      <div class="cols" style="height:170px;">
+        <div class="cl"><span class="v">9</span><div class="b" style="height:32%"></div></div>
+        <div class="cl"><span class="v">12</span><div class="b" style="height:43%"></div></div>
+        <div class="cl"><span class="v">14</span><div class="b" style="height:50%"></div></div>
+        <div class="cl"><span class="v">11</span><div class="b" style="height:39%"></div></div>
+        <div class="cl hi"><span class="v">28</span><div class="b" style="height:100%"></div></div>
+      </div>
+      <div class="xax"><div>Abr</div><div>Mai</div><div>Jun</div><div>Jul</div><div>Ago</div></div>
+      <div class="rfine">Alta de <b>155% em agosto</b>, concentrada em segurança patrimonial. É o maior volume desde o início do monitoramento nesta região.</div>
+    </div>
+
+    <div class="rsect">
+      <div class="hr3"></div>
+      <div class="shd"><h2>Janela de risco</h2><span class="kk">Turno</span></div>
+      <div class="bs"><div class="h"><b>Tarde · 14h às 18h</b><span>64%</span></div><div class="trk"><div class="fl r" style="width:64%"></div></div></div>
+      <div class="bs"><div class="h"><b>Manhã · 08h às 14h</b><span>25%</span></div><div class="trk"><div class="fl a" style="width:25%"></div></div></div>
+      <div class="bs"><div class="h"><b>Noite · 18h às 22h</b><span>11%</span></div><div class="trk"><div class="fl" style="width:11%"></div></div></div>
+      <div class="rfine">Sexta e sábado concentram <b>58% do total</b>. A escala atual tem cobertura reduzida justamente nesse intervalo.</div>
+    </div>
+
+    <div class="rsect">
+      <div class="hr3"></div>
+      <div class="shd"><h2>Setor × prejuízo</h2><span class="kk">Onde dói</span></div>
+      <div class="rlead" style="margin-top:0;margin-bottom:24px;">Onde acontece mais nem sempre é onde custa mais.</div>
+      <div class="cmpb">
+        <div class="h"><b>Bazar</b><span style="color:var(--mute)">Muitos casos · baixo valor</span></div>
+        <div class="dl"><span>Casos</span><div class="trk"><div class="fl a" style="width:31%"></div></div><span>31%</span></div>
+        <div class="dl"><span>Prejuízo</span><div class="trk"><div class="fl" style="width:12%"></div></div><span>12%</span></div>
+      </div>
+      <div class="cmpb">
+        <div class="h"><b>Eletro</b><span style="color:var(--mute)">Poucos casos · alto valor</span></div>
+        <div class="dl"><span>Casos</span><div class="trk"><div class="fl" style="width:6%"></div></div><span>6%</span></div>
+        <div class="dl"><span>Prejuízo</span><div class="trk"><div class="fl r" style="width:34%"></div></div><span>34%</span></div>
+      </div>
+      <div class="cmpb">
+        <div class="h"><b>Perfumaria</b><span style="color:var(--mute)">Equilibrado</span></div>
+        <div class="dl"><span>Casos</span><div class="trk"><div class="fl a" style="width:24%"></div></div><span>24%</span></div>
+        <div class="dl"><span>Prejuízo</span><div class="trk"><div class="fl a" style="width:26%"></div></div><span>26%</span></div>
+      </div>
+      <div class="rfine">Bazar pede presença e circulação. Eletro pede trava, lacre e controle de saída — o <b>custo por incidente é 6× maior</b>.</div>
+    </div>
+
+    <div class="rsect">
+      <div class="hr3"></div>
+      <div class="shd"><h2>Origem da ameaça</h2><span class="kk">Interna ou externa</span></div>
+      <div class="trio" style="margin-top:0;">
+        <div><div class="n">68%</div><div class="l">Externa</div></div>
+        <div><div class="n a">18%</div><div class="l">Interna</div></div>
+        <div><div class="n">14%</div><div class="l">Estrutural</div></div>
+      </div>
+      <div class="rfine">Quase <b>uma em cada cinco</b> ocorrências foi classificada como de origem interna. É o indicador que costuma passar despercebido em relatórios de segurança convencionais.</div>
+    </div>
+
+    <div class="rsect">
+      <div class="hr3"></div>
+      <div class="shd"><h2>Eficácia da resposta</h2><span class="kk">O que funciona</span><span class="rt">% contidos</span></div>
+      <div class="bs"><div class="h"><b>Abordagem</b><span>78%</span></div><div class="trk"><div class="fl g" style="width:78%"></div></div></div>
+      <div class="bs"><div class="h"><b>Mediação</b><span>61%</span></div><div class="trk"><div class="fl g" style="width:61%"></div></div></div>
+      <div class="bs"><div class="h"><b>Articulação externa</b><span>52%</span></div><div class="trk"><div class="fl a" style="width:52%"></div></div></div>
+      <div class="bs"><div class="h"><b>Monitoramento passivo</b><span>34%</span></div><div class="trk"><div class="fl r" style="width:34%"></div></div></div>
+    </div>
+
+    <div class="rsect">
+      <div class="hr3"></div>
+      <div class="shd"><h2>Posição na bandeira</h2><span class="kk">Comparativo</span><span class="rt">14 unidades</span></div>
+      <div class="rk"><div class="i">01</div><div class="c">
+        <div class="r1"><span class="nm">Atacadão Goiás Norte 929</span><span class="qt">81</span></div>
+        <div class="tk"><div class="fl r" style="width:100%"></div></div></div></div>
+      <div class="rk"><div class="i">02</div><div class="c">
+        <div class="r1"><span class="nm">Atacadão Independência 817</span><span class="qt">74</span></div>
+        <div class="tk"><div class="fl r" style="width:91%"></div></div></div></div>
+      <div class="rk self"><div class="i">03</div><div class="c">
+        <div class="r1"><span class="nm"><b>Atacadão Flamboyant 701</b></span><span class="qt">68</span></div>
+        <div class="tk"><div class="fl r" style="width:84%"></div></div>
+        <div class="sb">Esta unidade</div></div></div>
+      <div class="rk"><div class="i">04</div><div class="c">
+        <div class="r1"><span class="nm">Atacadão Buriti 812</span><span class="qt">61</span></div>
+        <div class="tk"><div class="fl" style="width:75%"></div></div></div></div>
+      <div class="rk"><div class="i">05</div><div class="c">
+        <div class="r1"><span class="nm">Atacadão Rio Verde 935</span><span class="qt">52</span></div>
+        <div class="tk"><div class="fl t" style="width:64%"></div></div></div></div>
+      <div class="rfine">Média da bandeira em Goiás: <b>54</b>. Esta unidade está 14 pontos acima.</div>
+    </div>
+
+    <div class="rsect">
+      <div class="hr3"></div>
+      <div class="shd"><h2>Como é feito</h2><span class="kk">De onde</span><span class="rt">2 fontes</span></div>
+      <div class="rlead" style="margin-top:0;">
+        O monitoramento acompanha veículos de imprensa e fontes oficiais num raio de 2 km da unidade, 24 horas por dia. As visitas técnicas seguem um protocolo de <b>28 pontos aplicado presencialmente</b> pelo consultor.
+      </div>
+      <div class="trio">
+        <div><div class="n">28</div><div class="l">Notícias analisadas</div></div>
+        <div><div class="n">6</div><div class="l">Visitas técnicas</div></div>
+        <div><div class="n">14</div><div class="l">Ocorrências documentadas</div></div>
+      </div>
+      <div class="grp">Oficiais <span>(2)</span></div>
+      <div class="srow"><span>pc.go.gov.br</span><span>2</span></div>
+      <div class="srow"><span>goiania.go.gov.br</span><span>1</span></div>
+      <div class="grp">Imprensa <span>(19)</span></div>
+      <div class="srow"><span>ondegoias.com.br</span><span>9</span></div>
+      <div class="srow"><span>jornaldegoias.com.br</span><span>6</span></div>
+      <div class="srow"><span>diariodoestadogo.com.br</span><span>4</span></div>
+      <div class="rfine">+ 16 veículos com menos de 3 publicações. A contagem reflete o que a imprensa <b>noticiou</b> — não o total registrado pelas polícias.</div>
+    </div>
+
+    <div class="rfoot">
+      <div class="hr3"></div>
+      <div class="t">
+        SIMEops · SIC<br>
+        Gerado em 27/08/2026 às 06:11 · João Infante<br>
+        Documento confidencial — uso restrito ao cliente
+      </div>
+    </div>
+  </div>
+</section>
+
+</div>
+<div class="resume" id="resume" onclick="startWiz(true)">
+  <i class="ic"></i>
+  <div class="x">
+    <div class="t1">Rascunho aberto · salvo no aparelho</div>
+    <div class="t2">Carrefour Bairro Centro · bloco 4 de 7</div>
+  </div>
+  <span class="go">Retomar</span>
+</div>
+<button class="fab" id="fab" onclick="startWiz(false)"><i>+</i>Formulário</button>
+<nav class="nav" id="nav"></nav>
+</div>
+
+<div class="cap">
+  <b>Hoje · Notícias · Campo</b> — mesma barra para consultor e liderança.<br>
+  A engrenagem no canto superior direito abre conta, tema, alertas e ajuda.</div>
+
+<script>
+var role='c', theme='claro';
+var NAVS={
+  c:[['Hoje','s-inicio',''],['Notícias','s-mon','38'],['Campo','s-forms','3']],
+  l:[['Hoje','s-painel',''],['Notícias','s-mon','38'],['Campo','s-forms','']]
+};
+function homeId(){ return role==='l' ? 's-painel' : 's-inicio'; }
+function goHome(){ go(homeId()); }
+function buildNav(){
+  var n=document.getElementById('nav'); n.innerHTML='';
+  if(role==='r'){ n.style.display='none'; return; }
+  n.style.display='flex';
+  NAVS[role].forEach(function(it,i){
+    var d=document.createElement('div');
+    d.className='ni'; d.id='ni'+i;
+    d.innerHTML=it[0]+(it[2]?' <b>'+it[2]+'</b>':'');
+    d.onclick=function(){go(it[1]);};
+    n.appendChild(d);
+  });
+}
+var GROUP={'s-mon':'s-mon','s-cidade':'s-mon','s-forms':'s-forms',
+  's-wiz':'s-forms','s-resumo':'s-forms','s-novorel':'s-forms',
+  's-inicio':'HOME','s-painel':'HOME','s-config':''};
+function go(id){
+  document.querySelectorAll('.scr').forEach(function(s){s.classList.remove('on');});
+  var e=document.getElementById(id); if(e) e.classList.add('on');
+  if(role!=='r'){
+    var g=GROUP[id]||'';
+    if(g==='HOME') g=homeId();
+    NAVS[role].forEach(function(it,i){
+      var el=document.getElementById('ni'+i);
+      if(el) el.classList.toggle('on', it[1]===g);
+    });
+  }
+  chrome(id);
+  document.getElementById('vp').scrollTop=0;
+}
+function chrome(id){
+  var fab=document.getElementById('fab'), rs=document.getElementById('resume');
+  // FAB: só para consultor, e não dentro do próprio formulário nem no relatório
+  var showFab = (role==='c') && ['s-wiz','s-rel','s-config','s-novorel'].indexOf(id)<0;
+  fab.style.display = showFab?'flex':'none';
+  // retomada: só se existe rascunho aberto e não estamos nele
+  var showRs = (role==='c') && hasDraft && ['s-wiz','s-rel','s-config'].indexOf(id)<0;
+  rs.style.display = showRs?'flex':'none';
+  fab.style.bottom = showRs?'126px':'74px';
+}
+function setRole(r){
+  role=r;
+  var nq=document.getElementById('newrel');
+  if(nq) nq.style.display=(r==='l')?'none':'flex';
+  document.getElementById('rc').classList.toggle('on',r==='c');
+  document.getElementById('rl').classList.toggle('on',r==='l');
+  document.getElementById('rr').classList.toggle('on',r==='r');
+  var p=document.getElementById('perfil');
+  if(p) p.textContent=(r==='l')?'Sessão ativa · perfil liderança':'Sessão ativa · perfil consultor';
+  buildNav();
+  go(r==='r'?'s-rel':homeId());
+}
+function setTheme(t){
+  theme=t;
+  document.getElementById('thm').setAttribute('data-t',t);
+  document.getElementById('tp-claro').classList.toggle('on',t==='claro');
+  document.getElementById('tp-escuro').classList.toggle('on',t==='escuro');
+}
+
+function pk(b){b.parentNode.querySelectorAll('.tb').forEach(function(x){x.classList.remove('on');});b.classList.add('on');}
+function pk2(b){b.parentNode.querySelectorAll('.tb2').forEach(function(x){x.classList.remove('on');});b.classList.add('on');}
+function pk3(el){el.parentNode.querySelectorAll('.opt').forEach(function(x){x.classList.remove('on');});el.classList.add('on');}
+function pk4(el){el.classList.toggle('on');}
+function acc(h,id){
+  var el=document.getElementById(id); el.classList.toggle('hide');
+  document.getElementById('a-'+id).textContent = el.classList.contains('hide')?'⌄':'⌃';
+}
+function tg(t){t.classList.toggle('off');}
+function ex(el){
+  el.classList.toggle('open');
+  el.querySelector('.ex').classList.toggle('hide');
+}
+function dt(b,p){
+  b.parentNode.querySelectorAll('.tb').forEach(function(x){x.classList.remove('on');});
+  b.classList.add('on');
+  document.querySelectorAll('.pane').forEach(function(x){x.classList.add('hide');});
+  document.getElementById(p).classList.remove('hide');
+  document.getElementById('vp').scrollTop=0;
+}
+function npane(b,p){
+  b.parentNode.querySelectorAll('.tb2').forEach(function(x){x.classList.remove('on');});
+  b.classList.add('on');
+  document.querySelectorAll('.npane').forEach(function(x){x.classList.add('hide');});
+  document.getElementById(p).classList.remove('hide');
+  document.getElementById('vp').scrollTop=0;
+}
+function fpane(b,p){
+  b.parentNode.querySelectorAll('.tb2').forEach(function(x){x.classList.remove('on');});
+  b.classList.add('on');
+  document.querySelectorAll('.fpane').forEach(function(x){x.classList.add('hide');});
+  document.getElementById(p).classList.remove('hide');
+  document.getElementById('vp').scrollTop=0;
+}
+
+/* ---- formulário: 28 perguntas / 7 blocos ---- */
+var BLOCKS=[
+ {t:'Identificação do Consultor',d:'Dados iniciais para registro da atuação.',
+  q:[{n:1,r:1,t:'Consultor',type:'sel',o:['Selecionar sua resposta']}]},
+ {t:'Atendimento',d:'Descrição da unidade de trabalho.',
+  q:[{n:2,r:1,t:'Qual a UF da unidade do cliente que foi realizado o atendimento?',type:'sel',o:['Selecionar sua resposta']},
+     {n:3,r:1,t:'Bandeira Atendida',type:'radio',o:['Atacadão','Carrefour Bairro','Carrefour Express','Carrefour Hiper',"Sam's Club"]},
+     {n:4,r:1,t:'Atacadão',type:'sel',o:['ATACADÃO FLAMBOYANT 701']}]},
+ {t:'Dados Atendimento',d:'',
+  q:[{n:5,r:1,t:'Data do registro',h:'Por favor, informe os dados referentes a este registro.',type:'text',p:'dd/MM/yyyy'},
+     {n:6,r:1,t:'Turno',type:'radio',o:['Manhã','Tarde','Noite']},
+     {n:7,r:1,t:'Houve movimentações atípicas no fluxo de pessoas?',type:'radio',o:['Sim','Não']}]},
+ {t:'Análise territorial e estrutural',
+  d:'Nesta etapa, são avaliadas as condições físicas e sociais do ambiente da unidade, incluindo fatores de vulnerabilidade, movimentos atípicos e elementos estruturais que impactam a segurança e a operação.',
+  q:[{n:8,r:1,t:'Presença de risco no entorno',type:'radio',o:['Sim','Não']},
+     {n:9,t:'Classificação de risco externo',h:'Indique se houve identificação de riscos provenientes dos itens abaixo;',type:'check',o:['Pedintes','Vendedores Ambulantes','Usuários de drogas','Indivíduos em situação vulnerável','Furto','Roubo','Sem risco','Outra']},
+     {n:10,t:'Presença de policiamento na unidade na data do registro?',type:'check',o:['GCM','PM','PC','Não','Outra']},
+     {n:11,r:1,t:'Houve falhas estruturais visíveis?',type:'radio',o:['Sim','Não']}]},
+ {t:'Partes interessadas',
+  d:'Este bloco reúne informações sobre a interlocução de consultores com gestores da unidade, colaboradores operacionais, forças de segurança pública e demais agentes relevantes para a gestão de risco.',
+  q:[{n:12,r:1,t:'Houve contato com forças de segurança?',type:'radio',o:['Sim','Não']},
+     {n:13,r:1,t:'Alguma ação conjunta foi discutida ou realizada?',type:'radio',o:['Sim','Não']}]},
+ {t:'Avaliação de Processos Internos',
+  d:'Este bloco tem como objetivo analisar criticamente os fluxos e rotinas internas da unidade sob a ótica de segurança, prevenção e controle aos padrões definidos, identificando gargalos, riscos operacionais e oportunidades de melhoria.',
+  q:[{n:14,r:1,t:'Algum processo apresentou vulnerabilidade?',type:'radio',o:['Sim','Não','Não se aplica']}]},
+ {t:'Ocorrências e Ações',
+  d:'Neste bloco são formalizados os registros de anomalias, desvios de padrão ou situações atípicas identificadas durante a atuação, bem como as respectivas ações mitigadoras, corretivas ou articuladas junto aos stakeholders envolvidos.',
+  q:[{n:15,t:'Sobre a identificação da ameaça, informe quem identificou inicialmente a ameaça, suspeita ou sinal',type:'radio',o:['Consultor SIC','Supervisor Prevenção','Time Prevenção','Gerência','Outra']},
+     {n:16,t:'Classificação da ameaça',type:'check',o:['Interna','Externa','Estrutural','Comportamental','Institucional']},
+     {n:17,t:'Tipificação jurídica associada',type:'check',o:['Furto','Dano','Desacato','Ameaça','Assédio','Perturbação','Roubo','Outra']},
+     {n:18,t:'Setor envolvido',type:'check',o:['Açougue','Bazar','Bebidas','Bomboniere','Cafeteria','Doca','Eletro','Estoque','Êxodo','FLV (frutas, legumes e verduras)','Galeria','Padaria','Peixaria','Perfumaria','PGC (produtos de grande consumo)','Salsicharia (embutidos e afins)','Setor envolvido','Têxtil','Outra']},
+     {n:19,t:'Produto objeto do caso (descrito)',type:'text',p:'Insira sua resposta'},
+     {n:20,t:'Houve tentativa ou consumação?',type:'radio',o:['Consumado','Tentativa por Abandono','Tentativa por Abordagem']},
+     {n:21,t:'Se tentado - informe o Valor Recuperado/Prevenido',h:'Pode ser o valor aproximado',type:'text',p:'O valor deve ser um número'},
+     {n:22,t:'Ocorrência formalizada - (Cliente ou DP)?',type:'radio',o:['Sim - Registro Interno','Sim - Registro Externo (DP)','Não']},
+     {n:23,t:'Se não, por quê? Descreva o motivo que não foi registrada.',type:'text',p:'Insira sua resposta'},
+     {n:24,t:'Quem foi afetado diretamente por esta ocorrência?',type:'check',o:['Loja','Público Externo','Gerente','Fiscal de prevenção','Vigilante','Controlador de Acesso','Outra']},
+     {n:25,t:'Quem conduziu a intervenção e articulação',type:'check',o:['Consultor estratégico','Gerente de prevenção','Líder de prevenção','Supervisor de prevenção','Outra']},
+     {n:26,t:'Tipo de resposta adotada',type:'radio',o:['Abordagem','Mediação','Monitoramento','Articulação externa']},
+     {n:27,t:'Forças externas envolvidas',type:'check',o:['PM','GCM','Segurança privada','Conselho local','PC','Outra']},
+     {n:28,t:'Grau de sucesso da ação (0 a 5)',h:'Autoavaliação técnica do consultor',type:'scale'}]}
+];
+var bi=0, answers={}, hasDraft=true;
+function startWiz(resume){
+  if(resume){ bi=3; } else { bi=0; answers={}; }
+  renderBlock(); go('s-wiz');
+}
+function renderBlock(){
+  var b=BLOCKS[bi];
+  document.getElementById('wz-title').textContent=b.t;
+  document.getElementById('wz-step').textContent='Bloco '+(bi+1)+' de '+BLOCKS.length;
+  document.getElementById('wz-unit').textContent = bi>=2 ? 'Atacadão Flamboyant 701' : 'Novo registro';
+  var d=document.getElementById('wz-desc');
+  d.textContent=b.d||''; d.style.display=b.d?'block':'none';
+  var done=BLOCKS.slice(0,bi).reduce(function(a,x){return a+x.q.length;},0);
+  document.getElementById('wz-fill').style.width=(done/28*100)+'%';
+  document.getElementById('wz-count').textContent=done+'/28';
+  document.getElementById('wz-next').textContent=(bi===BLOCKS.length-1)?'Enviar':'Avançar';
+  var h='';
+  b.q.forEach(function(q){
+    h+='<div class="q"><div class="qn">Q'+q.n+(q.r?' · Obrigatória':'')+'</div>';
+    h+='<div class="qt">'+q.t+'</div>';
+    if(q.h) h+='<div class="qh">'+q.h+'</div>';
+    if(q.type==='radio'||q.type==='sel'){
+      q.o.forEach(function(o,i){
+        h+='<div class="opt'+(answers['q'+q.n]===i?' on':'')+'" onclick="pickOne(this,'+q.n+','+i+')"><span class="mk rd"></span>'+o+'</div>';
+      });
+    } else if(q.type==='check'){
+      q.o.forEach(function(o,i){
+        var a=answers['q'+q.n]||[];
+        h+='<div class="opt'+(a.indexOf(i)>-1?' on':'')+'" onclick="pickMany(this,'+q.n+','+i+')"><span class="mk"></span>'+o+'</div>';
+      });
+    } else if(q.type==='text'){
+      h+='<div class="txin">'+(q.p||'Insira sua resposta')+'</div>';
+    } else if(q.type==='scale'){
+      h+='<div class="scale">';
+      for(var s=0;s<=5;s++) h+='<div class="sc'+(answers['q'+q.n]===s?' on':'')+'" onclick="pickScale(this,'+q.n+','+s+')">'+s+'</div>';
+      h+='</div>';
+    }
+    h+='</div>';
+  });
+  document.getElementById('wz-body').innerHTML=h;
+  var st='';
+  for(var k=0;k<BLOCKS.length;k++){
+    st+='<div class="st'+(k<bi?' done':(k===bi?' now':''))+'" onclick="jumpBlock('+k+')" title="'+BLOCKS[k].t+'"></div>';
+  }
+  document.getElementById('wz-steps').innerHTML=st;
+  var hh=String(9+Math.floor(bi/3)).padStart(2,'0');
+  document.getElementById('wz-sync').textContent='Salvo no aparelho às '+hh+':41 · envio pendente';
+  document.getElementById('vp').scrollTop=0;
+}
+function jumpBlock(k){ bi=k; renderBlock(); }
+function pickOne(el,q,i){el.parentNode.querySelectorAll('.opt').forEach(function(x){x.classList.remove('on');});el.classList.add('on');answers['q'+q]=i;}
+function pickMany(el,q,i){el.classList.toggle('on');var a=answers['q'+q]||[];var p=a.indexOf(i);if(p>-1)a.splice(p,1);else a.push(i);answers['q'+q]=a;}
+function pickScale(el,q,s){el.parentNode.querySelectorAll('.sc').forEach(function(x){x.classList.remove('on');});el.classList.add('on');answers['q'+q]=s;}
+function wizNext(){ if(bi<BLOCKS.length-1){bi++;renderBlock();} else {hasDraft=false;go('s-resumo');} }
+function wizPrev(){ if(bi>0){bi--;renderBlock();} else {go('s-forms');} }
+
+buildNav(); go('s-inicio');
+</script>
+</body>
+</html>
