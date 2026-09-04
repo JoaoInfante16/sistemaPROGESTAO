@@ -9,21 +9,21 @@ jest.mock('../../src/database/queries', () => ({
   },
 }));
 
-// Mock OpenAI
-jest.mock('openai', () => {
-  const mockCreate = jest.fn();
-  return {
-    __esModule: true,
-    default: jest.fn().mockImplementation(() => ({
-      chat: {
-        completions: {
-          create: mockCreate,
-        },
-      },
-    })),
-    _mockCreate: mockCreate,
-  };
-});
+// O dedup fala com a OpenAI pelo client COMPARTILHADO (`services/openaiClient`),
+// nao pelo pacote `openai` direto — foi centralizado para o timeout de 60s valer
+// nos seis lugares que chamavam a API. Mockar o pacote nao intercepta mais nada.
+const mockCreate = jest.fn();
+jest.mock('../../src/services/openaiClient', () => ({
+  openai: { chat: { completions: { create: mockCreate } } },
+}));
+
+// `pipelineCore` monta o embeddingProvider com cache em Redis no momento do
+// import. Sem este mock a suite abre conexao de verdade e pendura sem falhar.
+const mockGenerateEmbedding = jest.fn();
+jest.mock('../../src/jobs/pipeline/pipelineCore', () => ({
+  buildEmbeddingText: jest.fn(() => 'texto do evento para embedding'),
+  embeddingProvider: { generate: mockGenerateEmbedding },
+}));
 
 jest.mock('../../src/config', () => ({
   config: {
@@ -43,15 +43,21 @@ jest.mock('../../src/middleware/logger', () => ({
 
 import { deduplicateNews } from '../../src/services/deduplication';
 
-const getMockCreate = () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const openai = require('openai');
-  return openai._mockCreate as jest.Mock;
-};
+const getMockCreate = () => mockCreate;
 
-// Helper: cria embedding fake normalizado
+/**
+ * Embedding fake normalizado, do TAMANHO REAL (1536).
+ *
+ * 🚨 O tamanho nao e detalhe: a camada 2 descarta candidato cujo vetor nao tenha
+ * 1536 posicoes, porque cosseno entre vetores de tamanhos diferentes devolveria
+ * numero sem significado. Este helper gerava 10 dimensoes — com isso, TODO
+ * candidato era descartado e `deduplicateNews` respondia "nao e duplicata"
+ * sempre. Os testes que esperavam `false` passavam sem exercitar nada.
+ */
+const DIMENSOES_OPENAI = 1536;
+
 function makeEmbedding(seed: number): number[] {
-  const vec = Array.from({ length: 10 }, (_, i) => Math.sin(seed + i));
+  const vec = Array.from({ length: DIMENSOES_OPENAI }, (_, i) => Math.sin(seed + i));
   const mag = Math.sqrt(vec.reduce((s, v) => s + v * v, 0));
   return vec.map((v) => v / mag);
 }
@@ -59,7 +65,11 @@ function makeEmbedding(seed: number): number[] {
 function makeNewsData(overrides = {}) {
   return {
     e_crime: true as const,
-    tipo_crime: 'roubo' as const,
+    // A taxonomia virou `roubo_furto` (+ `natureza` e `categoria_grupo`) quando
+    // as categorias entraram. `roubo` sobrevive so como alias na entrada do GPT.
+    tipo_crime: 'roubo_furto' as const,
+    natureza: 'ocorrencia' as const,
+    categoria_grupo: 'patrimonial' as const,
     cidade: 'São Paulo',
     bairro: 'Centro',
     rua: 'Rua Augusta',
@@ -119,7 +129,7 @@ describe('deduplicateNews', () => {
       mockInsertNewsSource.mockResolvedValue(undefined);
 
       getMockCreate().mockResolvedValue({
-        choices: [{ message: { content: 'SIM' } }],
+        choices: [{ message: { content: 'YES' } }],
       });
 
       const result = await deduplicateNews(
@@ -142,7 +152,7 @@ describe('deduplicateNews', () => {
       }]);
 
       getMockCreate().mockResolvedValue({
-        choices: [{ message: { content: 'NÃO' } }],
+        choices: [{ message: { content: 'NO' } }],
       });
 
       const result = await deduplicateNews(
@@ -185,7 +195,7 @@ describe('deduplicateNews', () => {
       mockInsertNewsSource.mockResolvedValue(undefined);
 
       getMockCreate().mockResolvedValue({
-        choices: [{ message: { content: 'SIM' } }],
+        choices: [{ message: { content: 'YES' } }],
       });
 
       const result = await deduplicateNews(

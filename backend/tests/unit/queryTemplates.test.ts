@@ -1,7 +1,25 @@
-import { QUERY_TEMPLATES, selectTemplates, buildQueries } from '../../src/services/search/queryTemplates';
+// Este arquivo testava `QUERY_TEMPLATES` e `selectTemplates` — cinco templates
+// fixos, com rodizio entre eles. Esse conceito morreu quando o usuario passou a
+// escolher os ASSUNTOS da busca no painel (03/08). O que sobreviveu e continua
+// aqui: o rodizio (agora sobre assuntos), o modo `keywords` por cidade, e a
+// diferenca entre auto-scan (parcial, de hora em hora) e busca manual (a lista
+// inteira, sob demanda).
+
+const mockGet = jest.fn();
+jest.mock('../../src/services/configManager', () => ({
+  configManager: { get: mockGet },
+}));
+
+import {
+  ASSUNTOS_PADRAO,
+  parseAssuntos,
+  getAssuntos,
+  buildQueries,
+  buildManualSearchQueries,
+} from '../../src/services/search/queryTemplates';
 import { MonitoredLocation } from '../../src/utils/types';
 
-const mockLocation: MonitoredLocation = {
+const cidade: MonitoredLocation = {
   id: 'loc-1',
   type: 'city',
   name: 'São Paulo',
@@ -14,107 +32,116 @@ const mockLocation: MonitoredLocation = {
   created_at: new Date(),
 };
 
-const keywordLocation: MonitoredLocation = {
-  ...mockLocation,
+const cidadeComPalavrasProprias: MonitoredLocation = {
+  ...cidade,
   mode: 'keywords',
   keywords: ['sequestro', 'extorsão'],
 };
 
-describe('QUERY_TEMPLATES', () => {
-  it('has 5 templates', () => {
-    expect(QUERY_TEMPLATES).toHaveLength(5);
+/** Lista previsivel, para o rodizio poder ser conferido por indice. */
+const CINCO = ['assunto A', 'assunto B', 'assunto C', 'assunto D', 'assunto E'];
+
+beforeEach(() => {
+  mockGet.mockReset();
+  mockGet.mockResolvedValue(CINCO.join('\n'));
+});
+
+describe('a lista de assuntos aceita o que o usuario digita', () => {
+  it('separa por quebra de linha ou por virgula — os dois', () => {
+    expect(parseAssuntos('roubo\nfurto,tráfico')).toEqual(['roubo', 'furto', 'tráfico']);
   });
 
-  it('template 0 (generico) uses default keywords for mode=any', () => {
-    const query = QUERY_TEMPLATES[0].build(mockLocation);
-    expect(query).toContain('crime polícia ocorrência');
-    expect(query).toContain('São Paulo');
-    expect(query).toContain('site:.br');
+  it('ignora espaco sobrando e linha vazia', () => {
+    expect(parseAssuntos('  roubo  ,\n\n  furto ')).toEqual(['roubo', 'furto']);
   });
 
-  it('template 0 (generico) uses custom keywords for mode=keywords', () => {
-    const query = QUERY_TEMPLATES[0].build(keywordLocation);
-    expect(query).toContain('sequestro OR extorsão');
-    expect(query).toContain('São Paulo');
+  it('descarta assunto repetido, mesmo com caixa diferente', () => {
+    // Repetido custaria uma query inteira para devolver a mesma SERP.
+    expect(parseAssuntos('Roubo\nroubo\nROUBO')).toEqual(['Roubo']);
   });
 
-  it('template 1 (crimes graves) always uses fixed terms', () => {
-    const query = QUERY_TEMPLATES[1].build(mockLocation);
-    expect(query).toContain('homicídio OR latrocínio OR tráfico');
-    expect(query).toContain('São Paulo');
-  });
-
-  it('all templates include city name and site:.br', () => {
-    for (const template of QUERY_TEMPLATES) {
-      const query = template.build(mockLocation);
-      expect(query).toContain('São Paulo');
-      expect(query).toContain('site:.br');
-    }
+  it('devolve lista vazia quando o campo esta vazio', () => {
+    expect(parseAssuntos('')).toEqual([]);
   });
 });
 
-describe('selectTemplates', () => {
-  it('selects correct number of templates', () => {
-    expect(selectTemplates(0, 2)).toHaveLength(2);
-    expect(selectTemplates(0, 3)).toHaveLength(3);
-    expect(selectTemplates(0, 1)).toHaveLength(1);
+describe('o sistema nunca fica sem assunto nenhum', () => {
+  it('usa a lista de fabrica quando o painel responde vazio', async () => {
+    mockGet.mockResolvedValue('');
+    expect(await getAssuntos()).toEqual(ASSUNTOS_PADRAO);
   });
 
-  it('clamps to 1-5 range', () => {
-    expect(selectTemplates(0, 0)).toHaveLength(1);
-    expect(selectTemplates(0, 10)).toHaveLength(5);
-  });
-
-  it('rotates through templates across scans', () => {
-    const scan0 = selectTemplates(0, 2).map(t => t.id);
-    const scan1 = selectTemplates(1, 2).map(t => t.id);
-    const scan2 = selectTemplates(2, 2).map(t => t.id);
-
-    // Different scans should pick different template sets
-    expect(scan0).toEqual([0, 1]);
-    expect(scan1).toEqual([2, 3]);
-    expect(scan2).toEqual([4, 0]); // wraps around
-  });
-
-  it('wraps correctly with queriesPerScan=3', () => {
-    const scan0 = selectTemplates(0, 3).map(t => t.id);
-    const scan1 = selectTemplates(1, 3).map(t => t.id);
-
-    expect(scan0).toEqual([0, 1, 2]);
-    expect(scan1).toEqual([3, 4, 0]); // wraps around
+  it('usa a lista de fabrica quando o painel responde lixo', async () => {
+    mockGet.mockResolvedValue('   ,,,  \n\n ');
+    expect(await getAssuntos()).toEqual(ASSUNTOS_PADRAO);
   });
 });
 
-describe('buildQueries', () => {
-  it('returns single query when multiQuery disabled', () => {
-    const queries = buildQueries(mockLocation, {
+describe('auto-scan: cobre a lista aos poucos, nao paga tudo de uma vez', () => {
+  it('cada query carrega o nome da cidade', async () => {
+    const queries = await buildQueries(cidade, {
+      multiQueryEnabled: true,
+      queriesPerScan: 3,
+      scanIndex: 0,
+    });
+    for (const q of queries) expect(q).toContain('São Paulo');
+  });
+
+  it('roda um assunto so quando multi-query esta desligado', async () => {
+    const queries = await buildQueries(cidade, {
       multiQueryEnabled: false,
       queriesPerScan: 3,
       scanIndex: 0,
     });
-
-    expect(queries).toHaveLength(1);
-    expect(queries[0]).toContain('crime polícia ocorrência');
+    expect(queries).toEqual(['assunto A São Paulo']);
   });
 
-  it('returns multiple queries when multiQuery enabled', () => {
-    const queries = buildQueries(mockLocation, {
-      multiQueryEnabled: true,
-      queriesPerScan: 2,
-      scanIndex: 0,
-    });
+  it('anda na lista a cada scan, e volta ao inicio no fim', async () => {
+    const scan = (i: number) =>
+      buildQueries(cidade, { multiQueryEnabled: true, queriesPerScan: 2, scanIndex: i });
 
-    expect(queries).toHaveLength(2);
-    expect(queries[0]).not.toBe(queries[1]); // different templates
+    expect(await scan(0)).toEqual(['assunto A São Paulo', 'assunto B São Paulo']);
+    expect(await scan(1)).toEqual(['assunto C São Paulo', 'assunto D São Paulo']);
+    // 5 assuntos, 2 por scan: o terceiro scan pega o ultimo e da a volta.
+    expect(await scan(2)).toEqual(['assunto E São Paulo', 'assunto A São Paulo']);
   });
 
-  it('uses custom keywords in generic template', () => {
-    const queries = buildQueries(keywordLocation, {
+  it('nunca pede mais assuntos do que existem na lista', async () => {
+    const queries = await buildQueries(cidade, {
       multiQueryEnabled: true,
-      queriesPerScan: 1,
+      queriesPerScan: 99,
       scanIndex: 0,
     });
+    expect(queries).toHaveLength(CINCO.length);
+  });
 
-    expect(queries[0]).toContain('sequestro OR extorsão');
+  it('palavra propria da cidade substitui a lista geral', async () => {
+    // E uma escolha por cidade, mais especifica que a lista do painel.
+    const queries = await buildQueries(cidadeComPalavrasProprias, {
+      multiQueryEnabled: true,
+      queriesPerScan: 3,
+      scanIndex: 0,
+    });
+    expect(queries).toEqual(['sequestro extorsão São Paulo']);
+    expect(mockGet).not.toHaveBeenCalled();
+  });
+});
+
+describe('busca manual: roda a lista inteira, porque e sob demanda', () => {
+  it('sem escolha na tela, usa a lista do painel INTEIRA', async () => {
+    const queries = await buildManualSearchQueries('Niterói');
+    expect(queries).toHaveLength(CINCO.length);
+    expect(queries[0]).toBe('assunto A Niterói');
+  });
+
+  it('a escolha da tela manda, e substitui a lista do painel', async () => {
+    // O usuario escolhe quais perguntas fazer e paga o tempo da propria escolha.
+    const queries = await buildManualSearchQueries('Niterói', ['tráfico', 'homicídio']);
+    expect(queries).toEqual(['tráfico Niterói', 'homicídio Niterói']);
+  });
+
+  it('escolha vazia cai na lista do painel, nao devolve nada vazio', async () => {
+    const queries = await buildManualSearchQueries('Niterói', []);
+    expect(queries).toHaveLength(CINCO.length);
   });
 });
