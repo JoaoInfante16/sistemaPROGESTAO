@@ -151,21 +151,13 @@ describe('🚨 quando a OpenAI cai, o filtro NAO aprova tudo', () => {
     expect(mockCreate).toHaveBeenCalledTimes(2);
   });
 
-  it('⚠️ MAS trecho sozinho reprova em silencio, sem retry e sem Sentry', async () => {
-    // Este teste NAO descreve o comportamento desejado — descreve o que existe,
-    // para a assimetria parar de passar despercebida.
-    //
-    // O caminho do lote foi endurecido (2 tentativas, Sentry, throw para o
-    // BullMQ re-enfileirar). O caminho de UM trecho ficou para tras: uma
-    // tentativa, `catch` devolvendo false, nenhum alerta. Nao viola a regra 8
-    // (nao aprova nada indevidamente), mas a noticia SOME sem ninguem saber.
-    //
-    // Mudar isso e decisao do Joao, nao consequencia de conserto de teste.
+  it('trecho sozinho tambem lanca — nao some em silencio', async () => {
+    // Ate 04/09 este caminho tinha UMA tentativa e devolvia `false` no catch: a
+    // noticia sumia sem alerta e sem retry, e um scan que achou um item so
+    // perdia justamente esse. Igualado ao caminho do lote a pedido do Joao.
     mockCreate.mockRejectedValue(new Error('API rate limit'));
 
-    const { results } = await filter1GPTBatch(['unico trecho']);
-
-    expect(results).toEqual([false]);
-    expect(mockCreate).toHaveBeenCalledTimes(1);
+    await expect(filter1GPTBatch(['unico trecho'])).rejects.toThrow('OpenAI falhou');
+    expect(mockCreate).toHaveBeenCalledTimes(2);
   });
 });

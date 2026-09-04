@@ -130,10 +130,17 @@ Achou algo? Ou o documento ficou para trás (corrija o documento), ou o identifi
 ## 3. Definição de "pronto"
 
 1. **Backend TS** — `npx tsc --noEmit` passa sem erro
-2. **Flutter** — `flutter clean` + build, testado em **device físico via LAN IP**, nunca emulador
-3. **Migration SQL** — aplicada no Supabase **e** registrada no [MIGRATIONS_LOG](workdesk/SQL/MIGRATIONS_LOG.md), no mesmo turno
-4. **DEV_LOG** atualizado com a mudança
-5. **Commit feito** — ou adiado explicitamente, com motivo
+2. **Testes** — `npm test` **verde**, e caminho novo que o cliente enxerga **ganha teste**
+3. **Flutter** — `flutter clean` + build, testado em **device físico via LAN IP**, nunca emulador
+4. **Migration SQL** — aplicada no Supabase **e** registrada no [MIGRATIONS_LOG](workdesk/SQL/MIGRATIONS_LOG.md), no mesmo turno
+5. **DEV_LOG** atualizado com a mudança
+6. **Commit feito** — ou adiado explicitamente, com motivo
+
+🚨 **Teste vermelho se conserta ANTES de qualquer coisa, e a suspeita começa no teste, não no código.** Em 04/09 a suíte estava com 10 de 17 suítes quebradas e **nenhuma era bug** — eram testes descrevendo um sistema que já tinha mudado. Oito deles exigiam que o Filter1 aprovasse tudo com a OpenAI fora do ar, que é o oposto da regra 8 da ARQUITETURA: quem "consertasse o código para o teste passar" reintroduziria um vazamento de dinheiro. **Teste velho não é neutro — é instrução errada esperando alguém obediente.** Mudou o código de propósito? Atualize o teste. Não sabe qual dos dois está certo? **Vá na fonte e pergunte**, nunca escolha o mais fácil.
+
+📌 **O nome do teste se escreve em comportamento, em português** — *"o consultor só enxerga as lojas da carteira dele"*, não *"deve filtrar por scope"*. A saída do `npm test` é a lista do que o sistema promete, e é assim que o João revisa sem ler código (§1).
+
+Este item 2 **não existia** até 04/09, e é exatamente o que apodreceu: a regra 1 estava escrita e era obedecida; a 2 não estava escrita e a suíte foi para 60% de vermelho sem ninguém notar. Hoje o [CI](.github/workflows/ci.yml) roda as duas em todo push.
 
 > **Nada disto é sagrado.** Se uma regra daqui atrapalhar, o João reporta e a gente revisa. Refinar com o uso, não engessar.
 

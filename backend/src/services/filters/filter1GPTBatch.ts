@@ -207,19 +207,34 @@ Trecho: "${snippet}"
 
 Responda APENAS "SIM" ou "NAO":`;
 
-  try {
-    const response = await openai.chat.completions.create({
-      model: config.openaiModel,
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 5,
-      temperature: 0,
-    });
+  // 🚨 MESMO tratamento de erro do caminho em lote — 2 tentativas, Sentry, e
+  // throw para o BullMQ re-enfileirar (o backoff do scan da ~31 min pra OpenAI
+  // voltar; ver cronScheduler).
+  //
+  // Ate 04/09 este caminho tinha UMA tentativa e devolvia `false` no catch. Nao
+  // era o erro caro da regra 8 (nao aprovava nada indevidamente), mas era pior
+  // de outro jeito: a noticia sumia em SILENCIO, sem alerta e sem retry — e um
+  // scan que achou um item so perde justamente esse. O endurecimento do lote
+  // nunca tinha chegado aqui.
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const response = await openai.chat.completions.create({
+        model: config.openaiModel,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 5,
+        temperature: 0,
+      });
 
-    const answer = response.choices[0].message.content?.trim().toUpperCase().replace(/[^A-Z]/g, '');
-    const tokensUsed = response.usage?.total_tokens || 0;
-    return { result: answer === 'SIM' || answer === 'YES', tokensUsed };
-  } catch (error) {
-    logger.error('[Filter1Single] GPT error:', error);
-    return { result: false, tokensUsed: 0 };
+      const answer = response.choices[0].message.content?.trim().toUpperCase().replace(/[^A-Z]/g, '');
+      const tokensUsed = response.usage?.total_tokens || 0;
+      return { result: answer === 'SIM' || answer === 'YES', tokensUsed };
+    } catch (error) {
+      Sentry.captureException(error, { tags: { provider: 'openai', stage: 'filter1' } });
+      logger.error(`[Filter1Single] Attempt ${attempt} GPT error:`, error);
+      if (attempt < 2) continue;
+      throw new Error(`[Filter1Single] OpenAI falhou apos 2 tentativas: ${(error as Error).message}`);
+    }
   }
+
+  throw new Error('[Filter1Single] estado inesperado apos loop de retry');
 }

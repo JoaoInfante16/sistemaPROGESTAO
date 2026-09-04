@@ -1,0 +1,84 @@
+# CI — a maquina que impede a rede de rasgar de novo.
+#
+# POR QUE ESTE ARQUIVO EXISTE:
+# Em 04/09/2026 a suite do backend estava com 10 de 17 suites vermelhas e 25
+# testes quebrados. Nenhum era bug: eram testes descrevendo um sistema que ja
+# tinha mudado. Ninguem sabia ha quanto tempo, porque NADA os rodava — nao havia
+# CI e nao havia hook. O `tsc` passava limpo, e a unica diferenca entre os dois
+# e que so o typecheck estava na definicao de pronto.
+#
+# Oito daqueles testes exigiam que o Filter1 aprovasse TODAS as noticias quando a
+# OpenAI caisse — exatamente o que a regra 8 da ARQUITETURA proibe, porque
+# aprovar tudo manda o lote inteiro para os estagios caros. Um teste vermelho e
+# velho nao e neutro: e uma instrucao errada esperando alguem obediente.
+#
+# Este arquivo existe para que "o Joao nao le codigo" pare de ser um risco: a
+# maquina responde sim ou nao, e a resposta nao depende de confiar em ninguem.
+#
+# ESCOPO — so o backend, de proposito. O admin-panel so tem `next build`, que
+# precisa de variavel de ambiente e falharia por motivo errado. CI que falha a
+# toa vira ruido que se ignora, e ai nao e mais defesa. Entra quando tiver um
+# comando que valha a pena.
+
+name: CI
+
+on:
+  push:
+    branches: [develop, staging, main]
+  pull_request:
+    branches: [develop, staging, main]
+
+# Push novo na mesma branch cancela a rodada anterior: o que importa e o estado
+# do topo, nao a fila de rodadas intermediarias.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend — tipos e testes
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node 22 (o mesmo do package.json engines)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Instalar dependencias
+        working-directory: backend
+        run: npm ci
+
+      # Este ja era a unica regra da definicao de pronto que ninguem furava —
+      # justamente porque estava escrita. Agora e a maquina que confere.
+      - name: Typecheck
+        working-directory: backend
+        run: npx tsc --noEmit
+
+      # Os nomes dos testes sao escritos em COMPORTAMENTO e em portugues: a
+      # saida daqui e uma lista legivel do que o sistema promete, que e como o
+      # Joao revisa sem ler codigo. Ver CLAUDE.md §1.
+      - name: Testes
+        working-directory: backend
+        run: npx jest --ci --verbose
+
+  workdesk:
+    name: Workdesk — links e identificadores
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Mesmo verificador que roda no SessionStart. Aqui ele pega o caso que o
+      # hook nao pega: documento que apodreceu num commit feito por outra pessoa,
+      # ou por uma sessao que ignorou o aviso.
+      - name: Verificador da workdesk
+        run: node workdesk/scripts/verificar-workdesk.cjs

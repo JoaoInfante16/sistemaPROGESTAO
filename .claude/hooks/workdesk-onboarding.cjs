@@ -57,21 +57,36 @@ function avisoDeApodrecimento() {
       saida = e.stdout;
     }
     if (!saida) return '';
-    const { problemas = [], ausentes = [] } = JSON.parse(saida);
-    if (!problemas.length && !ausentes.length) return '';
+    const { problemas = [], ausentes = [], avisos = [] } = JSON.parse(saida);
+    if (!problemas.length && !ausentes.length && !avisos.length) return '';
 
-    const linhas = problemas.slice(0, 12).map(
-      (p) => `- \`${p.alvo}\` em **${p.doc}** — ${p.tipo === 'link' ? 'link quebrado' : 'nao existe mais no codigo'}`
-    );
-    if (problemas.length > 12) linhas.push(`- …e mais ${problemas.length - 12}`);
-    for (const d of ausentes) linhas.push(`- **${d}** nao foi encontrado`);
+    let texto = '';
 
-    return '\n\n---\n\n🚨 **A workdesk apodreceu em ' + (problemas.length + ausentes.length) +
-      ' ponto(s).** O verificador achou isto agora:\n\n' + linhas.join('\n') +
-      '\n\nCada item e: ou o documento ficou para tras do codigo (corrija o documento), ' +
-      'ou e um identificador externo legitimo (adicione a `EXTERNOS` em ' +
-      '`workdesk/scripts/verificar-workdesk.cjs`, **com motivo**). Detalhe completo: ' +
-      '`node workdesk/scripts/verificar-workdesk.cjs`.';
+    if (problemas.length || ausentes.length) {
+      const linhas = problemas.slice(0, 12).map(
+        (p) => `- \`${p.alvo}\` em **${p.doc}** — ${p.tipo === 'link' ? 'link quebrado' : 'nao existe mais no codigo'}`
+      );
+      if (problemas.length > 12) linhas.push(`- …e mais ${problemas.length - 12}`);
+      for (const d of ausentes) linhas.push(`- **${d}** nao foi encontrado`);
+
+      texto += '\n\n---\n\n🚨 **A workdesk apodreceu em ' + (problemas.length + ausentes.length) +
+        ' ponto(s).** O verificador achou isto agora:\n\n' + linhas.join('\n') +
+        '\n\nCada item e: ou o documento ficou para tras do codigo (corrija o documento), ' +
+        'ou e um identificador externo legitimo (adicione a `EXTERNOS` em ' +
+        '`workdesk/scripts/verificar-workdesk.cjs`, **com motivo**). Detalhe completo: ' +
+        '`node workdesk/scripts/verificar-workdesk.cjs`.';
+    }
+
+    // Tamanho e outra categoria: nao e erro, e sinal de que a fase esticou
+    // demais. Nao exige acao AGORA — exige que a proposta de corte seja feita ao
+    // Joao, que e quem decide fechar fase.
+    if (avisos.length) {
+      texto += '\n\n---\n\n📏 **Teto de documento estourado** (nao e erro, e sinal ' +
+        'de fase esticada — vale propor o corte ao Joao, nao consertar sozinho):\n\n' +
+        avisos.map((a) => `- ${a}`).join('\n');
+    }
+
+    return texto;
   } catch {
     return '';
   }

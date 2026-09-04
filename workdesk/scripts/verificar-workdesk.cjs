@@ -262,11 +262,91 @@ function verificarLinks(doc, texto) {
   return achados;
 }
 
+/**
+ * TETOS DE TAMANHO — o unico apodrecimento que da pra medir sem ler.
+ *
+ * Nenhum destes numeros foi inventado aqui: os tres estao escritos nos proprios
+ * documentos ou no CLAUDE.md, e os tres ja foram furados na pratica.
+ *
+ * 🚨 Aviso de tamanho NAO derruba o CI (nao entra em `problemas`). Rotacionar
+ * uma fase e trabalho do Joao e leva dias; deixar o CI vermelho enquanto isso
+ * faria dele ruido que se ignora — que e a doenca que este script combate.
+ */
+const TETOS = {
+  // Escrito duas linhas abaixo do proprio bloco, no DEV_LOG. Ja esteve em 50
+  // linhas (04/09) e o bloco que virou ESTADO DO MUNDO chegou a 376 — ele nao
+  // nasceu grande, nasceu furando o teto em dez linhas.
+  ondeParamos: 25,
+  // CLAUDE.md §2: "Se o DEV_LOG passar de ~1.500 linhas [...] a fase
+  // provavelmente ja devia ter fechado".
+  devLog: 1500,
+  // CLAUDE.md §2: a antiga Fase 9 acumulou "seis trabalhos distintos" antes de
+  // alguem notar. Cada `###` dentro do 🔴 AGORA e um trabalho.
+  assuntosNoAgora: 6,
+};
+
+/** Conta as linhas de um bloco: do titulo ate o proximo `---` ou titulo. */
+function tamanhoDoBloco(linhas, inicio) {
+  for (let i = inicio + 1; i < linhas.length; i++) {
+    if (linhas[i].trim() === '---' || /^#{1,3} /.test(linhas[i])) return i - inicio;
+  }
+  return linhas.length - inicio;
+}
+
+function verificarTetos() {
+  const avisos = [];
+
+  const devLogPath = path.join(WORKDESK, 'DEV_LOG.md');
+  if (fs.existsSync(devLogPath)) {
+    const linhas = fs.readFileSync(devLogPath, 'utf8').split('\n');
+
+    const i = linhas.findIndex((l) => /ONDE PARAMOS/.test(l) && /^#/.test(l));
+    if (i >= 0) {
+      const tamanho = tamanhoDoBloco(linhas, i);
+      if (tamanho > TETOS.ondeParamos) {
+        avisos.push(
+          `ONDE PARAMOS com ${tamanho} linhas (teto ~${TETOS.ondeParamos}). ` +
+            'O que sobrou virou arquitetura ou roadmap — mandar pro documento certo.',
+        );
+      }
+    }
+
+    if (linhas.length > TETOS.devLog) {
+      avisos.push(
+        `DEV_LOG com ${linhas.length} linhas (teto ~${TETOS.devLog}). ` +
+          'Sinal de que a fase ja devia ter fechado — propor o corte.',
+      );
+    }
+  }
+
+  const roadmapPath = path.join(WORKDESK, 'ROADMAP.md');
+  if (fs.existsSync(roadmapPath)) {
+    const linhas = fs.readFileSync(roadmapPath, 'utf8').split('\n');
+    const inicio = linhas.findIndex((l) => /^#+ .*🔴/.test(l));
+    if (inicio >= 0) {
+      let assuntos = 0;
+      for (let i = inicio + 1; i < linhas.length; i++) {
+        if (/^#{1,2} .*(🟡|🔵)/.test(linhas[i])) break;
+        if (/^### /.test(linhas[i])) assuntos++;
+      }
+      if (assuntos >= TETOS.assuntosNoAgora) {
+        avisos.push(
+          `🔴 AGORA carregando ${assuntos} assuntos (a Fase 9 travou com ${TETOS.assuntosNoAgora}). ` +
+            'Uma fase e um trabalho — se sao varios, o gatilho da rotacao ja passou.',
+        );
+      }
+    }
+  }
+
+  return avisos;
+}
+
 function main() {
   const json = process.argv.includes('--json');
   const idx = indexarCodigo();
   const problemas = [];
   const ausentes = [];
+  const avisos = verificarTetos();
 
   for (const doc of PERSISTENTES) {
     const caminho = path.join(RAIZ, doc);
@@ -280,12 +360,15 @@ function main() {
   }
 
   if (json) {
-    console.log(JSON.stringify({ problemas, ausentes }));
+    console.log(JSON.stringify({ problemas, ausentes, avisos }));
+    // Aviso de tamanho nao entra no codigo de saida — ver TETOS.
     process.exit(problemas.length || ausentes.length ? 1 : 0);
   }
 
   console.log('\nVerificador da workdesk — ' + PERSISTENTES.length + ' documentos persistentes\n');
   for (const d of ausentes) console.log('  [!] documento nao encontrado: ' + d);
+  for (const a of avisos) console.log('  [tamanho] ' + a);
+  if (avisos.length) console.log('');
 
   if (!problemas.length && !ausentes.length) {
     console.log('  OK — nenhum identificador fantasma, nenhum link quebrado.\n');
