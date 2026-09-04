@@ -61,7 +61,7 @@ decidir São Paulo no rodízio · APK 1.2.1+6.
 
 ---
 
-## 2026-09-04 — a fronteira vira documento, e o §5 do CLAUDE.md morre
+## 2026-09-04 — o marceneiro e o dono do negócio, e o §5 do CLAUDE.md morre
 
 Sessão de consultoria sobre como a workdesk e a memória se sustentam quando o
 sistema dobrar de tamanho. Três achados, dois consertados aqui.
@@ -93,6 +93,26 @@ capacidade e não sabe quem o usa; papel é linha no banco*. O teste que resume:
 **criar papel novo é inserir uma linha, não fazer deploy.** Mais a regra 11 do §2,
 que põe o recorte de quem-vê-o-quê numa camada só — com quatro frentes de leitura
 planejadas, filtro em tela é quatro chances de vazar dado sensível.
+
+**A divisão do trabalho entrou no CLAUDE.md §1** — pedida pelo João nesta sessão,
+com a analogia dele: *"o marceneiro é responsável pela parte técnica, mas pergunta
+ao cliente, porque é o cliente que é dono do negócio"*. Dele: lógica e desenho do
+sistema, o que o cliente precisa, o que o produto promete — **nunca se infere**.
+Do Claude: como se faz. E como ele **não lê código e não vai revisar**, duas
+regras deixam de ser estilo e viram obrigação: perguntar com recomendação e
+consequência (nunca menu aberto, que gasta a atenção dele) e **reportar em
+comportamento, não em código** — é a língua em que ele é o especialista, e é o que
+substitui a revisão que ele não pode fazer.
+
+Junto entrou o teste que separa as duas caixas, porque a linha real não é
+"código vs. desenho": **muda o que uma pessoa vê, faz ou sente, ou o que o negócio
+pode prometer? Então é dele** — mesmo chegando vestido de detalhe técnico. E o
+método dele: planejamento largo primeiro, detalhe fino quando a etapa chega. Não
+é indecisão; instância nova não deve exigir que ele feche tudo na largada.
+
+Custo: o CLAUDE.md foi de 14.348 para 17.698 chars (~+900 tokens em **todo**
+turno). Paga-se porque é comportamento, não consulta. Se precisar recuperar
+espaço, o candidato a sair é o §8 (URLs e custos são referência).
 
 📌 **Fica pendente, discutido e não feito:** a suíte do backend tem **10 de 17
 suítes quebradas** (25 testes de 176) e nada as roda — sem CI, sem hook. O `tsc`
