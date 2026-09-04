@@ -86,10 +86,33 @@ function intervaloDeDatas(devLog) {
   return { inicio: datas[0], fim: datas[datas.length - 1] };
 }
 
-/** O preambulo do documento: tudo antes do primeiro titulo de secao. */
+/**
+ * O preambulo do documento: tudo antes do primeiro titulo de secao.
+ *
+ * Carregar o preambulo do proprio documento (em vez de um esqueleto fixo aqui)
+ * e de proposito: o que a workdesk convencionou sobre o cabecalho segue valendo,
+ * sem precisar ser duplicado neste script.
+ *
+ * ⚠️ Corta o `---` do fim, senao ele soma com o separador que vem depois e sai
+ * duplicado (aconteceu no primeiro uso, em 04/09).
+ */
 function preambulo(texto, regexPrimeiraSecao) {
   const m = texto.match(regexPrimeiraSecao);
-  return m ? texto.slice(0, m.index).trimEnd() : texto.trimEnd();
+  const bruto = m ? texto.slice(0, m.index) : texto;
+  return bruto.trimEnd().replace(/\n-{3,}$/, '').trimEnd();
+}
+
+/**
+ * Troca as referencias de numero de fase no preambulo.
+ *
+ * ⚠️ Sao DUAS trocas, e a primeira versao so fez a do titulo: o cabecalho cita
+ * a fase mais de uma vez ("Documento da Fase 12 — arquivado em `Fases/Fase 12/`")
+ * e ainda carrega o intervalo de fases ja arquivadas ("Fases 1 a 11").
+ */
+function renumerar(texto, deFase, paraFase) {
+  return texto
+    .replace(new RegExp(`Fase ${deFase}\\b`, 'g'), `Fase ${paraFase}`)
+    .replace(/(Fases\s+1\s+a\s+)\d+/g, `$1${deFase}`);
 }
 
 /** Recorta do 🟡 DEPOIS ate o fim — o que NAO morre com a fase. */
@@ -145,7 +168,7 @@ function main() {
   const sobrevive = oQueSobrevive(roadmap);
 
   const novoDevLog =
-    preambulo(devLog, /^##\s/m).replace(new RegExp(`Fase ${n}[^)\\n]*`), `Fase ${proxima}`) +
+    renumerar(preambulo(devLog, /^##\s/m), n, proxima) +
     '\n\n---\n\n## 🚦 ONDE PARAMOS\n\n' +
     '> Única seção deste arquivo que se **sobrescreve** em vez de acumular.\n' +
     '> Teto: ~25 linhas. Passou disso, virou arquitetura ou virou roadmap.\n\n' +
@@ -153,7 +176,7 @@ function main() {
     'A Fase ' + proxima + ' ainda não começou — o primeiro trabalho define o assunto.\n';
 
   const novoRoadmap =
-    preambulo(roadmap, /^#+\s*🔴/m).replace(new RegExp(`Fase ${n}[^)\\n]*`), `Fase ${proxima}`) +
+    renumerar(preambulo(roadmap, /^#+\s*🔴/m), n, proxima) +
     '\n\n---\n\n# 🔴 AGORA\n\n' +
     '_Vazio. O que entrar aqui define o assunto da Fase ' + proxima + ' — e uma fase é **um**\n' +
     'trabalho: se começarem a caber vários assuntos, o corte já devia ter acontecido._\n\n' +

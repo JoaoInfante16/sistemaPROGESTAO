@@ -110,7 +110,7 @@ O DEV_LOG e o ROADMAP **andam juntos**: são as duas metades do mesmo período �
 
 **Ao encerrar**, a pasta tem que ficar **auto-contida**: recebe os 🔄 recortados, uma **cópia** da `ARQUITETURA` (retrato do fim da fase — a viva continua na raiz) e um **README** com o que a fase resolveu, as descobertas que valem para sempre e os erros cometidos. Atualizar também o índice [Fases/README.md](workdesk/Fases/README.md). Só então a raiz recomeça com DEV_LOG e ROADMAP novos.
 
-📁 **O nome da pasta carrega o número, o nome e o período:** `Fase 12 — planejamento da reunião SIC — 2026-08-29 a 2026-09-04`. Com o zero à esquerda, a ordem alfabética continua sendo a cronológica. O **nome** entrou em 04/09 a pedido do João: achar *"a fase do planejamento da reunião"* numa lista de datas era impossível. As pastas 01 a 11 ficam sem nome — são arquivo morto com links apontando para elas, e documento arquivado não se reescreve.
+📁 **O nome da pasta carrega o número, o nome e o período:** `Fase 12 — planejamento com a SIC — 2026-08-29 a 2026-09-04`. Com o zero à esquerda, a ordem alfabética continua sendo a cronológica. O **nome** entrou em 04/09 a pedido do João: achar *"a fase do planejamento da reunião"* numa lista de datas era impossível. As pastas 01 a 11 ficam sem nome — são arquivo morto com links apontando para elas, e documento arquivado não se reescreve.
 
 ⚙️ **O encerramento é um comando:** `/fechar-fase`. A parte mecânica (numeração, datas, mover, recriar a raiz, **carregar o 🟡 DEPOIS e o 🔵 IDEIAS para o ROADMAP novo**) é do [script](workdesk/scripts/fechar-fase.cjs), que recusa rodar com a árvore suja. A parte que exige ler a fase inteira — o README, e decidir o que virou ARQUITETURA — está na [skill](.claude/skills/fechar-fase/SKILL.md).
 
@@ -118,7 +118,7 @@ O DEV_LOG e o ROADMAP **andam juntos**: são as duas metades do mesmo período �
 
 **Documento arquivado não se reescreve.** Retrato é retrato — link quebrado em pasta de fase é esperado, e o que sumiu está mapeado no [índice das fases](workdesk/Fases/README.md).
 
-Estamos na **Fase 11** (produção de verdade: deploy, auth, dedup, infra); 1 a 10 estão arquivadas.
+🚨 **Qual é a fase de agora não se escreve aqui.** Esta linha já disse "Fase 11" durante a Fase 12 inteira — é o tipo de frase que envelhece sozinha a cada poucas semanas, na camada mais cara do projeto. A fase corrente está no título do [DEV_LOG](workdesk/DEV_LOG.md) e do [ROADMAP](workdesk/ROADMAP.md); as encerradas, no [índice](workdesk/Fases/README.md).
 
 ### O verificador — a única defesa que não depende de memória
 

@@ -27,7 +27,8 @@ pasta carrega a data, então a ordenação alfabética é a cronológica.
 | 09 | 02 a 06/08 | **o app à altura do backend**: os oito campos ignorados | [Fase 09](./Fase%2009%20—%202026-08-02%20a%202026-08-06/) |
 | 10 | 08 a 14/08 | **o redesign "fio de agência"** | [Fase 10](./Fase%2010%20—%202026-08-08%20a%202026-08-14/) |
 | 11 | 16 a 29/08 | **produção de verdade**: o deploy que não deployava, a conta que se perdia, o dedup e o banco próprio de staging | [Fase 11](./Fase%2011%20—%202026-08-16%20a%202026-08-29/) |
-| 12 | 29/08 → em curso | o app deixa de ser só de notícias: níveis de acesso e comportamento por usuário | *viva, na [raiz](../)* |
+| 12 | 29 a 04/09 | **planejamento com a SIC**: o app deixa de ser app e vira sistema corporativo — e o Google matou o feed por 3 dias no meio | [Fase 12](./Fase%2012%20—%20planejamento%20com%20a%20SIC%20—%202026-08-29%20a%202026-09-04/) |
+| 13 | 04/09 → em curso | ainda sem assunto — o primeiro trabalho define | *viva, na [raiz](../)* |
 
 ---
 
