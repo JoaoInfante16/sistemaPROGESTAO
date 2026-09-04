@@ -204,10 +204,12 @@ describe('schemas.manualSearch', () => {
 });
 
 describe('schemas.triggerManualSearch', () => {
+  // O campo virou `cidades` (lista) em 02/08, e a lista aceita EXATAMENTE UMA:
+  // o custo por cidade e linear no tempo, e o app desiste de esperar em 10 min.
   it('should accept valid trigger with defaults', () => {
     const result = schemas.triggerManualSearch.safeParse({
       estado: 'Rio de Janeiro',
-      cidade: 'Niteroi',
+      cidades: ['Niteroi'],
     });
     expect(result.success).toBe(true);
     if (result.success) {
@@ -218,21 +220,42 @@ describe('schemas.triggerManualSearch', () => {
   it('should accept all fields', () => {
     const result = schemas.triggerManualSearch.safeParse({
       estado: 'Rio de Janeiro',
-      cidade: 'Niteroi',
+      cidades: ['Niteroi'],
       periodo_dias: 90,
-      tipo_crime: 'Roubo',
+      assuntos: ['tráfico', 'queda de energia'],
+      tipo_crime: 'Roubo', // compat: versao anterior mandava um tipo so
     });
     expect(result.success).toBe(true);
   });
 
-  it('should reject missing estado', () => {
+  it('🚨 recusa duas cidades — backend e app tem que subir juntos', () => {
+    // O APK em campo ainda deixa escolher ate 10 (MultiCitySearchField). Quem
+    // escolher 2 toma 400 — e proposital, mas precisa ser lembrado antes de
+    // alguem "consertar" o teto aqui sozinho.
     const result = schemas.triggerManualSearch.safeParse({
-      cidade: 'Niteroi',
+      estado: 'Rio de Janeiro',
+      cidades: ['Niteroi', 'Maricá'],
     });
     expect(result.success).toBe(false);
   });
 
-  it('should reject missing cidade', () => {
+  it('recusa periodo acima de 180 dias, que e o teto de paciencia do app', () => {
+    const result = schemas.triggerManualSearch.safeParse({
+      estado: 'Rio de Janeiro',
+      cidades: ['Niteroi'],
+      periodo_dias: 365,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject missing estado', () => {
+    const result = schemas.triggerManualSearch.safeParse({
+      cidades: ['Niteroi'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('should reject missing cidades', () => {
     const result = schemas.triggerManualSearch.safeParse({
       estado: 'Rio de Janeiro',
     });
@@ -242,7 +265,7 @@ describe('schemas.triggerManualSearch', () => {
   it('should reject periodo_dias > 365', () => {
     const result = schemas.triggerManualSearch.safeParse({
       estado: 'RJ',
-      cidade: 'Niteroi',
+      cidades: ['Niteroi'],
       periodo_dias: 400,
     });
     expect(result.success).toBe(false);
@@ -251,7 +274,7 @@ describe('schemas.triggerManualSearch', () => {
   it('should reject periodo_dias < 1', () => {
     const result = schemas.triggerManualSearch.safeParse({
       estado: 'RJ',
-      cidade: 'Niteroi',
+      cidades: ['Niteroi'],
       periodo_dias: 0,
     });
     expect(result.success).toBe(false);

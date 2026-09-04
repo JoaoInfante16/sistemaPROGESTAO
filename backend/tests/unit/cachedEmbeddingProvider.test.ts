@@ -2,12 +2,16 @@
 const mockRedisGet = jest.fn();
 const mockRedisSetex = jest.fn();
 const mockRedisIncr = jest.fn().mockResolvedValue(1);
+// `del` entrou junto com a validacao de dimensao: cache corrompido e apagado
+// antes de regenerar, para nao ser lido de novo no proximo acesso.
+const mockRedisDel = jest.fn().mockResolvedValue(1);
 
 jest.mock('../../src/config/redis', () => ({
   redis: {
     get: mockRedisGet,
     setex: mockRedisSetex,
     incr: mockRedisIncr,
+    del: mockRedisDel,
   },
 }));
 
@@ -29,15 +33,29 @@ jest.mock('../../src/middleware/logger', () => ({
 import { CachedEmbeddingProvider } from '../../src/services/embedding/CachedEmbeddingProvider';
 import { EmbeddingProvider, EmbeddingResult } from '../../src/services/embedding/EmbeddingProvider';
 
+/**
+ * 🚨 Embedding de teste tem que ter 1536 posicoes — o tamanho real da OpenAI.
+ *
+ * A leitura do cache valida a dimensao e trata qualquer outro tamanho como
+ * CACHE CORROMPIDO: apaga a chave e regenera. Os fixtures tinham 3 posicoes,
+ * entao todo "cache HIT" caia no caminho de corrompido e o teste media o
+ * caminho errado sem ninguem notar.
+ */
+const DIMENSOES_OPENAI = 1536;
+
+function vetor(valor: number): number[] {
+  return new Array(DIMENSOES_OPENAI).fill(valor);
+}
+
 function createMockProvider(): EmbeddingProvider {
   return {
     generate: jest.fn().mockResolvedValue({
-      embedding: [0.1, 0.2, 0.3],
+      embedding: vetor(0.1),
       tokensUsed: 10,
     } as EmbeddingResult),
     generateBatch: jest.fn().mockImplementation(async (texts: string[]) => {
       return texts.map((_, i) => ({
-        embedding: [0.1 * (i + 1), 0.2 * (i + 1), 0.3 * (i + 1)],
+        embedding: vetor(0.1 * (i + 1)),
         tokensUsed: 10,
       }));
     }),
@@ -53,7 +71,7 @@ describe('CachedEmbeddingProvider', () => {
 
   describe('generate - cache HIT', () => {
     it('should return cached embedding without calling real provider', async () => {
-      const cached: EmbeddingResult = { embedding: [0.5, 0.6, 0.7], tokensUsed: 5 };
+      const cached: EmbeddingResult = { embedding: vetor(0.6), tokensUsed: 5 };
       mockRedisGet.mockResolvedValue(JSON.stringify(cached));
 
       const mockProvider = createMockProvider();
@@ -77,7 +95,7 @@ describe('CachedEmbeddingProvider', () => {
       const result = await cachedProvider.generate('test text');
 
       expect(mockProvider.generate).toHaveBeenCalledWith('test text');
-      expect(result.embedding).toEqual([0.1, 0.2, 0.3]);
+      expect(result.embedding).toEqual(vetor(0.1));
       expect(mockRedisSetex).toHaveBeenCalledWith(
         expect.stringMatching(/^embedding:/),
         2592000,
@@ -107,7 +125,7 @@ describe('CachedEmbeddingProvider', () => {
 
   describe('generateBatch - mixed cache', () => {
     it('should only generate embeddings for uncached texts', async () => {
-      const cached: EmbeddingResult = { embedding: [0.9, 0.8, 0.7], tokensUsed: 5 };
+      const cached: EmbeddingResult = { embedding: vetor(0.8), tokensUsed: 5 };
 
       // Primeiro texto: cache HIT, segundo e terceiro: MISS
       mockRedisGet
@@ -129,7 +147,7 @@ describe('CachedEmbeddingProvider', () => {
     });
 
     it('should not call real provider when all texts are cached', async () => {
-      const cached: EmbeddingResult = { embedding: [0.5, 0.5, 0.5], tokensUsed: 5 };
+      const cached: EmbeddingResult = { embedding: vetor(0.5), tokensUsed: 5 };
       mockRedisGet.mockResolvedValue(JSON.stringify(cached));
 
       const mockProvider = createMockProvider();
@@ -164,7 +182,7 @@ describe('CachedEmbeddingProvider', () => {
 
       const result = await cachedProvider.generate('test');
 
-      expect(result.embedding).toEqual([0.1, 0.2, 0.3]);
+      expect(result.embedding).toEqual(vetor(0.1));
       expect(mockProvider.generate).toHaveBeenCalled();
     });
 
@@ -177,7 +195,7 @@ describe('CachedEmbeddingProvider', () => {
 
       const result = await cachedProvider.generate('test');
 
-      expect(result.embedding).toEqual([0.1, 0.2, 0.3]);
+      expect(result.embedding).toEqual(vetor(0.1));
     });
   });
 });

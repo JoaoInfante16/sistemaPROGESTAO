@@ -29,14 +29,28 @@ jest.mock('../../src/middleware/logger', () => ({
 import { CachedContentFetcher } from '../../src/services/content/CachedContentFetcher';
 import { ContentFetcher, FetchedContent } from '../../src/services/content/ContentFetcher';
 
+/**
+ * 🚨 O conteudo precisa passar de 100 caracteres.
+ *
+ * O fetcher so grava no cache se `content.trim().length > 100` — a guarda existe
+ * porque o Jina devolve corpo vazio ou quase vazio quando falha, e cachear uma
+ * falha por 24h e pior que nao cachear nada: a URL fica envenenada. O fixture
+ * antigo tinha 31 caracteres, entao a gravacao NUNCA acontecia e o teste de
+ * cache MISS media o nada.
+ */
+const CONTEUDO_REALISTA =
+  'Um homem foi preso em flagrante na tarde desta quinta-feira suspeito de assaltar ' +
+  'uma agência bancária no centro da cidade. Segundo a Polícia Militar, ele estava ' +
+  'com parte do dinheiro e uma arma de brinquedo.';
+
 // Mock do fetcher real
 function createMockFetcher(): ContentFetcher {
   return {
     fetch: jest.fn().mockResolvedValue({
       url: 'https://example.com/news',
       title: 'Crime em São Paulo',
-      content: 'Conteúdo completo da notícia...',
-      wordCount: 5,
+      content: CONTEUDO_REALISTA,
+      wordCount: 38,
     } as FetchedContent),
   };
 }
@@ -87,6 +101,28 @@ describe('CachedContentFetcher', () => {
         JSON.stringify(result)
       );
       expect(mockRedisIncr).toHaveBeenCalledWith('cache:content:misses');
+    });
+
+    it('🚨 NAO grava no cache quando o conteudo veio vazio ou curto demais', async () => {
+      // O Jina devolve corpo vazio quando falha. Cachear isso por 24h envenena
+      // a URL: toda tentativa seguinte le a falha do cache em vez de tentar de
+      // novo. A guarda e `> 100` caracteres.
+      mockRedisGet.mockResolvedValue(null); // MISS
+      const fetcherComRespostaCurta: ContentFetcher = {
+        fetch: jest.fn().mockResolvedValue({
+          url: 'https://example.com/vazia',
+          title: 'Página que não abriu',
+          content: 'erro',
+          wordCount: 1,
+        } as FetchedContent),
+      };
+
+      const cachedFetcher = new CachedContentFetcher(fetcherComRespostaCurta);
+      const result = await cachedFetcher.fetch('https://example.com/vazia');
+
+      // Devolve o resultado para quem pediu, mas nao guarda.
+      expect(result.content).toBe('erro');
+      expect(mockRedisSetex).not.toHaveBeenCalled();
     });
   });
 

@@ -68,23 +68,27 @@ describe('enqueueScan', () => {
       'scan',
       { locationId: 'location-456' },
       expect.objectContaining({
-        attempts: 3,
+        attempts: 5,
         backoff: expect.objectContaining({ type: 'exponential' }),
       })
     );
   });
 
-  it('should configure retry with exponential backoff', async () => {
+  it('espera a OpenAI voltar por ~31 min antes de dar o scan por perdido', async () => {
+    // Esta e a OUTRA METADE da regra 8 do §2 da ARQUITETURA. O Filter1 lanca
+    // erro quando a OpenAI cai, em vez de aprovar tudo; quem segura a ponta e
+    // este backoff: 1 -> 2 -> 4 -> 8 -> 16 min. Mexer num sem o outro quebra a
+    // decisao inteira — ou o scan morre cedo demais, ou a fila entope.
     await enqueueScan('location-789');
 
     expect(mockQueueAdd).toHaveBeenCalledWith(
       'scan',
       expect.any(Object),
       expect.objectContaining({
-        attempts: 3,
+        attempts: 5,
         backoff: {
           type: 'exponential',
-          delay: 2000,
+          delay: 60_000,
         },
       })
     );

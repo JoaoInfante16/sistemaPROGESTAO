@@ -151,11 +151,12 @@ describe('ConfigManager', () => {
     expect(supabase.from).toHaveBeenCalledTimes(1);
   });
 
-  it('set should update DB and local cache', async () => {
+  it('gravar uma config cria a linha se ela nao existir, e atualiza o cache', async () => {
+    // Era `update().eq('key')`, que nao fazia nada quando a chave ainda nao
+    // estava na tabela — config nova falhava em silencio. Virou `upsert` com
+    // `onConflict: 'key'`: cria ou atualiza, sempre.
     const { supabase } = require('../../src/config/database');
-    const mockUpdate = jest.fn().mockReturnValue({
-      eq: jest.fn().mockResolvedValue({ error: null }),
-    });
+    const mockUpsert = jest.fn().mockResolvedValue({ error: null });
     const mockSelect = jest.fn().mockResolvedValue({
       data: [{ key: 'push_enabled', value: 'true' }],
       error: null,
@@ -164,7 +165,7 @@ describe('ConfigManager', () => {
       if (table === 'system_config') {
         return {
           select: mockSelect,
-          update: mockUpdate,
+          upsert: mockUpsert,
         };
       }
       return { select: mockSelect };
@@ -177,6 +178,15 @@ describe('ConfigManager', () => {
 
     // Update
     await configManager.set('push_enabled', 'false', 'admin-123');
+
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: 'push_enabled',
+        value: 'false',
+        updated_by: 'admin-123',
+      }),
+      { onConflict: 'key' }
+    );
 
     // Should return updated value from cache
     const value = await configManager.get('push_enabled');
