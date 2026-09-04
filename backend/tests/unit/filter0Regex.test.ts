@@ -20,21 +20,41 @@ describe('filter0Regex', () => {
     });
   });
 
-  describe('non-crime keywords', () => {
-    const nonCrimeSnippets = [
+  describe('barra entretenimento inequivoco', () => {
+    const naoEhCrime = [
       'Novela das 9 estreia novo capítulo',
-      'Resultado do jogo de futebol de ontem',
-      'Receita de bolo de chocolate fácil',
       'Horóscopo do dia para todos os signos',
       'Fofoca sobre celebridade famosa',
-      'Lançamento de filme no cinema',
-      'Campeonato brasileiro rodada 10',
       'Previsão do tempo para amanhã',
       'Cotação do dólar sobe hoje',
     ];
 
-    it.each(nonCrimeSnippets)('should block snippet: "%s"', (snippet) => {
+    it.each(naoEhCrime)('barra: "%s"', (snippet) => {
       expect(filter0Regex('https://g1.globo.com/noticia', snippet)).toBe(false);
+    });
+  });
+
+  describe('🚨 palavra ambigua NAO barra — o Filter1 decide com contexto', () => {
+    // Estes casos JA foram barrados, e a lista foi encurtada de proposito: o
+    // match e substring no trecho inteiro, sem contexto, entao `receita` batia
+    // em "Receita Federal apreendeu" e `futebol` em "torcedor morto". Cada um
+    // era uma noticia de crime real jogada fora de graca, antes de qualquer
+    // filtro inteligente ver.
+    //
+    // Estes testes existem para o conserto nao ser desfeito por engano: se
+    // alguem devolver essas palavras a lista, eles ficam vermelhos.
+    const ambiguos = [
+      'Receita Federal apreendeu carga de contrabando',
+      'Torcedor morto após briga na saída do jogo de futebol',
+      'Atirador abre fogo dentro de cinema no centro',
+      'Show interrompido por tiroteio; música parou',
+      'Assalto durante campeonato de skate na praça',
+      'Câmera filmou o assalto ao mercado',
+      'Roubaram a bolsa da vítima em plena avenida',
+    ];
+
+    it.each(ambiguos)('deixa passar: "%s"', (snippet) => {
+      expect(filter0Regex('https://g1.globo.com/noticia', snippet)).toBe(true);
     });
   });
 
@@ -52,10 +72,10 @@ describe('filter0Regex', () => {
     });
   });
 
-  describe('case insensitivity', () => {
-    it('should block non-crime keywords regardless of case', () => {
-      expect(filter0Regex('https://example.com', 'FUTEBOL na televisão')).toBe(false);
-      expect(filter0Regex('https://example.com', 'Receita de Bolo')).toBe(false);
+  describe('caixa alta ou baixa nao muda a decisao', () => {
+    it('barra igual, escrito de qualquer jeito', () => {
+      expect(filter0Regex('https://example.com', 'NOVELA das 9')).toBe(false);
+      expect(filter0Regex('https://example.com', 'Fofoca do Dia')).toBe(false);
       expect(filter0Regex('https://example.com', 'HORÓSCOPO do dia')).toBe(false);
     });
   });

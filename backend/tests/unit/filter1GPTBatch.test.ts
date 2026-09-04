@@ -1,20 +1,12 @@
-// Mock OpenAI ANTES de importar o módulo
-jest.mock('openai', () => {
-  const mockCreate = jest.fn();
-  return {
-    __esModule: true,
-    default: jest.fn().mockImplementation(() => ({
-      chat: {
-        completions: {
-          create: mockCreate,
-        },
-      },
-    })),
-    _mockCreate: mockCreate,
-  };
-});
+// O Filter1 fala com a OpenAI pelo client COMPARTILHADO (`services/openaiClient`),
+// nao pelo pacote `openai` direto — centralizado para o timeout de 60s valer nos
+// seis lugares que chamavam a API. Mockar o pacote nao intercepta mais nada, e a
+// suite passava a exercitar o client de verdade.
+const mockCreate = jest.fn();
+jest.mock('../../src/services/openaiClient', () => ({
+  openai: { chat: { completions: { create: mockCreate } } },
+}));
 
-// Mock config
 jest.mock('../../src/config', () => ({
   config: {
     openaiApiKey: 'test-key',
@@ -22,7 +14,6 @@ jest.mock('../../src/config', () => ({
   },
 }));
 
-// Mock logger
 jest.mock('../../src/middleware/logger', () => ({
   logger: {
     info: jest.fn(),
@@ -34,125 +25,147 @@ jest.mock('../../src/middleware/logger', () => ({
 
 import { filter1GPTBatch } from '../../src/services/filters/filter1GPTBatch';
 
-// Acessar o mock diretamente
-const getMockCreate = () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const openai = require('openai');
-  return openai._mockCreate as jest.Mock;
-};
+const emLote = (results: unknown[]) => ({
+  choices: [{ message: { content: JSON.stringify({ results }) } }],
+});
 
-describe('filter1GPTBatch', () => {
-  beforeEach(() => {
-    getMockCreate().mockReset();
+const respostaUnica = (texto: string) => ({
+  choices: [{ message: { content: texto } }],
+});
+
+beforeEach(() => {
+  mockCreate.mockReset();
+});
+
+describe('o filtro decide quais trechos sao seguranca publica', () => {
+  it('devolve a decisao de cada trecho, na ordem em que entraram', async () => {
+    mockCreate.mockResolvedValue(emLote([true, false, true]));
+
+    const { results } = await filter1GPTBatch([
+      'Roubo a banco em São Paulo',
+      'Receita de bolo de chocolate',
+      'Homicídio na zona sul',
+    ]);
+
+    expect(results).toEqual([true, false, true]);
   });
 
-  describe('batch processing', () => {
-    it('should return correct boolean array for valid batch response', async () => {
-      getMockCreate().mockResolvedValue({
-        choices: [{
-          message: { content: JSON.stringify({ results: [true, false, true] }) },
-        }],
-      });
+  it('pergunta UMA vez pelo lote inteiro, nao uma vez por trecho', async () => {
+    // O lote e a economia central deste estagio: 5 trechos, 1 chamada.
+    mockCreate.mockResolvedValue(emLote([true, true, true, true, true]));
 
-      const result = await filter1GPTBatch([
-        'Roubo a banco em São Paulo',
-        'Receita de bolo de chocolate',
-        'Homicídio na zona sul',
-      ]);
+    await filter1GPTBatch(['s1', 's2', 's3', 's4', 's5']);
 
-      expect(result).toEqual([true, false, true]);
-    });
-
-    it('should make only ONE API call for multiple snippets', async () => {
-      const mockCreate = getMockCreate();
-      mockCreate.mockResolvedValue({
-        choices: [{
-          message: { content: JSON.stringify({ results: [true, true, true, true, true] }) },
-        }],
-      });
-
-      await filter1GPTBatch([
-        'snippet 1', 'snippet 2', 'snippet 3', 'snippet 4', 'snippet 5',
-      ]);
-
-      expect(mockCreate).toHaveBeenCalledTimes(1);
-    });
+    expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 
-  describe('single snippet optimization', () => {
-    it('should use single-item prompt for 1 snippet', async () => {
-      const mockCreate = getMockCreate();
-      mockCreate.mockResolvedValue({
-        choices: [{
-          message: { content: 'SIM' },
-        }],
-      });
-
-      const result = await filter1GPTBatch(['Assalto à mão armada']);
-      expect(result).toEqual([true]);
-      expect(mockCreate).toHaveBeenCalledTimes(1);
+  it('reporta quantos tokens gastou, porque este estagio e pago', async () => {
+    mockCreate.mockResolvedValue({
+      ...emLote([true]),
+      usage: { total_tokens: 321 },
     });
 
-    it('should return [false] for single non-crime snippet', async () => {
-      getMockCreate().mockResolvedValue({
-        choices: [{
-          message: { content: 'NÃO' },
-        }],
-      });
-
-      const result = await filter1GPTBatch(['Previsão do tempo para amanhã']);
-      expect(result).toEqual([false]);
-    });
+    const { tokensUsed } = await filter1GPTBatch(['s1']);
+    expect(tokensUsed).toBe(321);
   });
 
-  describe('edge cases', () => {
-    it('should return empty array for empty input', async () => {
-      const result = await filter1GPTBatch([]);
-      expect(result).toEqual([]);
-      expect(getMockCreate()).not.toHaveBeenCalled();
-    });
+  it('nao chama a API quando nao ha nada para decidir', async () => {
+    const { results } = await filter1GPTBatch([]);
+
+    expect(results).toEqual([]);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('trecho sozinho usa o caminho curto, que pergunta em portugues', () => {
+  it('aceita SIM como aprovacao', async () => {
+    mockCreate.mockResolvedValue(respostaUnica('SIM'));
+
+    const { results } = await filter1GPTBatch(['Assalto à mão armada']);
+
+    expect(results).toEqual([true]);
+    expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 
-  describe('fallback behavior', () => {
-    it('should return all true when response has wrong length', async () => {
-      getMockCreate().mockResolvedValue({
-        choices: [{
-          message: { content: JSON.stringify({ results: [true, false] }) }, // Esperava 3
-        }],
-      });
+  it('qualquer coisa que nao seja SIM/YES reprova', async () => {
+    mockCreate.mockResolvedValue(respostaUnica('NÃO'));
 
-      const result = await filter1GPTBatch(['s1', 's2', 's3']);
-      expect(result).toEqual([true, true, true]); // Fallback: todos true
-    });
+    const { results } = await filter1GPTBatch(['Previsão do tempo para amanhã']);
 
-    it('should return all true when response is invalid JSON', async () => {
-      getMockCreate().mockResolvedValue({
-        choices: [{
-          message: { content: 'not json at all' },
-        }],
-      });
+    expect(results).toEqual([false]);
+  });
+});
 
-      const result = await filter1GPTBatch(['s1', 's2']);
-      expect(result).toEqual([true, true]);
-    });
+describe('quando o GPT responde torto, o filtro corrige em vez de desistir', () => {
+  it('completa com aprovado quando vem resposta a menos', async () => {
+    // Deixa o Filter2 decidir: descartar o lote inteiro jogaria fora coleta paga.
+    mockCreate.mockResolvedValue(emLote([true, false])); // esperava 3
 
-    it('should return all true when API throws error', async () => {
-      getMockCreate().mockRejectedValue(new Error('API rate limit'));
+    const { results } = await filter1GPTBatch(['s1', 's2', 's3']);
 
-      const result = await filter1GPTBatch(['s1', 's2', 's3']);
-      expect(result).toEqual([true, true, true]);
-    });
+    expect(results).toEqual([true, false, true]);
+  });
 
-    it('should treat non-boolean values as false', async () => {
-      getMockCreate().mockResolvedValue({
-        choices: [{
-          message: { content: JSON.stringify({ results: [true, 'sim', 1, false] }) },
-        }],
-      });
+  it('descarta o excedente quando vem resposta a mais', async () => {
+    mockCreate.mockResolvedValue(emLote([true, false, true, true])); // esperava 2
 
-      const result = await filter1GPTBatch(['s1', 's2', 's3', 's4']);
-      // 'sim' e 1 não são === true, então devem ser false
-      expect(result).toEqual([true, false, false, false]);
-    });
+    const { results } = await filter1GPTBatch(['s1', 's2']);
+
+    expect(results).toEqual([true, false]);
+  });
+
+  it('trata qualquer valor que nao seja booleano verdadeiro como reprovado', async () => {
+    mockCreate.mockResolvedValue(emLote([true, 'sim', 1, false]));
+
+    const { results } = await filter1GPTBatch(['s1', 's2', 's3', 's4']);
+
+    expect(results).toEqual([true, false, false, false]);
+  });
+
+  it('tenta de novo antes de aprovar tudo, quando a resposta nao e JSON', async () => {
+    mockCreate.mockResolvedValue(respostaUnica('isso nao e json'));
+
+    const { results } = await filter1GPTBatch(['s1', 's2']);
+
+    // Duas tentativas; so entao aprova tudo e deixa o Filter2 filtrar.
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(results).toEqual([true, true]);
+  });
+});
+
+describe('🚨 quando a OpenAI cai, o filtro NAO aprova tudo', () => {
+  it('lanca erro em vez de deixar o lote passar', async () => {
+    // ARQUITETURA §2, regra 8. Aprovar tudo mandaria o lote inteiro para Jina e
+    // Filter2, que sao os estagios caros — a conta explode justamente no momento
+    // em que o sistema esta cego. Lancar devolve o job para a fila do BullMQ com
+    // backoff, e o Sentry ja avisou. Quando a OpenAI voltar, o job continua.
+    mockCreate.mockRejectedValue(new Error('API rate limit'));
+
+    await expect(filter1GPTBatch(['s1', 's2', 's3'])).rejects.toThrow('OpenAI falhou');
+  });
+
+  it('tenta duas vezes antes de desistir', async () => {
+    mockCreate.mockRejectedValue(new Error('API rate limit'));
+
+    await expect(filter1GPTBatch(['s1', 's2'])).rejects.toThrow();
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+  });
+
+  it('⚠️ MAS trecho sozinho reprova em silencio, sem retry e sem Sentry', async () => {
+    // Este teste NAO descreve o comportamento desejado — descreve o que existe,
+    // para a assimetria parar de passar despercebida.
+    //
+    // O caminho do lote foi endurecido (2 tentativas, Sentry, throw para o
+    // BullMQ re-enfileirar). O caminho de UM trecho ficou para tras: uma
+    // tentativa, `catch` devolvendo false, nenhum alerta. Nao viola a regra 8
+    // (nao aprova nada indevidamente), mas a noticia SOME sem ninguem saber.
+    //
+    // Mudar isso e decisao do Joao, nao consequencia de conserto de teste.
+    mockCreate.mockRejectedValue(new Error('API rate limit'));
+
+    const { results } = await filter1GPTBatch(['unico trecho']);
+
+    expect(results).toEqual([false]);
+    expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 });
