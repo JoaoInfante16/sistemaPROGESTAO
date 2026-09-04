@@ -114,14 +114,60 @@ Custo: o CLAUDE.md foi de 14.348 para 17.698 chars (~+900 tokens em **todo**
 turno). Paga-se porque é comportamento, não consulta. Se precisar recuperar
 espaço, o candidato a sair é o §8 (URLs e custos são referência).
 
-📌 **Fica pendente, discutido e não feito:** a suíte do backend tem **10 de 17
-suítes quebradas** (25 testes de 176) e nada as roda — sem CI, sem hook. O `tsc`
-passa limpo, e a diferença entre os dois é que só o typecheck está na definição de
-pronto do §3. Uma falha foi investigada a fundo (`filter0Regex`): é teste velho, o
-código está certo e o porquê está no comentário colado nele. As outras nove não
-foram diagnosticadas. Também pendente: o workflow consolidado no CLAUDE.md e o
-verificador estendido (teto do ONDE PARAMOS — hoje em 44 linhas para um teto de
-25 —, teto do 🔴 AGORA, e a regra de fronteira).
+### A suíte estava 60% vermelha, e nenhum vermelho era bug
+
+Diagnóstico das 10 suítes quebradas (25 testes de 176), uma por uma até a causa
+raiz: **nenhum bug de código.** Todas eram testes descrevendo um sistema que já
+tinha mudado. Nenhuma linha de `src/` foi tocada. Resultado: **17/17 suítes,
+207 testes verdes**, `tsc` limpo.
+
+🚨 **O achado que justifica o esforço:** oito testes do `filter1` exigiam que,
+com a OpenAI fora do ar, o filtro **aprovasse todos os trechos** — exatamente o
+que a regra 8 do §2 proíbe. Uma instância com pressa "conserta" isso mudando o
+**código** para o teste passar, e reintroduz um vazamento de dinheiro já
+consertado. Teste desatualizado não é neutro: é instrução errada esperando
+alguém obediente.
+
+**Três famílias de apodrecimento**, que valem para o resto do projeto:
+
+1. **Mock apontando para o lugar antigo.** `filter1`, `filter2` e `dedup`
+   mockavam o pacote `openai`; o código passou a usar o client compartilhado
+   `services/openaiClient`. O mock não interceptava mais nada — e o `dedup`
+   ainda abria Redis de verdade pelo `pipelineCore`, **pendurando** a suíte em
+   vez de falhar.
+2. **Fixture com o tamanho errado, medindo o caminho errado.** Embeddings de 3 e
+   10 dimensões onde o código exige 1536, conteúdo de 31 caracteres onde a
+   guarda pede >100. O pior caso: no `dedup`, todo candidato era descartado como
+   inválido e a função respondia "não é duplicata" **sempre** — dois testes
+   passavam esperando `false` sem exercitar nada. Falso verde é pior que
+   vermelho.
+3. **Contrato mudou.** `filter1` devolve `{ results, tokensUsed }`, não um
+   array; `cidade` virou `cidades`; `update().eq()` virou `upsert`; a taxonomia
+   perdeu os acentos e agrupou (`roubo` → `roubo_furto`).
+
+**Dois testes viraram proteção, em vez de serem apagados:** os do `filter0` que
+exigiam barrar "futebol" e "receita" foram **invertidos** — agora afirmam que
+"torcedor morto" e "Receita Federal apreendeu" *passam*. Se alguém devolver as
+palavras ambíguas à lista, ficam vermelhos. E o retry do `cronScheduler`
+(5x/60s = ~31 min) foi documentado como a **outra metade** da regra 8: o Filter1
+lança, o backoff espera a OpenAI voltar. Mexer num sem o outro quebra a decisão.
+
+Os nomes dos testes passaram a ser escritos em **comportamento e em português** —
+a lista que o Jest imprime vira uma lista legível do que o sistema promete, que é
+como o João revisa sem ler código.
+
+⚠️ **ACHADO NÃO CONSERTADO — decisão do João.** O `filter1` trata erro de forma
+diferente conforme o tamanho do lote. Com 2+ trechos: 2 tentativas, Sentry,
+`throw` (o BullMQ re-enfileira). Com **1 trecho**: 1 tentativa, devolve `false`,
+**sem Sentry** — a notícia some e ninguém fica sabendo. Não viola a regra 8 (não
+aprova nada indevidamente), mas é falha invisível. Está fixado num teste que diz
+explicitamente descrever o comportamento atual, não o desejado.
+
+📌 **Ainda pendente:** o CI (`tsc` + `npm test` em todo push) — sem ele a suíte
+volta a apodrecer, e agora ela é a única coisa que impede a regressão do
+`filter1`. Mais: `npm test` na definição de pronto do §3, o workflow consolidado
+no CLAUDE.md, e o verificador estendido (teto do ONDE PARAMOS — hoje 44 linhas
+para um teto de 25 —, teto do 🔴 AGORA, regra de fronteira).
 
 ---
 
